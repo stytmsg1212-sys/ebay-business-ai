@@ -1,0 +1,43 @@
+{
+  "tasks": [
+    {
+      "sku": "ebayme_12345678",
+      "source": "Yahoo Auctions",
+      "model_number": "ADVANTEST R6551",
+      "search_date": "2026-04-12T06:18:37.589320",
+      "candidates": [
+        {
+          "url": "https://page.auctions.yahoo.co.jp/jp/auction/r6551_001",
+          "title": "ADVANTEST R6551 デジタルマルチメータ ジャンク",
+          "condition": "ジャンク品",
+          "includes": "本体のみ",
+          "warranty": "ノークレーム",
+          "price_jpy": 4999,
+          "score": 0.45,
+          "reason": "型番は同じだが、状態がジャンク品。販売中。",
+          "financially_viable": false,
+          "rank": 1
+        },
+        {
+          "url": "https://page.auctions.yahoo.co.jp/jp/auction/r6551_002",
+          "title": "ADVANTEST R6551 デジタルマルチメータ ジャンク品",
+          "condition": "ジャンク品",
+          "includes": "本体のみ",
+          "warranty": "ノークレーム",
+          "price_jpy": 6789,
+          "score": 0.45,
+          "reason": "型番同じ。状態はジャンク品。送料含む価格。",
+          "financially_viable": false,
+          "rank": 2
+        }
+      ],
+      "summary": {
+        "search_date": "2026-04-12",
+        "total_candidates_found": 2,
+        "candidates_evaluated": 2,
+        "top_viable_candidate": null,
+        "recommendation": "同等商品が見つかりませんでした"
+      }
+    }
+  ]
+}

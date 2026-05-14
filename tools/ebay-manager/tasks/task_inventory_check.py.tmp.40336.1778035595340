@@ -1,0 +1,555 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Task: 仕入先在庫チェック (W50 統合本体 / 2026-04-30)
+scheduler cron 経路 (daily_scheduler.execute_daily_tasks) と
+Streamlit button 経路 (app.py) の両方が呼ぶ単一の在庫監視本体.
+データソース = monitored_items table (DB), scraper = monitor/scrapers.check_items_batch.
+"""
+
+import sys
+import json
+import logging
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+
+# pythonw.exe では sys.stdout が None のため安全ガード
+if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Step A 統合実装用 helpers (W50 / 2026-04-30)
+# scheduler 経路 (cron) と Streamlit 経路 (button) を 1 本体に統合するための
+# status マッピング + 結果整形ユーティリティ. Step B で run_inventory_check
+# 本体差替時に使用される. silent skip 防止のため raw に無い item_id は
+# "error" 扱い (Q0 ルール準拠).
+# ──────────────────────────────────────────────────────────────────────
+
+_EN_TO_JP_STATUS = {
+    "available":   "在庫有",
+    "unavailable": "在庫無",
+    "not_found":   "ページなし",
+    "error":       "エラー",
+    "unknown":     "不明",
+}
+
+_JP_TO_STATS_KEY = {
+    "在庫有":     "in_stock",
+    "在庫無":     "out_of_stock",
+    "ページなし": "page_not_found",
+    "エラー":     "error",
+    "不明":       "error",  # 旧実装互換: 不明は error 集計
+}
+
+
+def _resolve_source_label(sku: str, configs_by_prefix: dict) -> str:
+    """sku の prefix を site_configs.site_name に解決. 未知 prefix は "Unknown"."""
+    if not sku:
+        return "Unknown"
+    for prefix, cfg in configs_by_prefix.items():
+        if prefix and sku.startswith(prefix):
+            return cfg.get("site_name", "Unknown")
+    return "Unknown"
+
+
+def _build_results(items: list, raw: dict, configs_by_prefix: dict) -> list:
+    """monitored_items rows + check_items_batch raw → 既存 json schema の results list.
+
+    raw に無い item_id は "error" 扱い (Q0 silent skip 防止:
+    「結果が来なかった = success」を物理的に許さない).
+    """
+    out = []
+    now_iso = datetime.now().isoformat()
+    for it in items:
+        item_id = it.get("id")
+        en = raw.get(item_id, "error")
+        jp = _EN_TO_JP_STATUS.get(en, "不明")
+        source = _resolve_source_label(it.get("sku", ""), configs_by_prefix)
+        out.append({
+            "id":         it.get("id"),  # monitored_items.id (last_status update 用)
+            "ebay_id":    it.get("ebay_item_id"),
+            "sku":        it.get("sku"),
+            "source":     source,
+            "url":        it.get("source_url"),
+            "status":     jp,
+            "checked_at": now_iso,
+        })
+    return out
+
+
+def _aggregate_stats(results: list) -> dict:
+    """results list から既存 stats + by_source 形式を生成."""
+    stats = {
+        "in_stock":       0,
+        "out_of_stock":   0,
+        "page_not_found": 0,
+        "error":          0,
+    }
+    by_source: dict = {}
+    for r in results:
+        jp_status = r.get("status", "不明")
+        key = _JP_TO_STATS_KEY.get(jp_status, "error")
+        stats[key] += 1
+        source = r.get("source", "Unknown")
+        if source not in by_source:
+            by_source[source] = {
+                "total":          0,
+                "in_stock":       0,
+                "out_of_stock":   0,
+                "page_not_found": 0,
+                "error":          0,
+            }
+        by_source[source]["total"] += 1
+        by_source[source][key] += 1
+    stats["by_source"] = by_source
+    return stats
+
+
+def load_previous_results() -> dict:
+    """前回の在庫チェック結果を読み込み"""
+    results_file = BASE_DIR / 'data' / 'inventory_check_results.json'
+
+    if not results_file.exists():
+        logger.info("前回の在庫チェック結果が見つかりません")
+        return {}
+
+    try:
+        with open(results_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        logger.info(f"前回の在庫チェック結果を読み込み: {len(data.get('results', []))}件")
+        return data
+    except Exception as e:
+        logger.warning(f"前回の結果読み込みエラー: {e}")
+        return {}
+
+
+def detect_inventory_changes(current_results: list, previous_results: dict) -> dict:
+    """
+    在庫状態の変化を検出
+    「在庫有 → 在庫無」になった商品を抽出
+    """
+
+    if not previous_results or 'results' not in previous_results:
+        logger.info("前回の結果がないため、変化検出をスキップ")
+        return {'changed_items': [], 'became_out_of_stock': []}
+
+    # 前回の結果をSKU/URL でマッピング
+    prev_by_url = {
+        item['url']: item for item in previous_results.get('results', [])
+    }
+
+    changed_items = []
+    became_out_of_stock = []
+
+    # 現在の結果と前回を比較
+    for current in current_results:
+        url = current.get('url')
+        current_status = current.get('status')
+
+        if url in prev_by_url:
+            prev_status = prev_by_url[url].get('status')
+
+            # 状態が変わった場合
+            if prev_status != current_status:
+                changed_items.append({
+                    'url': url,
+                    'sku': current.get('sku'),
+                    'source': current.get('source'),
+                    'prev_status': prev_status,
+                    'current_status': current_status,
+                    'changed_at': datetime.now().isoformat()
+                })
+
+                # 特に「在庫有 → 在庫無」を追跡
+                if prev_status == '在庫有' and current_status == '在庫無':
+                    became_out_of_stock.append({
+                        'url': url,
+                        'sku': current.get('sku'),
+                        'source': current.get('source')
+                    })
+
+    logger.info(f"状態変化を検出: {len(changed_items)}件（うち在庫切れ: {len(became_out_of_stock)}件）")
+
+    return {
+        'changed_items': changed_items,
+        'became_out_of_stock': became_out_of_stock
+    }
+
+
+def _classify_yahoo_grace(
+    target_pairs: list,
+) -> tuple:
+    """W100 (2026-05-06): ヤフオク URL の OOS listing を 24h 猶予対象と即リサーチに分類.
+
+    - 落札者なし終了 + end_time あり → yahoo_grace_until = end_time + 24h セット (探索 skip)
+    - 落札済 / 進行中 / 取得失敗 → 即リサーチ対象 (target に残す)
+    - mercari / paypay 等の非ヤフオク URL → 即リサーチ対象 (touch しない)
+
+    Args:
+        target_pairs: list of (ebay_item_id, sku) tuples
+
+    Returns:
+        (immediate, grace_set_count): grace セット対象は immediate から除外、
+        grace_set_count は grace_until をセットした件数
+    """
+    from datetime import timedelta, timezone
+    from monitor.database import get_conn, set_yahoo_grace_until
+    from monitor.yahoo_auction_status import fetch_yahoo_end_status
+
+    if not target_pairs:
+        return [], 0
+
+    # eid → source_url を一括取得 (N+1 SQL 回避)
+    eids = [eid for eid, _ in target_pairs]
+    placeholder = ",".join("?" * len(eids))
+    url_map: dict = {}
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                f"SELECT ebay_item_id, source_url FROM ebay_listings "
+                f"WHERE ebay_item_id IN ({placeholder})",
+                eids,
+            ).fetchall()
+            for r in rows:
+                url_map[r["ebay_item_id"]] = r["source_url"] or ""
+    except Exception as e:
+        logger.warning(f"[grace] source_url 一括取得失敗、grace 判定 skip: {e}")
+        return target_pairs, 0
+
+    immediate = []
+    grace_set_count = 0
+
+    for eid, sku in target_pairs:
+        url = url_map.get(eid, "")
+        if "auctions.yahoo.co.jp" not in url:
+            # 非ヤフオク → 即リサーチ
+            immediate.append((eid, sku))
+            continue
+
+        # ヤフオク URL → 終了状態確認
+        try:
+            status = fetch_yahoo_end_status(url, timeout_sec=15)
+        except Exception as e:
+            logger.warning(f"[grace] item={eid} fetch_yahoo_end_status 例外: {e}")
+            immediate.append((eid, sku))  # 取得失敗 → 即リサーチ (Q0 silent skip 防止)
+            continue
+
+        if (status.is_ended
+                and status.has_winner is False
+                and status.end_time_utc is not None):
+            # 落札者なし終了 → 24h 後に再出品される慣行を待つ
+            until = status.end_time_utc + timedelta(hours=24)
+            try:
+                # H-NEW-1 fix (2026-05-06): SQLite datetime('now') と lexicographic 比較
+                # するため、ISO 8601 (T 区切り + offset 付き) ではなく
+                # naive UTC 形式 ("YYYY-MM-DD HH:MM:SS") で保存.
+                # 旧 isoformat() は WHERE yahoo_grace_until <= datetime('now') が
+                # 永遠に false 評価される silent regression を引き起こす.
+                until_str = until.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                set_yahoo_grace_until(eid, until_str)
+                grace_set_count += 1
+                logger.info(
+                    f"[grace] item={eid} 再出品待ち until={until_str} UTC "
+                    f"(end_time={status.end_time_utc.isoformat()}) supplier 探索 skip"
+                )
+            except Exception as e:
+                logger.warning(f"[grace] item={eid} grace_until セット失敗: {e}")
+                immediate.append((eid, sku))  # 失敗 → 即リサーチ fallback
+        else:
+            # 進行中 / 落札済 / 取得不能 → 即リサーチ
+            immediate.append((eid, sku))
+            logger.debug(
+                f"[grace] item={eid} not graced: is_ended={status.is_ended}, "
+                f"has_winner={status.has_winner}, end_time={status.end_time_utc}, "
+                f"err={status.raw_error}"
+            )
+
+    if grace_set_count:
+        logger.info(
+            f"[grace] {grace_set_count} 件を 24h 猶予セット "
+            f"(残 immediate={len(immediate)} 件で探索)"
+        )
+    return immediate, grace_set_count
+
+
+def _start_supplier_candidate_search_async(changes: dict, config: dict,
+                                            synchronous: bool = False) -> None:
+    """Pattern 1 拡張: OOS 検知時に、対象SKUの仕入先候補を探索。
+
+    対象:
+      (a) 新たに「在庫有→在庫無」になった SKU (newly_oos)
+      (b) 現在 OOS で、過去 N 日以内に候補探索されていない SKU (continuing_oos)
+          → N は config.tasks_enabled.supplier_sweep.skip_if_searched_within_days (デフォルト 7日)
+
+    max_per_run で1回の inventory_check あたりの上限を制限（API コスト対策）。
+
+    synchronous=True:
+      foreground で直列実行（**手動 CLI 実行時のみ** - daemon では Python exit で殺される）
+      ⚠ Streamlit / scheduler 経由では使用禁止 (W100 grace 判定で max 7.5 分の UI hang)
+    synchronous=False (デフォルト):
+      daemon thread で非同期実行（scheduler 常駐プロセス用 - 本体処理を早く返す）
+      daemon=True のため scheduler 停止時は即時終了する（best-effort）。
+      scheduler プロセス内で他に Playwright を並行利用しないこと前提
+      （sync_playwright は複数スレッドで同時使用するとクラッシュする）。
+    """
+    from monitor.database import get_conn
+
+    task_cfg = (config or {}).get('tasks_enabled', {}).get('supplier_sweep') or {}
+    skip_days = int(task_cfg.get('skip_if_searched_within_days', 7))
+    max_per_run = int(task_cfg.get('max_skus_per_run', 30))
+
+    # 2026-05-01 W75 4b: run_supplier_candidate_search が ebay_item_id 主導 signature に
+    # 変更されたため、target を (ebay_item_id, sku) tuple で揃える。
+    # newly_oos は supplier 由来 dict (url/sku/source) で eid を持たない → source_url で
+    # ebay_listings から逆引き (SKU rule 準拠 = listing 識別に SKU を使わない).
+    newly_oos = changes.get('became_out_of_stock', []) if changes else []
+    newly_pairs: list[tuple[str, str]] = []  # (ebay_item_id, sku)
+    seen_eids: set[str] = set()
+    try:
+        with get_conn() as conn:
+            for c in newly_oos:
+                url = (c.get('url') or '').strip()
+                sku = (c.get('sku') or '').strip()
+                if not url or not sku:
+                    continue
+                row = conn.execute(
+                    "SELECT ebay_item_id FROM ebay_listings "
+                    "WHERE source_url=? AND (is_ended IS NULL OR is_ended=0) "
+                    "LIMIT 1",
+                    (url,),
+                ).fetchone()
+                eid = row["ebay_item_id"] if row else None
+                if eid and eid not in seen_eids:
+                    newly_pairs.append((eid, sku))
+                    seen_eids.add(eid)
+    except Exception as e:
+        logger.warning(f"newly_oos の eid 解決に失敗: {e}")
+
+    # 現在 OOS のうち、最近探索されていない listing を追加 (ebay_item_id + sku 両方取得)
+    continuing_pairs: list[tuple[str, str]] = []
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                # 業務ロジック: 在庫監視 = 無在庫出品で 仕入先OOS が生じた RISK の検知。
+                # qty=0 は「既に販売停止済で RISK ではない」=監視対象外（2026-04-20 業務確認）。
+                # FINDING 2 (2026-05-05): sku GLOB 'ebay*' で stock prefix 除外
+                # + NOT EXISTS を ebay_item_id 単位に (兄弟 listing silent 抜け解消).
+                # W100 (2026-05-06): yahoo_grace_until > now の listing は除外
+                # (ヤフオク終了 + 24h の再出品慣行待機).
+                """SELECT l.ebay_item_id, l.sku FROM ebay_listings l
+                    WHERE l.source_status = '在庫無'
+                      AND (l.is_ended IS NULL OR l.is_ended=0)
+                      AND l.quantity_ebay >= 1
+                      AND l.sku GLOB 'ebay*'
+                      AND (l.yahoo_grace_until IS NULL OR l.yahoo_grace_until <= datetime('now'))
+                      AND NOT EXISTS (
+                          SELECT 1 FROM supplier_candidates sc
+                          WHERE sc.ebay_item_id = l.ebay_item_id
+                            AND sc.created_at >= datetime('now', ?)
+                      )""",
+                (f"-{skip_days} days",),
+            ).fetchall()
+            for r in rows:
+                eid = r["ebay_item_id"]
+                sku = r["sku"]
+                if not eid or not sku or eid in seen_eids:
+                    continue
+                continuing_pairs.append((eid, sku))
+                seen_eids.add(eid)
+    except Exception as e:
+        logger.warning(f"continuing_oos の収集に失敗: {e}")
+
+    # 新規OOSが優先、残り枠に継続OOSを詰める
+    ordered_pairs = newly_pairs + continuing_pairs
+    target_pairs = ordered_pairs[:max_per_run]
+
+    if not target_pairs:
+        return
+
+    newly_eids = {eid for eid, _ in newly_pairs}
+
+    def _do_search():
+        # W100 H-2 fix (2026-05-06): _classify_yahoo_grace を daemon thread 内に移動.
+        # 旧実装は foreground で同期 HTTP fetch (max 30 件 × 15s = 7.5 分ブロック) し、
+        # scheduler 本体や Streamlit UI を hang させる risk があった.
+        # 新実装は daemon thread 内で実行 → run_inventory_check 本体は即 return.
+        # H-NEW-2 fix: 想定外 Exception を catch して即リサーチに fallback (Q0 silent skip 防止).
+        try:
+            immediate_pairs, grace_set_count = _classify_yahoo_grace(target_pairs)
+        except Exception as e:
+            logger.exception(
+                f"[grace] _classify_yahoo_grace 全体失敗: {e} "
+                f"target_pairs ({len(target_pairs)} 件) を即リサーチに fallback"
+            )
+            immediate_pairs, grace_set_count = target_pairs, 0
+        if not immediate_pairs:
+            if grace_set_count:
+                logger.info(f"[grace] 全 target が 24h 猶予対象 (grace_set={grace_set_count})")
+            return
+
+        from tasks.task_supplier_candidate_search import run_supplier_candidate_search
+        for eid, sku in immediate_pairs:
+            src = "pattern_1_newly_oos" if eid in newly_eids else "pattern_1_continuing_oos"
+            try:
+                r = run_supplier_candidate_search(
+                    ebay_item_id=eid, sku=sku, config=config, discovered_via=src,
+                )
+                logger.info(
+                    f"[supplier] item={eid} sku={sku} ({src}): {r.get('message', '(no message)')}"
+                )
+            except Exception as e:
+                logger.warning(f"[supplier] item={eid} sku={sku} failed: {e}")
+
+    if synchronous:
+        # foreground 実行（手動CLI実行時）
+        logger.info(f"仕入先候補探索を同期実行: 合計{len(target_pairs)} 件 (foreground)")
+        _do_search()
+        logger.info("仕入先候補探索 同期実行完了")
+        return
+
+    # daemon thread で非同期実行（scheduler 常駐プロセス用）
+    import threading
+    t = threading.Thread(
+        target=_do_search,
+        name=f"supplier_bg_{len(target_pairs)}items",
+        daemon=True,
+    )
+    t.start()
+    logger.info(
+        f"仕入先候補探索を非同期起動: 合計{len(target_pairs)} 件 "
+        f"(newly={len(newly_pairs)}, continuing={len(target_pairs) - len(newly_pairs)})"
+    )
+
+
+def run_inventory_check(config):
+    """
+    348件の仕入先商品の在庫状態をチェック
+    前回結果と比較して変化を検出
+
+    Args:
+        config: 設定辞書
+
+    Returns:
+        {'success': bool, 'checked_count': int, 'results': dict}
+    """
+
+    logger.info("【開始】在庫チェックタスク (統合本体 W50 / 2026-04-30)")
+
+    # H-1 (code-reviewer 2026-04-30): broad except Exception を撤去.
+    # silent skip 防止用の RuntimeError raise を scheduler.run_task / Streamlit の
+    # try/except に伝播させ、retry / traceback / Discord 通知を機能させる.
+    from monitor.database import (
+        get_active_items, get_site_configs, update_item_status
+    )
+    from monitor.scrapers import prepare_batch_items, check_items_batch
+
+    # データソース = monitored_items table (DB 真実源)
+    items = get_active_items()
+    if not items:
+        logger.error("monitored_items に active アイテムなし (silent skip 防止のため明示記録)")
+        return {
+            'success': False,
+            'checked_count': 0,
+            'results': {},
+            'error': 'no_active_items'
+        }
+
+    # site_configs prefix → site_name マッピング
+    configs = get_site_configs()
+    configs_by_prefix = {c["convert_url"]: c for c in configs}
+
+    # batch 準備 (sku prefix 一致しないものは prepare_batch_items が除外)
+    batch = prepare_batch_items(items, configs_by_prefix)
+    if len(batch) < len(items):
+        logger.warning(
+            f"site_config 不一致で {len(items) - len(batch)} 件除外 "
+            f"(items={len(items)} → batch={len(batch)}). prefix 未登録の sku あり"
+        )
+    if not batch:
+        # Q0 silent skip 防止: 全件除外で空 batch のまま success: True を返さない
+        logger.error("batch 空 = prepare_batch_items 全件除外 (silent skip 防止のため raise)")
+        raise RuntimeError(
+            f"prepare_batch_items returned empty for {len(items)} items "
+            f"(silent skip prevention)"
+        )
+
+    logger.info(f"ステップ1: 在庫チェック実行中... 対象 {len(batch)}件")
+
+    # scrape (httpx → Playwright headless → Chrome headed の 3 段)
+    raw = check_items_batch(batch)
+    if not raw:
+        # Q0 silent skip 防止: 結果 dict 空 = scrape 全失敗で success 偽装を許さない
+        logger.error("check_items_batch 戻り値空 (silent skip 防止のため raise)")
+        raise RuntimeError(
+            f"check_items_batch returned empty for {len(batch)} items "
+            f"(silent skip prevention)"
+        )
+
+    # ステップ2: 結果整形 + 統計
+    logger.info("ステップ2: 結果整形中...")
+    results = _build_results(items, raw, configs_by_prefix)
+    stats = _aggregate_stats(results)
+
+    # ステップ3: 前回比較 (既存 helper 再利用)
+    logger.info("ステップ3: 前回の結果と比較中...")
+    prev_results = load_previous_results()
+    changes = detect_inventory_changes(results, prev_results)
+
+    # ステップ4: JSON 保存 (既存 schema 維持)
+    logger.info("ステップ4: 結果を保存中...")
+    out_path = BASE_DIR / 'data' / 'inventory_check_results.json'
+    payload = {
+        "checked_at":  datetime.now().isoformat(),
+        "total_items": len(results),
+        "stats":       stats,
+        "by_source":   stats["by_source"],  # 後方互換 (旧 schema は top-level に展開)
+        "results":     results,
+        "changes":     changes,
+    }
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    logger.info(f"結果を保存: {out_path}")
+
+    # ステップ5: monitored_items.last_status 更新 (UI metric 用)
+    # 旧 InventoryCheckerSelenium 経路では更新されず、4/29 mtime stuck の真因の 1 つ.
+    updated = 0
+    for r in results:
+        item_id = r.get("id")
+        if item_id is None:
+            continue
+        try:
+            update_item_status(item_id, r["status"])
+            updated += 1
+        except sqlite3.Error as e:
+            logger.warning(f"last_status 更新失敗 sku={r.get('sku')}: {e}")
+    logger.info(f"monitored_items.last_status 更新: {updated}/{len(results)} 件")
+
+    logger.info(f"在庫チェック完了: {len(results)}件")
+
+    # ステップ6: Pattern 1 — 新規 OOS の仕入先候補探索 (既存維持)
+    # scheduler 常駐プロセス内なら daemon (async)、手動CLI実行なら foreground
+    _synchronous = bool(config.get("tasks_enabled", {})
+                        .get("inventory_check", {}).get("synchronous_supplier_search", False))
+    _start_supplier_candidate_search_async(changes, config, synchronous=_synchronous)
+
+    # 結果をまとめる (既存 return 形式維持)
+    return {
+        'success': True,
+        'checked_count': len(results),
+        'results': {
+            'in_stock':       stats['in_stock'],
+            'out_of_stock':   stats['out_of_stock'],
+            'page_not_found': stats['page_not_found'],
+            'error':          stats['error'],
+            'by_source':      stats['by_source'],
+        },
+        'changes': changes,
+        'message': f'在庫チェック完了: {len(results)}件確認'
+    }

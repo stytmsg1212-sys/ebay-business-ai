@@ -1,0 +1,41 @@
+{
+  "date": "2026-04-24",
+  "timestamp": "2026-04-24T18:54:42.748103",
+  "new_sellers": [
+    {
+      "seller": "bluesky1205",
+      "feedback_score": 3263,
+      "competing_items": [
+        {
+          "title": "maxell Portable Cassette Player MXCP-P100 Black MXCP-P100BK Bluetooth Compact",
+          "price_usd": 95.65,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "maxell Portable Cassette Player MXCP-P100 Black MXCP-P100BK Bluetooth Compact",
+          "price_usd": 95.65,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-24T18:54:37.176992",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "octpus-8",
+      "feedback_score": 924,
+      "competing_items": [
+        {
+          "title": "Sanrio x Ohuhu Illustration Markers Brush/Fine Point 80 colors + 1 Blender Pen ",
+          "price_usd": 112.88,
+          "keyword": "Ohuhu x Sanrio 80"
+        }
+      ],
+      "first_seen": "2026-04-24T18:54:41.451316",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 2,
+  "total_sellers_scanned": 149
+}

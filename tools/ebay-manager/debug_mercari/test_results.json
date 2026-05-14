@@ -1,0 +1,79 @@
+[
+  {
+    "label": "メルカリ_在庫無",
+    "url": "https://jp.mercari.com/item/m81786287162",
+    "expected": "在庫無",
+    "old_logic_result": "在庫無",
+    "title": "Pixel Tablet 純正 充電スピーカーホルダー（Porcelain） - メルカリ",
+    "detected_keywords": {
+      "在庫有候補": [],
+      "在庫無候補": [
+        "売り切れました"
+      ],
+      "ページ構造": [
+        "メルカリ",
+        "配送"
+      ]
+    },
+    "visible_text_length": 2581,
+    "test_passed": true
+  },
+  {
+    "label": "メルカリ_在庫有",
+    "url": "https://jp.mercari.com/item/m18924610012",
+    "expected": "在庫有",
+    "old_logic_result": "在庫有",
+    "title": "ZOOM R8 マルチトラックレコーダー - メルカリ",
+    "detected_keywords": {
+      "在庫有候補": [
+        "購入手続きへ"
+      ],
+      "在庫無候補": [],
+      "ページ構造": [
+        "メルカリ",
+        "配送"
+      ]
+    },
+    "visible_text_length": 2190,
+    "test_passed": true
+  },
+  {
+    "label": "メルカリショップ_在庫有",
+    "url": "https://jp.mercari.com/shops/product/jcPji3FggWfLFAYNJXpMnd",
+    "expected": "在庫有",
+    "old_logic_result": "在庫有",
+    "title": "コスパ米 白米 20kg OKBライス 精米済み- メルカリ",
+    "detected_keywords": {
+      "在庫有候補": [
+        "購入手続きへ"
+      ],
+      "在庫無候補": [],
+      "ページ構造": [
+        "メルカリ",
+        "価格",
+        "配送"
+      ]
+    },
+    "visible_text_length": 2981,
+    "test_passed": true
+  },
+  {
+    "label": "メルカリショップ_在庫無",
+    "url": "https://jp.mercari.com/shops/product/2JPfUTUh76Jm6z9LGP4p2Q",
+    "expected": "在庫無",
+    "old_logic_result": "在庫無",
+    "title": "美品 2025SS エヴァムエヴァ evam eva コットンプルオーバー M＼ベージュ ブラウス シャツ ワイド【2400014924312】 - メルカリ",
+    "detected_keywords": {
+      "在庫有候補": [
+        "購入手続きへ"
+      ],
+      "在庫無候補": [],
+      "ページ構造": [
+        "メルカリ",
+        "配送"
+      ]
+    },
+    "visible_text_length": 2780,
+    "test_passed": true
+  }
+]

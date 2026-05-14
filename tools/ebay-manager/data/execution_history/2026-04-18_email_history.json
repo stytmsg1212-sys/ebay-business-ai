@@ -1,0 +1,218 @@
+[
+  {
+    "timestamp": "2026-04-18T08:10:17.412912",
+    "result": {
+      "timestamp": "2026-04-18T08:10:17.412265",
+      "task_name": "email",
+      "status": "success",
+      "message": "MAIL FETCH 完了",
+      "execution_time_sec": 13.98995590209961,
+      "details": {
+        "success": true,
+        "count": 10,
+        "emails": [
+          {
+            "id": "19d9d9937ba39682",
+            "timestamp": "2026-04-18T08:10:14.230697",
+            "subject": "Re: rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Fri, 17 Apr 2026 15:39:15 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d9d91460be39e7",
+            "timestamp": "2026-04-18T08:10:14.543639",
+            "subject": "rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Fri, 17 Apr 2026 15:30:35 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d944e49092ac8c",
+            "timestamp": "2026-04-18T08:10:14.885049",
+            "subject": "rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Wed, 15 Apr 2026 20:20:50 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d8f41c0e37bb12",
+            "timestamp": "2026-04-18T08:10:15.329931",
+            "subject": "bleakneonblack sent a message about Google Pixel Tablet Case Porcelain GA04446-WW Genuine New from Japan #358133622869",
+            "from": "eBay - bleakneonblack <bleakn_gqn3706ugtm@members.ebay.com>",
+            "date": "Tue, 14 Apr 2026 20:49:03 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d8784f49bbb13a",
+            "timestamp": "2026-04-18T08:10:15.684102",
+            "subject": "michelemota sent a message about Oriental Motor BMUD200-A Brushless DC Motor Driver Single-Phase 100-120 VAC New #357197894617",
+            "from": "eBay - michelemota <michel_jyiu2356uej@members.ebay.com>",
+            "date": "Mon, 13 Apr 2026 08:45:29 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d84fdbe4c161d9",
+            "timestamp": "2026-04-18T08:10:16.015876",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:34 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d84fd8d7648950",
+            "timestamp": "2026-04-18T08:10:16.323409",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:21 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d817b723f04b07",
+            "timestamp": "2026-04-18T08:10:16.658785",
+            "subject": "Re: mono_honpo_japan sent a message about Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray from Japan #358178581550",
+            "from": "eBay - perr1754 <perr17_jtd5848rgzx@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 04:37:23 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d6e83af1c21513",
+            "timestamp": "2026-04-18T08:10:17.048497",
+            "subject": "These items haven't sold yet? Let’s change that.",
+            "from": "eBay <ebay@ebay.com>",
+            "date": "Wed, 8 Apr 2026 12:13:35 -0700",
+            "body": "",
+            "category": "sale"
+          },
+          {
+            "id": "19d6b78bc1fc494f",
+            "timestamp": "2026-04-18T08:10:17.387497",
+            "subject": "augistarismissing sent a message about ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan #357618434395",
+            "from": "eBay - augistarismissing <sabh56_gtn3248rhtc@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 22:02:47 -0700",
+            "body": "",
+            "category": "buyer_message"
+          }
+        ],
+        "message": "取得したメール: 10件",
+        "status": "success"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-04-18T09:06:29.405418",
+    "result": {
+      "timestamp": "2026-04-18T09:06:29.353921",
+      "task_name": "email",
+      "status": "success",
+      "message": "MAIL FETCH 完了",
+      "execution_time_sec": 5.7389326095581055,
+      "details": {
+        "success": true,
+        "count": 10,
+        "emails": [
+          {
+            "id": "19d9d9937ba39682",
+            "timestamp": "2026-04-18T09:06:25.321837",
+            "subject": "Re: rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Fri, 17 Apr 2026 15:39:15 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d9d91460be39e7",
+            "timestamp": "2026-04-18T09:06:25.643276",
+            "subject": "rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Fri, 17 Apr 2026 15:30:35 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d944e49092ac8c",
+            "timestamp": "2026-04-18T09:06:26.000834",
+            "subject": "rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+            "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+            "date": "Wed, 15 Apr 2026 20:20:50 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d8f41c0e37bb12",
+            "timestamp": "2026-04-18T09:06:26.320848",
+            "subject": "bleakneonblack sent a message about Google Pixel Tablet Case Porcelain GA04446-WW Genuine New from Japan #358133622869",
+            "from": "eBay - bleakneonblack <bleakn_gqn3706ugtm@members.ebay.com>",
+            "date": "Tue, 14 Apr 2026 20:49:03 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d8784f49bbb13a",
+            "timestamp": "2026-04-18T09:06:26.631508",
+            "subject": "michelemota sent a message about Oriental Motor BMUD200-A Brushless DC Motor Driver Single-Phase 100-120 VAC New #357197894617",
+            "from": "eBay - michelemota <michel_jyiu2356uej@members.ebay.com>",
+            "date": "Mon, 13 Apr 2026 08:45:29 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d84fdbe4c161d9",
+            "timestamp": "2026-04-18T09:06:26.955782",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:34 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d84fd8d7648950",
+            "timestamp": "2026-04-18T09:06:27.270657",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:21 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d817b723f04b07",
+            "timestamp": "2026-04-18T09:06:28.645663",
+            "subject": "Re: mono_honpo_japan sent a message about Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray from Japan #358178581550",
+            "from": "eBay - perr1754 <perr17_jtd5848rgzx@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 04:37:23 -0700",
+            "body": "",
+            "category": "buyer_message"
+          },
+          {
+            "id": "19d6e83af1c21513",
+            "timestamp": "2026-04-18T09:06:28.987678",
+            "subject": "These items haven't sold yet? Let’s change that.",
+            "from": "eBay <ebay@ebay.com>",
+            "date": "Wed, 8 Apr 2026 12:13:35 -0700",
+            "body": "",
+            "category": "sale"
+          },
+          {
+            "id": "19d6b78bc1fc494f",
+            "timestamp": "2026-04-18T09:06:29.306972",
+            "subject": "augistarismissing sent a message about ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan #357618434395",
+            "from": "eBay - augistarismissing <sabh56_gtn3248rhtc@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 22:02:47 -0700",
+            "body": "",
+            "category": "buyer_message"
+          }
+        ],
+        "message": "取得したメール: 10件",
+        "status": "success"
+      }
+    }
+  }
+]

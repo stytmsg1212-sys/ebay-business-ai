@@ -1,0 +1,127 @@
+﻿No,サイト名,変換URL,試験種別,結果,想定,判定
+1,メルカリ,ebayme_,在庫有,判定不能,判定不能,OK
+2,メルカリ,ebayme_,在庫無,判定不能,判定不能,OK
+3,メルカリ,ebayme_,非存在,判定不能,判定不能,OK
+4,メルカリショップ,ebayMS_,在庫有,判定不能,判定不能,OK
+5,メルカリショップ,ebayMS_,在庫無,判定不能,判定不能,OK
+6,メルカリショップ,ebayMS_,非存在,判定不能,判定不能,OK
+7,ラクマ,ebayrm_,在庫有,在庫あり,在庫あり,OK
+8,ラクマ,ebayrm_,在庫無,在庫なし,在庫なし,OK
+9,ラクマ,ebayrm_,非存在,ページなし,ページなし,OK
+10,Paypayフリマ,ebayPF_,在庫有,在庫あり,在庫あり,OK
+11,Paypayフリマ,ebayPF_,在庫無,ページなし,判定不能,NG
+12,Paypayフリマ,ebayPF_,非存在,ページなし,ページなし,OK
+13,ヤフオク,ebayh_,在庫有,在庫あり,在庫あり,OK
+14,ヤフオク,ebayh_,在庫無,在庫なし,在庫なし,OK
+15,ヤフオク,ebayh_,非存在,ページなし,ページなし,OK
+16,楽天市場,ebayRT_,在庫有,判定不能,判定不能,OK
+17,楽天市場,ebayRT_,在庫無,判定不能,判定不能,OK
+18,楽天市場,ebayRT_,非存在,判定不能,判定不能,OK
+19,楽天ブックス,ebayRB_,在庫有,在庫あり,在庫あり,OK
+20,楽天ブックス,ebayRB_,在庫無,在庫あり,在庫なし,NG
+21,楽天ブックス,ebayRB_,非存在,ページなし,ページなし,OK
+22,Yahoo!ショッピング,ebayYS_,在庫有,在庫あり,在庫あり,OK
+23,Yahoo!ショッピング,ebayYS_,在庫無,ページなし,在庫なし,NG
+24,Yahoo!ショッピング,ebayYS_,非存在,ページなし,ページなし,OK
+25,Amazon,ebayAM_,在庫有,在庫あり,在庫あり,OK
+26,Amazon,ebayAM_,在庫無,ページなし,在庫なし,NG
+27,Amazon,ebayAM_,非存在,ページなし,ページなし,OK
+28,OFFモール,ebayOFF_,在庫有,在庫あり,在庫あり,OK
+29,OFFモール,ebayOFF_,在庫無,判定不能,在庫なし,NG
+30,OFFモール,ebayOFF_,非存在,ページなし,ページなし,OK
+31,駿河屋,ebaySU_,在庫有,在庫あり,在庫あり,OK
+32,駿河屋,ebaySU_,在庫無,在庫なし,在庫なし,OK
+33,駿河屋,ebaySU_,非存在,ページなし,ページなし,OK
+34,アナログレコード,ebayOR_,在庫有,ページなし,在庫あり,NG
+35,アナログレコード,ebayOR_,在庫無,ページなし,在庫なし,NG
+36,アナログレコード,ebayOR_,非存在,判定不能,判定不能,OK
+37,ヨドバシ,ebayYD_,在庫有,判定不能,判定不能,OK
+38,ヨドバシ,ebayYD_,在庫無,判定不能,判定不能,OK
+39,ヨドバシ,ebayYD_,非存在,判定不能,ページなし,NG
+40,ソフトマップ,ebaySF_,在庫有,在庫あり,在庫あり,OK
+41,ソフトマップ,ebaySF_,在庫無,在庫あり,在庫なし,NG
+42,ソフトマップ,ebaySF_,非存在,ページなし,ページなし,OK
+43,フジヤカメラ,ebayFC_,在庫有,在庫あり,在庫あり,OK
+44,フジヤカメラ,ebayFC_,在庫無,在庫なし,在庫なし,OK
+45,フジヤカメラ,ebayFC_,非存在,ページなし,ページなし,OK
+46,e-イヤホン,ebayEE_,在庫有,在庫あり,在庫あり,OK
+47,e-イヤホン,ebayEE_,在庫無,ページなし,在庫なし,NG
+48,e-イヤホン,ebayEE_,非存在,ページなし,ページなし,OK
+49,e-ナビ屋,ebayEN_,在庫有,在庫あり,在庫あり,OK
+50,e-ナビ屋,ebayEN_,在庫無,ページなし,在庫なし,NG
+51,e-ナビ屋,ebayEN_,非存在,ページなし,ページなし,OK
+52,オーディオ逸品館,ebayAD_,在庫有,ページなし,在庫あり,NG
+53,オーディオ逸品館,ebayAD_,在庫無,在庫なし,在庫なし,OK
+54,オーディオ逸品館,ebayAD_,非存在,ページなし,ページなし,OK
+55,diskunion,ebayDU_,在庫有,在庫なし,在庫あり,NG
+56,diskunion,ebayDU_,在庫無,在庫なし,在庫なし,OK
+57,diskunion,ebayDU_,非存在,ページなし,ページなし,OK
+58,TSUKUMO,ebayTK_,在庫有,在庫あり,在庫あり,OK
+59,TSUKUMO,ebayTK_,在庫無,判定不能,在庫なし,NG
+60,TSUKUMO,ebayTK_,非存在,在庫あり,在庫あり,OK
+61,FavoriteStyle,ebayFS_,在庫有,在庫あり,在庫あり,OK
+62,FavoriteStyle,ebayFS_,在庫無,在庫なし,在庫なし,OK
+63,FavoriteStyle,ebayFS_,非存在,ページなし,ページなし,OK
+64,KINBON WEB SHOP,ebayBS_,在庫有,判定不能,在庫あり,NG
+65,KINBON WEB SHOP,ebayBS_,在庫無,在庫なし,在庫なし,OK
+66,KINBON WEB SHOP,ebayBS_,非存在,ページなし,ページなし,OK
+67,gute gouter,ebayGG_,在庫有,判定不能,在庫あり,NG
+68,gute gouter,ebayGG_,在庫無,判定不能,判定不能,OK
+69,gute gouter,ebayGG_,非存在,判定不能,判定不能,OK
+70,Caster House,ebayCH_,在庫有,在庫あり,在庫あり,OK
+71,Caster House,ebayCH_,在庫無,判定不能,在庫なし,NG
+72,Caster House,ebayCH_,非存在,ページなし,ページなし,OK
+73,COMPONENTS 76,ebayCP_,在庫有,在庫あり,在庫あり,OK
+74,COMPONENTS 76,ebayCP_,在庫無,在庫あり,判定不能,NG
+75,COMPONENTS 76,ebayCP_,非存在,判定不能,ページなし,NG
+76,モノタロウ,ebayMT_,在庫有,判定不能,判定不能,OK
+77,モノタロウ,ebayMT_,在庫無,ページなし,判定不能,NG
+78,モノタロウ,ebayMT_,非存在,判定不能,判定不能,OK
+79,FA機器,ebayFA_,在庫有,判定不能,在庫あり,NG
+80,FA機器,ebayFA_,在庫無,判定不能,判定不能,OK
+81,FA機器,ebayFA_,非存在,判定不能,判定不能,OK
+82,保守部品,ebayHB_,在庫有,判定不能,在庫あり,NG
+83,保守部品,ebayHB_,在庫無,判定不能,判定不能,OK
+84,保守部品,ebayHB_,非存在,判定不能,判定不能,OK
+85,ATAGO,ebayAT_,在庫有,在庫あり,在庫あり,OK
+86,ATAGO,ebayAT_,在庫無,ページなし,在庫なし,NG
+87,ATAGO,ebayAT_,非存在,ページなし,ページなし,OK
+88,トンカタストア,ebayTS_,在庫有,ページなし,在庫あり,NG
+89,トンカタストア,ebayTS_,在庫無,ページなし,判定不能,NG
+90,トンカタストア,ebayTS_,非存在,ページなし,ページなし,OK
+
+
+サイト名,変換URL,在庫有,在庫無,非存在,総合
+メルカリ,ebayme_,OK,OK,OK,OK
+メルカリショップ,ebayMS_,OK,OK,OK,OK
+ラクマ,ebayrm_,OK,OK,OK,OK
+Paypayフリマ,ebayPF_,OK,NG,OK,NG
+ヤフオク,ebayh_,OK,OK,OK,OK
+楽天市場,ebayRT_,OK,OK,OK,OK
+楽天ブックス,ebayRB_,OK,NG,OK,NG
+Yahoo!ショッピング,ebayYS_,OK,NG,OK,NG
+Amazon,ebayAM_,OK,NG,OK,NG
+OFFモール,ebayOFF_,OK,NG,OK,NG
+駿河屋,ebaySU_,OK,OK,OK,OK
+アナログレコード,ebayOR_,NG,NG,OK,NG
+ヨドバシ,ebayYD_,OK,OK,NG,NG
+ソフトマップ,ebaySF_,OK,NG,OK,NG
+フジヤカメラ,ebayFC_,OK,OK,OK,OK
+e-イヤホン,ebayEE_,OK,NG,OK,NG
+e-ナビ屋,ebayEN_,OK,NG,OK,NG
+オーディオ逸品館,ebayAD_,NG,OK,OK,NG
+diskunion,ebayDU_,NG,OK,OK,NG
+TSUKUMO,ebayTK_,OK,NG,OK,NG
+FavoriteStyle,ebayFS_,OK,OK,OK,OK
+KINBON WEB SHOP,ebayBS_,NG,OK,OK,NG
+gute gouter,ebayGG_,NG,OK,OK,NG
+Caster House,ebayCH_,OK,NG,OK,NG
+COMPONENTS 76,ebayCP_,OK,NG,NG,NG
+モノタロウ,ebayMT_,OK,NG,OK,NG
+FA機器,ebayFA_,NG,OK,OK,NG
+保守部品,ebayHB_,NG,OK,OK,NG
+ATAGO,ebayAT_,OK,NG,OK,NG
+トンカタストア,ebayTS_,NG,NG,OK,NG
+現場市場,ebayGC_,skip,skip,skip,URL未設定
+計測器ランド,ebayKL_,skip,skip,skip,URL未設定
+HILTI,ebayHI_,skip,skip,skip,URL未設定

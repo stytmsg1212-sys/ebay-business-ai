@@ -1,0 +1,27 @@
+{
+  "date": "2026-05-07",
+  "timestamp": "2026-05-07T22:26:54.413771",
+  "new_sellers": [
+    {
+      "seller": "himeanne_inc",
+      "feedback_score": 3341,
+      "competing_items": [
+        {
+          "title": "MAXELL MXCP-P100 Portable Cassette Player Black MXCP-P100BK Bluetooth Compact",
+          "price_usd": 95.65,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "MAXELL MXCP-P100 Portable Cassette Player Black MXCP-P100BK Bluetooth Compact",
+          "price_usd": 95.65,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-05-07T22:26:49.466575",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 147
+}

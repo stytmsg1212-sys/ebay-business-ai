@@ -1,0 +1,44 @@
+{
+  "date": "2026-05-14",
+  "timestamp": "2026-05-14T15:41:58.457092",
+  "new_sellers": [
+    {
+      "seller": "hiluxs_63",
+      "feedback_score": 2523,
+      "competing_items": [
+        {
+          "title": "Vocaloid2 Hatsune Miku Windows 7 Software Crypton Future from japan Deactivated",
+          "price_usd": 139.99,
+          "keyword": "CRYPTON VOCALOID4 Hatsune Miku",
+          "legacy_item_id": "188380837677"
+        }
+      ],
+      "first_seen": "2026-05-14T15:41:51.489678",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "greenepron",
+      "feedback_score": 1542,
+      "competing_items": [
+        {
+          "title": "maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK Portable Player",
+          "price_usd": 87.28,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "406810897866"
+        },
+        {
+          "title": "maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK Portable Player",
+          "price_usd": 87.28,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "406810897866"
+        }
+      ],
+      "first_seen": "2026-05-14T15:41:48.661466",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 2,
+  "total_sellers_scanned": 147
+}

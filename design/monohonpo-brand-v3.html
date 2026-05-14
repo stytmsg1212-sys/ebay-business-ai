@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MonoHonpo — Brand System v3</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   MonoHonpo Brand System v3
+   Extends v2. Direction: wabi-sabi editorial · restrained craft.
+   Motifs: Enso circle / Sumi ink / Washi paper / Hanko seal / Brush strokes
+   ========================================================= */
+
+:root{
+  --paper:#f6f2ea;
+  --paper-hi:#fbf9f3;
+  --paper-lo:#ece4d3;
+  --paper-edge:#d8cdb5;
+  --paper-edge-soft:#e5ddca;
+
+  --ink:#1a1817;
+  --ink-2:#3a332c;
+  --ink-3:#6b6157;
+  --ink-4:#9a8f82;
+  --ink-5:#bcb2a3;
+
+  --shu:#a8341b;
+  --shu-dim:#8a2b17;
+  --shu-hi:#c54a2c;
+
+  --brass:#8b7355;
+  --sage:#6b7a5c;
+  --green-ok:#4d6b3c;
+  --amber:#b8873a;
+
+  --f-display:'Cormorant Garamond',serif;
+  --f-body:'Inter','Noto Sans JP',system-ui,sans-serif;
+  --f-jp:'Cormorant Garamond',serif;
+  --f-mono:'JetBrains Mono',monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#2d2822;color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;}
+
+.doc-hero{padding:32px 40px 24px;background:#1a1817;color:#d8cdb5;border-bottom:1px solid #3a332c;}
+.doc-hero .row{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:24px;}
+.doc-hero .enso{width:56px;height:56px;background:url("assets/MONO-logo.jpg") center/contain no-repeat;filter:invert(1) brightness(1.1);flex-shrink:0;}
+.doc-hero h1{margin:0 0 4px;font-family:var(--f-display);font-size:26px;font-weight:500;letter-spacing:.5px;color:#f6f2ea;}
+.doc-hero p{margin:0;font-size:11px;color:#8a7f74;letter-spacing:2px;text-transform:uppercase;}
+.doc-hero .toc{margin-left:auto;display:flex;gap:20px;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:#8a7f74;text-transform:uppercase;}
+.doc-hero .toc a{color:#d8cdb5;text-decoration:none;border-bottom:1px solid #3a332c;padding-bottom:2px;}
+.doc-hero .toc a:hover{border-bottom-color:var(--shu-hi);color:#fbf9f3;}
+
+.frame-label{max-width:1200px;margin:44px auto -12px;padding:14px 20px;background:#3a332c;color:#d8cdb5;font-family:var(--f-mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;border-left:3px solid var(--shu);display:flex;justify-content:space-between;align-items:center;}
+.frame-label .sub{color:#8a7f74;letter-spacing:3px;}
+.frame{max-width:1200px;margin:0 auto;background:var(--paper);box-shadow:0 20px 60px rgba(0,0,0,.4),0 8px 20px rgba(0,0,0,.2);position:relative;overflow:hidden;}
+.frame::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.35;
+  background:
+    radial-gradient(ellipse 900px 500px at 20% 10%,rgba(139,115,85,.08),transparent 60%),
+    radial-gradient(ellipse 700px 400px at 85% 85%,rgba(26,24,23,.05),transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.2  0 0 0 .08 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+.frame>*{position:relative;z-index:1;}
+
+.doc-foot{max-width:1200px;margin:40px auto 60px;padding:20px 0;color:#6b6157;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:center;}
+.doc-foot .enso{display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:10px;background:url("assets/MONO-logo.jpg") center/contain no-repeat;filter:invert(1) brightness(1.1);}
+
+/* =========================================================
+   05 · STORE v2 — Category nav, About, Featured Collection
+   ========================================================= */
+.store2-top{padding:44px 60px 32px;background:var(--paper);border-bottom:1px solid var(--paper-edge);display:flex;align-items:center;gap:36px;}
+.store2-top .mark{width:92px;height:92px;background:url("assets/MONO-logo.jpg") center/contain no-repeat;flex-shrink:0;}
+.store2-top .title{flex:1;}
+.store2-top .eyebrow{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu);margin-bottom:6px;}
+.store2-top h1{font-family:var(--f-display);font-size:40px;font-weight:500;margin:0 0 6px;color:var(--ink);letter-spacing:-.5px;}
+.store2-top .tag{font-family:var(--f-display);font-size:17px;font-style:italic;color:var(--ink-3);margin:0;}
+.store2-top .follow{display:flex;gap:10px;align-items:center;}
+.store2-top .follow .btn{padding:11px 22px;background:var(--ink);color:var(--paper);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;border:0;cursor:pointer;}
+.store2-top .follow .btn.alt{background:transparent;color:var(--ink);border:1px solid var(--ink);}
+.store2-top .follow .stat{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;margin-right:12px;}
+.store2-top .follow .stat strong{font-family:var(--f-display);font-size:20px;font-weight:600;color:var(--ink);display:block;letter-spacing:0;}
+
+/* Category nav */
+.catnav{background:var(--ink);color:var(--paper);padding:0 60px;display:flex;align-items:stretch;}
+.catnav .item{padding:18px 28px;font-family:var(--f-mono);font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--paper-edge);text-decoration:none;position:relative;display:flex;align-items:center;gap:10px;border-right:1px solid var(--ink-2);}
+.catnav .item.all{background:var(--paper);color:var(--ink);border-right:1px solid var(--paper-edge);}
+.catnav .item .num{font-size:9px;color:var(--ink-4);}
+.catnav .item.all .num{color:var(--ink-3);}
+.catnav .item:hover:not(.all){background:var(--ink-2);color:var(--paper-hi);}
+.catnav .item.active{color:var(--paper-hi);border-bottom:2px solid var(--shu);}
+.catnav .search{margin-left:auto;display:flex;align-items:center;padding:0 0 0 20px;border-left:1px solid var(--ink-2);}
+.catnav .search input{background:transparent;border:0;color:var(--paper);font-family:var(--f-mono);font-size:11px;letter-spacing:2px;padding:8px 10px;width:180px;outline:none;}
+.catnav .search input::placeholder{color:var(--ink-4);text-transform:uppercase;}
+.catnav .search .icon{color:var(--ink-4);font-size:14px;}
+
+/* Featured Collection */
+.featured{padding:56px 60px;background:var(--paper);position:relative;overflow:hidden;}
+.featured::before{
+  content:'';position:absolute;right:-120px;top:-80px;width:420px;height:420px;border-radius:50%;
+  background:url("assets/MONO-logo.jpg") center/contain no-repeat;opacity:.04;filter:grayscale(1);
+}
+.featured-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;position:relative;z-index:2;}
+.featured-head .left{max-width:560px;}
+.featured-head .season{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu);margin-bottom:12px;}
+.featured-head h2{font-family:var(--f-display);font-size:36px;font-weight:500;margin:0 0 10px;color:var(--ink);line-height:1.1;}
+.featured-head h2 em{font-style:italic;color:var(--shu-dim);font-weight:500;}
+.featured-head p{font-family:var(--f-display);font-size:17px;font-style:italic;color:var(--ink-3);margin:0;line-height:1.4;}
+.featured-head .right{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;text-align:right;}
+.featured-head .right .big{font-family:var(--f-display);font-size:42px;font-weight:500;color:var(--ink);letter-spacing:0;line-height:1;display:block;margin-bottom:4px;}
+.featured-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;position:relative;z-index:2;}
+.feat-card{background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;}
+.feat-card .img{aspect-ratio:4/3;background:
+  repeating-linear-gradient(135deg,#e5ddca 0,#e5ddca 12px,#dcd2b9 12px,#dcd2b9 24px);
+  display:flex;align-items:center;justify-content:center;color:var(--ink-4);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;position:relative;}
+.feat-card.hero .img{aspect-ratio:auto;flex:1;min-height:360px;}
+.feat-card .img .cap{position:absolute;bottom:12px;left:12px;background:rgba(26,24,23,.75);color:var(--paper);padding:4px 10px;font-size:9px;letter-spacing:2px;}
+.feat-card .img .rank{position:absolute;top:14px;right:14px;width:38px;height:38px;background:var(--paper);color:var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:17px;border:1.5px solid var(--ink);}
+.feat-card .body{padding:16px 18px 18px;}
+.feat-card .cat{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;}
+.feat-card .title{font-family:var(--f-display);font-size:17px;font-weight:500;color:var(--ink);margin:0 0 12px;line-height:1.25;min-height:40px;}
+.feat-card.hero .title{font-size:24px;min-height:0;margin-bottom:14px;}
+.feat-card .price{font-family:var(--f-display);font-size:19px;font-weight:600;color:var(--ink);}
+.feat-card .row{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--paper-edge);}
+.feat-card .ddp{font-family:var(--f-mono);font-size:9px;letter-spacing:1px;color:var(--shu);text-transform:uppercase;}
+
+/* About MonoHonpo section */
+.about-store{padding:64px 60px;background:var(--paper-hi);border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);}
+.about-store .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:center;}
+.about-store .eyebrow{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu);margin-bottom:14px;}
+.about-store h2{font-family:var(--f-display);font-size:40px;font-weight:500;line-height:1.1;margin:0 0 20px;color:var(--ink);}
+.about-store .quote{font-family:var(--f-display);font-size:19px;font-style:italic;color:var(--ink-2);line-height:1.55;border-left:2px solid var(--shu);padding:4px 0 4px 20px;margin-bottom:24px;}
+.about-store p{color:var(--ink-2);font-size:14px;line-height:1.7;margin:0 0 12px;max-width:480px;}
+.about-store .sig-row{display:flex;align-items:center;gap:18px;margin-top:28px;padding-top:22px;border-top:1px solid var(--paper-edge);}
+.about-store .sig-row .avatar{width:58px;height:58px;border-radius:50%;background:
+  radial-gradient(circle at 30% 35%,#c9bfa8 0%,#9a8f82 40%,#6b6157 100%);
+  border:2px solid var(--paper);box-shadow:0 0 0 1px var(--paper-edge);display:flex;align-items:center;justify-content:center;color:var(--paper);font-family:var(--f-display);font-size:22px;font-weight:600;}
+.about-store .sig-row .who{font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink);}
+.about-store .sig-row .role{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;margin-top:2px;}
+.about-store .sig-row .jp{font-family:var(--f-jp);font-size:12px;color:var(--ink-3);letter-spacing:3px;margin-top:4px;}
+
+/* Workshop photo collage */
+.workshop{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px;aspect-ratio:1/1;}
+.workshop .ph{background:var(--paper);border:1px solid var(--paper-edge);position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:14px;color:var(--ink-4);font-family:var(--f-mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;}
+.workshop .ph::before{
+  content:'';position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(0deg,transparent 0 28px,rgba(26,24,23,.03) 28px 29px),
+    repeating-linear-gradient(90deg,transparent 0 28px,rgba(26,24,23,.03) 28px 29px),
+    linear-gradient(140deg,#e5ddca,#d8cdb5);
+}
+.workshop .ph.hero{grid-row:1/3;background:
+  radial-gradient(ellipse 200px 80px at 50% 55%,rgba(139,115,85,.3),transparent 60%);}
+.workshop .ph.hero::before{background:
+  repeating-linear-gradient(0deg,transparent 0 34px,rgba(26,24,23,.04) 34px 35px),
+  repeating-linear-gradient(90deg,transparent 0 34px,rgba(26,24,23,.04) 34px 35px),
+  linear-gradient(160deg,#d8cdb5,#bcb2a3);}
+.workshop .ph .tag{position:relative;z-index:2;background:rgba(251,249,243,.85);padding:4px 9px;color:var(--ink-2);}
+.workshop .ph .num{position:absolute;top:10px;right:12px;font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink-3);font-style:italic;}
+
+/* Collection detail strip under about */
+.cred-strip{padding:36px 60px;background:var(--paper);display:flex;justify-content:space-between;gap:40px;border-bottom:1px solid var(--paper-edge);}
+.cred-strip .c{flex:1;}
+.cred-strip .c .n{font-family:var(--f-display);font-size:40px;font-weight:500;color:var(--ink);line-height:1;margin-bottom:6px;}
+.cred-strip .c .n sup{font-size:18px;color:var(--shu);margin-left:4px;font-weight:500;}
+.cred-strip .c .l{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;}
+
+/* =========================================================
+   06 · PRODUCT PAGE v5 — gallery + description
+   ========================================================= */
+.pdp{padding:0;background:var(--paper-hi);border-top:8px solid var(--ink);}
+.pdp-crumbs{padding:16px 60px;background:var(--paper);border-bottom:1px solid var(--paper-edge);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;}
+.pdp-crumbs a{color:var(--ink-3);text-decoration:none;}
+.pdp-crumbs .sep{color:var(--ink-4);margin:0 10px;}
+.pdp-crumbs .cur{color:var(--ink);}
+
+.pdp-top{padding:44px 60px 56px;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start;}
+
+/* GALLERY */
+.gal{display:grid;grid-template-columns:72px 1fr;gap:14px;}
+.gal-thumbs{display:flex;flex-direction:column;gap:10px;}
+.gal-thumb{width:72px;height:72px;background:var(--paper);border:1px solid var(--paper-edge);position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:8px;color:var(--ink-4);letter-spacing:1px;}
+.gal-thumb::before{
+  content:'';position:absolute;inset:6px;
+  background:repeating-linear-gradient(45deg,#e5ddca 0 6px,#dcd2b9 6px 12px);
+}
+.gal-thumb .lbl{position:relative;z-index:2;background:rgba(251,249,243,.88);padding:1px 4px;}
+.gal-thumb.active{border:1.5px solid var(--ink);}
+.gal-thumb.active::after{content:'';position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid var(--ink);}
+.gal-thumb .num{position:absolute;top:3px;left:4px;font-family:var(--f-mono);font-size:8px;color:var(--ink-3);z-index:2;background:rgba(251,249,243,.9);padding:0 3px;}
+
+.gal-main{background:var(--paper);border:1px solid var(--paper-edge);aspect-ratio:4/5;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.gal-main::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 300px 180px at 55% 45%,rgba(246,242,234,.6),transparent 70%),
+    repeating-linear-gradient(45deg,#e5ddca 0 14px,#dcd2b9 14px 28px);
+}
+.gal-main .placeholder{position:relative;z-index:2;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;text-align:center;background:rgba(251,249,243,.9);padding:10px 16px;border:1px solid var(--paper-edge);}
+.gal-main .placeholder .big{font-family:var(--f-display);font-size:22px;font-weight:500;color:var(--ink);letter-spacing:0;text-transform:none;margin-bottom:4px;font-style:italic;}
+.gal-main .zoom{position:absolute;bottom:14px;right:14px;z-index:3;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-2);background:rgba(251,249,243,.92);padding:6px 10px;border:1px solid var(--paper-edge);text-transform:uppercase;display:flex;gap:8px;align-items:center;}
+.gal-main .zoom .sym{font-size:13px;}
+.gal-main .counter{position:absolute;top:14px;left:14px;z-index:3;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--paper);background:var(--ink);padding:5px 10px;}
+.gal-main .counter .jp{font-family:var(--f-jp);margin-left:6px;color:var(--paper-edge);}
+.gal-main .sealmark{position:absolute;top:14px;right:14px;z-index:3;width:52px;height:52px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-8deg);font-family:var(--f-jp);box-shadow:0 0 0 2px var(--shu),inset 0 0 0 1px var(--paper-hi);}
+.gal-main .sealmark .s{font-size:12px;font-weight:700;line-height:1;}
+.gal-main .sealmark .l{font-family:var(--f-mono);font-size:7px;letter-spacing:1px;margin-top:2px;}
+.gal-controls{display:flex;justify-content:space-between;margin-top:12px;}
+.gal-controls .ctrl{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;cursor:pointer;}
+.gal-controls .ctrl .sym{color:var(--ink);font-size:14px;}
+
+/* PDP INFO */
+.pdp-info{padding-top:8px;}
+.pdp-info .origin{font-family:var(--f-jp);font-size:11px;letter-spacing:6px;color:var(--shu);margin-bottom:14px;}
+.pdp-info h1{font-family:var(--f-display);font-size:34px;font-weight:500;line-height:1.15;margin:0 0 10px;color:var(--ink);}
+.pdp-info .sub{font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--ink-3);margin:0 0 24px;}
+.pdp-info .price-row{display:flex;align-items:baseline;gap:14px;padding:18px 0;border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);margin-bottom:22px;}
+.pdp-info .price{font-family:var(--f-display);font-size:44px;font-weight:600;color:var(--ink);line-height:1;}
+.pdp-info .was{font-family:var(--f-display);font-size:20px;color:var(--ink-4);text-decoration:line-through;}
+.pdp-info .save{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--shu);text-transform:uppercase;margin-left:auto;}
+.pdp-info .meta{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin-bottom:24px;}
+.pdp-info .meta .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:13px;}
+.pdp-info .meta .k{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;}
+.pdp-info .meta .v{color:var(--ink);font-family:var(--f-display);font-size:15px;font-weight:500;}
+.pdp-info .buy-row{display:flex;gap:10px;margin-bottom:20px;}
+.pdp-info .qty{display:flex;align-items:center;border:1px solid var(--ink);background:var(--paper);font-family:var(--f-display);font-size:18px;}
+.pdp-info .qty button{background:transparent;border:0;padding:12px 14px;font-family:var(--f-display);font-size:18px;cursor:pointer;color:var(--ink);}
+.pdp-info .qty .n{padding:0 14px;min-width:30px;text-align:center;}
+.pdp-info .buy{flex:1;padding:14px 22px;background:var(--ink);color:var(--paper);border:0;font-family:var(--f-mono);font-size:11px;letter-spacing:3px;text-transform:uppercase;cursor:pointer;}
+.pdp-info .watch{padding:14px 22px;background:transparent;border:1px solid var(--ink);color:var(--ink);font-family:var(--f-mono);font-size:11px;letter-spacing:3px;text-transform:uppercase;cursor:pointer;}
+.pdp-info .trust-line{display:flex;gap:18px;flex-wrap:wrap;padding:14px 16px;background:var(--paper);border:1px solid var(--paper-edge);border-left:2px solid var(--shu);font-family:var(--f-mono);font-size:10px;color:var(--ink-2);letter-spacing:1.5px;text-transform:uppercase;}
+.pdp-info .trust-line .item{display:flex;align-items:center;gap:6px;}
+.pdp-info .trust-line .item .sym{color:var(--shu);font-size:14px;}
+
+/* =========================================================
+   07 · HANKO VARIANTS — 3 alternative DDP seals
+   ========================================================= */
+.hanko-gallery{padding:56px 60px;background:var(--paper);border-top:1px solid var(--paper-edge);}
+.hg-head{text-align:center;margin-bottom:44px;}
+.hg-head .eyebrow{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu);margin-bottom:10px;}
+.hg-head h2{font-family:var(--f-display);font-size:32px;font-weight:500;margin:0;color:var(--ink);}
+.hg-head p{font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--ink-3);margin:10px auto 0;max-width:560px;}
+.hg-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;}
+.hg-cell{padding:32px 20px 22px;background:var(--paper-hi);border:1px solid var(--paper-edge);text-align:center;position:relative;}
+.hg-cell .label{position:absolute;top:12px;left:14px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;}
+.hg-cell .name{font-family:var(--f-display);font-size:20px;font-weight:500;color:var(--ink);margin-top:18px;}
+.hg-cell .jp{font-family:var(--f-jp);font-size:11px;color:var(--ink-3);letter-spacing:3px;margin-top:4px;}
+.hg-cell .desc{font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);margin-top:14px;text-transform:uppercase;line-height:1.6;}
+.hg-stage{min-height:180px;display:flex;align-items:center;justify-content:center;padding:10px;}
+
+/* A — Current circular (baseline ref) */
+.hanko-a{width:120px;height:120px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-6deg);box-shadow:0 0 0 3px var(--shu),inset 0 0 0 2px var(--paper-hi);position:relative;}
+.hanko-a::after{content:'';position:absolute;inset:8px;border:1px solid rgba(246,242,234,.3);border-radius:50%;}
+.hanko-a .t{font-family:var(--f-jp);font-size:10px;letter-spacing:3px;}
+.hanko-a .m{font-family:var(--f-jp);font-size:22px;font-weight:700;line-height:1;margin:2px 0;}
+.hanko-a .b{font-family:var(--f-mono);font-size:8px;letter-spacing:2px;}
+
+/* B — Vertical tall rectangle (tate-in style) */
+.hanko-b{width:66px;height:150px;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px;transform:rotate(-3deg);box-shadow:inset 0 0 0 2px var(--paper-hi),0 0 0 2px var(--shu);position:relative;}
+.hanko-b::after{content:'';position:absolute;inset:6px;border:1px solid rgba(246,242,234,.25);}
+.hanko-b .t{font-family:var(--f-jp);font-size:10px;letter-spacing:2px;writing-mode:vertical-rl;line-height:1.2;font-weight:500;margin-bottom:4px;}
+.hanko-b .m{font-family:var(--f-display);font-size:22px;font-weight:700;line-height:1;letter-spacing:2px;writing-mode:vertical-rl;margin:4px 0;}
+.hanko-b .b{font-family:var(--f-mono);font-size:7px;letter-spacing:1px;writing-mode:vertical-rl;}
+
+/* C — Square block (kakuin) */
+.hanko-c{width:120px;height:120px;background:var(--shu);color:var(--paper-hi);display:grid;grid-template-rows:auto 1fr auto;transform:rotate(2deg);box-shadow:inset 0 0 0 3px var(--paper-hi),0 0 0 2px var(--shu);position:relative;}
+.hanko-c::after{content:'';position:absolute;inset:10px;border:1px solid rgba(246,242,234,.25);}
+.hanko-c .t{font-family:var(--f-jp);font-size:9px;letter-spacing:3px;text-align:center;padding:8px 0 4px;border-bottom:1px solid rgba(246,242,234,.35);margin:0 12px;}
+.hanko-c .m{font-family:var(--f-display);font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;letter-spacing:1px;line-height:1;}
+.hanko-c .b{font-family:var(--f-mono);font-size:7px;letter-spacing:2px;text-align:center;padding:4px 0 8px;border-top:1px solid rgba(246,242,234,.35);margin:0 12px;}
+
+/* D — Die-cut badge (irregular, enso ribbon) */
+.hanko-d-wrap{position:relative;width:150px;height:150px;}
+.hanko-d{position:absolute;inset:10px;background:var(--shu);color:var(--paper-hi);
+  clip-path:polygon(50% 0,88% 12%,100% 50%,88% 88%,50% 100%,12% 88%,0 50%,12% 12%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-4deg);}
+.hanko-d::after{content:'';position:absolute;inset:10px;border:1px dashed rgba(246,242,234,.4);
+  clip-path:polygon(50% 0,88% 12%,100% 50%,88% 88%,50% 100%,12% 88%,0 50%,12% 12%);}
+.hanko-d .t{font-family:var(--f-jp);font-size:9px;letter-spacing:2px;position:relative;z-index:2;}
+.hanko-d .m{font-family:var(--f-display);font-size:24px;font-weight:700;line-height:1;margin:3px 0;letter-spacing:1px;position:relative;z-index:2;}
+.hanko-d .b{font-family:var(--f-mono);font-size:7px;letter-spacing:1.5px;position:relative;z-index:2;}
+.hanko-d-wrap .ribbon{position:absolute;left:-8px;top:64px;transform:rotate(-18deg);background:var(--ink);color:var(--paper);font-family:var(--f-mono);font-size:8px;letter-spacing:2px;padding:3px 8px;text-transform:uppercase;z-index:3;}
+
+/* Context strip showing each on a listing */
+.hg-context{margin-top:44px;padding-top:32px;border-top:1px solid var(--paper-edge);}
+.hg-context .lbl{font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ink-3);text-transform:uppercase;margin-bottom:18px;text-align:center;}
+.hg-context-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;}
+.hg-mini{background:var(--paper-hi);border:1px solid var(--paper-edge);padding:20px;display:flex;gap:14px;align-items:center;min-height:120px;}
+.hg-mini .text{flex:1;}
+.hg-mini .text h4{font-family:var(--f-display);font-size:14px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+.hg-mini .text p{font-size:11px;color:var(--ink-3);margin:0;line-height:1.4;}
+
+/* =========================================================
+   08 · PRODUCT MOBILE v5 — 375px responsive
+   ========================================================= */
+.mobile-section{padding:56px 60px;background:var(--ink);color:var(--paper);border-top:1px solid var(--ink-2);}
+.mobile-head{text-align:center;margin-bottom:36px;}
+.mobile-head .eyebrow{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu-hi);margin-bottom:10px;}
+.mobile-head h2{font-family:var(--f-display);font-size:32px;font-weight:500;margin:0;color:var(--paper-hi);}
+.mobile-head p{font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--paper-edge);margin:10px auto 0;max-width:540px;}
+.mobile-stage{display:grid;grid-template-columns:375px 375px 375px;gap:28px;justify-content:center;}
+.phone{width:375px;background:var(--paper);color:var(--ink);border:10px solid #111;border-radius:36px;overflow:hidden;position:relative;box-shadow:0 30px 60px rgba(0,0,0,.5);}
+.phone .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#111;border-bottom-left-radius:14px;border-bottom-right-radius:14px;z-index:10;}
+.phone .status{padding:10px 20px 6px;display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:10px;color:var(--ink);font-weight:500;}
+.phone .title{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;text-align:center;padding:3px 0 0;}
+
+.m-nav{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--paper-edge);}
+.m-nav .back{font-family:var(--f-mono);font-size:14px;color:var(--ink);}
+.m-nav .center{font-family:var(--f-display);font-size:14px;font-weight:500;letter-spacing:4px;}
+.m-nav .actions{display:flex;gap:14px;font-size:14px;color:var(--ink-2);}
+
+/* M1: gallery */
+.m-gal{aspect-ratio:1/1;background:repeating-linear-gradient(45deg,#e5ddca 0 14px,#dcd2b9 14px 28px);position:relative;display:flex;align-items:center;justify-content:center;}
+.m-gal .sealmark{position:absolute;top:12px;right:12px;width:48px;height:48px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-8deg);font-family:var(--f-jp);font-size:11px;font-weight:700;box-shadow:inset 0 0 0 1px var(--paper-hi),0 0 0 2px var(--shu);}
+.m-gal .sealmark .tiny{font-size:7px;font-family:var(--f-mono);letter-spacing:1px;margin-top:2px;}
+.m-gal .counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(26,24,23,.82);color:var(--paper);padding:5px 12px;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;}
+.m-gal .dot-row{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;}
+.m-gal .placeholder{background:rgba(251,249,243,.92);padding:8px 12px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;border:1px solid var(--paper-edge);}
+.m-thumbstrip{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;border-bottom:1px solid var(--paper-edge);background:var(--paper-hi);}
+.m-thumbstrip .t{width:48px;height:48px;background:repeating-linear-gradient(45deg,#e5ddca 0 5px,#dcd2b9 5px 10px);border:1px solid var(--paper-edge);flex-shrink:0;position:relative;}
+.m-thumbstrip .t.active{border:1.5px solid var(--ink);}
+.m-thumbstrip .t .n{position:absolute;top:2px;left:3px;font-family:var(--f-mono);font-size:8px;color:var(--ink-3);background:rgba(251,249,243,.85);padding:0 2px;}
+
+.m-body{padding:14px 16px 18px;}
+.m-body .origin{font-family:var(--f-jp);font-size:9px;letter-spacing:5px;color:var(--shu);margin-bottom:8px;}
+.m-body h1{font-family:var(--f-display);font-size:22px;font-weight:500;line-height:1.2;margin:0 0 6px;color:var(--ink);}
+.m-body .sub{font-family:var(--f-display);font-style:italic;font-size:13px;color:var(--ink-3);margin:0 0 12px;}
+.m-body .price-row{display:flex;align-items:baseline;gap:10px;padding:12px 0;border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);margin-bottom:14px;}
+.m-body .price{font-family:var(--f-display);font-size:28px;font-weight:600;color:var(--ink);line-height:1;}
+.m-body .was{font-family:var(--f-display);font-size:14px;color:var(--ink-4);text-decoration:line-through;}
+.m-body .save{margin-left:auto;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--shu);text-transform:uppercase;}
+.m-body .trust-line{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;background:var(--paper);border:1px solid var(--paper-edge);border-left:2px solid var(--shu);font-family:var(--f-mono);font-size:9px;color:var(--ink-2);letter-spacing:1px;text-transform:uppercase;}
+.m-body .trust-line span{display:flex;align-items:center;gap:4px;}
+.m-body .trust-line .sym{color:var(--shu);font-size:11px;}
+
+.m-stick{position:sticky;bottom:0;padding:10px 16px 16px;background:var(--paper-hi);border-top:1px solid var(--paper-edge);display:flex;gap:8px;}
+.m-stick .watch-ico{width:46px;height:46px;border:1px solid var(--ink);background:transparent;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--ink);}
+.m-stick .buy{flex:1;padding:14px;background:var(--ink);color:var(--paper);font-family:var(--f-mono);font-size:11px;letter-spacing:3px;text-transform:uppercase;border:0;text-align:center;}
+
+/* M2: detail sections scroll */
+.m-section{padding:16px;border-bottom:1px solid var(--paper-edge);}
+.m-section .sh{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;}
+.m-section .sh h3{font-family:var(--f-display);font-size:17px;font-weight:500;margin:0;color:var(--ink);}
+.m-section .sh .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-3);letter-spacing:2px;}
+.m-section .sh .num{margin-left:auto;font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:1px;}
+
+.m-hanko{padding:18px 14px;background:var(--paper);display:flex;gap:12px;align-items:center;}
+.m-hanko .seal{width:64px;height:64px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-6deg);flex-shrink:0;box-shadow:inset 0 0 0 1px var(--paper-hi),0 0 0 2px var(--shu);}
+.m-hanko .seal .tp{font-family:var(--f-jp);font-size:7px;letter-spacing:1.5px;}
+.m-hanko .seal .mn{font-family:var(--f-jp);font-size:14px;font-weight:700;margin:1px 0;}
+.m-hanko .seal .bt{font-family:var(--f-mono);font-size:6px;letter-spacing:1px;}
+.m-hanko .txt h4{font-family:var(--f-display);font-size:14px;font-weight:600;margin:0 0 3px;color:var(--ink);}
+.m-hanko .txt p{margin:0;font-size:11px;color:var(--ink-2);line-height:1.45;}
+
+.m-rank{padding:18px 14px;text-align:center;background:var(--paper);}
+.m-rank .kicker{font-family:var(--f-jp);font-size:9px;letter-spacing:4px;color:var(--ink-3);margin-bottom:8px;}
+.m-rank .brush{width:70px;height:70px;margin:0 auto 8px;position:relative;}
+.m-rank .brush svg{width:100%;height:100%;}
+.m-rank .brush .l{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:28px;font-weight:600;color:var(--ink);}
+.m-rank h4{font-family:var(--f-display);font-size:17px;font-weight:500;margin:0 0 4px;color:var(--ink);}
+.m-rank .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-3);margin:0 0 10px;letter-spacing:2px;}
+.m-rank .quick{font-family:var(--f-display);font-style:italic;font-size:13px;color:var(--ink-2);padding:10px 12px;background:var(--paper-hi);border-left:2px solid var(--ink);text-align:left;}
+
+.m-specs{}
+.m-specs .r{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;}
+.m-specs .r:last-child{border-bottom:0;}
+.m-specs .r .k{font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;}
+.m-specs .r .v{font-family:var(--f-display);font-size:13px;color:var(--ink);font-weight:500;}
+
+.m-ship{background:var(--ink);color:var(--paper);padding:18px 16px;}
+.m-ship h3{font-family:var(--f-display);font-size:17px;margin:0 0 12px;color:var(--paper-hi);font-weight:500;}
+.m-ship h3 .jp{font-family:var(--f-jp);font-size:9px;color:var(--ink-4);letter-spacing:3px;margin-left:6px;}
+.m-ship .g{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;}
+.m-ship .g strong{display:block;font-family:var(--f-mono);font-size:8px;color:var(--paper-edge);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px;}
+.m-ship .g span{font-size:11px;color:var(--paper);}
+
+/* M3: About mobile */
+.m-about{padding:20px 16px 14px;text-align:center;border-bottom:1px solid var(--paper-edge);}
+.m-about img{width:52px;margin:0 auto 10px;display:block;}
+.m-about .name{font-family:var(--f-display);font-size:16px;font-weight:500;letter-spacing:3px;color:var(--ink);}
+.m-about .jp{font-family:var(--f-jp);font-size:9px;letter-spacing:5px;color:var(--ink-3);margin-bottom:10px;}
+.m-about p{font-size:11px;color:var(--ink-3);line-height:1.5;margin:0 auto;max-width:280px;}
+
+.m-tabbar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--paper-edge);}
+.m-tabbar .tb{padding:10px 0 8px;text-align:center;font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;border-right:1px solid var(--paper-edge);}
+.m-tabbar .tb:last-child{border-right:0;}
+.m-tabbar .tb.active{color:var(--ink);}
+.m-tabbar .tb .sym{display:block;font-size:14px;margin-bottom:2px;color:var(--ink-2);}
+.m-tabbar .tb.active .sym{color:var(--shu);}
+
+/* =========================================================
+   09 · MANAGER UI v3 — 5 tabs, dense dashboard
+   ========================================================= */
+.mgr{padding:0;background:var(--ink);color:var(--paper);}
+.mgr-top{padding:18px 32px;display:flex;align-items:center;gap:20px;border-bottom:1px solid var(--ink-2);background:#14110f;}
+.mgr-top .enso{width:34px;height:34px;background:url("assets/MONO-logo.jpg") center/contain no-repeat;filter:invert(1) brightness(1.1);}
+.mgr-top .brand{font-family:var(--f-display);font-size:17px;font-weight:500;letter-spacing:3px;color:var(--paper-hi);}
+.mgr-top .brand .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-4);letter-spacing:4px;display:block;margin-top:2px;}
+.mgr-top .env{margin-left:auto;display:flex;gap:16px;align-items:center;}
+.mgr-top .env .bit{font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:1.5px;text-transform:uppercase;}
+.mgr-top .env .bit strong{color:var(--paper-hi);}
+.mgr-top .env .status{font-family:var(--f-mono);font-size:10px;color:var(--shu-hi);letter-spacing:2px;}
+.mgr-top .env .status::before{content:'●';margin-right:6px;}
+.mgr-top .env .user{width:32px;height:32px;border-radius:50%;background:var(--brass);color:var(--paper-hi);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:600;font-size:13px;}
+
+/* Tabs */
+.mgr-tabs{display:flex;padding:0 32px;background:#14110f;border-bottom:1px solid var(--ink-2);}
+.mgr-tab{padding:14px 24px;font-family:var(--f-mono);font-size:11px;letter-spacing:2.5px;color:var(--ink-4);text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:10px;border-right:1px solid var(--ink-2);position:relative;}
+.mgr-tab:first-child{border-left:1px solid var(--ink-2);}
+.mgr-tab .num{font-family:var(--f-display);font-size:13px;color:var(--ink-3);font-weight:500;}
+.mgr-tab .jp{font-family:var(--f-jp);font-size:9px;color:var(--ink-4);letter-spacing:2px;margin-left:6px;}
+.mgr-tab:hover{background:#1a1614;color:var(--paper-edge);}
+.mgr-tab.active{background:var(--ink);color:var(--paper-hi);}
+.mgr-tab.active::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--shu);}
+.mgr-tab.active .num{color:var(--shu-hi);}
+.mgr-tab .badge{background:var(--shu);color:var(--paper-hi);font-family:var(--f-mono);font-size:9px;padding:2px 6px;margin-left:6px;letter-spacing:1px;}
+
+.mgr-body{padding:28px 32px 40px;}
+
+/* Dashboard header */
+.mgr-dh{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--ink-2);}
+.mgr-dh h2{font-family:var(--f-display);font-size:28px;font-weight:500;margin:0;color:var(--paper-hi);}
+.mgr-dh h2 .jp{font-family:var(--f-jp);font-size:12px;color:var(--ink-4);letter-spacing:4px;margin-left:12px;}
+.mgr-dh .sub{font-family:var(--f-display);font-style:italic;font-size:14px;color:var(--ink-4);margin-top:4px;}
+.mgr-dh .filter-row{display:flex;gap:8px;align-items:center;}
+.mgr-dh .filter{padding:7px 14px;background:transparent;border:1px solid var(--ink-2);color:var(--paper-edge);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;}
+.mgr-dh .filter.active{background:var(--ink-2);color:var(--paper-hi);border-color:var(--ink-3);}
+.mgr-dh .filter.shu{background:var(--shu);color:var(--paper-hi);border-color:var(--shu);}
+
+/* KPI strip */
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;}
+.kpi{padding:18px 16px 14px;background:#24201c;border:1px solid #3a332c;position:relative;}
+.kpi::before{content:'';position:absolute;top:0;left:0;width:2px;height:22px;background:var(--shu);}
+.kpi .k{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:8px;}
+.kpi .v{font-family:var(--f-display);font-size:30px;font-weight:500;color:var(--paper-hi);line-height:1;margin-bottom:6px;}
+.kpi .v small{font-size:14px;color:var(--ink-4);margin-left:3px;}
+.kpi .d{font-family:var(--f-mono);font-size:9px;color:var(--green-ok);letter-spacing:1px;display:flex;justify-content:space-between;align-items:center;}
+.kpi .d.warn{color:var(--shu-hi);}
+.kpi .d .spark{display:flex;gap:2px;align-items:flex-end;height:14px;}
+.kpi .d .spark span{width:3px;background:currentColor;opacity:.55;}
+
+/* Main grid */
+.mgr-main{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:24px;}
+
+/* Chart */
+.chart-card{background:#24201c;border:1px solid #3a332c;padding:20px;}
+.chart-card .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
+.chart-card h3{font-family:var(--f-display);font-size:18px;font-weight:500;margin:0;color:var(--paper-hi);}
+.chart-card h3 .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-4);margin-left:8px;letter-spacing:3px;}
+.chart-card .legend{display:flex;gap:14px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;}
+.chart-card .legend .dot{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:middle;}
+.chart-svg{width:100%;height:180px;display:block;}
+
+/* Breakdown donut card */
+.donut-card{background:#24201c;border:1px solid #3a332c;padding:20px;}
+.donut-card h3{font-family:var(--f-display);font-size:16px;font-weight:500;margin:0 0 14px;color:var(--paper-hi);}
+.donut-card h3 .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-4);margin-left:6px;letter-spacing:2px;}
+.donut-row{display:flex;gap:16px;align-items:center;}
+.donut-row svg{width:120px;height:120px;flex-shrink:0;}
+.donut-legend{flex:1;display:flex;flex-direction:column;gap:8px;}
+.donut-legend .li{display:flex;justify-content:space-between;align-items:center;font-family:var(--f-mono);font-size:10px;color:var(--paper-edge);letter-spacing:1px;}
+.donut-legend .li .nm{display:flex;align-items:center;gap:7px;}
+.donut-legend .li .sw{width:10px;height:10px;}
+.donut-legend .li .val{color:var(--paper-hi);font-family:var(--f-display);font-size:14px;font-weight:500;}
+
+/* Tables */
+.mgr-tables{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;}
+.tbl-card{background:#24201c;border:1px solid #3a332c;}
+.tbl-head{padding:14px 18px;border-bottom:1px solid #3a332c;display:flex;justify-content:space-between;align-items:center;}
+.tbl-head h3{font-family:var(--f-display);font-size:16px;font-weight:500;margin:0;color:var(--paper-hi);}
+.tbl-head h3 .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-4);letter-spacing:3px;margin-left:8px;}
+.tbl-head .c{font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:2px;text-transform:uppercase;}
+.tbl-head .c strong{color:var(--shu-hi);}
+.tbl-colhd{display:grid;padding:8px 18px;font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;border-bottom:1px solid #2d2822;background:#1e1a17;}
+.tbl-row{display:grid;padding:12px 18px;border-bottom:1px solid #2d2822;align-items:center;font-size:12px;}
+.tbl-row:last-child{border-bottom:0;}
+.tbl-row:hover{background:#1e1a17;}
+
+.tbl-a .tbl-colhd,.tbl-a .tbl-row{grid-template-columns:80px 1fr 70px 80px 100px;gap:12px;}
+.tbl-b .tbl-colhd,.tbl-b .tbl-row{grid-template-columns:1fr 60px 90px;gap:10px;}
+
+.tbl-row .sku{font-family:var(--f-mono);font-size:10px;color:var(--ink-4);}
+.tbl-row .t{color:var(--paper-edge);font-family:var(--f-display);font-size:14px;}
+.tbl-row .t small{display:block;font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:1px;margin-top:2px;text-transform:uppercase;}
+.tbl-row .price{font-family:var(--f-display);font-size:14px;color:var(--paper-hi);font-weight:500;text-align:right;}
+.tbl-row .price small{font-size:10px;color:var(--ink-4);margin-left:3px;}
+.pill{display:inline-block;padding:2px 8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;text-align:center;border-radius:2px;text-transform:uppercase;}
+.pill.shu{background:var(--shu);color:var(--paper-hi);}
+.pill.ok{background:transparent;color:var(--green-ok);border:1px solid var(--green-ok);}
+.pill.sage{background:var(--sage);color:var(--paper-hi);}
+.pill.brass{background:var(--brass);color:var(--paper-hi);}
+.pill.warn{background:var(--amber);color:var(--ink);}
+.tbl-row .a{font-family:var(--f-mono);font-size:10px;color:var(--shu-hi);letter-spacing:1.5px;text-transform:uppercase;text-align:right;}
+.tbl-row .a .arrow{margin-left:4px;}
+
+/* Supplier candidate cell */
+.sup-row .name{color:var(--paper-edge);font-family:var(--f-display);font-size:14px;}
+.sup-row .name small{display:block;font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:1px;margin-top:2px;text-transform:uppercase;}
+.match-bar{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:10px;color:var(--paper-hi);}
+.match-bar .bar{flex:1;height:6px;background:#2d2822;position:relative;overflow:hidden;}
+.match-bar .bar span{position:absolute;left:0;top:0;bottom:0;background:var(--shu);}
+
+/* Activity feed (right column lower) */
+.activity{margin-top:18px;background:#24201c;border:1px solid #3a332c;padding:18px;}
+.activity h3{font-family:var(--f-display);font-size:16px;font-weight:500;margin:0 0 14px;color:var(--paper-hi);}
+.activity h3 .jp{font-family:var(--f-jp);font-size:10px;color:var(--ink-4);margin-left:6px;letter-spacing:2px;}
+.activity .ev{display:grid;grid-template-columns:52px 1fr auto;gap:10px;padding:8px 0;border-bottom:1px dotted #3a332c;align-items:center;}
+.activity .ev:last-child{border-bottom:0;}
+.activity .ev .tm{font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:1px;}
+.activity .ev .tx{color:var(--paper-edge);font-size:11px;line-height:1.4;}
+.activity .ev .tx strong{color:var(--paper-hi);font-family:var(--f-display);font-weight:500;font-size:12px;}
+.activity .ev .ty{font-family:var(--f-mono);font-size:8px;letter-spacing:1px;color:var(--shu-hi);text-transform:uppercase;}
+
+/* Footnote row in dashboard */
+.mgr-foot{margin-top:22px;padding-top:16px;border-top:1px solid var(--ink-2);display:flex;justify-content:space-between;align-items:center;font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:2px;text-transform:uppercase;}
+.mgr-foot .enso-mini{display:inline-block;width:18px;height:18px;background:url("assets/MONO-logo.jpg") center/contain no-repeat;filter:invert(1) brightness(1.1);vertical-align:middle;margin-right:8px;}
+
+
+
+/* Added: wa-modern visual accents (post-JP-removal) */
+.brush-div{display:block;width:120px;height:14px;margin:10px 0;opacity:.9;}
+.brush-div path{stroke:var(--ink);stroke-width:2.5;fill:none;stroke-linecap:round;}
+.brush-div.shu path{stroke:var(--shu);}
+.ink-dots{display:inline-flex;gap:4px;align-items:center;vertical-align:middle;}
+.ink-dots span{width:5px;height:5px;background:var(--ink);border-radius:50%;}
+.ink-dots span:nth-child(2){width:3px;height:3px;opacity:.6;}
+.ink-dots span:nth-child(3){width:2px;height:2px;opacity:.4;}
+.eyebrow-line{display:inline-flex;align-items:center;gap:10px;}
+.eyebrow-line::before,.eyebrow-line::after{content:'';display:block;width:28px;height:1px;background:currentColor;opacity:.5;}
+
+/* Corner enso watermark utility */
+.corner-enso{position:absolute;pointer-events:none;opacity:.05;}
+.corner-enso svg{width:100%;height:100%;}
+
+/* Red-seal accent tick for section heads */
+.sh-tick::before{content:'';display:inline-block;width:8px;height:8px;background:var(--shu);margin-right:10px;vertical-align:middle;transform:rotate(45deg);}
+
+</style>
+</head>
+<body>
+
+<div class="doc-hero">
+  <div class="row">
+    <div class="enso"></div>
+    <div>
+      <h1>MonoHonpo · Unified Brand System v3</h1>
+      <p>Product v5 · Store Expansion · Manager UI · April 2026</p>
+    </div>
+    <div class="toc">
+      <a href="#f05">05 Store</a>
+      <a href="#f06">06 PDP</a>
+      <a href="#f07">07 Hanko</a>
+      <a href="#f08">08 Mobile</a>
+      <a href="#f09">09 Manager</a>
+      <a href="#f10">10 Gadget</a>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 05 · STORE EXPANSION ====== -->
+<div class="frame-label" id="f05">05 · eBay Store Page — Header · Category Nav · Featured Collection · About <span class="sub">Public</span></div>
+<div class="frame">
+
+  <!-- STORE HEADER (compact, fits category nav below) -->
+  <div class="store2-top">
+    <div class="mark"></div>
+    <div class="title">
+      <div class="eyebrow"><span class="eyebrow-line">E S T.  2 0 1 9 · T O K Y O</span></div>
+      <h1>MonoHonpo</h1>
+      <p class="tag">Considered goods, carefully chosen — from the workshop in Tokyo.</p>
+    </div>
+    <div class="follow">
+      <div class="stat"><strong>2,401</strong>Followers</div>
+      <button class="btn alt">◇ Contact</button>
+      <button class="btn">★ Save Shop</button>
+    </div>
+  </div>
+
+  <!-- CATEGORY NAV -->
+  <div class="catnav">
+    <a class="item all" href="#"><span>All Items</span><span class="num">498</span></a>
+    <a class="item active" href="#"><span>Industrial</span><span class="num">182</span></a>
+    <a class="item" href="#"><span>Audio</span><span class="num">154</span></a>
+    <a class="item" href="#"><span>Tools</span><span class="num">108</span></a>
+    <a class="item" href="#"><span>Optics</span><span class="num">54</span></a>
+    <div class="search">
+      <span class="icon">◯</span>
+      <input placeholder="Search in shop">
+    </div>
+  </div>
+
+  <!-- FEATURED COLLECTION -->
+  <div class="featured">
+    <div class="featured-head">
+      <div class="left">
+        <div class="season"><span class="eyebrow-line">S P R I N G · T H E  C H E R R Y  R E L E A S E</span></div>
+        <h2>Featured: <em>Cherry Blossom Release</em></h2>
+        <p>A seasonal edit of twelve workshop items — restored Japanese audio and industrial instruments, ready for April shipping.</p>
+      </div>
+      <div class="right">
+        <span class="big">12</span>
+        Items · Through May 15
+      </div>
+    </div>
+
+    <div class="featured-grid">
+      <div class="feat-card hero">
+        <div class="img">
+          <span class="rank">S</span>
+          <span class="cap">Workshop shot · Main item</span>
+        </div>
+        <div class="body">
+          <div class="cat">Audio · Vintage · Restored</div>
+          <h3 class="title">Pioneer KP-717G Cassette Deck — fully serviced, new belts</h3>
+          <div class="row">
+            <span class="price">$412</span>
+            <span class="ddp">DDP · Ships Tue</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="img">
+          <span class="rank">A</span>
+          <span class="cap">Lens close-up</span>
+        </div>
+        <div class="body">
+          <div class="cat">Optics · Vintage Lens</div>
+          <h3 class="title">Nikkor 50mm f/1.4 Ai-S</h3>
+          <div class="row"><span class="price">$186</span><span class="ddp">DDP</span></div>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="img">
+          <span class="rank">A</span>
+          <span class="cap">On bench</span>
+        </div>
+        <div class="body">
+          <div class="cat">Industrial · Sensor</div>
+          <h3 class="title">Keyence FL-001 Fiber Amplifier</h3>
+          <div class="row"><span class="price">$248</span><span class="ddp">DDP</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREDENTIALS STRIP -->
+  <div class="cred-strip">
+    <div class="c"><div class="n">2,401<sup>+</sup></div><div class="l">Orders shipped</div></div>
+    <div class="c"><div class="n">99.8<sup>%</sup></div><div class="l">Positive feedback</div></div>
+    <div class="c"><div class="n">47</div><div class="l">Countries served</div></div>
+    <div class="c"><div class="n">1–3<sup>d</sup></div><div class="l">Handling time</div></div>
+    <div class="c"><div class="n">100<sup>%</sup></div><div class="l">DDP · US duties prepaid</div></div>
+  </div>
+
+  <!-- ABOUT MONOHONPO -->
+  <div class="about-store">
+    <div class="grid">
+      <div>
+        <div class="eyebrow"><span class="eyebrow-line">A B O U T · T H E  S H O P</span></div>
+        <h2>One workbench.<br>One honest pair of eyes.</h2>
+        <div class="quote">"I started MonoHonpo in 2019 after fifteen years repairing instruments for a Tokyo test-equipment importer. The shop exists so that serious tools leave Japan with their story intact — tested, cleaned, and signed."</div>
+        <p>Every listing is handled by one person. Every item sits on the bench for a full session before it is photographed, graded, and packed. If an item doesn't test clean, it doesn't list.</p>
+        <p>We specialize in <strong>industrial sensors &amp; test gear</strong>, <strong>vintage Japanese audio</strong>, and <strong>hand-selected specialist tools</strong>. US buyers get DDP on every order — no surprise fees at delivery.</p>
+
+        <div class="sig-row">
+          <div class="avatar">K</div>
+          <div>
+            <div class="who">Kenta Mori</div>
+            <div class="role">Owner · Technician</div>
+            <div class="jp">Owner · Since 2019</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="workshop">
+        <div class="ph hero">
+          <span class="num">01</span>
+          <span class="tag">The bench — Shimokitazawa workshop</span>
+        </div>
+        <div class="ph">
+          <span class="num">02</span>
+          <span class="tag">Test gear · calibration</span>
+        </div>
+        <div class="ph">
+          <span class="num">03</span>
+          <span class="tag">Packing station</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ====== 06 · PRODUCT PAGE v5 (DESKTOP) ====== -->
+<div class="frame-label" id="f06">06 · Product Page v5 — Desktop · Gallery &amp; Masthead Layout <span class="sub">1200 wide</span></div>
+<div class="frame">
+  <div class="pdp">
+    <div class="pdp-crumbs">
+      <a href="#">MonoHonpo</a><span class="sep">/</span><a href="#">Audio</a><span class="sep">/</span><a href="#">Headphones</a><span class="sep">/</span><span class="cur">Sony WH-1000XM5</span>
+    </div>
+
+    <div class="pdp-top">
+      <!-- GALLERY -->
+      <div class="gal">
+        <div class="gal-thumbs">
+          <div class="gal-thumb active"><span class="num">01</span><span class="lbl">Hero</span></div>
+          <div class="gal-thumb"><span class="num">02</span><span class="lbl">Top</span></div>
+          <div class="gal-thumb"><span class="num">03</span><span class="lbl">Side</span></div>
+          <div class="gal-thumb"><span class="num">04</span><span class="lbl">Detail</span></div>
+          <div class="gal-thumb"><span class="num">05</span><span class="lbl">Case</span></div>
+          <div class="gal-thumb"><span class="num">06</span><span class="lbl">Box</span></div>
+        </div>
+        <div>
+          <div class="gal-main">
+            <span class="counter">01 / 06 <span class="jp">PHOTO</span></span>
+            <span class="sealmark"><span class="s">JP</span><span class="l">JAPAN</span></span>
+            <div class="placeholder">
+              <div class="big">Hero product photograph</div>
+              Three-quarter view · workshop lighting · washi backdrop
+            </div>
+            <span class="zoom"><span class="sym">◯</span>Click to zoom</span>
+          </div>
+          <div class="gal-controls">
+            <div class="ctrl"><span class="sym">◁</span> Prev</div>
+            <div class="ctrl">6 photos · <span style="color:var(--shu);">2 workshop videos</span></div>
+            <div class="ctrl">Next <span class="sym">▷</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INFO -->
+      <div class="pdp-info">
+        <div class="origin">S H I P P E D  F R O M  T O K Y O</div>
+        <h1>Sony WH-1000XM5<br>Wireless Noise Cancelling Headphones</h1>
+        <p class="sub">Black · Flagship model · Tested and documented</p>
+
+        <div class="price-row">
+          <span class="price">$289</span>
+          <span class="was">$349</span>
+          <span class="save">Save $60 · DDP included</span>
+        </div>
+
+        <div class="meta">
+          <div class="row"><span class="k">SKU</span><span class="v">ME-0832</span></div>
+          <div class="row"><span class="k">Rank</span><span class="v">A · Excellent</span></div>
+          <div class="row"><span class="k">Ships from</span><span class="v">Tokyo, JP</span></div>
+          <div class="row"><span class="k">Handling</span><span class="v">1–3 business days</span></div>
+          <div class="row"><span class="k">Carrier</span><span class="v">DHL SpeedPAK</span></div>
+          <div class="row"><span class="k">Delivery · US</span><span class="v">6–10 business days</span></div>
+        </div>
+
+        <div class="buy-row">
+          <div class="qty">
+            <button>−</button><span class="n">1</span><button>+</button>
+          </div>
+          <button class="buy">Buy It Now — $289</button>
+          <button class="watch">♡ Watch</button>
+        </div>
+
+        <div class="trust-line">
+          <span class="item"><span class="sym">◇</span> DDP Prepaid</span>
+          <span class="item"><span class="sym">◯</span> Tested on Bench</span>
+          <span class="item"><span class="sym">★</span> 30-Day Returns</span>
+          <span class="item"><span class="sym">▲</span> Insured Shipping</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 07 · HANKO DDP VARIANTS ====== -->
+<div class="frame-label" id="f07">07 · Hanko DDP Seal — Four shape variants in context <span class="sub">Pick one per format</span></div>
+<div class="frame">
+  <div class="hanko-gallery">
+    <div class="hg-head">
+      <div class="eyebrow"><span class="eyebrow-line">S E A L  V A R I A T I O N S</span></div>
+      <h2>Four DDP seal shapes</h2>
+      <p>Baseline circular (A) is canonical. B–D explore traditional hanko shapes for use where layout demands (narrow columns, square blocks, stickers).</p>
+    </div>
+
+    <div class="hg-grid">
+
+      <!-- A · Circular -->
+      <div class="hg-cell">
+        <div class="label">A · Canonical</div>
+        <div class="hg-stage">
+          <div class="hanko-a">
+            <div class="t">CERT</div>
+            <div class="m">DDP</div>
+            <div class="b">PREPAID</div>
+          </div>
+        </div>
+        <div class="name">Circular Seal</div>
+        <div class="jp">Round · Editorial</div>
+        <div class="desc">Editorial use · large spaces<br>Rotated −6° · 110px</div>
+      </div>
+
+      <!-- B · Vertical -->
+      <div class="hg-cell">
+        <div class="label">B · Vertical</div>
+        <div class="hg-stage">
+          <div class="hanko-b">
+            <div class="t">CERT·JP</div>
+            <div class="m">DDP</div>
+            <div class="b">US PAID</div>
+          </div>
+        </div>
+        <div class="name">Vertical Seal</div>
+        <div class="jp">Tall · Column-fit</div>
+        <div class="desc">Narrow columns · margins<br>Next to prices · sidebars</div>
+      </div>
+
+      <!-- C · Square -->
+      <div class="hg-cell">
+        <div class="label">C · Square</div>
+        <div class="hg-stage">
+          <div class="hanko-c">
+            <div class="t">CERT·JP</div>
+            <div class="m">DDP</div>
+            <div class="b">US · PREPAID</div>
+          </div>
+        </div>
+        <div class="name">Square Seal</div>
+        <div class="jp">Square · Document</div>
+        <div class="desc">Document corners · invoices<br>Print-friendly · grid-aligned</div>
+      </div>
+
+      <!-- D · Die-cut badge -->
+      <div class="hg-cell">
+        <div class="label">D · Die-cut</div>
+        <div class="hg-stage">
+          <div class="hanko-d-wrap">
+            <div class="hanko-d">
+              <div class="t">CERT</div>
+              <div class="m">DDP</div>
+              <div class="b">US PREPAID</div>
+            </div>
+            <div class="ribbon">JAPAN · TESTED</div>
+          </div>
+        </div>
+        <div class="name">Die-cut Seal</div>
+        <div class="jp">Shaped · Sticker</div>
+        <div class="desc">Stickers · shipping labels<br>Flagship hero use only</div>
+      </div>
+
+    </div>
+
+    <!-- Each in context -->
+    <div class="hg-context">
+      <div class="lbl">— How each reads in a listing —</div>
+      <div class="hg-context-grid">
+        <div class="hg-mini">
+          <div class="hanko-a" style="width:72px;height:72px;">
+            <div class="t" style="font-size:7px;letter-spacing:1px;">CERT</div>
+            <div class="m" style="font-size:14px;margin:1px 0;">DDP</div>
+            <div class="b" style="font-size:6px;letter-spacing:1px;">PREPAID</div>
+          </div>
+          <div class="text">
+            <h4>In editorial blocks</h4>
+            <p>The canonical seal sits beside body copy — rotated, weighted, feels like a stamped document.</p>
+          </div>
+        </div>
+
+        <div class="hg-mini">
+          <div class="hanko-b" style="width:38px;height:84px;">
+            <div class="t" style="font-size:6px;letter-spacing:1px;">CERT</div>
+            <div class="m" style="font-size:14px;letter-spacing:1px;margin:2px 0;">DDP</div>
+            <div class="b" style="font-size:5px;">US</div>
+          </div>
+          <div class="text">
+            <h4>Beside the price</h4>
+            <p>The vertical print tucks next to a number — small, visible, never fights the headline.</p>
+          </div>
+        </div>
+
+        <div class="hg-mini">
+          <div class="hanko-c" style="width:64px;height:64px;transform:rotate(1deg);">
+            <div class="t" style="font-size:6px;letter-spacing:1.5px;padding:4px 0 2px;margin:0 6px;">CERT · JP</div>
+            <div class="m" style="font-size:15px;">DDP</div>
+            <div class="b" style="font-size:5px;letter-spacing:1px;padding:2px 0 4px;margin:0 6px;">US · PAID</div>
+          </div>
+          <div class="text">
+            <h4>Document corner</h4>
+            <p>On invoices and packing slips — prints in red or black without losing its grid feel.</p>
+          </div>
+        </div>
+
+        <div class="hg-mini">
+          <div class="hanko-d-wrap" style="width:86px;height:86px;">
+            <div class="hanko-d">
+              <div class="t" style="font-size:6px;letter-spacing:1px;">CERT</div>
+              <div class="m" style="font-size:14px;margin:2px 0;">DDP</div>
+              <div class="b" style="font-size:5px;letter-spacing:1px;">US PAID</div>
+            </div>
+          </div>
+          <div class="text">
+            <h4>Sticker on the box</h4>
+            <p>The die-cut version is the physical sticker — applied to shipping cartons beside the customs form.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 08 · MOBILE v5 (375px) ====== -->
+<div class="frame-label" id="f08">08 · Product Page v5 — Mobile responsive (375 px) <span class="sub">iOS-safe</span></div>
+<div class="frame">
+  <div class="mobile-section">
+    <div class="mobile-head">
+      <div class="eyebrow"><span class="eyebrow-line">M O B I L E · 3 7 5 P X</span></div>
+      <h2>Listing on a phone — three states</h2>
+      <p>The primary state eBay surfaces to ~65% of buyers. Above-the-fold, body scroll, and about/tab-bar.</p>
+    </div>
+
+    <div class="mobile-stage">
+
+      <!-- PHONE 1: ABOVE THE FOLD -->
+      <div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>●●●  5G  ▮</span></div>
+
+          <div class="m-nav">
+            <span class="back">◁</span>
+            <span class="center">M O N O</span>
+            <span class="actions"><span>◯</span><span>◇</span><span>⬚</span></span>
+          </div>
+
+          <div class="m-gal">
+            <div class="placeholder">Hero photo · three-quarter</div>
+            <div class="sealmark">DDP<span class="tiny">PREPAID</span></div>
+            <div class="counter">01 / 06</div>
+          </div>
+          <div class="m-thumbstrip">
+            <div class="t active"><span class="n">01</span></div>
+            <div class="t"><span class="n">02</span></div>
+            <div class="t"><span class="n">03</span></div>
+            <div class="t"><span class="n">04</span></div>
+            <div class="t"><span class="n">05</span></div>
+            <div class="t"><span class="n">06</span></div>
+          </div>
+
+          <div class="m-body">
+            <div class="origin">F R O M  J A P A N</div>
+            <h1>Sony WH-1000XM5 Wireless</h1>
+            <p class="sub">Black · Rank A · Tested</p>
+            <div class="price-row">
+              <span class="price">$289</span>
+              <span class="was">$349</span>
+              <span class="save">−$60 DDP</span>
+            </div>
+            <div class="trust-line">
+              <span><span class="sym">◇</span>DDP</span>
+              <span><span class="sym">◯</span>Tested</span>
+              <span><span class="sym">★</span>30d</span>
+              <span><span class="sym">▲</span>Insured</span>
+            </div>
+          </div>
+
+          <div class="m-stick">
+            <button class="watch-ico">♡</button>
+            <button class="buy">Buy — $289</button>
+          </div>
+        </div>
+        <div class="phone-label" style="text-align:center;margin-top:14px;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--paper-edge);text-transform:uppercase;">01 · Above the fold</div>
+      </div>
+
+      <!-- PHONE 2: DETAIL SCROLL -->
+      <div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>●●●  5G  ▮</span></div>
+
+          <div class="m-nav">
+            <span class="back">◁</span>
+            <span class="center">M O N O</span>
+            <span class="actions"><span>◯</span><span>◇</span><span>⬚</span></span>
+          </div>
+
+          <!-- Hanko strip -->
+          <div class="m-hanko">
+            <div class="seal">
+              <div class="tp">CERT</div>
+              <div class="mn">DDP</div>
+              <div class="bt">PAID</div>
+            </div>
+            <div class="txt">
+              <h4>No surprise customs fees.</h4>
+              <p>US duties prepaid. When your package arrives, you pay nothing more at the door.</p>
+            </div>
+          </div>
+
+          <!-- Rank -->
+          <div class="m-rank">
+            <div class="kicker">C O N D I T I O N  R A N K</div>
+            <div class="brush">
+              <svg viewBox="0 0 120 120" fill="none">
+                <path d="M60 14 C 28 14,14 38,14 60 C 14 86,36 106,62 106 C 88 106,106 86,106 60 C 106 46,98 30,82 22" stroke="#1a1817" stroke-width="5" stroke-linecap="round" fill="none"/>
+              </svg>
+              <div class="l">A</div>
+            </div>
+            <h4>Rank A — Excellent</h4>
+            <div class="jp">Excellent · Bench-Tested</div>
+            <div class="quick">Tested working. Minor scuffs on headband underside; ANC, Bluetooth 5.2, touch controls verified.</div>
+          </div>
+
+          <!-- Specs -->
+          <div class="m-section">
+            <div class="sh"><h3>Specifications</h3><span class="jp">SPECS</span><span class="num">7 rows</span></div>
+            <div class="m-specs">
+              <div class="r"><span class="k">Brand</span><span class="v">Sony</span></div>
+              <div class="r"><span class="k">Model</span><span class="v">WH-1000XM5</span></div>
+              <div class="r"><span class="k">Battery</span><span class="v">30 h · ANC on</span></div>
+              <div class="r"><span class="k">Weight</span><span class="v">250 g</span></div>
+              <div class="r"><span class="k">BT</span><span class="v">5.2 · LDAC</span></div>
+            </div>
+          </div>
+
+          <!-- Shipping -->
+          <div class="m-ship">
+            <h3>Shipping &amp; handling <span class="jp">SHIPPING</span></h3>
+            <div class="g">
+              <div><strong>Origin</strong><span>Tokyo, JP</span></div>
+              <div><strong>Carrier</strong><span>DHL SpeedPAK</span></div>
+              <div><strong>Handling</strong><span>1–3 days</span></div>
+              <div><strong>To US</strong><span>6–10 days</span></div>
+            </div>
+          </div>
+
+          <div class="m-stick">
+            <button class="watch-ico">♡</button>
+            <button class="buy">Buy — $289</button>
+          </div>
+        </div>
+        <div class="phone-label" style="text-align:center;margin-top:14px;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--paper-edge);text-transform:uppercase;">02 · Body detail scroll</div>
+      </div>
+
+      <!-- PHONE 3: ABOUT & TAB BAR -->
+      <div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>●●●  5G  ▮</span></div>
+
+          <div class="m-nav">
+            <span class="back">◁</span>
+            <span class="center">S T O R E</span>
+            <span class="actions"><span>◯</span><span>◇</span><span>⬚</span></span>
+          </div>
+
+          <!-- Mini featured collection -->
+          <div style="padding:14px 16px 10px;">
+            <div style="font-family:var(--f-jp);font-size:9px;letter-spacing:5px;color:var(--shu);margin-bottom:6px;">S E A S O N A L</div>
+            <h2 style="font-family:var(--f-display);font-size:22px;font-weight:500;margin:0 0 4px;color:var(--ink);line-height:1.1;">Cherry Blossom Release</h2>
+            <p style="font-family:var(--f-display);font-style:italic;font-size:13px;color:var(--ink-3);margin:0;">12 items · through May 15</p>
+          </div>
+
+          <!-- Grid of mini cards -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 16px 14px;">
+            <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);">
+              <div style="aspect-ratio:1/1;background:repeating-linear-gradient(135deg,#e5ddca 0 8px,#dcd2b9 8px 16px);position:relative;">
+                <span style="position:absolute;top:6px;right:6px;width:22px;height:22px;background:var(--paper);color:var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:10px;font-weight:700;border:1px solid var(--ink);">S</span>
+              </div>
+              <div style="padding:6px 8px 8px;">
+                <div style="font-family:var(--f-display);font-size:11px;font-weight:500;line-height:1.2;color:var(--ink);">Pioneer KP-717G</div>
+                <div style="font-family:var(--f-display);font-size:13px;font-weight:600;color:var(--ink);margin-top:4px;">$412</div>
+              </div>
+            </div>
+            <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);">
+              <div style="aspect-ratio:1/1;background:repeating-linear-gradient(135deg,#e5ddca 0 8px,#dcd2b9 8px 16px);position:relative;">
+                <span style="position:absolute;top:6px;right:6px;width:22px;height:22px;background:var(--paper);color:var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:10px;font-weight:700;border:1px solid var(--ink);">A</span>
+              </div>
+              <div style="padding:6px 8px 8px;">
+                <div style="font-family:var(--f-display);font-size:11px;font-weight:500;line-height:1.2;color:var(--ink);">Nikkor 50mm f/1.4</div>
+                <div style="font-family:var(--f-display);font-size:13px;font-weight:600;color:var(--ink);margin-top:4px;">$186</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- About mini -->
+          <div class="m-about">
+            <img src="assets/MONO-logo.jpg" alt="MonoHonpo">
+            <div class="name">M O N O H O N P O</div>
+            <div class="jp">M O N O H O N P O</div>
+            <p>One workbench. Tested, cleaned, packed. DDP to the US on every order.</p>
+          </div>
+
+          <!-- Tab bar -->
+          <div class="m-tabbar">
+            <div class="tb active"><span class="sym">◯</span>Home</div>
+            <div class="tb"><span class="sym">◇</span>Browse</div>
+            <div class="tb"><span class="sym">♡</span>Saved</div>
+            <div class="tb"><span class="sym">☰</span>Me</div>
+          </div>
+        </div>
+        <div class="phone-label" style="text-align:center;margin-top:14px;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--paper-edge);text-transform:uppercase;">03 · Store home · tab bar</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ====== 09 · MANAGER UI v3 ====== -->
+<div class="frame-label" id="f09">09 · Manager UI — 5-tab Admin · Dashboard (Dark Paper) <span class="sub">Internal</span></div>
+<div class="frame">
+  <div class="mgr">
+
+    <!-- TOP BAR -->
+    <div class="mgr-top">
+      <div class="enso"></div>
+      <div class="brand">M O N O H O N P O<span class="jp">Manager · Internal Workspace</span></div>
+      <div class="env">
+        <span class="bit">ENV <strong>PROD</strong></span>
+        <span class="bit">eBay <strong>linked</strong></span>
+        <span class="status">Live · sync 17:04 JST</span>
+        <span class="user">K</span>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="mgr-tabs">
+      <div class="mgr-tab active"><span class="num">01</span> Dashboard <span class="jp">OVERVIEW</span></div>
+      <div class="mgr-tab"><span class="num">02</span> Inventory <span class="jp">STOCK</span><span class="badge">8</span></div>
+      <div class="mgr-tab"><span class="num">03</span> Sales <span class="jp">SALES</span></div>
+      <div class="mgr-tab"><span class="num">04</span> Supplier Leads <span class="jp">LEADS</span><span class="badge">3</span></div>
+      <div class="mgr-tab"><span class="num">05</span> Settings <span class="jp">SETUP</span></div>
+    </div>
+
+    <div class="mgr-body">
+
+      <!-- Dashboard head -->
+      <div class="mgr-dh">
+        <div>
+          <h2>Dashboard<span class="jp">OVERVIEW</span></h2>
+          <div class="sub">Snapshot for Kenta · April 20, 2026 · JST</div>
+        </div>
+        <div class="filter-row">
+          <button class="filter">24h</button>
+          <button class="filter active">7d</button>
+          <button class="filter">30d</button>
+          <button class="filter">QTD</button>
+          <button class="filter shu">◇ Export</button>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="k">Active Listings</div>
+          <div class="v">498</div>
+          <div class="d"><span>+7 this week</span><span class="spark"><span style="height:6px"></span><span style="height:9px"></span><span style="height:7px"></span><span style="height:11px"></span><span style="height:14px"></span><span style="height:10px"></span><span style="height:14px"></span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="k">Sold (7d)</div>
+          <div class="v">18</div>
+          <div class="d"><span>+4 vs prev</span><span class="spark"><span style="height:4px"></span><span style="height:7px"></span><span style="height:5px"></span><span style="height:9px"></span><span style="height:11px"></span><span style="height:8px"></span><span style="height:13px"></span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="k">Revenue 7d</div>
+          <div class="v">$4,821<small>usd</small></div>
+          <div class="d"><span>+12.4% MoM</span><span class="spark"><span style="height:5px"></span><span style="height:8px"></span><span style="height:6px"></span><span style="height:10px"></span><span style="height:12px"></span><span style="height:9px"></span><span style="height:14px"></span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="k">Out of Stock</div>
+          <div class="v">8</div>
+          <div class="d warn"><span>Needs review</span><span class="spark"><span style="height:10px"></span><span style="height:8px"></span><span style="height:11px"></span><span style="height:9px"></span><span style="height:12px"></span><span style="height:11px"></span><span style="height:12px"></span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="k">Feedback</div>
+          <div class="v">99.8<small>%</small></div>
+          <div class="d"><span>2,401 orders</span><span class="spark"><span style="height:11px"></span><span style="height:12px"></span><span style="height:12px"></span><span style="height:11px"></span><span style="height:12px"></span><span style="height:13px"></span><span style="height:12px"></span></span></div>
+        </div>
+      </div>
+
+      <!-- Chart + donut -->
+      <div class="mgr-main">
+        <div class="chart-card">
+          <div class="hd">
+            <h3>Revenue · 30 days<span class="jp">SALES TREND</span></h3>
+            <div class="legend">
+              <span><span class="dot" style="background:var(--shu);"></span>Gross</span>
+              <span><span class="dot" style="background:var(--sage);"></span>Net (after DDP)</span>
+              <span><span class="dot" style="background:var(--brass);opacity:.5"></span>Forecast</span>
+            </div>
+          </div>
+
+          <svg class="chart-svg" viewBox="0 0 640 180" preserveAspectRatio="none">
+            <!-- gridlines -->
+            <g stroke="#3a332c" stroke-dasharray="2 4" fill="none">
+              <line x1="0" y1="30" x2="640" y2="30"/>
+              <line x1="0" y1="75" x2="640" y2="75"/>
+              <line x1="0" y1="120" x2="640" y2="120"/>
+              <line x1="0" y1="165" x2="640" y2="165"/>
+            </g>
+            <g font-family="JetBrains Mono" font-size="9" fill="#6b6157" letter-spacing="1">
+              <text x="4" y="27">$1.2k</text>
+              <text x="4" y="72">$900</text>
+              <text x="4" y="117">$600</text>
+              <text x="4" y="162">$300</text>
+            </g>
+            <!-- gross area -->
+            <path d="M 48 130 L 88 118 L 128 122 L 168 100 L 208 108 L 248 86 L 288 92 L 328 70 L 368 82 L 408 58 L 448 72 L 488 48 L 528 62 L 568 38 L 608 50 L 608 170 L 48 170 Z" fill="rgba(168,52,27,.18)"/>
+            <path d="M 48 130 L 88 118 L 128 122 L 168 100 L 208 108 L 248 86 L 288 92 L 328 70 L 368 82 L 408 58 L 448 72 L 488 48 L 528 62 L 568 38 L 608 50" stroke="#a8341b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- net line -->
+            <path d="M 48 142 L 88 132 L 128 138 L 168 116 L 208 124 L 248 102 L 288 108 L 328 86 L 368 98 L 408 74 L 448 88 L 488 64 L 528 78 L 568 54 L 608 66" stroke="#6b7a5c" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0"/>
+            <!-- forecast dashed -->
+            <path d="M 608 50 L 632 44" stroke="#8b7355" stroke-width="2" fill="none" stroke-dasharray="3 3"/>
+            <!-- data points -->
+            <g fill="#a8341b">
+              <circle cx="608" cy="50" r="3"/>
+              <circle cx="488" cy="48" r="3"/>
+              <circle cx="368" cy="82" r="3"/>
+            </g>
+            <!-- x-axis labels -->
+            <g font-family="JetBrains Mono" font-size="9" fill="#6b6157" letter-spacing="1">
+              <text x="48" y="178">MAR 21</text>
+              <text x="208" y="178">MAR 31</text>
+              <text x="368" y="178">APR 10</text>
+              <text x="528" y="178">APR 20</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="donut-card">
+          <h3>Category mix<span class="jp">CATEGORY</span></h3>
+          <div class="donut-row">
+            <svg viewBox="0 0 42 42">
+              <circle cx="21" cy="21" r="15.915" fill="#1a1817"/>
+              <!-- industrial 42% -->
+              <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#a8341b" stroke-width="7" stroke-dasharray="42 58" stroke-dashoffset="0" transform="rotate(-90 21 21)"/>
+              <!-- audio 28% -->
+              <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#6b7a5c" stroke-width="7" stroke-dasharray="28 72" stroke-dashoffset="-42" transform="rotate(-90 21 21)"/>
+              <!-- tools 18% -->
+              <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#8b7355" stroke-width="7" stroke-dasharray="18 82" stroke-dashoffset="-70" transform="rotate(-90 21 21)"/>
+              <!-- optics 12% -->
+              <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#9a8f82" stroke-width="7" stroke-dasharray="12 88" stroke-dashoffset="-88" transform="rotate(-90 21 21)"/>
+              <text x="21" y="20" text-anchor="middle" font-family="Cormorant Garamond" font-size="6" fill="#fbf9f3" font-weight="600">498</text>
+              <text x="21" y="25" text-anchor="middle" font-family="JetBrains Mono" font-size="2.5" fill="#9a8f82" letter-spacing="0.3">LISTINGS</text>
+            </svg>
+            <div class="donut-legend">
+              <div class="li"><span class="nm"><span class="sw" style="background:var(--shu);"></span>Industrial</span><span class="val">42%</span></div>
+              <div class="li"><span class="nm"><span class="sw" style="background:var(--sage);"></span>Audio</span><span class="val">28%</span></div>
+              <div class="li"><span class="nm"><span class="sw" style="background:var(--brass);"></span>Tools</span><span class="val">18%</span></div>
+              <div class="li"><span class="nm"><span class="sw" style="background:var(--ink-4);"></span>Optics</span><span class="val">12%</span></div>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid #3a332c;">
+            <div style="font-family:var(--f-mono);font-size:9px;color:var(--ink-4);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Avg Rank Distribution</div>
+            <div style="display:flex;gap:6px;height:26px;">
+              <div style="flex:0.12;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">S 12%</div>
+              <div style="flex:0.54;background:var(--sage);color:var(--paper-hi);font-family:var(--f-display);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">A 54%</div>
+              <div style="flex:0.26;background:var(--brass);color:var(--paper-hi);font-family:var(--f-display);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">B 26%</div>
+              <div style="flex:0.08;background:var(--ink-4);color:var(--paper-hi);font-family:var(--f-display);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">C 8%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLES -->
+      <div class="mgr-tables">
+        <div class="tbl-card tbl-a">
+          <div class="tbl-head">
+            <h3>Needs attention<span class="jp">TO DO</span></h3>
+            <div class="c"><strong>8</strong> items · 3 new</div>
+          </div>
+          <div class="tbl-colhd">
+            <div>SKU</div><div>Item</div><div>Status</div><div>Price</div><div>Action</div>
+          </div>
+          <div class="tbl-row">
+            <div class="sku">YH-1225</div>
+            <div class="t">Pioneer KP-717G Cassette Deck<small>Audio · Vintage</small></div>
+            <div><span class="pill shu">OOS</span></div>
+            <div class="price">$412<small>usd</small></div>
+            <div class="a">Supplier found <span class="arrow">↗</span></div>
+          </div>
+          <div class="tbl-row">
+            <div class="sku">PF-1157</div>
+            <div class="t">Keyence FL-001 Fiber Amplifier<small>Industrial · Sensor</small></div>
+            <div><span class="pill shu">OOS</span></div>
+            <div class="price">$248<small>usd</small></div>
+            <div class="a">3 candidates <span class="arrow">↗</span></div>
+          </div>
+          <div class="tbl-row">
+            <div class="sku">ME-0832</div>
+            <div class="t">Sony WH-1000XM5 Black<small>Audio · Portable</small></div>
+            <div><span class="pill ok">Rank A</span></div>
+            <div class="price">$289<small>usd</small></div>
+            <div class="a">Ready to list <span class="arrow">↗</span></div>
+          </div>
+          <div class="tbl-row">
+            <div class="sku">OP-0441</div>
+            <div class="t">Nikkor 50mm f/1.4 Ai-S<small>Optics · Vintage</small></div>
+            <div><span class="pill warn">Photos</span></div>
+            <div class="price">$186<small>usd</small></div>
+            <div class="a">Needs shots <span class="arrow">↗</span></div>
+          </div>
+          <div class="tbl-row">
+            <div class="sku">TL-2208</div>
+            <div class="t">Niigata Seiki Pin Gauge Set<small>Tools · Measuring</small></div>
+            <div><span class="pill sage">Drafted</span></div>
+            <div class="price">$92<small>usd</small></div>
+            <div class="a">Review copy <span class="arrow">↗</span></div>
+          </div>
+        </div>
+
+        <div class="tbl-card tbl-b">
+          <div class="tbl-head">
+            <h3>Supplier leads<span class="jp">CANDIDATES</span></h3>
+            <div class="c"><strong>3</strong> new</div>
+          </div>
+          <div class="tbl-colhd">
+            <div>Supplier · SKU</div><div>Price</div><div>Match</div>
+          </div>
+          <div class="tbl-row sup-row">
+            <div class="name">Akihabara Radio Center<small>→ YH-1225 · KP-717G</small></div>
+            <div class="price">$248<small>jpy¥38k</small></div>
+            <div class="match-bar"><div class="bar"><span style="width:88%"></span></div>88</div>
+          </div>
+          <div class="tbl-row sup-row">
+            <div class="name">Osaka Nipponbashi Lab<small>→ PF-1157 · FL-001</small></div>
+            <div class="price">$152<small>jpy¥23k</small></div>
+            <div class="match-bar"><div class="bar"><span style="width:74%"></span></div>74</div>
+          </div>
+          <div class="tbl-row sup-row">
+            <div class="name">Yahoo!JP Auction W041<small>→ OP-0441 · Nikkor</small></div>
+            <div class="price">$104<small>jpy¥16k</small></div>
+            <div class="match-bar"><div class="bar"><span style="width:66%"></span></div>66</div>
+          </div>
+          <div class="tbl-row sup-row">
+            <div class="name">Mercari Shops · #MR-882<small>→ TL-2208 · Pin gauge</small></div>
+            <div class="price">$48<small>jpy¥7.4k</small></div>
+            <div class="match-bar"><div class="bar"><span style="width:58%"></span></div>58</div>
+          </div>
+
+          <div class="activity" style="margin:0;border:0;border-top:1px solid #3a332c;">
+            <h3>Recent activity<span class="jp">LOG</span></h3>
+            <div class="ev"><div class="tm">16:52</div><div class="tx"><strong>ME-0832</strong> sold to buyer in TX — DDP $289</div><div class="ty">SOLD</div></div>
+            <div class="ev"><div class="tm">15:14</div><div class="tx"><strong>PF-1157</strong> 3 new supplier matches</div><div class="ty">LEAD</div></div>
+            <div class="ev"><div class="tm">13:08</div><div class="tx"><strong>OP-0441</strong> photos uploaded (6)</div><div class="ty">UPLOAD</div></div>
+            <div class="ev"><div class="tm">09:30</div><div class="tx">Daily JPY/USD sync · <strong>¥154.2</strong></div><div class="ty">SYNC</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mgr-foot">
+        <div><span class="enso-mini"></span>MonoHonpo Manager v3 · Build 2026.04.20</div>
+        <div>Kenta Mori · Tokyo JST · Session 4h 12m</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ====== 10 · GADGET / ELECTRONICS MODE ====== -->
+<div class="frame-label" id="f10">10 · Gadget &amp; Electronics Mode — wa-modern system applied to tech products <span class="sub">Precision · Measured · Warm neutral</span></div>
+<div class="frame">
+  <div style="padding:56px 60px 48px;background:var(--paper);">
+    <div style="text-align:center;margin-bottom:44px;">
+      <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:8px;color:var(--shu);margin-bottom:10px;"><span class="eyebrow-line">T E C H · A P P L I E D</span></div>
+      <h2 style="font-family:var(--f-display);font-size:34px;font-weight:500;margin:0;color:var(--ink);">Gadgets on washi, not against it.</h2>
+      <p style="font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--ink-3);margin:12px auto 0;max-width:620px;">The same editorial grammar, tuned for precision instruments, cameras, and consumer electronics — where measurements, ports, and firmware matter more than patina.</p>
+    </div>
+
+    <!-- System rules -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:44px;">
+      <div style="padding:18px 18px 20px;background:var(--paper-hi);border:1px solid var(--paper-edge);border-left:3px solid var(--shu);">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">Rule 01</div>
+        <div style="font-family:var(--f-display);font-size:17px;font-weight:600;color:var(--ink);margin-bottom:6px;">Measured photography</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.5;">Grid-aligned product shots on paper backdrop. Ruler or coin for scale — never decorative props.</div>
+      </div>
+      <div style="padding:18px 18px 20px;background:var(--paper-hi);border:1px solid var(--paper-edge);border-left:3px solid var(--shu);">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">Rule 02</div>
+        <div style="font-family:var(--f-display);font-size:17px;font-weight:600;color:var(--ink);margin-bottom:6px;">Spec block, visible</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.5;">Every gadget card carries a condensed spec strip — ports, voltage, firmware — above the price.</div>
+      </div>
+      <div style="padding:18px 18px 20px;background:var(--paper-hi);border:1px solid var(--paper-edge);border-left:3px solid var(--shu);">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">Rule 03</div>
+        <div style="font-family:var(--f-display);font-size:17px;font-weight:600;color:var(--ink);margin-bottom:6px;">Dark precision panel</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.5;">Sumi-ink card variant for flagship electronics — reads as instrument-panel, retains shu seal.</div>
+      </div>
+      <div style="padding:18px 18px 20px;background:var(--paper-hi);border:1px solid var(--paper-edge);border-left:3px solid var(--shu);">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">Rule 04</div>
+        <div style="font-family:var(--f-display);font-size:17px;font-weight:600;color:var(--ink);margin-bottom:6px;">Voltage &amp; region note</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.5;">All electronics declare 100V-origin and US compatibility inline. No ambiguity at checkout.</div>
+      </div>
+    </div>
+
+    <!-- Gadget card row: paper variant, dark variant, wide flagship -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:18px;">
+
+      <!-- Paper card: camera -->
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;">
+        <div style="aspect-ratio:1/1;background:
+          linear-gradient(var(--paper-hi),var(--paper-hi)),
+          repeating-linear-gradient(0deg,transparent 0 48px,rgba(26,24,23,.06) 48px 49px),
+          repeating-linear-gradient(90deg,transparent 0 48px,rgba(26,24,23,.06) 48px 49px);
+          background-blend-mode:multiply;position:relative;display:flex;align-items:center;justify-content:center;">
+          <div style="width:60%;height:42%;background:#2a2623;border:1px solid #1a1817;position:relative;box-shadow:inset 2px 2px 6px rgba(0,0,0,.4),0 10px 20px rgba(0,0,0,.08);">
+            <div style="position:absolute;left:18%;top:14%;width:46%;height:72%;border-radius:50%;background:radial-gradient(circle at 30% 30%,#4a4340,#1a1817 60%,#0a0908);border:2px solid #0a0908;"></div>
+            <div style="position:absolute;right:8%;top:10%;width:14%;height:10%;background:#a8341b;"></div>
+          </div>
+          <span style="position:absolute;top:14px;left:14px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);background:rgba(251,249,243,.85);padding:3px 8px;border:1px solid var(--paper-edge);">01 · HERO</span>
+          <span style="position:absolute;bottom:14px;right:14px;font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);">50mm · f/1.4 · grid</span>
+        </div>
+
+        <div style="padding:16px 18px;border-top:1px solid var(--paper-edge);background:var(--paper-hi);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">
+            <span>OPTICS · LENS</span><span>Rank&nbsp;A</span>
+          </div>
+          <h3 style="font-family:var(--f-display);font-size:19px;font-weight:500;color:var(--ink);margin:0 0 10px;line-height:1.25;">Nikkor 50mm f/1.4 Ai-S<br>Manual Prime Lens</h3>
+
+          <!-- spec strip -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);margin-bottom:12px;">
+            <div style="padding:10px 0;border-right:1px solid var(--paper-edge);text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Mount</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--ink);margin-top:2px;">Ai-S</div>
+            </div>
+            <div style="padding:10px 0;border-right:1px solid var(--paper-edge);text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Wt</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--ink);margin-top:2px;">255g</div>
+            </div>
+            <div style="padding:10px 0;text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Min</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--ink);margin-top:2px;">0.45m</div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--ink);">$186</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--shu);text-transform:uppercase;">DDP · Ships Mon</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dark card: handheld electronics -->
+      <div style="background:#1a1817;color:var(--paper);border:1px solid #0a0908;display:flex;flex-direction:column;position:relative;">
+        <div style="aspect-ratio:1/1;background:
+          linear-gradient(150deg,#24201c,#14110f);
+          position:relative;display:flex;align-items:center;justify-content:center;">
+          <!-- device: handheld recorder with screen -->
+          <div style="width:52%;height:68%;background:linear-gradient(180deg,#3a332c,#1a1817);border:1px solid #0a0908;border-radius:3px;padding:10px;box-shadow:0 20px 40px rgba(0,0,0,.5);position:relative;">
+            <div style="width:100%;height:36%;background:#1f4d3a;border:1px solid #0a0908;margin-bottom:8px;position:relative;">
+              <div style="position:absolute;top:4px;left:5px;font-family:var(--f-mono);font-size:7px;color:#6bc49b;letter-spacing:1px;">REC 00:42</div>
+              <div style="position:absolute;bottom:4px;left:5px;right:5px;display:flex;gap:1px;align-items:flex-end;height:40%;">
+                <span style="flex:1;background:#6bc49b;height:40%;"></span>
+                <span style="flex:1;background:#6bc49b;height:70%;"></span>
+                <span style="flex:1;background:#6bc49b;height:55%;"></span>
+                <span style="flex:1;background:#6bc49b;height:80%;"></span>
+                <span style="flex:1;background:#6bc49b;height:60%;"></span>
+                <span style="flex:1;background:#6bc49b;height:45%;"></span>
+                <span style="flex:1;background:#6bc49b;height:75%;"></span>
+                <span style="flex:1;background:#6bc49b;height:30%;"></span>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;">
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:var(--shu);border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+              <span style="aspect-ratio:1/1;background:#2a2623;border:1px solid #0a0908;"></span>
+            </div>
+          </div>
+          <!-- Shu seal, inverted for dark -->
+          <span style="position:absolute;top:14px;right:14px;width:44px;height:44px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-6deg);box-shadow:inset 0 0 0 1px var(--paper-hi),0 0 0 2px var(--shu);">
+            <span style="font-family:var(--f-display);font-weight:700;font-size:12px;line-height:1;">DDP</span>
+            <span style="font-family:var(--f-mono);font-size:6px;letter-spacing:1px;margin-top:2px;">PREPAID</span>
+          </span>
+          <span style="position:absolute;top:14px;left:14px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);background:rgba(10,9,8,.6);padding:3px 8px;border:1px solid #3a332c;">01 · BLACK</span>
+        </div>
+
+        <div style="padding:16px 18px;border-top:1px solid #3a332c;">
+          <div style="display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;margin-bottom:6px;">
+            <span>AUDIO · RECORDER</span><span>Rank&nbsp;S</span>
+          </div>
+          <h3 style="font-family:var(--f-display);font-size:19px;font-weight:500;color:var(--paper-hi);margin:0 0 10px;line-height:1.25;">Zoom H6 Black<br>6-Track Portable Recorder</h3>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid #3a332c;border-bottom:1px solid #3a332c;margin-bottom:12px;">
+            <div style="padding:10px 0;border-right:1px solid #3a332c;text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Tracks</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--paper-hi);margin-top:2px;">6-ch</div>
+            </div>
+            <div style="padding:10px 0;border-right:1px solid #3a332c;text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Sample</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--paper-hi);margin-top:2px;">96kHz</div>
+            </div>
+            <div style="padding:10px 0;text-align:center;">
+              <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Port</div>
+              <div style="font-family:var(--f-display);font-size:14px;font-weight:600;color:var(--paper-hi);margin-top:2px;">USB-C</div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--paper-hi);">$318</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--shu-hi);text-transform:uppercase;">100–240V · Firmware 2.1</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wide flagship: split card with large device + side spec table -->
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);display:grid;grid-template-columns:1.1fr 1fr;">
+        <!-- image side -->
+        <div style="aspect-ratio:auto;background:
+          linear-gradient(var(--paper-hi),var(--paper-hi)),
+          repeating-linear-gradient(0deg,transparent 0 32px,rgba(26,24,23,.05) 32px 33px),
+          repeating-linear-gradient(90deg,transparent 0 32px,rgba(26,24,23,.05) 32px 33px);
+          background-blend-mode:multiply;position:relative;display:flex;align-items:center;justify-content:center;min-height:360px;border-right:1px solid var(--paper-edge);">
+          <!-- headphones silhouette -->
+          <svg viewBox="0 0 200 200" style="width:72%;height:72%;" fill="none">
+            <path d="M40 110 C 40 60,80 30,100 30 C 120 30,160 60,160 110" stroke="#1a1817" stroke-width="6" stroke-linecap="round"/>
+            <rect x="30" y="100" width="26" height="52" rx="6" fill="#1a1817"/>
+            <rect x="144" y="100" width="26" height="52" rx="6" fill="#1a1817"/>
+            <rect x="32" y="106" width="22" height="40" rx="3" fill="#3a332c"/>
+            <rect x="146" y="106" width="22" height="40" rx="3" fill="#3a332c"/>
+            <circle cx="43" cy="126" r="3" fill="#a8341b"/>
+          </svg>
+          <!-- ruler axis -->
+          <div style="position:absolute;bottom:16px;left:16px;right:16px;height:1px;background:var(--ink-3);display:flex;justify-content:space-between;">
+            <span style="width:1px;height:8px;background:var(--ink-3);margin-top:-4px;"></span>
+            <span style="width:1px;height:4px;background:var(--ink-4);margin-top:-2px;"></span>
+            <span style="width:1px;height:8px;background:var(--ink-3);margin-top:-4px;"></span>
+            <span style="width:1px;height:4px;background:var(--ink-4);margin-top:-2px;"></span>
+            <span style="width:1px;height:8px;background:var(--ink-3);margin-top:-4px;"></span>
+            <span style="width:1px;height:4px;background:var(--ink-4);margin-top:-2px;"></span>
+            <span style="width:1px;height:8px;background:var(--ink-3);margin-top:-4px;"></span>
+          </div>
+          <span style="position:absolute;bottom:6px;left:16px;font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);">0</span>
+          <span style="position:absolute;bottom:6px;right:16px;font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);">254 mm</span>
+          <!-- Hanko-D sticker on corner -->
+          <div style="position:absolute;top:16px;right:16px;width:62px;height:62px;">
+            <div style="position:absolute;inset:0;background:var(--shu);color:var(--paper-hi);clip-path:polygon(50% 0,88% 12%,100% 50%,88% 88%,50% 100%,12% 88%,0 50%,12% 12%);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-6deg);">
+              <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1px;">CERT</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:700;line-height:1;margin:1px 0;">DDP</span>
+              <span style="font-family:var(--f-mono);font-size:6px;letter-spacing:1px;">US PAID</span>
+            </div>
+          </div>
+          <span style="position:absolute;top:16px;left:16px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);background:rgba(251,249,243,.85);padding:3px 8px;border:1px solid var(--paper-edge);">FLAGSHIP</span>
+        </div>
+
+        <!-- data side -->
+        <div style="padding:22px 22px 20px;display:flex;flex-direction:column;">
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:8px;">AUDIO · WIRELESS · FLAGSHIP</div>
+          <h3 style="font-family:var(--f-display);font-size:24px;font-weight:500;color:var(--ink);margin:0 0 4px;line-height:1.15;">Sony WH-1000XM5</h3>
+          <div style="font-family:var(--f-display);font-style:italic;font-size:14px;color:var(--ink-3);margin-bottom:16px;">Noise-cancelling · Rank A</div>
+
+          <!-- Full spec table -->
+          <div style="flex:1;border-top:1px solid var(--paper-edge);">
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Bluetooth</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">5.2 · LDAC</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Battery</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">30 h ANC on</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Weight</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">250 g</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Charge</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">USB-C · 3.5h full</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dotted var(--paper-edge);font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Voltage</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">100–240V OK</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12px;">
+              <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">Firmware</span>
+              <span style="font-family:var(--f-display);font-size:13px;font-weight:500;color:var(--ink);">v2.3.0 · latest</span>
+            </div>
+          </div>
+
+          <div style="padding-top:14px;margin-top:14px;border-top:1px solid var(--paper-edge);display:flex;justify-content:space-between;align-items:baseline;">
+            <div>
+              <span style="font-family:var(--f-display);font-size:28px;font-weight:600;color:var(--ink);">$289</span>
+              <span style="font-family:var(--f-display);font-size:15px;color:var(--ink-4);text-decoration:line-through;margin-left:6px;">$349</span>
+            </div>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--shu);text-transform:uppercase;">Save&nbsp;$60 · DDP</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Port diagram panel -->
+    <div style="margin-top:40px;padding:28px 32px;background:var(--ink);color:var(--paper);display:grid;grid-template-columns:1fr 2fr;gap:36px;align-items:center;">
+      <div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:3px;color:var(--shu-hi);text-transform:uppercase;margin-bottom:8px;">TECHNICAL BLOCK</div>
+        <h3 style="font-family:var(--f-display);font-size:22px;font-weight:500;margin:0 0 8px;color:var(--paper-hi);">Every gadget ships with<br>a measured port diagram.</h3>
+        <p style="font-family:var(--f-display);font-style:italic;font-size:13px;color:var(--paper-edge);margin:0;line-height:1.5;">Buyers get a labeled SVG of every port, button, and indicator — no guessing at listing photos.</p>
+      </div>
+
+      <!-- Port diagram -->
+      <div style="background:#24201c;border:1px solid #3a332c;padding:20px 24px;position:relative;">
+        <div style="display:flex;align-items:center;justify-content:center;position:relative;height:78px;">
+          <!-- bar = device edge -->
+          <div style="position:absolute;left:5%;right:5%;top:50%;height:38px;background:linear-gradient(180deg,#3a332c,#1a1817);border:1px solid #0a0908;transform:translateY(-50%);"></div>
+          <!-- ports -->
+          <div style="position:absolute;left:15%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;background:#0a0908;border:1px solid #2d2822;border-radius:2px;"></div>
+          <div style="position:absolute;left:34%;top:50%;transform:translate(-50%,-50%);width:22px;height:10px;background:#0a0908;border:1px solid #2d2822;border-radius:5px;"></div>
+          <div style="position:absolute;left:52%;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;background:#0a0908;border:1px solid #2d2822;border-radius:50%;"></div>
+          <div style="position:absolute;left:70%;top:50%;transform:translate(-50%,-50%);width:10px;height:18px;background:#a8341b;border:1px solid #8a2b17;"></div>
+          <div style="position:absolute;left:85%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;background:#0a0908;border:1px solid #2d2822;border-radius:50%;"></div>
+          <!-- tick lines -->
+          <div style="position:absolute;left:15%;top:10%;width:1px;height:30%;background:var(--ink-4);"></div>
+          <div style="position:absolute;left:34%;top:10%;width:1px;height:30%;background:var(--ink-4);"></div>
+          <div style="position:absolute;left:52%;top:10%;width:1px;height:30%;background:var(--ink-4);"></div>
+          <div style="position:absolute;left:70%;top:10%;width:1px;height:30%;background:var(--shu);"></div>
+          <div style="position:absolute;left:85%;top:10%;width:1px;height:30%;background:var(--ink-4);"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid #3a332c;font-family:var(--f-mono);font-size:9px;letter-spacing:1px;color:var(--paper-edge);text-transform:uppercase;">
+          <div><span style="display:block;color:var(--ink-4);font-size:8px;margin-bottom:2px;">01</span>USB-C</div>
+          <div><span style="display:block;color:var(--ink-4);font-size:8px;margin-bottom:2px;">02</span>3.5mm</div>
+          <div><span style="display:block;color:var(--ink-4);font-size:8px;margin-bottom:2px;">03</span>Power</div>
+          <div><span style="display:block;color:var(--shu-hi);font-size:8px;margin-bottom:2px;">04</span>LED·Rec</div>
+          <div><span style="display:block;color:var(--ink-4);font-size:8px;margin-bottom:2px;">05</span>Reset</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="doc-foot">
+  <span class="enso"></span> MonoHonpo · Brand System v3 · Extends v2 · Drafted 2026-04-20
+</div>
+
+</body>
+</html>

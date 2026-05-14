@@ -1,0 +1,479 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+日次 End→Relist SEO ブースト タスク
+
+Watch が付いていない & rank=E の listing を毎日 7件、手動で End→Relist することで
+eBay アクティブセラー評価を高め、検索順位の底上げを狙う。
+
+選定条件 (AND):
+  - is_ended=0 かつ quantity_ebay>=1
+  - watch_count=0 (売れていない)
+  - rank='E' (低ランク)
+  - 直近 30日に relist_history に新規 ItemID として出現していない (cooldown)
+
+並び順:
+  1. time_left_seconds 小 → 大 (自動relistが近いもの先取り)
+  2. start_time 古 → 新 (古い listing 優先で鮮度更新)
+
+処理フロー:
+  1. 対象 SKU 1件選出
+  2. VerifyRelistFixedPriceItem で dry-run（任意、config で on/off）
+  3. EndItem で listing 終了 (EndingReason=Incorrect)
+  4. RelistFixedPriceItem で再出品 → 新 ItemID 取得
+  5. relist_history 記録、ebay_listings の新 ItemID へ差し替え
+  6. 秘書 inbox に日次レポート
+
+安全装置:
+  - config で max_per_run を制限（デフォルト 7）
+  - 1件失敗しても他は続行、結果は secretary 通知
+  - dry_run=true モードで本番影響なしで検証可
+"""
+from __future__ import annotations
+
+import json
+import logging
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from monitor.database import (  # noqa: E402
+    get_conn,
+    record_relist,
+    update_ebay_listing_sku,
+    upsert_ebay_listing,
+)
+from monitor.credentials import get_ebay_credentials, ebay_credentials_ok  # noqa: E402
+from monitor.ebay_client import (  # noqa: E402
+    end_item, relist_item, verify_relist_item,
+)
+
+logger = logging.getLogger(__name__)
+
+END_REASON = "Incorrect"  # "listing details are incorrect" = SEO boost 目的に無難
+
+
+def _select_relist_targets(limit: int = 7) -> list[dict]:
+    """選出クエリ。条件: watch=0 / rank=E / cooldown 30日 / active / SKU有効。
+    並び順: time_left 小 → start_time 古。
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ebay_item_id, sku, title, watch_count, rank,
+                      time_left_seconds, start_time, current_price
+               FROM ebay_listings
+               WHERE (is_ended IS NULL OR is_ended=0)
+                 AND quantity_ebay >= 1
+                 AND watch_count = 0
+                 AND rank = 'E'
+                 AND sku IS NOT NULL AND sku != ''
+                 AND ebay_item_id NOT IN (
+                     SELECT old_item_id FROM relist_history
+                     WHERE created_at >= datetime('now', '-30 days')
+                       AND success = 1  -- FINDING 4: 失敗 relist で cooldown 発火させない
+                 )
+                 AND ebay_item_id NOT IN (
+                     SELECT new_item_id FROM relist_history
+                     WHERE new_item_id IS NOT NULL
+                       AND created_at >= datetime('now', '-30 days')
+                       AND success = 1  -- 同上
+                 )
+               ORDER BY
+                 COALESCE(time_left_seconds, 9999999) ASC,
+                 COALESCE(start_time, '9999-12-31') ASC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def inherit_listing_on_relist(
+    old_item_id: str,
+    new_item_id: str,
+    sku: str,
+    title: str,
+    current_price: float,
+    end_reason: str = END_REASON,
+    success: bool = True,
+) -> dict:
+    """Sell Similar relist 時の永続データ継承 + 関連テーブル ebay_item_id 追従 + 履歴記録.
+
+    1 トランザクション原子化. 失敗時は呼出側で握る.
+
+    ## Precondition (呼出側の責務)
+
+    **本 helper は relist API が成功 (new_item_id を eBay から取得済) のケースのみ呼出**.
+    失敗パス (Verify 失敗 / EndItem 失敗 / Relist 全試行失敗) では `record_relist(...,
+    success=False, ...)` を呼ぶこと. 直接 helper を呼ぶと `relist_history.success=1` が
+    刻まれ cooldown が誤って発火する (= 同 listing が 30 日間 relist 対象から外れる
+    silent skip リスク).
+
+    success=False を渡す経路は本 helper の責務外なので、必ず別 path で record_relist を
+    呼んでから return すること.
+
+    ## 継承列 (SKU 固有で物理商品が同じ + user 設定の永続値):
+      物理属性:        weight_g / weight_source / weight_confidence / weight_estimated_at
+                       length_cm / width_cm / height_cm / includes / warranty
+      在庫・仕入:      quantity_ebay / source / source_url / classification / purchase_yen
+      W119 検索ワード: search_keyword / search_keyword_source / search_keyword_generated_at
+      W98 最安値設定:  lp_min_price / lp_breakeven_usd
+      W110 市場分析:   primary_market / us_buyer_ratio / market_analysis_at /
+                       market_sample_size
+
+    継承しない (ライフサイクルでリセット):
+      watch_count / view_count / sales_count_30d / rank / metrics_score
+      source_status / source_last_checked / source_out_of_stock_since
+      is_ended (0 リセット) / time_left_seconds / start_time
+
+    関連テーブル更新:
+      - supplier_candidates: pending/accepted のみ ebay_item_id 追従 (rejected/applied は履歴)
+      - monitored_items: ebay_item_id 追従 (SKU 経由禁止、有在庫 SKU 共有時に他 listing 破壊)
+      - competitor_products: is_active=1 のみ our_item_id 追従
+        (relist 時に競合登録が孤立すると W183 値下げ pipeline が機能停止 = 金銭損失リスク)
+
+    Returns: {"inherited_columns": int, "competitor_rows": int, "supplier_rows": int,
+              "monitored_rows": int}
+
+    出典: 2026-05-11 W119 ふりかえりで silent skip 発見 (lp_min_price 消失 / 競合孤立).
+    """
+    inherited_count = 0
+    competitor_rows = 0
+    supplier_rows = 0
+    monitored_rows = 0
+    with get_conn() as conn:
+        # OLD 行から永続データ取得 (継承列をフラットに SELECT)
+        old_row = conn.execute(
+            """SELECT quantity_ebay, weight_g, weight_source, weight_confidence,
+                      weight_estimated_at, length_cm, width_cm, height_cm,
+                      includes, warranty, source, source_url, classification,
+                      purchase_yen,
+                      search_keyword, search_keyword_source, search_keyword_generated_at,
+                      lp_min_price, lp_breakeven_usd,
+                      primary_market, us_buyer_ratio, market_analysis_at,
+                      market_sample_size
+               FROM ebay_listings WHERE ebay_item_id=?""",
+            (old_item_id,),
+        ).fetchone()
+        old_data = dict(old_row) if old_row else {}
+
+        # 新 ItemID INSERT (INSERT OR IGNORE: 万一既存なら継承スキップ)
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO ebay_listings (
+                ebay_item_id, sku, title, current_price, quantity_ebay,
+                weight_g, weight_source, weight_confidence, weight_estimated_at,
+                length_cm, width_cm, height_cm, includes, warranty,
+                source, source_url, classification,
+                purchase_yen,
+                search_keyword, search_keyword_source, search_keyword_generated_at,
+                lp_min_price, lp_breakeven_usd,
+                primary_market, us_buyer_ratio, market_analysis_at,
+                market_sample_size,
+                last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      CURRENT_TIMESTAMP)""",
+            (
+                new_item_id, sku or "", title or "",
+                current_price or 0.0,
+                old_data.get("quantity_ebay") or 1,
+                old_data.get("weight_g") or 0,
+                old_data.get("weight_source"),
+                old_data.get("weight_confidence"),
+                old_data.get("weight_estimated_at"),
+                old_data.get("length_cm") or 0,
+                old_data.get("width_cm") or 0,
+                old_data.get("height_cm") or 0,
+                old_data.get("includes"),
+                old_data.get("warranty"),
+                old_data.get("source"),
+                old_data.get("source_url"),
+                old_data.get("classification"),
+                old_data.get("purchase_yen"),
+                old_data.get("search_keyword"),
+                old_data.get("search_keyword_source"),
+                old_data.get("search_keyword_generated_at"),
+                old_data.get("lp_min_price"),
+                old_data.get("lp_breakeven_usd"),
+                old_data.get("primary_market"),
+                old_data.get("us_buyer_ratio"),
+                old_data.get("market_analysis_at"),
+                old_data.get("market_sample_size"),
+            ),
+        )
+        if cur.rowcount == 0:
+            # 既存行あって INSERT OR IGNORE で skip された場合 (異常系).
+            # relist API は新 ItemID を返したはずなので、本来このケースは起きない.
+            logger.warning(
+                f"⚠ new_item_id={new_item_id} が既に ebay_listings に存在. "
+                f"継承が skip された可能性あり. next ebay_sync で補修される見込み."
+            )
+        else:
+            inherited_count = 1
+
+        # 関連テーブル ebay_item_id 参照更新
+        # - supplier_candidates: 同一 SKU のため新 ItemID に継承 (pending/accepted のみ).
+        #   rejected/applied は履歴なので触らない.
+        cur_sc = conn.execute(
+            """UPDATE supplier_candidates SET ebay_item_id=?
+               WHERE ebay_item_id=? AND status IN ('pending','accepted')""",
+            (new_item_id, old_item_id),
+        )
+        supplier_rows = cur_sc.rowcount
+
+        # - monitored_items: relist 対象 listing のみ追従. SKU 経由 UPDATE は
+        #   有在庫 SKU 共有時に無関係 listing の追跡を破壊するため ebay_item_id 経由で限定
+        #   (W68 Step 2 / .claude/rules/sku-rules.md)
+        cur_mi = conn.execute(
+            "UPDATE monitored_items SET ebay_item_id=? WHERE ebay_item_id=?",
+            (new_item_id, old_item_id),
+        )
+        monitored_rows = cur_mi.rowcount
+
+        # - competitor_products: W183 値下げ pipeline の競合登録を新 listing に追従.
+        #   is_active=1 のみ移動 (inactive 化された旧競合は history、触らない).
+        #   relist の度に W183 が「該当 listing の競合 0 件」になる silent skip を防ぐ.
+        cur_cp = conn.execute(
+            """UPDATE competitor_products SET our_item_id=?
+               WHERE our_item_id=? AND is_active=1""",
+            (new_item_id, old_item_id),
+        )
+        competitor_rows = cur_cp.rowcount
+
+        # 履歴記録
+        conn.execute(
+            """INSERT INTO relist_history
+               (old_item_id, new_item_id, sku, title, end_reason, success)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            (old_item_id, new_item_id, sku, title, end_reason),
+        )
+
+    return {
+        "inherited_columns": inherited_count,
+        "competitor_rows": competitor_rows,
+        "supplier_rows": supplier_rows,
+        "monitored_rows": monitored_rows,
+    }
+
+
+def _notify_secretary(results: list[dict], summary: str) -> None:
+    """秘書 inbox に日次レポート追記。失敗しても主処理は続行。"""
+    try:
+        inbox_dir = Path(__file__).resolve().parent.parent.parent.parent / ".company" / "secretary" / "inbox"
+        if not inbox_dir.exists():
+            return
+        today = datetime.now().strftime("%Y-%m-%d")
+        ts = datetime.now().strftime("%H:%M")
+        f = inbox_dir / f"{today}.md"
+
+        lines = [f"\n## {ts} 日次 End→Relist SEO ブースト", f"\n{summary}\n"]
+        for r in results:
+            status_icon = "OK" if r.get("success") else "NG"
+            lines.append(
+                f"- [{status_icon}] **{(r.get('title') or '')[:60]}** "
+                f"({r.get('old_item_id')} → {r.get('new_item_id') or '-'})"
+            )
+            if not r.get("success"):
+                lines.append(f"  - エラー: {r.get('error_message', '')[:200]}")
+        block = "\n".join(lines) + "\n"
+
+        if f.exists():
+            f.write_text(f.read_text(encoding='utf-8') + block, encoding='utf-8')
+        else:
+            f.write_text(f"# {today} 秘書 inbox\n" + block, encoding='utf-8')
+    except Exception as e:
+        logger.debug(f"秘書通知失敗: {e}")
+
+
+def process_single_relist(
+    target: dict, creds: dict, dry_run: bool = False,
+    skip_verify: bool = False,
+) -> dict:
+    """1件分の End→Relist。
+
+    dry_run=True: VerifyRelistFixedPriceItem のみ実行、実listingは変更しない
+    skip_verify=True: Verify を飛ばして直接 End→Relist（本番時）
+    """
+    old_item_id = target["ebay_item_id"]
+    sku = target.get("sku")
+    title = target.get("title")
+    result = {
+        "old_item_id": old_item_id, "new_item_id": None,
+        "sku": sku, "title": title, "success": False, "error_message": None,
+        "dry_run": dry_run,
+    }
+
+    # Step A: Verify (dry-run 相当、relist 可能性チェック)
+    if not skip_verify:
+        logger.info(f"[verify] ItemID {old_item_id}...")
+        v = verify_relist_item(old_item_id, **{k: creds[k] for k in ("app_id", "dev_id", "cert_id", "user_token")})
+        if not v.get("success"):
+            result["error_message"] = f"VerifyRelist失敗: {v.get('message')}"
+            logger.warning(result["error_message"])
+            record_relist(old_item_id, None, sku, title, END_REASON, False, result["error_message"])
+            return result
+        logger.info(f"  Verify OK: fees preview = {(v.get('fees') or [])[:3]}")
+
+    if dry_run:
+        # dry-run モードは Verify までで終了
+        result["success"] = True
+        result["error_message"] = "dry_run: Verify のみ実行。EndItem/RelistItem はスキップ"
+        return result
+
+    # Step B: EndItem
+    logger.info(f"[end] ItemID {old_item_id}...")
+    end_r = end_item(old_item_id, **{k: creds[k] for k in ("app_id", "dev_id", "cert_id", "user_token")},
+                     end_reason=END_REASON)
+    if not end_r.get("success"):
+        result["error_message"] = f"EndItem失敗: {end_r.get('message')}"
+        logger.error(result["error_message"])
+        record_relist(old_item_id, None, sku, title, END_REASON, False, result["error_message"])
+        return result
+
+    # EndItem 成功時点で即座にDBへ反映（Relistが失敗しても旧listingの状態は正しく保つ）
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE ebay_listings SET is_ended=1, ended_at=CURRENT_TIMESTAMP, "
+                "ended_reason='daily_relist_seo' WHERE ebay_item_id=?",
+                (old_item_id,),
+            )
+    except Exception as _e:
+        logger.warning(f"旧ItemID is_ended 更新失敗 (継続): {_e}")
+
+    time.sleep(2)  # eBay 側の反映待ち
+
+    # Step C: RelistFixedPriceItem — リトライ付き
+    new_item_id = None
+    last_err = None
+    for attempt in range(1, 4):  # 最大3試行
+        logger.info(f"[relist] ItemID {old_item_id} (attempt {attempt}/3)...")
+        rel = relist_item(old_item_id, **{k: creds[k] for k in ("app_id", "dev_id", "cert_id", "user_token")})
+        if rel.get("success"):
+            new_item_id = rel.get("new_item_id")
+            break
+        last_err = rel.get("message")
+        logger.warning(f"Relist attempt {attempt} 失敗: {last_err}")
+        if attempt < 3:
+            time.sleep(5 * attempt)  # バックオフ
+
+    if not new_item_id:
+        result["error_message"] = (
+            f"Relist全失敗 (3試行): {last_err} — ⚠ 旧ItemID {old_item_id} はend済、"
+            f"eBay Seller Hub から手動で Sell Similar 実行が必要"
+        )
+        logger.error(result["error_message"])
+        record_relist(old_item_id, None, sku, title, END_REASON, False, result["error_message"])
+        return result
+
+    result["new_item_id"] = new_item_id
+    result["success"] = True
+    logger.info(f"  New ItemID: {new_item_id}")
+
+    # Step D: 新 ItemID の upsert + 永続データ継承 + 履歴記録 — 1トランザクションで原子化.
+    # 詳細な継承列リストと根拠は inherit_listing_on_relist() docstring 参照.
+    try:
+        inherit_listing_on_relist(
+            old_item_id=old_item_id,
+            new_item_id=new_item_id,
+            sku=sku,
+            title=title,
+            current_price=target.get("current_price") or 0.0,
+            end_reason=END_REASON,
+        )
+    except Exception as _e:
+        logger.warning(f"DB 追従エラー (業務上は成功): {_e}")
+
+    return result
+
+
+def run_daily_relist(config: dict) -> dict:
+    """daily_scheduler から呼ばれる entry point。"""
+    task_cfg = (config or {}).get("tasks_enabled", {}).get("daily_relist") or {}
+    max_per_run = int(task_cfg.get("max_per_run", 7))
+    dry_run = bool(task_cfg.get("dry_run", False))
+    skip_verify = bool(task_cfg.get("skip_verify", True))  # 本番は active listing から開始でVerify不要
+    sleep_between = float(task_cfg.get("sleep_between_sec", 3))
+
+    creds = get_ebay_credentials(config)
+    if not ebay_credentials_ok(creds):
+        return {"success": False, "message": "eBay 認証情報不足", "processed": 0}
+
+    targets = _select_relist_targets(limit=max_per_run)
+    logger.info(f"End→Relist 対象: {len(targets)}件 (dry_run={dry_run}, max={max_per_run})")
+
+    if not targets:
+        return {"success": True, "message": "対象listingなし", "processed": 0, "results": []}
+
+    results = []
+    ok = 0
+    fail = 0
+    for i, t in enumerate(targets, 1):
+        logger.info(f"--- [{i}/{len(targets)}] {t.get('title','')[:60]} ---")
+        r = process_single_relist(t, creds, dry_run=dry_run, skip_verify=skip_verify)
+        results.append(r)
+        if r.get("success"):
+            ok += 1
+        else:
+            fail += 1
+        if i < len(targets) and sleep_between > 0:
+            time.sleep(sleep_between)
+
+    summary = f"{ok}/{len(targets)} 件成功 / {fail} 件失敗"
+    if dry_run:
+        summary = f"[DRY-RUN] {summary}"
+    _notify_secretary(results, summary)
+    logger.info(f"End→Relist 完了: {summary}")
+    # FINDING 9: partial failure を全件失敗と区別 (alert noise 解消、true crash のみ alert).
+    return {
+        "success": ok > 0,  # 1 件でも成功したら True (= alert なし); 全件失敗時のみ False
+        "processed": len(targets),
+        "ok": ok, "failed": fail,
+        "partial_failure": fail > 0 and ok > 0,
+        "dry_run": dry_run,
+        "results": results,
+        "message": summary,
+    }
+
+
+if __name__ == "__main__":
+    import argparse
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--single", help="単一 ItemID で実行（テスト用）")
+    parser.add_argument("--dry-run", action="store_true", help="VerifyRelistのみ、実listing変更なし")
+    parser.add_argument("--skip-verify", action="store_true", help="Verifyスキップして本番実行")
+    args = parser.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+
+    if args.single:
+        creds = get_ebay_credentials(cfg)
+        if not ebay_credentials_ok(creds):
+            print("ERROR: eBay 認証情報不足")
+            sys.exit(1)
+        # 対象を直接指定
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT ebay_item_id, sku, title, current_price FROM ebay_listings WHERE ebay_item_id=?",
+                (args.single,),
+            ).fetchone()
+        if not row:
+            print(f"ERROR: ItemID {args.single} not found in ebay_listings")
+            sys.exit(1)
+        target = dict(row)
+        r = process_single_relist(target, creds, dry_run=args.dry_run, skip_verify=args.skip_verify)
+        print(json.dumps(r, indent=2, ensure_ascii=False).encode('utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8', errors='replace'))
+    else:
+        cfg.setdefault("tasks_enabled", {}).setdefault("daily_relist", {})
+        if args.dry_run:
+            cfg["tasks_enabled"]["daily_relist"]["dry_run"] = True
+        r = run_daily_relist(cfg)
+        # CP932 コンソール対策: 半角記号等 (½など) を stdout encoding で encode失敗しないよう通す
+        _out = json.dumps(r, indent=2, ensure_ascii=False, default=str)
+        _enc = sys.stdout.encoding or 'utf-8'
+        print(_out.encode(_enc, errors='replace').decode(_enc, errors='replace'))

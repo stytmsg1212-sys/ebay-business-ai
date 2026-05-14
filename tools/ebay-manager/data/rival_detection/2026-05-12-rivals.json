@@ -1,0 +1,23 @@
+{
+  "date": "2026-05-12",
+  "timestamp": "2026-05-12T22:37:31.279758",
+  "new_sellers": [
+    {
+      "seller": "japan-studio31",
+      "feedback_score": 650,
+      "competing_items": [
+        {
+          "title": "Le Creuset Mini Berry Cocotte Strawberry Blueberry Raspberry Stoneware 3 Set",
+          "price_usd": 429.99,
+          "keyword": "Le Creuset Mini Blueberry",
+          "legacy_item_id": "205784944390"
+        }
+      ],
+      "first_seen": "2026-05-12T22:37:31.275725",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 143
+}

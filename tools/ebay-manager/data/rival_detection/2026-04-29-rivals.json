@@ -1,0 +1,22 @@
+{
+  "date": "2026-04-29",
+  "timestamp": "2026-04-29T02:51:07.510797",
+  "new_sellers": [
+    {
+      "seller": "minamijapanshop",
+      "feedback_score": 125,
+      "competing_items": [
+        {
+          "title": "Sanrio x Ohuhu Limited 80 Colors Marker Pen Set Honolulu B Series Fine & Brush",
+          "price_usd": 135.0,
+          "keyword": "Ohuhu x Sanrio 80"
+        }
+      ],
+      "first_seen": "2026-04-29T02:51:06.200842",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 148
+}

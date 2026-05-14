@@ -1,0 +1,6 @@
+- generic [ref=e3]:
+  - banner [ref=e6]:
+    - generic [ref=e9]
+  - generic [ref=e28]:
+    - generic [ref=e29]
+    - button "Scroll tabs right" [ref=e3915] [cursor=pointer]

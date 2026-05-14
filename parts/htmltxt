@@ -1,0 +1,150 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css?family=Lato:700" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+<style>
+h1,h2,h3{font-family:'Lato',sans-serif;}
+p,ul,li,ol,span{font-family:'Open Sans',sans-serif;}
+h1{padding:1em 1em 0 1em;color:#333;}
+h2,h3{position:relative;padding:0.5em 1em 0.5em 1.2em;margin:0 1em 1em;border:2px solid #458fbf;border-radius:0.4em;background:#fff;color:#458fbf;font-size:100%;line-height:1.2;text-align:left;}
+h2:before,h3:before{content:'';position:absolute;left:0.5em;top:0;bottom:0;margin:6px auto;border:3px solid #458fbf;border-radius:3px;color:#458fbf;}
+p,.product_dec div{margin:0.5em 0;padding:0 2em 2em 2em;color:#333;text-align:left;}
+#main{max-width:96%;background:#f9f9f9;border-radius:0.5em;text-align:center;}
+@media screen and (min-width:768px){
+  #main{margin:0 auto;max-width:65%;}
+  h2,h3{font-size:125%;}
+}
+
+/* === All-Inclusive Price Guarantee === */
+.price-guarantee {
+  margin: 1.5em auto;
+  padding: 1em;
+  text-align: left;
+  background: linear-gradient(180deg, #f7faff 0%, #eef4ff 100%);
+  border-radius: 0.5em;
+  font-family: 'Open Sans', sans-serif;
+  color: #333;
+}
+
+.price-box {
+  background: #ffffff;
+  border: 2px solid #458fbf;
+  border-radius: 0.6em;
+  padding: 1.2em;
+  margin-bottom: 1em;
+  box-shadow: 0 2px 4px rgba(69,143,191,0.15);
+}
+
+.price-box h3 {
+  font-family: 'Lato', sans-serif;
+  color: #458fbf;
+  font-size: 1.1em;
+  margin-bottom: 0.5em;
+}
+
+.price-box .highlight {
+  color: #0073e6;
+  font-weight: bold;
+}
+
+.intl-warning {
+  margin-top: 1em;
+  padding: 0.8em 1em;
+  background: #fff5f2;
+  border-left: 4px solid #ff6b35;
+  border-radius: 0.3em;
+  color: #b44a1d;
+  font-size: 0.95em;
+}
+
+.note-box {
+  background: linear-gradient(180deg, #dfe8ff 0%, #c9d9ff 100%);
+  color: #2c3e50;
+  border-radius: 0.5em;
+  padding: 0.8em 1em;
+  font-size: 0.95em;
+  border-left: 4px solid #3459c9;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+</style>
+
+<div id="main">
+  <article>
+    <h1>Item Title</h1>
+
+    <!-- ✅ All-Inclusive Price Guarantee moved to the TOP -->
+    <section class="price-guarantee">
+      <div class="price-box">
+        <h3><i class="fa fa-shield"></i> All-Inclusive Price Guarantee (USA Only)</h3>
+        <p>
+          <strong>For US Buyers – No hidden fees!</strong><br>
+          The price includes <strong>ALL costs</strong> – customs duties and taxes.<br>
+          <span class="highlight">You will NOT be charged anything extra.</span>
+        </p>
+
+        <div class="intl-warning">
+          <i class="fa fa-exclamation-circle"></i>
+          <strong>International Buyers (Non-US):</strong>
+          Import duties and taxes are <strong>NOT included</strong>.<br>
+          You may be charged additional fees by your country's customs upon delivery.
+        </div>
+      </div>
+
+      <div class="note-box">
+        <i class="fa fa-info-circle"></i>
+        <strong>Note:</strong> For items valued over <strong>$2,500 USD</strong>,
+        customs duties may apply and must be paid by the buyer, even within the United States.
+      </div>
+    </section>
+    <!-- ✅ END of Price Guarantee Section -->
+
+    <section class="product_dec">
+      <h2>Description</h2>
+      <div vocab="http://schema.org/" typeof="Product">
+        【記載内容】<span property="description"></span>
+      </div>
+    </section>
+    <aside>
+      <div class="shiharai">
+        <h3>Payment</h3>
+        <p>
+          You can use various payment methods through eBay Managed Payments.
+          Import duties, taxes, and charges are not included in the item price or shipping cost.
+          These charges are the buyer's responsibility.
+          If you wish to cancel your order after purchase, please feel free to contact us.
+        </p>
+      </div>
+
+      <div class="hasso">
+        <h3>Shipping Information</h3>
+        <p>
+          We ship via <strong>FedEx</strong>, <strong>DHL</strong>, or <strong>Japan Post</strong>.<br>
+          All shipments include a tracking number so you can order with confidence,
+          and you can check the delivery status at any time.
+        </p>
+      </div>
+
+      <div class="denatsu">
+        <h3>Voltage and Usage Warning</h3>
+        <p>
+          Some of our electronic devices with AC100V are designed exclusively for use in Japan.<br>
+          If you intend to use these devices in regions where the voltage exceeds 100V (e.g. 200V–240V),
+          you must use a suitable transformer to adjust the voltage.<br>
+          Failure to use a transformer may result in device damage, which is not covered by our responsibility.<br>
+          Please purchase a suitable transformer locally, or feel free to contact us for assistance.
+        </p>
+      </div>
+
+      <div class="store-warning note-box">
+        <i class="fa fa-store"></i>
+        <strong>Important Notice:</strong>
+        This item is also available for sale at our physical retail store in Japan.<br>
+        In rare cases, it may be sold in-store before your online purchase is completed.<br>
+        If this happens, we will notify you immediately and issue a full refund.<br>
+        Thank you for your kind understanding.
+      </div>
+    </aside>
+  </article>
+</div>

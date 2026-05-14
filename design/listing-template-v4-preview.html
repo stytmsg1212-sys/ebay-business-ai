@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Listing Description Template v4 — Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ---- Page chrome only (not part of the template) ---- */
+body{margin:0;padding:0;background:#2d2822;font-family:'Inter',system-ui,sans-serif;}
+.doc-hero{padding:28px 40px 20px;background:#1a1817;color:#d8cdb5;border-bottom:1px solid #3a332c;}
+.doc-hero h1{margin:0 0 4px;font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;letter-spacing:.5px;color:#f6f2ea;}
+.doc-hero p{margin:0;font-size:12px;color:#8a7f74;letter-spacing:1px;text-transform:uppercase;}
+.frame-label{max-width:900px;margin:40px auto -10px;padding:12px 20px;background:#3a332c;color:#d8cdb5;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;border-left:3px solid #a8341b;}
+.frame-shell{max-width:900px;margin:0 auto 8px;box-shadow:0 20px 60px rgba(0,0,0,.4),0 8px 20px rgba(0,0,0,.2);}
+
+/* ==== TEMPLATE STYLES (copy of the production template in listing-description-template.md) ==== */
+.mh-wrap{background:#f6f2ea;color:#1a1817;font-family:'Inter','Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.6;max-width:860px;margin:0 auto;padding:0;}
+.mh-wrap *{box-sizing:border-box;}
+.mh-wrap h1,.mh-wrap h2,.mh-wrap h3,.mh-wrap h4{font-family:'Cormorant Garamond','Times New Roman',serif;color:#1a1817;margin:0;}
+.mh-wrap .mh-jp{font-family:'Cormorant Garamond','Times New Roman',serif;letter-spacing:4px;}
+.mh-wrap .mh-mono{font-family:'JetBrains Mono','Courier New',monospace;letter-spacing:1.5px;}
+
+.mh-mast{text-align:center;padding:44px 40px 32px;border-bottom:1px solid #d8cdb5;background:#fbf9f3;}
+.mh-mast .mh-origin{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:11px;letter-spacing:8px;color:#a8341b;margin-bottom:14px;font-weight:500;}
+.mh-mast h1{font-size:34px;font-weight:500;line-height:1.2;margin-bottom:10px;color:#1a1817;}
+.mh-mast .mh-sub{font-family:'Cormorant Garamond','Times New Roman',serif;font-style:italic;font-size:17px;color:#6b6157;margin:0;}
+
+.mh-hanko{display:flex;gap:24px;align-items:center;padding:26px 32px;background:#fbf9f3;border:1px solid #d8cdb5;border-left:4px solid #a8341b;margin:32px 40px;}
+.mh-hanko-seal{width:104px;height:104px;border-radius:50%;background:#a8341b;color:#fbf9f3;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;box-shadow:inset 0 0 0 2px #fbf9f3,0 0 0 3px #a8341b;position:relative;transform:rotate(-6deg);font-family:'Cormorant Garamond','Times New Roman',serif;}
+.mh-hanko-seal .mh-hs-t{font-size:10px;letter-spacing:3px;font-weight:500;}
+.mh-hanko-seal .mh-hs-m{font-size:22px;font-weight:700;line-height:1;margin:3px 0;letter-spacing:1px;}
+.mh-hanko-seal .mh-hs-b{font-family:'JetBrains Mono','Courier New',monospace;font-size:8px;letter-spacing:2px;margin-top:2px;}
+.mh-hanko-body h3{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:22px;font-weight:600;margin-bottom:8px;}
+.mh-hanko-body p{margin:0;color:#3a332c;font-size:14px;line-height:1.55;}
+.mh-hanko-body .mh-strong{color:#a8341b;font-weight:600;}
+
+.mh-rank{padding:32px;background:#fbf9f3;border:1px solid #d8cdb5;margin:0 40px 32px;text-align:center;}
+.mh-rank .mh-kicker{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:11px;letter-spacing:6px;color:#6b6157;margin-bottom:14px;text-transform:uppercase;}
+.mh-rank-brush{width:120px;height:120px;margin:0 auto 16px;position:relative;}
+.mh-rank-brush .mh-rb-letter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond','Times New Roman',serif;font-size:48px;font-weight:600;color:#1a1817;}
+.mh-rank h3{font-size:28px;font-weight:500;margin-bottom:6px;}
+.mh-rank .mh-rank-jp{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:13px;color:#6b6157;margin-bottom:16px;letter-spacing:3px;}
+.mh-rank .mh-quick{max-width:520px;margin:0 auto;padding:16px 20px;background:#f6f2ea;border-left:2px solid #1a1817;text-align:left;font-family:'Cormorant Garamond','Times New Roman',serif;font-style:italic;font-size:16px;color:#3a332c;line-height:1.5;}
+
+.mh-sec{padding:0 40px;margin-bottom:36px;}
+.mh-sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid #d8cdb5;}
+.mh-sec-head h2{font-size:24px;font-weight:500;}
+.mh-sec-head .mh-jp{font-size:11px;color:#6b6157;}
+.mh-sec-head .mh-num{margin-left:auto;font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;color:#9a8f82;letter-spacing:2px;}
+
+.mh-inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.mh-inc{padding:14px 16px 14px 36px;background:#fbf9f3;border:1px solid #d8cdb5;position:relative;font-size:14px;color:#3a332c;}
+.mh-inc:before{content:'';position:absolute;left:14px;top:18px;width:10px;height:10px;border:1.5px solid #a8341b;border-radius:50%;box-sizing:border-box;}
+.mh-inc:after{content:'';position:absolute;left:17px;top:21px;width:4px;height:4px;background:#a8341b;border-radius:50%;}
+.mh-inc strong{display:block;color:#1a1817;font-family:'Cormorant Garamond','Times New Roman',serif;font-size:15px;font-weight:600;margin-bottom:2px;}
+
+.mh-specs{width:100%;border-collapse:collapse;}
+.mh-specs tr{border-bottom:1px solid #d8cdb5;}
+.mh-specs tr:last-child{border-bottom:0;}
+.mh-specs td{padding:14px 0;font-size:14px;vertical-align:top;}
+.mh-specs td:first-child{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;letter-spacing:2px;color:#6b6157;text-transform:uppercase;width:180px;padding-top:17px;}
+.mh-specs td:last-child{color:#1a1817;font-family:'Cormorant Garamond','Times New Roman',serif;font-size:17px;}
+
+.mh-wrap.gadget .mh-spec-strip{display:grid;grid-template-columns:1fr 1fr 1fr;margin:0 40px 32px;border-top:1px solid #d8cdb5;border-bottom:1px solid #d8cdb5;background:#fbf9f3;}
+.mh-wrap:not(.gadget) .mh-spec-strip{display:none;}
+.mh-spec-strip > div{padding:16px 0;text-align:center;border-right:1px solid #d8cdb5;}
+.mh-spec-strip > div:last-child{border-right:0;}
+.mh-spec-strip .k{font-family:'JetBrains Mono','Courier New',monospace;font-size:9px;letter-spacing:2px;color:#9a8f82;text-transform:uppercase;margin-bottom:4px;}
+.mh-spec-strip .v{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:16px;font-weight:600;color:#1a1817;}
+
+.mh-ship{padding:28px 32px;background:#1a1817;color:#f6f2ea;margin:0 40px 32px;}
+.mh-ship h3{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:22px;color:#fbf9f3;margin-bottom:14px;font-weight:500;}
+.mh-ship h3 .mh-jp{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:11px;color:#9a8f82;letter-spacing:4px;margin-left:12px;}
+.mh-ship-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px 28px;}
+.mh-ship-grid strong{display:block;font-family:'JetBrains Mono','Courier New',monospace;font-size:9px;color:#d8cdb5;letter-spacing:2px;text-transform:uppercase;margin-bottom:3px;}
+.mh-ship-grid span{color:#f6f2ea;font-size:14px;}
+
+.mh-aside{padding:0 40px;margin-bottom:32px;}
+.mh-aside .mh-box{padding:20px 24px;background:#fbf9f3;border:1px solid #d8cdb5;margin-bottom:14px;}
+.mh-aside h3{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:18px;font-weight:600;color:#1a1817;margin-bottom:8px;}
+.mh-aside p{margin:0;font-size:13px;color:#3a332c;line-height:1.6;}
+
+.mh-rankdef{padding:22px 28px;background:#f6f2ea;border:1px solid #d8cdb5;}
+.mh-rankdef table{width:100%;border-collapse:collapse;font-size:13px;}
+.mh-rankdef td{padding:8px 10px;border-bottom:1px solid #d8cdb5;vertical-align:top;color:#3a332c;}
+.mh-rankdef td:first-child{font-family:'Cormorant Garamond','Times New Roman',serif;font-weight:700;color:#a8341b;width:4em;font-size:15px;}
+
+.mh-about{text-align:center;padding:40px 40px 24px;border-top:1px solid #d8cdb5;}
+.mh-about .mh-mark{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:22px;font-weight:600;letter-spacing:6px;color:#1a1817;margin-bottom:4px;}
+.mh-about .mh-mark-jp{font-family:'Cormorant Garamond','Times New Roman',serif;font-size:11px;letter-spacing:6px;color:#6b6157;margin-bottom:16px;}
+.mh-about p{max-width:520px;margin:0 auto 10px;font-size:13px;color:#6b6157;line-height:1.65;}
+.mh-about .mh-contact{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;letter-spacing:2px;color:#9a8f82;text-transform:uppercase;margin-top:16px;}
+
+@media (max-width:640px){
+  .mh-mast{padding:32px 20px 24px;}
+  .mh-mast h1{font-size:26px;}
+  .mh-hanko{flex-direction:column;text-align:center;margin:24px 20px;padding:22px;}
+  .mh-rank,.mh-ship{margin-left:20px;margin-right:20px;}
+  .mh-sec,.mh-aside,.mh-about{padding-left:20px;padding-right:20px;}
+  .mh-inc-grid{grid-template-columns:1fr;}
+  .mh-ship-grid{grid-template-columns:1fr;}
+  .mh-specs td:first-child{width:110px;}
+}
+</style>
+</head>
+<body>
+
+<div class="doc-hero">
+  <h1>Listing Description Template v4 — Preview</h1>
+  <p>Sample: Sony WH-1000XM5 · Rank A · Default mode and Gadget mode side by side</p>
+</div>
+
+<!-- ========================================================= -->
+<!--  FRAME 1: DEFAULT MODE (general products, audio, optics)  -->
+<!-- ========================================================= -->
+<div class="frame-label">Sample 1 · mode_class = "default"</div>
+<div class="frame-shell">
+<div class="mh-wrap default">
+
+  <div class="mh-mast">
+    <div class="mh-origin">S H I P P E D  F R O M  J A P A N</div>
+    <h1>Sony WH-1000XM5 Wireless Noise Cancelling Headphones</h1>
+    <p class="mh-sub">Black &middot; Flagship model &middot; Tested and documented</p>
+  </div>
+
+  <div class="mh-hanko">
+    <div class="mh-hanko-seal">
+      <span class="mh-hs-t">C E R T</span>
+      <span class="mh-hs-m">DDP</span>
+      <span class="mh-hs-b">PREPAID</span>
+    </div>
+    <div class="mh-hanko-body">
+      <h3>No surprise customs fees. Ever.</h3>
+      <p>
+        Since October 2025, the US eliminated the $800 de minimis exemption &mdash; most sellers now ship DDU, meaning buyers receive unexpected customs invoices after delivery.
+        <br><br>
+        <span class="mh-strong">MonoHonpo ships every US order DDP (Delivered Duty Paid).</span> Your listed price includes the item, international shipping, US customs duties, and import taxes. When the package arrives, you pay nothing more.
+      </p>
+    </div>
+  </div>
+
+  <div class="mh-spec-strip"></div>
+
+  <div class="mh-rank">
+    <div class="mh-kicker">C O N D I T I O N &nbsp; R A N K</div>
+    <div class="mh-rank-brush">
+      <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 14 C 28 14, 14 38, 14 60 C 14 86, 36 106, 62 106 C 88 106, 106 86, 106 60 C 106 46, 98 30, 82 22"
+              stroke="#1a1817" stroke-width="5" stroke-linecap="round" fill="none"/>
+      </svg>
+      <div class="mh-rb-letter">A</div>
+    </div>
+    <h3>Rank A &mdash; Excellent</h3>
+    <div class="mh-rank-jp">T E S T E D &nbsp;&middot;&nbsp; M I N O R &nbsp; W E A R</div>
+    <div class="mh-quick">Tested working. Minor scuffs on headband underside; ANC, Bluetooth 5.2 pairing, and touch controls all verified. Retains 80%+ original battery life.</div>
+  </div>
+
+  <div class="mh-sec">
+    <div class="mh-sec-head">
+      <h2>In the box</h2>
+      <div class="mh-jp">I N C L U D E D</div>
+      <div class="mh-num">6 items</div>
+    </div>
+    <div class="mh-inc-grid">
+      <div class="mh-inc"><strong>Headphones</strong>Sony WH-1000XM5 (Black)</div>
+      <div class="mh-inc"><strong>Carry case</strong>Original foldable hard case</div>
+      <div class="mh-inc"><strong>USB-C cable</strong>30cm charging cable</div>
+      <div class="mh-inc"><strong>Aux cable</strong>3.5mm to 3.5mm</div>
+      <div class="mh-inc"><strong>Airline adapter</strong>Dual-pin to 3.5mm</div>
+      <div class="mh-inc"><strong>Quick start guide</strong>JP/EN printed booklet</div>
+    </div>
+  </div>
+
+  <div class="mh-sec">
+    <div class="mh-sec-head">
+      <h2>Specifications</h2>
+      <div class="mh-jp">S P E C S</div>
+    </div>
+    <table class="mh-specs">
+      <tr><td>Brand</td><td>Sony</td></tr>
+      <tr><td>Model</td><td>WH-1000XM5</td></tr>
+      <tr><td>Connectivity</td><td>Bluetooth 5.2 &middot; 3.5mm wired</td></tr>
+      <tr><td>Battery life</td><td>Up to 30 hours (ANC on)</td></tr>
+      <tr><td>Weight</td><td>250 g / 8.8 oz</td></tr>
+      <tr><td>Dimensions</td><td>254 &times; 220 &times; 78 mm packed</td></tr>
+      <tr><td>Voltage</td><td>USB-C charging &middot; 100&ndash;240V compatible</td></tr>
+    </table>
+  </div>
+
+  <div class="mh-ship">
+    <h3>Shipping &amp; handling<span class="mh-jp">S H I P P I N G</span></h3>
+    <div class="mh-ship-grid">
+      <div><strong>Origin</strong><span>Tokyo, Japan</span></div>
+      <div><strong>Carrier</strong><span>DHL SpeedPAK &middot; tracked, insured</span></div>
+      <div><strong>Handling</strong><span>Ships within 1&ndash;3 business days</span></div>
+      <div><strong>Delivery (US)</strong><span>6&ndash;10 business days typical</span></div>
+      <div><strong>Packaging</strong><span>Double-boxed &middot; bubble-wrapped &middot; waterproof liner</span></div>
+      <div><strong>Duties</strong><span>DDP &mdash; US import duties prepaid by seller</span></div>
+    </div>
+  </div>
+
+  <div class="mh-aside">
+
+    <div class="mh-rankdef">
+      <h3 style="margin-bottom:12px;">Condition Rank Definitions</h3>
+      <table>
+        <tr><td>N</td><td>New (Unopened) &mdash; Brand new, factory sealed</td></tr>
+        <tr><td>S</td><td>Like New &mdash; Opened but unused, no visible wear</td></tr>
+        <tr><td>A</td><td>Excellent &mdash; Minor wear, tested and fully working</td></tr>
+        <tr><td>B</td><td>Good &mdash; Visible use marks, tested and fully working</td></tr>
+        <tr><td>C</td><td>Fair &mdash; Heavy use marks, tested and fully working</td></tr>
+        <tr><td>D</td><td>Issues &mdash; Cosmetic or function issues, working with limits</td></tr>
+        <tr><td>PO</td><td>Power-On Only &mdash; Powers on, full function not verified</td></tr>
+        <tr><td>As-Is</td><td>As-Is &mdash; Not fully tested, sold without warranty</td></tr>
+      </table>
+    </div>
+
+    <div class="mh-box">
+      <h3>Payment</h3>
+      <p>We accept eBay Managed Payments (credit cards, PayPal, Apple Pay, Google Pay). Import duties and taxes for US buyers are prepaid (DDP). International (non-US) buyers are responsible for their country's import duties. To cancel after purchase, please contact us immediately.</p>
+    </div>
+
+    <div class="mh-box">
+      <h3>Voltage notice</h3>
+      <p>Some electronics from Japan are designed for AC 100V. For use in regions with 200&ndash;240V, a step-down transformer may be required. Please confirm voltage compatibility before purchase. Damage caused by incorrect voltage is not covered by warranty.</p>
+    </div>
+
+    <div class="mh-box">
+      <h3>Physical store notice</h3>
+      <p>This item may also be listed in our physical workshop in Tokyo. In rare cases it may sell in-store before an online order is processed. If this occurs we will notify you immediately and issue a full refund.</p>
+    </div>
+
+    <div class="mh-box" style="border-left:3px solid #a8341b;">
+      <h3>If you need anything</h3>
+      <p>Questions before purchase are always welcome &mdash; messages answered within 24 hours on Tokyo business days. If something about the item doesn't match the description on arrival, contact us first: we cover return shipping on misdescribed items.</p>
+    </div>
+
+  </div>
+
+  <div class="mh-about">
+    <div class="mh-mark">M O N O H O N P O</div>
+    <div class="mh-mark-jp">M O N O &nbsp; H O N P O</div>
+    <p>One workbench in Tokyo. Every item sits on the bench for a full session before it is photographed, graded, and packed. If it doesn't test clean, it doesn't list.</p>
+    <p>We specialize in industrial sensors &amp; test gear, vintage Japanese audio, and hand-selected specialist tools. US buyers get DDP on every order.</p>
+    <div class="mh-contact">eBay Messages &middot; Response &lt; 24h &middot; Tokyo JST</div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ========================================================= -->
+<!--  FRAME 2: GADGET MODE (industrial / electronics)          -->
+<!-- ========================================================= -->
+<div class="frame-label">Sample 2 · mode_class = "gadget" (spec strip trio visible above rank)</div>
+<div class="frame-shell">
+<div class="mh-wrap gadget">
+
+  <div class="mh-mast">
+    <div class="mh-origin">S H I P P E D  F R O M  J A P A N</div>
+    <h1>Keyence FL-001 Fiber Optic Sensor Amplifier</h1>
+    <p class="mh-sub">Digital amplifier &middot; NPN output &middot; Bench-tested</p>
+  </div>
+
+  <div class="mh-hanko">
+    <div class="mh-hanko-seal">
+      <span class="mh-hs-t">C E R T</span>
+      <span class="mh-hs-m">DDP</span>
+      <span class="mh-hs-b">PREPAID</span>
+    </div>
+    <div class="mh-hanko-body">
+      <h3>No surprise customs fees. Ever.</h3>
+      <p>
+        Since October 2025, the US eliminated the $800 de minimis exemption &mdash; most sellers now ship DDU, meaning buyers receive unexpected customs invoices after delivery.
+        <br><br>
+        <span class="mh-strong">MonoHonpo ships every US order DDP (Delivered Duty Paid).</span> Your listed price includes the item, international shipping, US customs duties, and import taxes. When the package arrives, you pay nothing more.
+      </p>
+    </div>
+  </div>
+
+  <!-- Spec strip trio visible in gadget mode -->
+  <div class="mh-spec-strip">
+    <div><div class="k">Output</div><div class="v">NPN</div></div>
+    <div><div class="k">Response</div><div class="v">250 &micro;s</div></div>
+    <div><div class="k">Voltage</div><div class="v">12&ndash;24 VDC</div></div>
+  </div>
+
+  <div class="mh-rank">
+    <div class="mh-kicker">C O N D I T I O N &nbsp; R A N K</div>
+    <div class="mh-rank-brush">
+      <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 14 C 28 14, 14 38, 14 60 C 14 86, 36 106, 62 106 C 88 106, 106 86, 106 60 C 106 46, 98 30, 82 22"
+              stroke="#1a1817" stroke-width="5" stroke-linecap="round" fill="none"/>
+      </svg>
+      <div class="mh-rb-letter">A</div>
+    </div>
+    <h3>Rank A &mdash; Excellent</h3>
+    <div class="mh-rank-jp">B E N C H - T E S T E D &nbsp;&middot;&nbsp; M I N O R &nbsp; W E A R</div>
+    <div class="mh-quick">Powered up on bench. All indicator LEDs functional. Threshold set (TEACH) and output (NPN) verified against reference fiber head. Housing shows light scuffs consistent with industrial use; no cracks, no missing labels.</div>
+  </div>
+
+  <div class="mh-sec">
+    <div class="mh-sec-head">
+      <h2>In the box</h2>
+      <div class="mh-jp">I N C L U D E D</div>
+      <div class="mh-num">2 items</div>
+    </div>
+    <div class="mh-inc-grid">
+      <div class="mh-inc"><strong>Amplifier</strong>Keyence FL-001 main unit</div>
+      <div class="mh-inc"><strong>DIN rail clip</strong>Original mounting clip attached</div>
+    </div>
+  </div>
+
+  <div class="mh-sec">
+    <div class="mh-sec-head">
+      <h2>Specifications</h2>
+      <div class="mh-jp">S P E C S</div>
+    </div>
+    <table class="mh-specs">
+      <tr><td>Brand</td><td>Keyence</td></tr>
+      <tr><td>Model</td><td>FL-001</td></tr>
+      <tr><td>Type</td><td>Fiber Optic Sensor Amplifier</td></tr>
+      <tr><td>Output</td><td>NPN open-collector &middot; 100 mA max</td></tr>
+      <tr><td>Response time</td><td>250 &micro;s</td></tr>
+      <tr><td>Supply voltage</td><td>12&ndash;24 VDC</td></tr>
+      <tr><td>Current consumption</td><td>&le; 35 mA</td></tr>
+      <tr><td>Mounting</td><td>DIN rail &middot; 35 mm</td></tr>
+      <tr><td>Dimensions</td><td>10 &times; 30 &times; 71 mm</td></tr>
+      <tr><td>Country of origin</td><td>Japan</td></tr>
+    </table>
+  </div>
+
+  <div class="mh-ship">
+    <h3>Shipping &amp; handling<span class="mh-jp">S H I P P I N G</span></h3>
+    <div class="mh-ship-grid">
+      <div><strong>Origin</strong><span>Tokyo, Japan</span></div>
+      <div><strong>Carrier</strong><span>FedEx International Priority</span></div>
+      <div><strong>Handling</strong><span>Ships within 1&ndash;2 business days</span></div>
+      <div><strong>Delivery (US)</strong><span>3&ndash;5 business days typical</span></div>
+      <div><strong>Packaging</strong><span>Anti-static bag &middot; bubble wrap &middot; rigid carton</span></div>
+      <div><strong>Duties</strong><span>DDP &mdash; US import duties prepaid by seller</span></div>
+    </div>
+  </div>
+
+  <div class="mh-aside">
+    <div class="mh-rankdef">
+      <h3 style="margin-bottom:12px;">Condition Rank Definitions</h3>
+      <table>
+        <tr><td>N</td><td>New (Unopened) &mdash; Brand new, factory sealed</td></tr>
+        <tr><td>S</td><td>Like New &mdash; Opened but unused, no visible wear</td></tr>
+        <tr><td>A</td><td>Excellent &mdash; Minor wear, tested and fully working</td></tr>
+        <tr><td>B</td><td>Good &mdash; Visible use marks, tested and fully working</td></tr>
+        <tr><td>C</td><td>Fair &mdash; Heavy use marks, tested and fully working</td></tr>
+        <tr><td>D</td><td>Issues &mdash; Cosmetic or function issues, working with limits</td></tr>
+        <tr><td>PO</td><td>Power-On Only &mdash; Powers on, full function not verified</td></tr>
+        <tr><td>As-Is</td><td>As-Is &mdash; Not fully tested, sold without warranty</td></tr>
+      </table>
+    </div>
+    <div class="mh-box"><h3>Payment</h3><p>We accept eBay Managed Payments. US buyers: duties prepaid (DDP). Non-US buyers: import duties per your country's rules.</p></div>
+    <div class="mh-box"><h3>Voltage notice</h3><p>Industrial controls ship with 100V-source testing. This unit is rated 12&ndash;24 VDC and is region-independent, but confirm compatibility with your supply before installation.</p></div>
+    <div class="mh-box" style="border-left:3px solid #a8341b;"><h3>If you need anything</h3><p>We answer technical questions within 24 hours (Tokyo JST). If the unit doesn't match the bench-test notes above on arrival, contact us first &mdash; return shipping is covered for misdescribed items.</p></div>
+  </div>
+
+  <div class="mh-about">
+    <div class="mh-mark">M O N O H O N P O</div>
+    <div class="mh-mark-jp">M O N O &nbsp; H O N P O</div>
+    <p>One workbench in Tokyo. Every item sits on the bench for a full session before it is photographed, graded, and packed. If it doesn't test clean, it doesn't list.</p>
+    <p>We specialize in industrial sensors &amp; test gear, vintage Japanese audio, and hand-selected specialist tools. US buyers get DDP on every order.</p>
+    <div class="mh-contact">eBay Messages &middot; Response &lt; 24h &middot; Tokyo JST</div>
+  </div>
+
+</div>
+</div>
+
+<div style="max-width:900px;margin:40px auto 60px;padding:20px 0;color:#6b6157;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:center;">
+  Listing Description v4 &middot; Preview &middot; 2026-04-20
+</div>
+
+</body>
+</html>

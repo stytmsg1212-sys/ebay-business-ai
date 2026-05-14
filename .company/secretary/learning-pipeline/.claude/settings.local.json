@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python run_learning.py \"https://www.youtube.com/watch?v=73CihtOleFc\")",
+      "Bash(python run_learning.py \"https://www.youtube.com/watch?v=oa4m-RzaKsQ\")",
+      "Bash(python -c \":*)",
+      "Bash(find C:UsersgucchOneDriveworkclaude.companyresearchnotes -type f -name *.md)",
+      "Bash(find C:UsersgucchOneDriveworkclaude.companyresearchlearning -type f -name *.md)",
+      "Bash(ls -lh C:UsersgucchOneDriveworkclaude.companyresearchlearning2026-04-0*.md)",
+      "Bash(pip show:*)",
+      "Bash(python run_learning.py \"https://www.youtube.com/watch?v=14d1BQBVo30\")",
+      "Bash(python run_learning.py \"https://www.youtube.com/watch?v=LF_q8uClIpw\")"
+    ]
+  }
+}

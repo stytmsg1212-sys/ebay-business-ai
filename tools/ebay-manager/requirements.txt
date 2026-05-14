@@ -1,0 +1,19 @@
+streamlit>=1.32.0
+pandas>=2.0.0
+playwright>=1.40.0
+httpx>=0.26.0
+apscheduler>=3.10.0
+requests>=2.31.0
+selenium>=4.10.0
+yt-dlp>=2023.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.100.0
+pypdf>=6.0.0
+anthropic>=0.89.0
+python-dotenv>=1.0.0
+# W10 画像加工 (背景除去 + カバー合成)
+rembg>=2.0.50
+onnxruntime>=1.17.0
+Pillow>=10.0.0
+pillow-heif>=0.18.0

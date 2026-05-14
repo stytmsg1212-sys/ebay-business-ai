@@ -1,0 +1,30 @@
+# 環境変数ファイル（API キーを含む）
+.env
+.env.local
+.env.*.local
+
+# Python キャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 仮想環境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 一時ファイル
+*.tmp
+temp/

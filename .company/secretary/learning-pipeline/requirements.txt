@@ -1,0 +1,16 @@
+# YouTube 動画学習パイプライン - 依存ライブラリ
+
+# Anthropic Claude API
+anthropic>=0.13.0
+
+# YouTube ダウンロード・メタデータ
+yt-dlp>=2024.01.01
+
+# 音声文字起こし（ローカル実行版）
+openai-whisper>=20230314
+
+# 環境変数管理
+python-dotenv>=1.0.0
+
+# その他ユーティリティ
+requests>=2.31.0

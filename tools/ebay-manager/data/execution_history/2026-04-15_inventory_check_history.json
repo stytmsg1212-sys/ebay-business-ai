@@ -1,0 +1,17 @@
+[
+  {
+    "timestamp": "2026-04-15T06:57:46.632034",
+    "result": {
+      "timestamp": "2026-04-15T06:57:46.630996",
+      "task_name": "inventory_check",
+      "status": "success",
+      "message": "4件のアイテムをチェック完了",
+      "execution_time_sec": 52.68160700798035,
+      "details": {
+        "total_items": 4,
+        "checked_items": 4,
+        "execution_time_sec": 52.68160700798035
+      }
+    }
+  }
+]

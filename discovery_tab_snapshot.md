@@ -1,0 +1,69 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e7]:
+      - button "Deploy" [ref=e9] [cursor=pointer]:
+        - generic [ref=e11]: Deploy
+      - button "Main menu" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+  - generic [ref=e28]:
+    - generic [ref=e29]:
+      - tablist [ref=e31]:
+        - tab "DASHBOARD" [ref=e32] [cursor=pointer]:
+          - paragraph [ref=e34]: DASHBOARD
+        - tab "商品管理" [ref=e35] [cursor=pointer]:
+          - paragraph [ref=e37]: 商品管理
+        - tab "リサーチ脳" [ref=e38] [cursor=pointer]:
+          - paragraph [ref=e40]: リサーチ脳
+        - tab "今日の発掘" [active] [selected] [ref=e41] [cursor=pointer]:
+          - paragraph [ref=e43]: 今日の発掘
+        - tab "利益計算" [ref=e44] [cursor=pointer]:
+          - paragraph [ref=e46]: 利益計算
+        - tab "在庫監視" [ref=e47] [cursor=pointer]:
+          - paragraph [ref=e49]: 在庫監視
+        - tab "eBay連携" [ref=e50] [cursor=pointer]:
+          - paragraph [ref=e52]: eBay連携
+        - tab "最安値チェック" [ref=e53] [cursor=pointer]:
+          - paragraph [ref=e55]: 最安値チェック
+        - tab "仕入先候補" [ref=e56] [cursor=pointer]:
+          - paragraph [ref=e58]: 仕入先候補
+        - tab "モデル比較" [ref=e59] [cursor=pointer]:
+          - paragraph [ref=e61]: モデル比較
+        - tab "個別出品" [ref=e62] [cursor=pointer]:
+          - paragraph [ref=e64]: 個別出品
+        - tab "通関対応" [ref=e65] [cursor=pointer]:
+          - paragraph [ref=e67]: 通関対応
+        - tab "市場戦略" [ref=e68] [cursor=pointer]:
+          - paragraph [ref=e70]: 市場戦略
+        - tab "動画学習" [ref=e71] [cursor=pointer]:
+          - paragraph [ref=e73]: 動画学習
+        - tab "エージェント監視" [ref=e74] [cursor=pointer]:
+          - paragraph [ref=e76]: エージェント監視
+        - tab "SKU変換" [ref=e77] [cursor=pointer]:
+          - paragraph [ref=e79]: SKU変換
+        - tab "手動実行" [ref=e80] [cursor=pointer]:
+          - paragraph [ref=e82]: 手動実行
+        - tab "定時実行" [ref=e83] [cursor=pointer]:
+          - paragraph [ref=e85]: 定時実行
+        - tab "設定" [ref=e86] [cursor=pointer]:
+          - paragraph [ref=e88]: 設定
+      - text: ▶ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▶ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▶ ▶ ✎ 編集ゾーン ▶ ▶ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▶ ▼ ▶ ✎ 編集ゾーン ▶ ▼
+      - tabpanel "今日の発掘" [ref=e3918]:
+        - generic [ref=e3919]:
+          - heading "今日の発掘候補" [level=2] [ref=e3925]:
+            - text: 今日の発掘候補
+            - generic [ref=e3926]:
+              - link "Link to heading":
+                - /url: "#d856d962"
+                - img
+          - paragraph [ref=e3931]: 2026-05-14 / 朝 07:00 cron 自動発掘 (W122)
+          - button "今すぐ生成 (手動)" [ref=e3940] [cursor=pointer]:
+            - paragraph [ref=e3944]: 今すぐ生成 (手動)
+          - alert [ref=e3949]:
+            - paragraph [ref=e3954]: 本日の発掘候補は未生成です. 07:00 の cron 自動実行を待つか、上の『今すぐ生成 (手動)』を押してください.
+          - separator [ref=e3959]
+          - generic [ref=e3961]:
+            - generic [ref=e3966]: 過去 7 日のフィードバック (0 件)
+            - paragraph [ref=e3971]: フィードバック履歴なし.
+      - text: ✎ 編集ゾーン ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶ ▶
+    - button "Scroll tabs right" [ref=e3914] [cursor=pointer]:
+      - img [ref=e3915]

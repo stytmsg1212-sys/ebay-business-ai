@@ -1,0 +1,509 @@
+{
+  "date": "2026-04-15",
+  "timestamp": "2026-04-15T23:09:21.699532",
+  "new_sellers": [
+    {
+      "seller": "riversideworks_japan",
+      "feedback_score": 8769,
+      "competing_items": [
+        {
+          "title": "Keyence LR-XH100 Laser Sensor LRXH100 NEW JP",
+          "price_usd": 106.47,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "Keyence Laser Sensor LR-XH250 (10M) NEW JP",
+          "price_usd": 264.71,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE LR-X50 Laser Sensor in Box New JP",
+          "price_usd": 309.88,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "NEW KEYENCE FL-001 FL001 Guide Pulse Type Level Sensor Amplifier Unit In Box JP",
+          "price_usd": 379.98,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761683",
+      "is_new": true,
+      "competing_count": 4
+    },
+    {
+      "seller": "yorozu_japan",
+      "feedback_score": 7906,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-On Flow Sensor Control Systems & PLC FD-Q Series",
+          "price_usd": 130.9,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935859",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "kamikaze-trading-japan",
+      "feedback_score": 2717,
+      "competing_items": [
+        {
+          "title": "KEYENCE FL-001 FL001 Guide Pulse Type Level Sensor Amplifier Unit from Japan New",
+          "price_usd": 270.12,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109097",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "japan-net-shop",
+      "feedback_score": 2056,
+      "competing_items": [
+        {
+          "title": "Keyence LR-XH250 Laser Sensor High Precision Industrial Automation 【10m Type】",
+          "price_usd": 263.99,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control Systems Japan",
+          "price_usd": 147.99,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761686",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "multilateral_trading",
+      "feedback_score": 1921,
+      "competing_items": [
+        {
+          "title": "Keyence FL-001 Guided Pulse Level Sensor Amplifier Unit",
+          "price_usd": 266.98,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Flowmater Clamp-on Type Flow Sensor Systems",
+          "price_usd": 415.72,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109103",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "japanesehappinessshop",
+      "feedback_score": 1478,
+      "competing_items": [
+        {
+          "title": "KEYENCE FL-001 Guide pulse type level sensor Amplifier unit Genuine Japan",
+          "price_usd": 192.18,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109111",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "topnotchjapan",
+      "feedback_score": 1154,
+      "competing_items": [
+        {
+          "title": "PIONEER KA-E454 LED Cassette Deck/Tape Deck Lonesome Cowboy",
+          "price_usd": 469.08,
+          "keyword": "Pioneer KA-E454 Cassette Deck"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:15.597071",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "japan.treasure.collection",
+      "feedback_score": 918,
+      "competing_items": [
+        {
+          "title": "KEYENCE LR-XH50 Laser Sensor Head New in Box LR-X Series From Japan new",
+          "price_usd": 171.0,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FL-001 Guide Pulse Type Level Sensor Amplifier Unit Used Tested Japan",
+          "price_usd": 227.05,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761648",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "bellsbankshop_jp",
+      "feedback_score": 856,
+      "competing_items": [
+        {
+          "title": "Keyence Laser Sensor LR-XH250 NEW",
+          "price_usd": 222.0,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "Keyence FL-001 Guided Pulse Level Sensor Amplifier Unit tested",
+          "price_usd": 189.0,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761672",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "japanshop-11",
+      "feedback_score": 770,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System Tested Japan Used",
+          "price_usd": 135.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935863",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "imperial_industrial_japan",
+      "feedback_score": 725,
+      "competing_items": [
+        {
+          "title": "KEYENCE LR-X50 Laser Sensor Unused In Storage from Japan",
+          "price_usd": 309.89,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FL-001 Guide Pulse Type Level Sensor Amplifier Unit Used",
+          "price_usd": 189.99,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        },
+        {
+          "title": "NEW KEYENCE FL-001 FL001 Guide Pulse Type Level Sensor Amplifier Unit In Box",
+          "price_usd": 379.99,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System New from Japan",
+          "price_usd": 234.99,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System Operation Confirmed",
+          "price_usd": 128.99,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761690",
+      "is_new": true,
+      "competing_count": 5
+    },
+    {
+      "seller": "tenko-52",
+      "feedback_score": 706,
+      "competing_items": [
+        {
+          "title": "KEYENCE LR-XH250/LR-XN11N set of 2 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 519.15,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE LR-XH250 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 485.11,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FL-001 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 655.32,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761695",
+      "is_new": true,
+      "competing_count": 3
+    },
+    {
+      "seller": "kaori_okumoto",
+      "feedback_score": 701,
+      "competing_items": [
+        {
+          "title": "Keyence FD-Q10C Clamp-on type flow sensor 8A/10A type　Japan unused item",
+          "price_usd": 298.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935871",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "yoshyama13",
+      "feedback_score": 652,
+      "competing_items": [
+        {
+          "title": "PIONEER KA-E454 LED Cassette Deck/Tape Deck Lonesome Cowboy",
+          "price_usd": 570.93,
+          "keyword": "Pioneer KA-E454 Cassette Deck"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:15.597094",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "mono_honpo_japan",
+      "feedback_score": 608,
+      "competing_items": [
+        {
+          "title": "KEYENCE FL-001 FL001 Guide Pulse Type Level Sensor Amplifier Unit NEW from Japan",
+          "price_usd": 249.0,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System Tested Used Japan",
+          "price_usd": 134.9,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        },
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System New from Japan",
+          "price_usd": 298.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        },
+        {
+          "title": "For sun65218 AGILENT E1709A REMOTE HIGH PERFORMANCE RECEIVER Set of 2 pcs Used",
+          "price_usd": 429.0,
+          "keyword": "For sun65218 AGILENT E1709A"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109084",
+      "is_new": true,
+      "competing_count": 4
+    },
+    {
+      "seller": "dobby-japan-store",
+      "feedback_score": 554,
+      "competing_items": [
+        {
+          "title": "KEYENCE FL-001 Guide pulse type level sensor Amplifier unit Genuine Japan NEW",
+          "price_usd": 319.99,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109109",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "vortex-japan",
+      "feedback_score": 495,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control SystemTested used Japan",
+          "price_usd": 150.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935868",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "ksshop.japan",
+      "feedback_score": 403,
+      "competing_items": [
+        {
+          "title": "Keyence FD-Q10C Clamp-on Digital Flow Sensor w/ Sensor Bracket 20-30VDC -USA",
+          "price_usd": 148.39,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935865",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "infinity_trading_jp",
+      "feedback_score": 389,
+      "competing_items": [
+        {
+          "title": "1PC New Keyence FL-001 Guide Pulse Type Level Sensor Amplifier US Free TAX",
+          "price_usd": 352.02,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109108",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "dainaka_26",
+      "feedback_score": 369,
+      "competing_items": [
+        {
+          "title": "Keyence LR XH250 CMOS Laser Sensor LR X Series New Unused Japan 341",
+          "price_usd": 223.0,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761677",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "deliver-your-best-smile",
+      "feedback_score": 356,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System Used From Japan",
+          "price_usd": 206.88,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935870",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "fujiyama00",
+      "feedback_score": 355,
+      "competing_items": [
+        {
+          "title": "KEYENCE Flow Meter FD-Q10C Clamp-on Flow Sensor RARE Ship From JAPAN",
+          "price_usd": 187.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935872",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "dosanko_japan",
+      "feedback_score": 341,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System Used Tested Japan",
+          "price_usd": 174.99,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935867",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "cherryblossoms_intokyo",
+      "feedback_score": 255,
+      "competing_items": [
+        {
+          "title": "Keyence Laser Sensor LR-XH250 NEW",
+          "price_usd": 264.0,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FL-001  Guide Pulse Type Level Sensor Amplifier Unit Japan NEW",
+          "price_usd": 247.0,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761680",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "rakuten29",
+      "feedback_score": 234,
+      "competing_items": [
+        {
+          "title": "KEYENCE LR-XH250 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 485.11,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE LR-XH250/LR-XN11N set of 2 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 519.15,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        },
+        {
+          "title": "KEYENCE FL-001 KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE KEYENCE",
+          "price_usd": 655.32,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761697",
+      "is_new": true,
+      "competing_count": 3
+    },
+    {
+      "seller": "japanmomostore",
+      "feedback_score": 208,
+      "competing_items": [
+        {
+          "title": "Keyence Laser Sensor LR-XH250 Japan New",
+          "price_usd": 449.99,
+          "keyword": "KEYENCE LR-XH50 Laser Sensor"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:13.761693",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "yunak547",
+      "feedback_score": 92,
+      "competing_items": [
+        {
+          "title": "PIONEER T-C3 Cassette Deck Well maintained, in very good condition F/S",
+          "price_usd": 340.0,
+          "keyword": "Pioneer KA-E454 Cassette Deck"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:15.597101",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "industrialgearjp",
+      "feedback_score": 8,
+      "competing_items": [
+        {
+          "title": "KEYENCE FL-001 Guide Pulse Type Level Sensor",
+          "price_usd": 180.0,
+          "keyword": "KEYENCE FL-001 FL001 Guide"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:18.109105",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "tcg.japan_tokyo",
+      "feedback_score": 3,
+      "competing_items": [
+        {
+          "title": "KEYENCE FD-Q10C Clamp-On Flow Sensor Digital Flow Meter – Tested Working",
+          "price_usd": 133.0,
+          "keyword": "KEYENCE FD-Q10C Digital Clamp-on"
+        }
+      ],
+      "first_seen": "2026-04-15T23:09:19.935849",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 29,
+  "total_sellers_scanned": 29
+}

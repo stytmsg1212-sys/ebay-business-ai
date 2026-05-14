@@ -1,0 +1,38 @@
+{
+  "tasks": [
+    {
+      "sku": "ebayme_32400850054",
+      "ebay_original": {
+        "title": "",
+        "condition": "",
+        "includes": "",
+        "warranty": "",
+        "price_jpy": 0,
+        "url": "https://jp.mercari.com/item/m32400850054",
+        "source": "メルカリ"
+      },
+      "model_number": "",
+      "source": "メルカリ",
+      "search_query": " site:mercari.com",
+      "max_cost_price_jpy": 0,
+      "status": "awaiting_candidates"
+    },
+    {
+      "sku": "ebayyh_g1225005638",
+      "ebay_original": {
+        "title": "",
+        "condition": "",
+        "includes": "",
+        "warranty": "",
+        "price_jpy": 0,
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225005638",
+        "source": "Yahoo Auctions"
+      },
+      "model_number": "",
+      "source": "Yahoo Auctions",
+      "search_query": " site:auctions.yahoo.co.jp",
+      "max_cost_price_jpy": 0,
+      "status": "awaiting_candidates"
+    }
+  ]
+}

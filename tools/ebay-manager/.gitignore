@@ -1,0 +1,15 @@
+settings.json
+data/monitor.db
+monitor.log
+monitor.pid
+__pycache__/
+*.pyc
+.env
+# W10 画像加工の成果物・モデル (バイナリ巨大、ロゴは素材管理別)
+models/*.onnx
+data/processed_images/
+tests/fixtures/design_samples/*.HEIC
+tests/fixtures/design_samples/*.heic
+# YouTube cookies (動画学習で yt-dlp 認証用、機密情報)
+cookies/*.txt
+!cookies/.gitkeep

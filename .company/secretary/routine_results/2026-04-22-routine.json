@@ -1,0 +1,294 @@
+{
+  "timestamp": "2026-04-22T02:30:19.870995",
+  "date": "2026-04-22",
+  "status": "success",
+  "email": {
+    "checked": false,
+    "count": 0,
+    "emails": [],
+    "status": "failed"
+  },
+  "todo": {
+    "carried_over": 8,
+    "file_created": true
+  },
+  "research": {
+    "executed": true,
+    "topics": [
+      "自社出品分析",
+      "eBay市場トレンド（Browse API）"
+    ],
+    "results": [
+      {
+        "name": "自社出品分析",
+        "rank_distribution": [
+          {
+            "rank": "A",
+            "count": 20,
+            "avg_price": 255.31,
+            "total_watches": 1027,
+            "total_sales": 380
+          },
+          {
+            "rank": "E",
+            "count": 444,
+            "avg_price": 561.91,
+            "total_watches": 486,
+            "total_sales": 128
+          },
+          {
+            "rank": "B",
+            "count": 16,
+            "avg_price": 384.28,
+            "total_watches": 413,
+            "total_sales": 48
+          },
+          {
+            "rank": "C",
+            "count": 12,
+            "avg_price": 322.84,
+            "total_watches": 166,
+            "total_sales": 27
+          },
+          {
+            "rank": "D",
+            "count": 14,
+            "avg_price": 262.27,
+            "total_watches": 115,
+            "total_sales": 62
+          }
+        ],
+        "top_watched": [
+          {
+            "title": "maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan",
+            "price": 115.2,
+            "watches": 208,
+            "views": 0,
+            "sales_30d": 125,
+            "rank": "A"
+          },
+          {
+            "title": "CRYPTON VOCALOID4 Hatsune Miku V4X  incl. ENGLISH PACKAGE Software Japan New",
+            "price": 151.99,
+            "watches": 133,
+            "views": 0,
+            "sales_30d": 21,
+            "rank": "A"
+          },
+          {
+            "title": "maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH from Japan",
+            "price": 115.2,
+            "watches": 118,
+            "views": 0,
+            "sales_30d": 59,
+            "rank": "A"
+          },
+          {
+            "title": "Ohuhu x Sanrio 80 Color + 1 Blender Brush & Fine Marker Set Pastel Tones NEW",
+            "price": 125.0,
+            "watches": 69,
+            "views": 0,
+            "sales_30d": 19,
+            "rank": "A"
+          },
+          {
+            "title": "Le Creuset Mini Blueberry Cocotte Vegetable Series 0.6L 20zo Stoneware NEW",
+            "price": 174.21,
+            "watches": 66,
+            "views": 0,
+            "sales_30d": 20,
+            "rank": "A"
+          },
+          {
+            "title": "ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan",
+            "price": 212.0,
+            "watches": 60,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "B"
+          },
+          {
+            "title": "PLOTTER 5003 A5 6-Ring Shrink Leather Binder with Accessories NEW from Japan",
+            "price": 208.0,
+            "watches": 54,
+            "views": 0,
+            "sales_30d": 7,
+            "rank": "A"
+          },
+          {
+            "title": "Vocaloid4 CRYPTON KAGAMINE RIN LEN V4X English Bundle DVD Software Japan New",
+            "price": 149.38,
+            "watches": 42,
+            "views": 0,
+            "sales_30d": 5,
+            "rank": "A"
+          },
+          {
+            "title": "John Kacere Art Book Set – French & Japanese Editions from Japan",
+            "price": 748.0,
+            "watches": 42,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "B"
+          },
+          {
+            "title": "Petra Collins Coming of Age Photo Book ver Japanese Used Excellent Condition",
+            "price": 198.0,
+            "watches": 41,
+            "views": 0,
+            "sales_30d": 2,
+            "rank": "B"
+          }
+        ],
+        "top_selling": [
+          {
+            "title": "maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan",
+            "price": 115.2,
+            "sales_30d": 125,
+            "watches": 208,
+            "rank": "A"
+          },
+          {
+            "title": "maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH from Japan",
+            "price": 115.2,
+            "sales_30d": 59,
+            "watches": 118,
+            "rank": "A"
+          },
+          {
+            "title": "CRYPTON VOCALOID4 Hatsune Miku V4X  incl. ENGLISH PACKAGE Software Japan New",
+            "price": 151.99,
+            "sales_30d": 21,
+            "watches": 133,
+            "rank": "A"
+          },
+          {
+            "title": "Le Creuset Mini Blueberry Cocotte Vegetable Series 0.6L 20zo Stoneware NEW",
+            "price": 174.21,
+            "sales_30d": 20,
+            "watches": 66,
+            "rank": "A"
+          },
+          {
+            "title": "Ohuhu x Sanrio 80 Color + 1 Blender Brush & Fine Marker Set Pastel Tones NEW",
+            "price": 125.0,
+            "sales_30d": 19,
+            "watches": 69,
+            "rank": "A"
+          },
+          {
+            "title": "Questyle QCC Dongle Pro Lossless Bluetooth Transmitter Mfi Certified NEW",
+            "price": 99.7,
+            "sales_30d": 18,
+            "watches": 7,
+            "rank": "D"
+          },
+          {
+            "title": "Google Pixel Tablet Charging Speaker Dock GA03472-US Porcelain New from Japan",
+            "price": 368.0,
+            "sales_30d": 14,
+            "watches": 21,
+            "rank": "A"
+          },
+          {
+            "title": "Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray New from Japan",
+            "price": 360.0,
+            "sales_30d": 13,
+            "watches": 18,
+            "rank": "A"
+          },
+          {
+            "title": "Ohuhu x Sanrio 80 Color + 1 Blender Brush & Broad Marker Set Pastel Tones NEW",
+            "price": 125.0,
+            "sales_30d": 12,
+            "watches": 40,
+            "rank": "A"
+          },
+          {
+            "title": "Audio-Technica ATH-CKS330NC ATH CKS330NC BK Noise-Canceling  USB Type-C BLACK",
+            "price": 72.22,
+            "sales_30d": 12,
+            "watches": 7,
+            "rank": "D"
+          }
+        ],
+        "sold_count": 645
+      },
+      {
+        "name": "eBay市場トレンド（Browse API）",
+        "total_found": 100,
+        "price_distribution": {
+          "under_50": 18,
+          "50_100": 30,
+          "100_300": 40,
+          "over_300": 12
+        },
+        "top_items": [
+          {
+            "title": "Vintage Barbie Francie Japan Exclusive version 1965 with out",
+            "price": 1359.99,
+            "seller": "mdrllc",
+            "keyword": "Japan exclusive vintage"
+          },
+          {
+            "title": "Sony Walkman TPS-L2 First generation stereo cassette player ",
+            "price": 664.09,
+            "seller": "pilina2.2.16",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "TOSHIBA Walky KT-AS10 Vintage Portable Cassette Player Radio",
+            "price": 590.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "[Unopened] Kagurabachi 1st Print Shrink Obi First Edition Ma",
+            "price": 589.0,
+            "seller": "flowerg2z",
+            "keyword": "Japanese limited edition"
+          },
+          {
+            "title": "Brand New & Unused – FUJIFILM instax mini Evo PINK – Japan E",
+            "price": 562.56,
+            "seller": "shiba_00_japan",
+            "keyword": "Japan exclusive instax camera"
+          },
+          {
+            "title": "TOSHIBA BOMBEAT RT-S90 Radio Cassette Player Japan Tested Re",
+            "price": 525.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "TMNT Mini Super Mutants Playmates Takara Japan Exclusive MIS",
+            "price": 442.0,
+            "seller": "norifuku13",
+            "keyword": "Japan exclusive vintage"
+          },
+          {
+            "title": "CRYPTON VOCALOID4 Hatsune Miku V4X English Bundle DVD Softwa",
+            "price": 419.24,
+            "seller": "tsumikichi030303.shop",
+            "keyword": "CRYPTON VOCALOID4 Hatsune"
+          },
+          {
+            "title": "SONY Cassette Player Walkman Beans WM-EQ7 Boxed Untested Jap",
+            "price": 410.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "Antique 1996 Retro Radio Cassette Player Red Cream Color Unt",
+            "price": 399.0,
+            "seller": "mow-motor-law_nippon",
+            "keyword": "Japan retro cassette player"
+          }
+        ],
+        "sold_count": 0
+      }
+    ],
+    "status": "completed"
+  },
+  "execution_time_sec": 15.829396
+}

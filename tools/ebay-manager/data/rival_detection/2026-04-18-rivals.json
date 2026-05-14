@@ -1,0 +1,135 @@
+{
+  "date": "2026-04-18",
+  "timestamp": "2026-04-18T18:07:20.404376",
+  "new_sellers": [
+    {
+      "seller": "raijapan",
+      "feedback_score": 4507,
+      "competing_items": [
+        {
+          "title": "maxell MXCP-P100 Portable Cassette Player Bluetooth White MXCP-P100WH From Japan",
+          "price_usd": 131.57,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "maxell MXCP-P100 Portable Cassette Player Bluetooth White MXCP-P100WH From Japan",
+          "price_usd": 131.57,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:12.791682",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "japanimport262",
+      "feedback_score": 3406,
+      "competing_items": [
+        {
+          "title": "Ohuhu x Sanrio 48+1 Pro Tip Pastel Markers Alcohol Ink Blender Pen / Ohuhu",
+          "price_usd": 103.16,
+          "keyword": "Ohuhu x Sanrio 80"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:18.369653",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "selectshop.japan",
+      "feedback_score": 1940,
+      "competing_items": [
+        {
+          "title": "Hatsune Miku Anime Goods Crypton Hatsune Miku Japan Limited Rare Lot",
+          "price_usd": 76.18,
+          "keyword": "CRYPTON VOCALOID4 Hatsune Miku"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:14.763245",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "88.japan.seller",
+      "feedback_score": 925,
+      "competing_items": [
+        {
+          "title": "Unused Le Creuset Mini Cocotte Vegetable Series Blueberry Raspberry Strawberry",
+          "price_usd": 365.9,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:20.280189",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "jstw_omotenashi",
+      "feedback_score": 319,
+      "competing_items": [
+        {
+          "title": "Le Creuset Blueberry Casserole Mini Cocotte 0.6L Stoneware set of 4 Used JAPAN",
+          "price_usd": 610.0,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:20.280194",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "hop-japan",
+      "feedback_score": 227,
+      "competing_items": [
+        {
+          "title": "Le Creuset Blueberry Strawberry Raspberry Limited Edition Set New Japan",
+          "price_usd": 671.55,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:20.280183",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "hiroy_hirat",
+      "feedback_score": 23,
+      "competing_items": [
+        {
+          "title": "NEW Maxell MXCP-P100 Portable Cassette Tape Player Bluetooth 5.4 White from Japa",
+          "price_usd": 74.99,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "NEW Maxell MXCP-P100 Portable Cassette Tape Player Bluetooth 5.4 White from Japa",
+          "price_usd": 74.99,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:12.791573",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "japanese-selectmore",
+      "feedback_score": 21,
+      "competing_items": [
+        {
+          "title": "NEW Maxell MXCP-P100 Portable Cassette Player White from Japan MXCP-P100WH 46",
+          "price_usd": 84.2,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "NEW Maxell MXCP-P100 Portable Cassette Player White from Japan MXCP-P100WH 46",
+          "price_usd": 84.2,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-18T18:07:12.791661",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 8,
+  "total_sellers_scanned": 150
+}

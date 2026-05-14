@@ -1,0 +1,27 @@
+{
+  "date": "2026-05-04",
+  "timestamp": "2026-05-04T22:27:43.618093",
+  "new_sellers": [
+    {
+      "seller": "bigcolorjapan",
+      "feedback_score": 1340,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100S Portable Cassette Player Black Speaker-Equipped USB-C",
+          "price_usd": 129.52,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "Maxell MXCP-P100S Portable Cassette Player Black Speaker-Equipped USB-C",
+          "price_usd": 129.52,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-05-04T22:27:38.428484",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 148
+}

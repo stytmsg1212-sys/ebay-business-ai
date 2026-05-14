@@ -1,0 +1,107 @@
+[
+  {
+    "title": "Introducing advanced tool use on the Claude Developer Platform",
+    "impact": "medium",
+    "matched_keyword": "tool use",
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591294"
+  },
+  {
+    "title": "Desktop Extensions: One-click MCP server installation for Claude Desktop",
+    "impact": "medium",
+    "matched_keyword": "mcp",
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591310"
+  },
+  {
+    "title": "Claude Code: Best practices for agentic coding",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591315"
+  },
+  {
+    "title": "Introducing Claude Opus 4.7",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591318"
+  },
+  {
+    "title": "Claude Platform",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591321"
+  },
+  {
+    "title": "Apr 17, 2026ProductIntroducing Claude Design by Anthropic Labs",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591324"
+  },
+  {
+    "title": "Apr 16, 2026ProductIntroducing Claude Opus 4.7",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591327"
+  },
+  {
+    "title": "Mar 12, 2026AnnouncementsAnthropic invests $100 million into the Claude Partner Network",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591329"
+  },
+  {
+    "title": "Claude Code Enterprise",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591332"
+  },
+  {
+    "title": "Claude for PowerPoint",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591335"
+  },
+  {
+    "title": "Claude partner network",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-04-19T06:07:34.591337"
+  },
+  {
+    "title": "Claude Code auto mode: a safer way to skip permissions",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591339"
+  },
+  {
+    "title": "Eval awareness in Claude Opus 4.6’s BrowseComp performance",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591342"
+  },
+  {
+    "title": "Building a C compiler with a team of parallel Claudes",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591344"
+  },
+  {
+    "title": "Beyond permission prompts: making Claude Code more secure and autonomous",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic Engineering Blog",
+    "checked_at": "2026-04-19T06:07:34.591346"
+  }
+]

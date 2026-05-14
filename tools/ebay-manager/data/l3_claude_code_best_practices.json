@@ -1,0 +1,184 @@
+{
+  "title": "Claude Code best practices",
+  "duration_sec": 179,
+  "speakers": [
+    "Cal Rueb"
+  ],
+  "core_principles": [
+    {
+      "principle": "The Simple Thing That Works",
+      "why": "Avoids over-engineering and focuses on effective, straightforward solutions.",
+      "example": "Claude Code uses a 'very pure agent' approach with powerful tools and agentic search, rather than complex indexing for codebase awareness."
+    },
+    {
+      "principle": "Understand Your Tools",
+      "why": "Knowing how your tools work under the hood is crucial for effective and optimal usage.",
+      "example": "Understanding Claude Code's mechanism (agentic search, tool usage) helps in formulating better prompts and strategies."
+    },
+    {
+      "principle": "Transparency and Control",
+      "why": "Allows for human oversight and intervention, ensuring safety and guiding the AI's actions.",
+      "example": "Claude Code's UI shows all text flowing by, and a tiered permission system prompts for human approval on potentially dangerous actions like writing files or running bash commands."
+    },
+    {
+      "principle": "Focus on Solutions, Not Syntax",
+      "why": "Leverages Claude's proficiency with terminal commands and common tools to offload mundane or complex setup/maintenance tasks.",
+      "example": "Claude can handle Git rebase conflicts, Docker commands, or BigQuery queries, freeing the developer to focus on higher-level problem-solving."
+    }
+  ],
+  "workflow_patterns": [
+    {
+      "pattern": "Discover (Onboarding & Learning)",
+      "when_to_use": "When dropped into a new codebase, switching teams/companies, or starting an open-source project.",
+      "steps": [
+        "Ask Claude: 'Hey, where is this feature implemented?'",
+        "Ask Claude: 'Look at this file and its Git history, tell me a story about how this code has changed over the past few weeks.'"
+      ]
+    },
+    {
+      "pattern": "Design (Thought Partner)",
+      "when_to_use": "Before diving into implementation, to explore different approaches or get initial ideas.",
+      "steps": [
+        "Ask Claude: 'I'm thinking about implementing this feature. Can you search around and figure out how we would do it? Report back with two or three different options. Don't start writing any files yet.'",
+        "Work with Claude to validate the proposed ideas and refine the design."
+      ]
+    },
+    {
+      "pattern": "Build (Coding, Testing, Committing)",
+      "when_to_use": "Developing new features, fixing bugs, writing unit tests, or generating commit messages.",
+      "steps": [
+        "For zero-to-one projects: 'Build me an app/game.'",
+        "For existing codebases: Use Claude to add unit tests (Claude makes it easy).",
+        "When finished: 'Write the commit message/PR message for me.'"
+      ]
+    },
+    {
+      "pattern": "Deploy (CI/CD & Automation)",
+      "when_to_use": "Automating tasks in the software development lifecycle, especially for programmatic integration.",
+      "steps": [
+        "Use Claude Code SDK headlessly (e.g., with `-p` mode).",
+        "Integrate Claude into CI/CD pipelines (e.g., GitHub Actions) to assist with automated tasks."
+      ]
+    },
+    {
+      "pattern": "Support & Scale (Debugging & Refactoring)",
+      "when_to_use": "Debugging errors, performing large-scale refactors, or managing code migrations.",
+      "steps": [
+        "Ask Claude to debug errors faster.",
+        "Use Claude to assist with large code migrations (e.g., upgrading Java versions, migrating from PHP to React/Angular)."
+      ]
+    }
+  ],
+  "tool_usage_tips": [
+    {
+      "tool": "CLAUDE.md files",
+      "tip": "Create these files in strategic locations (project root, home directory) to document commands, style guidelines, key context, and project structure. Claude will automatically load them into context.",
+      "avoid": "Overloading top-level CLAUDE.md files in monorepos with irrelevant context (Claude 4 is better at handling this, but explicit context management is still good practice)."
+    },
+    {
+      "tool": "Permission Management",
+      "tip": "Curate allowed tools to reduce interruptions. Allow read actions by default. Require explicit approval for write/bash commands. Use auto-accept mode (Shift+Tab) for trusted actions or configure specific commands to always approve in settings.",
+      "avoid": "Blindly allowing all actions without understanding the potential impact on your machine or codebase."
+    },
+    {
+      "tool": "Integration Setup (CLI & MCP)",
+      "tip": "Install CLI tools (e.g., `gh` for GitHub, Docker, BigQuery) that Claude can leverage. For well-known CLI tools, prefer installing them directly. For internal custom tools, inform Claude about them (e.g., via CLAUDE.md).",
+      "avoid": "Limiting Claude's capabilities by not providing access to relevant command-line tools or custom internal services."
+    },
+    {
+      "tool": "Planning and TODOs",
+      "tip": "Before starting coding, ask Claude to read relevant files and make a detailed plan. Verify Claude's generated TODO list to ensure alignment with your goals.",
+      "avoid": "Immediately asking Claude to fix a bug or implement a feature without a clear, verified plan, which can lead to wasted effort."
+    },
+    {
+      "tool": "Smart Vibe Coding",
+      "tip": "Leverage test-driven development and regular commits. Instruct Claude to make small changes, run tests, check TypeScript/linting, and commit frequently. This provides guardrails and allows for easy rollback.",
+      "avoid": "Letting Claude work for extended periods without checking its progress or committing, which can make it difficult to recover from errors."
+    },
+    {
+      "tool": "Screenshots",
+      "tip": "Use screenshots or image files (e.g., mockups) to guide Claude's design and debugging, leveraging its multimodal capabilities.",
+      "avoid": "Relying solely on text descriptions when visual context would be more effective for complex UI/UX tasks."
+    },
+    {
+      "tool": "Multi-Claude & Parallelization",
+      "tip": "Use separate Claude instances for different tasks (e.g., coding, reviewing, testing) or deploy worktrees/sub-agents to tackle complex problems simultaneously.",
+      "avoid": "Trying to manage all complex tasks within a single Claude instance, which can lead to context overload and reduced efficiency."
+    },
+    {
+      "tool": "Use Escape",
+      "tip": "Press `Escape` once to stop Claude and interject with new instructions. Press `Escape` twice to jump back in the conversation (reset to a previous state or point).",
+      "avoid": "Letting Claude continue on a wrong path when you've identified an issue, or not knowing how to reset the conversation effectively."
+    },
+    {
+      "tool": "Headless Automation",
+      "tip": "Use Claude Code in programmatic mode (`-p` mode) for CI/CD pipelines and large-scale changes, integrating it into automated workflows.",
+      "avoid": "Limiting Claude's use to interactive sessions when automation could significantly improve efficiency for repetitive or large-scale tasks."
+    },
+    {
+      "tool": "/model command",
+      "tip": "Use `/model` to switch between Claude models (e.g., Sonnet, Opus) to match the complexity and cost requirements of your task.",
+      "avoid": "Sticking to a single model without considering if a more powerful or cost-effective model would be better suited for the current task."
+    },
+    {
+      "tool": "Thinking between tool calls (Claude 4+)",
+      "tip": "Leverage the model's ability to 'think' between tool calls by including 'think hard' in your prompts, especially for complex tasks requiring deeper reasoning.",
+      "avoid": "Not utilizing this capability for intricate problems, which might lead to less optimal or direct solutions."
+    }
+  ],
+  "agent_delegation_rules": [
+    {
+      "rule": "Allow read actions without interruption.",
+      "rationale": "Read actions (searching, reading files) are low-risk and essential for Claude to understand the codebase and context."
+    },
+    {
+      "rule": "Require human approval for write actions and bash commands.",
+      "rationale": "Write actions (modifying files, executing shell commands) carry higher risk of unintended changes. Human intervention ensures safety and control."
+    }
+  ],
+  "context_management_techniques": [
+    {
+      "technique": "CLAUDE.md files",
+      "purpose": "Provide persistent, shared context and instructions to Claude across sessions and team members.",
+      "implementation": "Create `CLAUDE.md` in the project root or home directory. Use `@` syntax to reference other relevant files within `CLAUDE.md`."
+    },
+    {
+      "technique": "/clear command",
+      "purpose": "Reset the current conversation context to start fresh, useful when the conversation has gone off-track or become too long.",
+      "implementation": "Type `/clear` in the Claude Code terminal. This clears all previous messages but retains `CLAUDE.md` context."
+    },
+    {
+      "technique": "/compact command",
+      "purpose": "Summarize a long conversation to fit within the context window, allowing for continued work or handover to another developer/agent.",
+      "implementation": "Type `/compact` in the Claude Code terminal. Claude will generate a concise summary of the session, which can then be used to seed a new conversation."
+    },
+    {
+      "technique": "Thinking between tool calls (Claude 4+)",
+      "purpose": "Enhance Claude's reasoning and problem-solving capabilities by allowing it to process information more deeply before and after executing tools.",
+      "implementation": "Include phrases like 'think hard' in your prompts to encourage Claude to engage in extended thinking, especially for complex tasks."
+    }
+  ],
+  "common_mistakes": [
+    {
+      "mistake": "Claude leaving obvious inline comments explaining 'what' it's doing.",
+      "fix": "Upgrade to Claude 4, which is significantly better at following instructions not to leave such comments. Review and refine your `CLAUDE.md` to explicitly state comment guidelines."
+    },
+    {
+      "mistake": "Letting Claude work without sufficient guardrails ('vibe coding').",
+      "fix": "Implement test-driven development (TDD) by having Claude write and run tests. Encourage regular, small commits. Ensure Claude checks TypeScript and linting. This allows for early detection of issues and easy rollbacks."
+    },
+    {
+      "mistake": "Overloading Claude's context with too many `CLAUDE.md` files in a monorepo.",
+      "fix": "Claude 4 is designed to handle this better by focusing on the current working directory. For specific needs, use the `@` syntax within `CLAUDE.md` to explicitly reference other relevant files or sections."
+    }
+  ],
+  "immediate_actions_for_ebay_manager": [
+    "1. プロジェクトルートに`CLAUDE.md`ファイルを作成し、プロジェクトの概要、Python/Streamlit/SQLiteの主要コマンド、テスト実行方法、コーディングスタイルガイドラインを記述して、Claudeに一貫したコンテキストを提供します。",
+    "2. 新機能開発やバグ修正の前に、「計画とTODOリスト」ワークフローを導入します。Claudeにまず関連ファイルを読ませ、計画とTODOリストを提案させ、コードを書き始める前にその計画をClaudeと共に確認・修正します。",
+    "3. 「スマート・バイブ・コーディング」を実践し、テスト駆動開発とこまめなコミットをClaudeに指示します。新しいコードの単体テスト作成、小さな変更後のテスト実行、頻繁なコミットを促し、コード品質を確保し、問題発生時のロールバックを容易にします。",
+    "4. 長時間の開発セッションのために`/compact`コマンドを活用します。複雑なタスクでコンテキストが肥大化し始めたら、`/compact`を使用して会話を要約させ、トークン制限を超えずに集中力とコンテキストを維持します。",
+    "5. Claude 4の「思考」機能を活用します。複雑な問題に取り組む際、プロンプトに「think hard」を含めることで、Claudeがツール呼び出しの間に深く推論し、より洗練された解決策を導き出すように促します。"
+  ],
+  "summary_ja": "Claude Codeは、ターミナルに長けたAIエージェントとして、開発ライフサイクル全体を支援します。CLAUDE.mdでコンテキストを共有し、計画とTODOリストで作業をガイド、テスト駆動開発とこまめなコミットで品質を保つのが鍵です。Claude 4では思考能力が向上し、モデル選択や設定も可能に。複数エージェントの活用やヘッドレス自動化も推奨されます。人間が適切なタイミングで介入し、ツールを使いこなすことで、開発効率を大幅に向上させることができます。",
+  "_raw_response": "{\n  \"title\": \"Claude Code best practices\",\n  \"duration_sec\": 179,\n  \"speakers\": [\n    \"Cal Rueb\"\n  ],\n  \"core_principles\": [\n    {\n      \"principle\": \"The Simple Thing That Works\",\n      \"why\": \"Avoids over-engineering and focuses on effective, straightforward solutions.\",\n      \"example\": \"Claude Code uses a 'very pure agent' approach with powerful tools and agentic search, rather than complex indexing for codebase awareness.\"\n    },\n    {\n      \"principle\": \"Understand Your Tools\",\n      \"why\": \"Knowing how your tools work under the hood is crucial for effective and optimal usage.\",\n      \"example\": \"Understanding Claude Code's mechanism (agentic search, tool usage) helps in formulating better prompts and strategies.\"\n    },\n    {\n      \"principle\": \"Transparency and Control\",\n      \"why\": \"Allows for human oversight and intervention, ensuring safety and guiding the AI's actions.\",\n      \"example\": \"Claude Code's UI shows all text flowing by, and a tiered permission system prompts for human approval on potentially dangerous actions like writing files or running bash commands.\"\n    },\n    {\n      \"principle\": \"Focus on Solutions, Not Syntax\",\n      \"why\": \"Leverages Claude's proficiency with terminal commands and common tools to offload mundane or complex setup/maintenance tasks.\",\n      \"example\": \"Claude can handle Git rebase conflicts, Docker commands, or BigQuery queries, freeing the developer to focus on higher-level problem-solving.\"\n    }\n  ],\n  \"workflow_patterns\": [\n    {\n      \"pattern\": \"Discover (Onboarding & Learning)\",\n      \"when_to_use\": \"When dropped into a new codebase, switching teams/companies, or starting an open-source project.\",\n      \"steps\": [\n        \"Ask Claude: 'Hey, where is this feature implemented?'\",\n        \"Ask Claude: 'Look at this file and its Git history, tell me a story about how this code has changed over the past few weeks.'\"\n      ]\n    },\n    {\n      \"pattern\": \"Design (Thought Partner)\",\n      \"when_to_use\": \"Before diving into implementation, to explore different approaches or get initial ideas.\",\n      \"steps\": [\n        \"Ask Claude: 'I'm thinking about implementing this feature. Can you search around and figure out how we would do it? Report back with two or three different options. Don't start writing any files yet.'\",\n        \"Work with Claude to validate the proposed ideas and refine the design.\"\n      ]\n    },\n    {\n      \"pattern\": \"Build (Coding, Testing, Committing)\",\n      \"when_to_use\": \"Developing new features, fixing bugs, writing unit tests, or generating commit messages.\",\n      \"steps\": [\n        \"For zero-to-one projects: 'Build me an app/game.'\",\n        \"For existing codebases: Use Claude to add unit tests (Claude makes it easy).\",\n        \"When finished: 'Write the commit message/PR message for me.'\"\n      ]\n    },\n    {\n      \"pattern\": \"Deploy (CI/CD & Automation)\",\n      \"when_to_use\": \"Automating tasks in the software development lifecycle, especially for programmatic integration.\",\n      \"steps\": [\n        \"Use Claude Code SDK headlessly (e.g., with `-p` mode).\",\n        \"Integrate Claude into CI/CD pipelines (e.g., GitHub Actions) to assist with automated tasks.\"\n      ]\n    },\n    {\n      \"pattern\": \"Support & Scale (Debugging & Refactoring)\",\n      \"when_to_use\": \"Debugging errors, performing large-scale refactors, or managing code migrations.\",\n      \"steps\": [\n        \"Ask Claude to debug errors faster.\",\n        \"Use Claude to assist with large code migrations (e.g., upgrading Java versions, migrating from PHP to React/Angular).\"\n      ]\n    }\n  ],\n  \"tool_usage_tips\": [\n    {\n      \"tool\": \"CLAUDE.md files\",\n      \"tip\": \"Create these files in strategic locations (project root, home directory) to document commands, style guidelines, key context, and project structure. Claude will automatically load them into context.\",\n      \"avoid\": \"Overloading top-level CLAUDE.md files in monorepos with irrelevant context (Claude 4 is better at handling this, but explicit context management is still good practice).\"\n    },\n    {\n      \"tool\": \"Permission Management\",\n      \"tip\": \"Curate allowed tools to reduce interruptions. Allow read actions by default. Require explicit approval for write/bash commands. Use auto-accept mode (Shift+Tab) for trusted actions or configure specific commands to always approve in settings.\",\n      \"avoid\": \"Blindly allowing all actions without understanding the potential impact on your machine or codebase.\"\n    },\n    {\n      \"tool\": \"Integration Setup (CLI & MCP)\",\n      \"tip\": \"Install CLI tools (e.g., `gh` for GitHub, Docker, BigQuery) that Claude can leverage. For well-known CLI tools, prefer installing them directly. For internal custom tools, inform Claude about them (e.g., via CLAUDE.md).\",\n      \"avoid\": \"Limiting Claude's capabilities by not providing access to relevant command-line tools or custom internal services.\"\n    },\n    {\n      \"tool\": \"Planning and TODOs\",\n      \"tip\": \"Before starting coding, ask Claude to read relevant files and make a detailed plan. Verify Claude's generated TODO list to ensure alignment with your goals.\",\n      \"avoid\": \"Immediately asking Claude to fix a bug or implement a feature without a clear, verified plan, which can lead to wasted effort.\"\n    },\n    {\n      \"tool\": \"Smart Vibe Coding\",\n      \"tip\": \"Leverage test-driven development and regular commits. Instruct Claude to make small changes, run tests, check TypeScript/linting, and commit frequently. This provides guardrails and allows for easy rollback.\",\n      \"avoid\": \"Letting Claude work for extended periods without checking its progress or committing, which can make it difficult to recover from errors.\"\n    },\n    {\n      \"tool\": \"Screenshots\",\n      \"tip\": \"Use screenshots or image files (e.g., mockups) to guide Claude's design and debugging, leveraging its multimodal capabilities.\",\n      \"avoid\": \"Relying solely on text descriptions when visual context would be more effective for complex UI/UX tasks.\"\n    },\n    {\n      \"tool\": \"Multi-Claude & Parallelization\",\n      \"tip\": \"Use separate Claude instances for different tasks (e.g., coding, reviewing, testing) or deploy worktrees/sub-agents to tackle complex problems simultaneously.\",\n      \"avoid\": \"Trying to manage all complex tasks within a single Claude instance, which can lead to context overload and reduced efficiency.\"\n    },\n    {\n      \"tool\": \"Use Escape\",\n      \"tip\": \"Press `Escape` once to stop Claude and interject with new instructions. Press `Escape` twice to jump back in the conversation (reset to a previous state or point).\",\n      \"avoid\": \"Letting Claude continue on a wrong path when you've identified an issue, or not knowing how to reset the conversation effectively.\"\n    },\n    {\n      \"tool\": \"Headless Automation\",\n      \"tip\": \"Use Claude Code in programmatic mode (`-p` mode) for CI/CD pipelines and large-scale changes, integrating it into automated workflows.\",\n      \"avoid\": \"Limiting Claude's use to interactive sessions when automation could significantly improve efficiency for repetitive or large-scale tasks.\"\n    },\n    {\n      \"tool\": \"/model command\",\n      \"tip\": \"Use `/model` to switch between Claude models (e.g., Sonnet, Opus) to match the complexity and cost requirements of your task.\",\n      \"avoid\": \"Sticking to a single model without considering if a more powerful or cost-effective model would be better suited for the current task.\"\n    },\n    {\n      \"tool\": \"Thinking between tool calls (Claude 4+)\",\n      \"tip\": \"Leverage the model's ability to 'think' between tool calls by including 'think hard' in your prompts, especially for complex tasks requiring deeper reasoning.\",\n      \"avoid\": \"Not utilizing this capability for intricate problems, which might lead to less optimal or direct solutions.\"\n    }\n  ],\n  \"agent_delegation_rules\": [\n    {\n      \"rule\": \"Allow read actions without interruption.\",\n      \"rationale\": \"Read actions (searching, reading files) are low-risk and essential for Claude to understand the codebase and context.\"\n    },\n    {\n      \"rule\": \"Require human approval for write actions and bash commands.\",\n      \"rationale\": \"Write actions (modifying files, executing shell commands) carry higher risk of unintended changes. Human intervention ensures safety and control.\"\n    }\n  ],\n  \"context_management_techniques\": [\n    {\n      \"technique\": \"CLAUDE.md files\",\n      \"purpose\": \"Provide persistent, shared context and instructions to Claude across sessions and team members.\",\n      \"implementation\": \"Create `CLAUDE.md` in the project root or home directory. Use `@` syntax to reference other relevant files within `CLAUDE.md`.\"\n    },\n    {\n      \"technique\": \"/clear command\",\n      \"purpose\": \"Reset the current conversation context to start fresh, useful when the conversation has gone off-track or become too long.\",\n      \"implementation\": \"Type `/clear` in the Claude Code terminal. This clears all previous messages but retains `CLAUDE.md` context.\"\n    },\n    {\n      \"technique\": \"/compact command\",\n      \"purpose\": \"Summarize a long conversation to fit within the context window, allowing for continued work or handover to another developer/agent.\",\n      \"implementation\": \"Type `/compact` in the Claude Code terminal. Claude will generate a concise summary of the session, which can then be used to seed a new conversation.\"\n    },\n    {\n      \"technique\": \"Thinking between tool calls (Claude 4+)\",\n      \"purpose\": \"Enhance Claude's reasoning and problem-solving capabilities by allowing it to process information more deeply before and after executing tools.\",\n      \"implementation\": \"Include phrases like 'think hard' in your prompts to encourage Claude to engage in extended thinking, especially for complex tasks.\"\n    }\n  ],\n  \"common_mistakes\": [\n    {\n      \"mistake\": \"Claude leaving obvious inline comments explaining 'what' it's doing.\",\n      \"fix\": \"Upgrade to Claude 4, which is significantly better at following instructions not to leave such comments. Review and refine your `CLAUDE.md` to explicitly state comment guidelines.\"\n    },\n    {\n      \"mistake\": \"Letting Claude work without sufficient guardrails ('vibe coding').\",\n      \"fix\": \"Implement test-driven development (TDD) by having Claude write and run tests. Encourage regular, small commits. Ensure Claude checks TypeScript and linting. This allows for early detection of issues and easy rollbacks.\"\n    },\n    {\n      \"mistake\": \"Overloading Claude's context with too many `CLAUDE.md` files in a monorepo.\",\n      \"fix\": \"Claude 4 is designed to handle this better by focusing on the current working directory. For specific needs, use the `@` syntax within `CLAUDE.md` to explicitly reference other relevant files or sections.\"\n    }\n  ],\n  \"immediate_actions_for_ebay_manager\": [\n    \"1. プロジェクトルートに`CLAUDE.md`ファイルを作成し、プロジェクトの概要、Python/Streamlit/SQLiteの主要コマンド、テスト実行方法、コーディングスタイルガイドラインを記述して、Claudeに一貫したコンテキストを提供します。\",\n    \"2. 新機能開発やバグ修正の前に、「計画とTODOリスト」ワークフローを導入します。Claudeにまず関連ファイルを読ませ、計画とTODOリストを提案させ、コードを書き始める前にその計画をClaudeと共に確認・修正します。\",\n    \"3. 「スマート・バイブ・コーディング」を実践し、テスト駆動開発とこまめなコミットをClaudeに指示します。新しいコードの単体テスト作成、小さな変更後のテスト実行、頻繁なコミットを促し、コード品質を確保し、問題発生時のロールバックを容易にします。\",\n    \"4. 長時間の開発セッションのために`/compact`コマンドを活用します。複雑なタスクでコンテキストが肥大化し始めたら、`/compact`を使用して会話を要約させ、トークン制限を超えずに集中力とコンテキストを維持します。\",\n    \"5. Claude 4の「思考」機能を活用します。複雑な問題に取り組む際、プロンプトに「think hard」を含めることで、Claudeがツール呼び出しの間に深く推論し、より洗練された解決策を導き出すように促します。\"\n  ],\n  \"summary_ja\": \"Claude Codeは、ターミナルに長けたAIエージェントとして、開発ライフサイクル全体を支援します。CLAUDE.mdでコンテキストを共有し、計画とTODOリストで作業をガイド、テスト駆動開発とこまめなコミットで品質を保つのが鍵です。Claude 4では思考能力が向上し、モデル選択や設定も可能に。複数エージェントの活用やヘッドレス自動化も推奨されます。人間が適切なタイミングで介入し、ツールを使いこなすことで、開発効率を大幅に向上させることができます。\"\n}"
+}

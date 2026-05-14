@@ -1,0 +1,130 @@
+{
+  "_description": "W14 通関対応自動化 KB (Tier 1: 手動登録). user が編集可能.",
+  "_version": "1.0",
+  "_updated": "2026-04-24",
+  "_note": "過去 5 件の FedEx 応答 (Razer/TSCA/Le Creuset 等) の内容をベースに構築.",
+
+  "manufacturer": {
+    "ONYX BOOX": {
+      "distributor_name": "SKT Co., Ltd.",
+      "distributor_address": "4-1-37 Fujigaoka, Fujiidera-shi, Osaka 583-0017, Japan",
+      "distributor_tel": "+81-72-989-2911",
+      "categories": ["e-reader", "electronics"],
+      "keywords": ["boox", "onyx"]
+    },
+    "Razer": {
+      "manufacturer_name": "Razer Inc.",
+      "manufacturer_address": "9 Pasteur, Suite 100, Irvine, CA 92618, United States",
+      "note": "米国本社住所使用可 (過去 AWB 889064067660 の実績)",
+      "categories": ["pc-accessory", "gaming", "electronics"],
+      "keywords": ["razer"]
+    },
+    "Le Creuset": {
+      "distributor_name": "Le Creuset Japan K.K.",
+      "distributor_address": "〒141-0032 東京都品川区上大崎2-1-5",
+      "categories": ["kitchen", "cookware"],
+      "keywords": ["le creuset", "lecreuset", "ルクルーゼ"]
+    },
+    "OLYMPUS": {
+      "distributor_name": "OM Digital Solutions Corporation",
+      "distributor_address": "2-2-3 Shinjuku, Shinjuku-ku, Tokyo 160-0022, Japan",
+      "categories": ["optical", "microscope", "camera"],
+      "keywords": ["olympus"]
+    },
+    "KEYENCE": {
+      "distributor_name": "Keyence Corporation",
+      "distributor_address": "1-3-14 Higashi-Nakajima, Higashi-Yodogawa-ku, Osaka 533-8555, Japan",
+      "categories": ["industrial-sensor", "measurement"],
+      "keywords": ["keyence"]
+    },
+    "PIONEER": {
+      "distributor_name": "Pioneer Corporation",
+      "distributor_address": "1-1 Shin-Ogura, Saiwai-ku, Kawasaki-shi, Kanagawa 212-0031, Japan",
+      "categories": ["audio", "av-equipment"],
+      "keywords": ["pioneer", "パイオニア"]
+    },
+    "HIOKI": {
+      "distributor_name": "Hioki E.E. Corporation",
+      "distributor_address": "81 Koizumi, Ueda-shi, Nagano 386-1192, Japan",
+      "categories": ["measurement", "test-equipment"],
+      "keywords": ["hioki"]
+    },
+    "YOKOGAWA": {
+      "distributor_name": "Yokogawa Test & Measurement Corporation",
+      "distributor_address": "2-9-32 Nakacho, Musashino-shi, Tokyo 180-8750, Japan",
+      "categories": ["measurement", "test-equipment", "otdr"],
+      "keywords": ["yokogawa"]
+    },
+    "Mitutoyo": {
+      "distributor_name": "Mitutoyo Corporation",
+      "distributor_address": "20-1 Sakado 1-chome, Takatsu-ku, Kawasaki-shi, Kanagawa 213-8533, Japan",
+      "categories": ["measurement", "precision-tool"],
+      "keywords": ["mitutoyo", "ミツトヨ"]
+    },
+    "Fidelity Research": {
+      "distributor_name": "Fidelity Research (via resale, no direct distributor)",
+      "distributor_address": "N/A — vintage audio, original mfg defunct",
+      "categories": ["audio", "vintage"],
+      "keywords": ["fidelity research"]
+    }
+  },
+
+  "hts": {
+    "e-reader": {
+      "code": "8543.70.9200",
+      "description": "Electrical machines and apparatus with translation or dictionary functions",
+      "ruling": "U.S. CBP Ruling NY N215220 (Kobo Touch)",
+      "duty": "Free",
+      "keywords": ["e-reader", "e-ink", "electronic book reader", "boox", "kindle"]
+    },
+    "tablet": {
+      "code": "8471.30.0100",
+      "description": "Portable automatic data processing machines",
+      "duty": "Free",
+      "keywords": ["tablet", "ipad", "fire"]
+    },
+    "gaming-mousepad": {
+      "code": "8471.60.2000",
+      "description": "Computer input device accessory",
+      "duty": "Free",
+      "keywords": ["mouse pad", "mousepad"]
+    },
+    "audio-dac": {
+      "code": "8518.30.2000",
+      "description": "Audio headphone/DAC amplifier",
+      "duty": "Free",
+      "keywords": ["dac", "amplifier", "audio"]
+    },
+    "ceramic-cookware": {
+      "code": "6912.00.4810",
+      "description": "Ceramic tableware/kitchenware, other",
+      "duty": "9.8%",
+      "keywords": ["cocotte", "ceramic", "stoneware"]
+    },
+    "optical-microscope-lens": {
+      "code": "9002.19.0000",
+      "description": "Microscope objective lenses and mounted optical elements",
+      "duty": "Free",
+      "keywords": ["objective lens", "microscope", "planfl"]
+    },
+    "measurement-instrument": {
+      "code": "9030.39.0100",
+      "description": "Instruments for measuring/checking electrical quantities",
+      "duty": "Free",
+      "keywords": ["multimeter", "lcr", "oscilloscope", "clamp"]
+    },
+    "otdr": {
+      "code": "9031.41.0000",
+      "description": "Optical time domain reflectometer",
+      "duty": "Free",
+      "keywords": ["otdr"]
+    },
+    "generic-electrical-apparatus": {
+      "code": "8543.70.9960",
+      "description": "Other electrical machines and apparatus, fallback",
+      "duty": "2.6%",
+      "keywords": ["electronics", "electrical"],
+      "_note": "Tier 1 で該当カテゴリに当たらない場合の汎用 fallback"
+    }
+  }
+}

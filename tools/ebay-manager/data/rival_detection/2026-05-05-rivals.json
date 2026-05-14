@@ -1,0 +1,41 @@
+{
+  "date": "2026-05-05",
+  "timestamp": "2026-05-05T22:28:13.327769",
+  "new_sellers": [
+    {
+      "seller": "tak-5700",
+      "feedback_score": 59,
+      "competing_items": [
+        {
+          "title": "Le Creuset Mini Blueberry Cocotte Vegetable Series 0.6L 20zo Stoneware NEW",
+          "price_usd": 220.0,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-05-05T22:28:13.325951",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "origamiselect",
+      "feedback_score": 14,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH New from Japan",
+          "price_usd": 87.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH New from Japan",
+          "price_usd": 87.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-05-05T22:28:07.638675",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 2,
+  "total_sellers_scanned": 146
+}

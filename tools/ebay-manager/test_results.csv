@@ -1,0 +1,80 @@
+﻿No,サイト名,変換URL,試験種別,結果,想定,判定
+1,メルカリ,ebayme_,非存在,ページなし,ページなし,OK
+2,メルカリショップ,ebayMS_,非存在,ページなし,ページなし,OK
+3,ラクマ,ebayrm_,非存在,ページなし,ページなし,OK
+4,Paypayフリマ,ebayPF_,非存在,ページなし,ページなし,OK
+5,ヤフオク,ebayh_,非存在,ページなし,ページなし,OK
+6,楽天市場,ebayRT_,非存在,判定不能,判定不能,OK
+7,楽天ブックス,ebayRB_,在庫有,在庫あり,在庫あり,OK
+8,楽天ブックス,ebayRB_,非存在,ページなし,ページなし,OK
+9,Yahoo!ショッピング,ebayYS_,非存在,ページなし,ページなし,OK
+10,Amazon,ebayAM_,非存在,ページなし,ページなし,OK
+11,OFFモール,ebayOFF_,非存在,ページなし,ページなし,OK
+12,駿河屋,ebaySU_,在庫有,在庫あり,在庫あり,OK
+13,駿河屋,ebaySU_,在庫無,在庫なし,在庫なし,OK
+14,駿河屋,ebaySU_,非存在,ページなし,ページなし,OK
+15,アナログレコード,ebayOR_,非存在,判定不能,判定不能,OK
+16,ヨドバシ,ebayYD_,在庫無,在庫なし,在庫なし,OK
+17,ヨドバシ,ebayYD_,非存在,ページなし,ページなし,OK
+18,ソフトマップ,ebaySF_,非存在,ページなし,ページなし,OK
+19,フジヤカメラ,ebayFC_,在庫有,在庫あり,在庫あり,OK
+20,フジヤカメラ,ebayFC_,非存在,ページなし,ページなし,OK
+21,e-イヤホン,ebayEE_,在庫有,在庫あり,在庫あり,OK
+22,e-イヤホン,ebayEE_,非存在,ページなし,ページなし,OK
+23,e-ナビ屋,ebayEN_,在庫有,在庫あり,在庫あり,OK
+24,e-ナビ屋,ebayEN_,非存在,ページなし,ページなし,OK
+25,オーディオ逸品館,ebayAD_,在庫無,在庫なし,在庫なし,OK
+26,オーディオ逸品館,ebayAD_,非存在,ページなし,ページなし,OK
+27,diskunion,ebayDU_,在庫無,在庫なし,在庫なし,OK
+28,diskunion,ebayDU_,非存在,ページなし,ページなし,OK
+29,TSUKUMO,ebayTK_,在庫有,在庫あり,在庫あり,OK
+30,TSUKUMO,ebayTK_,非存在,在庫あり,在庫あり,OK
+31,FavoriteStyle,ebayFS_,在庫有,在庫あり,在庫あり,OK
+32,FavoriteStyle,ebayFS_,非存在,ページなし,ページなし,OK
+33,KINBON WEB SHOP,ebayBS_,在庫無,在庫なし,在庫なし,OK
+34,KINBON WEB SHOP,ebayBS_,非存在,ページなし,ページなし,OK
+35,gute gouter,ebayGG_,非存在,判定不能,判定不能,OK
+36,モノタロウ,ebayMT_,非存在,判定不能,判定不能,OK
+37,FA機器,ebayFA_,非存在,判定不能,判定不能,OK
+38,保守部品,ebayHB_,非存在,判定不能,判定不能,OK
+39,Caster House,ebayCH_,在庫有,在庫あり,在庫あり,OK
+40,Caster House,ebayCH_,非存在,ページなし,ページなし,OK
+41,COMPONENTS 76,ebayCP_,在庫有,在庫あり,在庫あり,OK
+42,COMPONENTS 76,ebayCP_,非存在,ページなし,ページなし,OK
+43,ATAGO,ebayAT_,非存在,ページなし,ページなし,OK
+44,トンカタストア,ebayTS_,非存在,ページなし,ページなし,OK
+
+サイト名,変換URL,在庫有テスト,在庫無テスト,非存在テスト,総合
+メルカリ,ebayme_,-,-,OK,OK
+メルカリショップ,ebayMS_,-,-,OK,OK
+ラクマ,ebayrm_,-,-,OK,OK
+Paypayフリマ,ebayPF_,-,-,OK,OK
+ヤフオク,ebayh_,-,-,OK,OK
+楽天市場,ebayRT_,-,-,OK,OK
+楽天ブックス,ebayRB_,OK,-,OK,OK
+Yahoo!ショッピング,ebayYS_,-,-,OK,OK
+Amazon,ebayAM_,-,-,OK,OK
+OFFモール,ebayOFF_,-,-,OK,OK
+駿河屋,ebaySU_,OK,OK,OK,OK
+アナログレコード,ebayOR_,-,-,OK,OK
+ヨドバシ,ebayYD_,-,OK,OK,OK
+ソフトマップ,ebaySF_,-,-,OK,OK
+フジヤカメラ,ebayFC_,OK,-,OK,OK
+e-イヤホン,ebayEE_,OK,-,OK,OK
+e-ナビ屋,ebayEN_,OK,-,OK,OK
+オーディオ逸品館,ebayAD_,-,OK,OK,OK
+diskunion,ebayDU_,-,OK,OK,OK
+TSUKUMO,ebayTK_,OK,-,OK,OK
+FavoriteStyle,ebayFS_,OK,-,OK,OK
+KINBON WEB SHOP,ebayBS_,-,OK,OK,OK
+gute gouter,ebayGG_,-,-,OK,OK
+モノタロウ,ebayMT_,-,-,OK,OK
+FA機器,ebayFA_,-,-,OK,OK
+保守部品,ebayHB_,-,-,OK,OK
+Caster House,ebayCH_,OK,-,OK,OK
+COMPONENTS 76,ebayCP_,OK,-,OK,OK
+ATAGO,ebayAT_,-,-,OK,OK
+トンカタストア,ebayTS_,-,-,OK,OK
+現場市場,ebayGC_,skip,skip,skip,URL未設定
+計測器ランド,ebayKL_,skip,skip,skip,URL未設定
+HILTI,ebayHI_,skip,skip,skip,URL未設定

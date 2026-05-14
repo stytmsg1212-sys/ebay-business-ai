@@ -1,0 +1,1242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MonoHonpo · Maximal Japan v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#fbf9f3;
+    --paper-hi:#fffdf7;
+    --paper-edge:#e9e2d2;
+    --ink:#1a1817;
+    --ink-2:#2d2822;
+    --ink-3:#5b524a;
+    --ink-4:#8a8077;
+    --shu:#a8341b;          /* vermillion */
+    --shu-hi:#c44a2e;
+    --shu-deep:#7a2613;
+    --ai:#1a3a5c;           /* indigo */
+    --ai-hi:#2c5680;
+    --ai-deep:#0e2238;
+    --ai-tint:#e6ecf2;
+    --kin:#a9893f;          /* muted gold for accents */
+
+    --f-display:'Cormorant Garamond', serif;
+    --f-sans:'Inter', system-ui, sans-serif;
+    --f-mono:'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#2a2520;color:var(--ink);font-family:var(--f-sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+
+  /* ------- Document chrome ------- */
+  .doc-head{
+    max-width:1280px;margin:36px auto 24px;padding:0 28px;
+    color:var(--paper);
+    display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;
+  }
+  .doc-head h1{font-family:var(--f-display);font-weight:500;font-size:34px;letter-spacing:.2px;margin:0;color:var(--paper-hi);}
+  .doc-head h1 em{font-style:italic;color:var(--shu-hi);}
+  .doc-head .meta{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--paper-edge);text-transform:uppercase;margin-top:8px;}
+  .doc-head .meta b{color:var(--paper);}
+  .doc-toc{font-family:var(--f-mono);font-size:10px;letter-spacing:1.5px;color:var(--paper-edge);text-align:right;line-height:1.9;}
+  .doc-toc a{color:var(--paper-edge);text-decoration:none;border-bottom:1px dotted var(--ink-4);margin-left:14px;}
+  .doc-toc a:hover{color:var(--shu-hi);border-color:var(--shu-hi);}
+
+  .frame{max-width:1280px;margin:0 auto 28px;background:var(--paper);box-shadow:0 30px 80px rgba(0,0,0,.4);}
+  .frame-label{
+    max-width:1280px;margin:32px auto 10px;padding:0 28px;
+    color:var(--paper);font-family:var(--f-mono);font-size:11px;letter-spacing:3px;text-transform:uppercase;
+    display:flex;align-items:baseline;gap:14px;
+  }
+  .frame-label .sub{color:var(--ink-4);letter-spacing:2px;font-size:10px;}
+  .doc-foot{max-width:1280px;margin:24px auto 60px;padding:0 28px;color:var(--paper-edge);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:10px;}
+
+  /* ------- Reusable bits ------- */
+  .enso{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-radius:50%;border-right-color:transparent;transform:rotate(-30deg);vertical-align:-2px;}
+  .ink-dots{display:inline-flex;gap:4px;align-items:center;vertical-align:middle;}
+  .ink-dots span{width:5px;height:5px;background:currentColor;border-radius:50%;}
+  .ink-dots span:nth-child(2){width:3px;height:3px;opacity:.6;}
+  .ink-dots span:nth-child(3){width:2px;height:2px;opacity:.4;}
+  .eyebrow-line{display:inline-flex;align-items:center;gap:10px;}
+  .eyebrow-line::before,.eyebrow-line::after{content:'';display:block;width:28px;height:1px;background:currentColor;opacity:.5;}
+
+  /* ===== WAGARA PATTERNS (CSS, infinitely tileable) ===== */
+  /* 市松 (ichimatsu) — checker */
+  .pat-ichimatsu{
+    background-image:
+      linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--ai) 75%);
+    background-size:24px 24px;
+    background-position:0 0, 0 12px, 12px -12px, -12px 0;
+  }
+  /* 青海波 (seigaiha) — wave scales */
+  .pat-seigaiha{
+    --c:var(--ai);
+    background-color:var(--paper-hi);
+    background-image:
+      radial-gradient(circle at 50% 100%, transparent 18px, var(--c) 18px, var(--c) 19px, transparent 20px, transparent 28px, var(--c) 28px, var(--c) 29px, transparent 30px, transparent 38px, var(--c) 38px, var(--c) 39px, transparent 40px),
+      radial-gradient(circle at 0 100%, transparent 18px, var(--c) 18px, var(--c) 19px, transparent 20px, transparent 28px, var(--c) 28px, var(--c) 29px, transparent 30px, transparent 38px, var(--c) 38px, var(--c) 39px, transparent 40px),
+      radial-gradient(circle at 100% 100%, transparent 18px, var(--c) 18px, var(--c) 19px, transparent 20px, transparent 28px, var(--c) 28px, var(--c) 29px, transparent 30px, transparent 38px, var(--c) 38px, var(--c) 39px, transparent 40px);
+    background-size:80px 40px;
+  }
+  /* 麻の葉 (asanoha) — hemp leaf, simplified */
+  .pat-asanoha{
+    background-color:var(--paper-hi);
+    background-image:
+      linear-gradient(60deg,transparent 49%,var(--ai) 49%,var(--ai) 51%,transparent 51%),
+      linear-gradient(-60deg,transparent 49%,var(--ai) 49%,var(--ai) 51%,transparent 51%),
+      linear-gradient(0deg,transparent 49%,var(--ai) 49%,var(--ai) 51%,transparent 51%);
+    background-size:36px 62px;
+  }
+  /* 鱗 (uroko) — triangles */
+  .pat-uroko{
+    background-color:var(--paper-hi);
+    background-image:
+      linear-gradient(60deg,var(--ai) 25%,transparent 25.5%),
+      linear-gradient(-60deg,var(--ai) 25%,transparent 25.5%);
+    background-size:20px 35px;
+  }
+
+  /* shu-tinted variants */
+  .pat-ichimatsu.shu{background-image:
+      linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--shu) 75%);}
+  .pat-seigaiha.shu{--c:var(--shu);}
+  .pat-asanoha.shu{background-image:
+      linear-gradient(60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+      linear-gradient(-60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+      linear-gradient(0deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%);}
+
+  /* faded versions for backdrops */
+  .fade-15{opacity:.15;}
+  .fade-25{opacity:.25;}
+  .fade-40{opacity:.40;}
+
+  /* Hanko variants reused */
+  .seal-round{
+    width:64px;height:64px;border-radius:50%;background:var(--shu);color:var(--paper-hi);
+    display:flex;align-items:center;justify-content:center;flex-direction:column;
+    transform:rotate(-6deg);box-shadow:inset 0 0 0 2px var(--paper-hi),0 0 0 3px var(--shu);
+    font-family:var(--f-display);font-weight:700;
+  }
+  .seal-tate{
+    width:42px;min-height:96px;background:var(--shu);color:var(--paper-hi);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    padding:10px 4px;font-family:var(--f-display);font-weight:700;font-size:18px;line-height:1;
+    box-shadow:inset 0 0 0 1.5px var(--paper-hi),0 0 0 2px var(--shu);
+    transform:rotate(-2deg);
+  }
+
+  /* Indigo seal variant */
+  .seal-ai{background:var(--ai);box-shadow:inset 0 0 0 1.5px var(--paper-hi),0 0 0 2px var(--ai);}
+
+</style>
+</head>
+<body>
+
+<div class="doc-head">
+  <div>
+    <h1>MonoHonpo &nbsp;·&nbsp; <em>Maximal Japan v1</em></h1>
+    <div class="meta">EXTENSION OF v3 · &nbsp;<b>SHU + PAPER + INDIGO</b> · WAGARA PATTERN SYSTEM · STORE / PRODUCT / LOGO / PACKAGE / PROMO</div>
+  </div>
+  <div class="doc-toc">
+    <a href="#f01">01 System</a>
+    <a href="#f02">02 Logo</a>
+    <a href="#f03">03 Store</a>
+    <a href="#f04">04 Product</a>
+    <a href="#f05">05 Package</a>
+    <a href="#f06">06 Promo</a>
+  </div>
+</div>
+
+<!-- ============ 01 · SYSTEM ============ -->
+<div class="frame-label" id="f01">01 · System extension <span class="sub">Indigo + wagara · Rules of restraint</span></div>
+<div class="frame">
+  <div style="padding:48px 56px;">
+
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:36px;align-items:end;margin-bottom:34px;">
+      <div>
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:6px;color:var(--shu);margin-bottom:10px;"><span class="eyebrow-line">M A X I M A L · J A P A N</span></div>
+        <h2 style="font-family:var(--f-display);font-size:44px;font-weight:500;line-height:1.1;margin:0;color:var(--ink);">A louder Japan, <em style="color:var(--ai);">in measured doses.</em></h2>
+        <p style="font-family:var(--f-display);font-style:italic;font-size:17px;color:var(--ink-3);max-width:560px;margin:14px 0 0;">Wagara patterns and indigo enter the system as <b style="color:var(--ai);font-style:normal;font-weight:600;">structural framing</b> — borders, headers, seals — never as wallpaper behind the merchandise.</p>
+      </div>
+      <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;line-height:1.9;border-left:2px solid var(--ai);padding:6px 0 6px 16px;">
+        <div>Direction · <b style="color:var(--ink);">Bold but tasteful</b></div>
+        <div>JP text · <b style="color:var(--ink);">Logo & seals only</b></div>
+        <div>Body copy · <b style="color:var(--ink);">English</b></div>
+        <div>Product photo · <b style="color:var(--ink);">Realistic, including gadgets</b></div>
+      </div>
+    </div>
+
+    <!-- color extension -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:1px solid var(--paper-edge);">
+      <div style="background:var(--paper);padding:18px;border-right:1px solid var(--paper-edge);">
+        <div style="height:48px;background:var(--paper);border:1px solid var(--paper-edge);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);margin-top:8px;">PAPER</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#fbf9f3</div>
+      </div>
+      <div style="background:var(--paper);padding:18px;border-right:1px solid var(--paper-edge);">
+        <div style="height:48px;background:var(--ink);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);margin-top:8px;">SUMI · INK</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#1a1817</div>
+      </div>
+      <div style="background:var(--paper);padding:18px;border-right:1px solid var(--paper-edge);">
+        <div style="height:48px;background:var(--shu);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);margin-top:8px;">SHU · 朱</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#a8341b</div>
+      </div>
+      <div style="background:var(--paper);padding:18px;border-right:1px solid var(--paper-edge);position:relative;">
+        <div style="height:48px;background:var(--ai);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ai);margin-top:8px;">AI · 藍 ★ NEW</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#1a3a5c</div>
+      </div>
+      <div style="background:var(--paper);padding:18px;border-right:1px solid var(--paper-edge);">
+        <div style="height:48px;background:var(--ai-tint);border:1px solid var(--paper-edge);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);margin-top:8px;">AI · TINT</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#e6ecf2</div>
+      </div>
+      <div style="background:var(--paper);padding:18px;">
+        <div style="height:48px;background:var(--kin);"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);margin-top:8px;">KIN · ACCENT</div>
+        <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);">#a9893f</div>
+      </div>
+    </div>
+
+    <!-- pattern library -->
+    <div style="margin-top:34px;">
+      <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ai);text-transform:uppercase;margin-bottom:14px;">WAGARA PATTERN LIBRARY · 4 PRIMITIVES</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+        <div>
+          <div class="pat-ichimatsu" style="height:120px;border:1px solid var(--paper-edge);"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">
+            <span>ICHIMATSU</span><span>checker</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:12px;color:var(--ink-3);margin-top:2px;font-style:italic;">Use for borders, footers, certificates.</div>
+        </div>
+        <div>
+          <div class="pat-seigaiha" style="height:120px;border:1px solid var(--paper-edge);"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">
+            <span>SEIGAIHA</span><span>wave</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:12px;color:var(--ink-3);margin-top:2px;font-style:italic;">Hero panels, seasonal banners.</div>
+        </div>
+        <div>
+          <div class="pat-asanoha" style="height:120px;border:1px solid var(--paper-edge);"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">
+            <span>ASANOHA</span><span>hemp leaf</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:12px;color:var(--ink-3);margin-top:2px;font-style:italic;">Package interior, gift wrap.</div>
+        </div>
+        <div>
+          <div class="pat-uroko" style="height:120px;border:1px solid var(--paper-edge);"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">
+            <span>UROKO</span><span>scales</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:12px;color:var(--ink-3);margin-top:2px;font-style:italic;">Side strips, ticket stubs, watermarks.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- usage rules -->
+    <div style="margin-top:34px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div style="border:1px solid var(--paper-edge);padding:18px;background:var(--paper-hi);position:relative;">
+        <div class="pat-ichimatsu fade-25" style="position:absolute;top:0;left:0;right:0;height:6px;"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);text-transform:uppercase;margin-bottom:6px;padding-top:8px;">RULE 01 · DO</div>
+        <div style="font-family:var(--f-display);font-size:16px;font-weight:600;color:var(--ink);margin-bottom:6px;">Pattern as frame, not background</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.55;">A 4–8px wagara strip across the top or side of a card. Product imagery stays on plain paper.</div>
+      </div>
+      <div style="border:1px solid var(--paper-edge);padding:18px;background:var(--paper-hi);position:relative;">
+        <div class="pat-seigaiha fade-25" style="position:absolute;top:0;left:0;right:0;height:6px;"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);text-transform:uppercase;margin-bottom:6px;padding-top:8px;">RULE 02 · DO</div>
+        <div style="font-family:var(--f-display);font-size:16px;font-weight:600;color:var(--ink);margin-bottom:6px;">Indigo for structural moments</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.55;">Section headers, footers, sub-brand lockups. Shu remains the seal-of-quality accent.</div>
+      </div>
+      <div style="border:1px solid var(--paper-edge);padding:18px;background:var(--paper-hi);position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:6px;background:repeating-linear-gradient(45deg,var(--shu) 0 6px,transparent 6px 12px);opacity:.25;"></div>
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--shu);text-transform:uppercase;margin-bottom:6px;padding-top:8px;">RULE 03 · DON'T</div>
+        <div style="font-family:var(--f-display);font-size:16px;font-weight:600;color:var(--ink);margin-bottom:6px;">No wagara behind product</div>
+        <div style="font-size:12px;color:var(--ink-3);line-height:1.55;">Gadgets, lenses, and electronics photograph on the plain paper or sumi backdrops only.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ 02 · LOGO LOCKUP ============ -->
+<div class="frame-label" id="f02">02 · Logo &amp; mark lockup <span class="sub">Enso · 本舗 seal · indigo sub-brand · color pairings</span></div>
+<div class="frame">
+  <div style="padding:48px 56px;">
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:40px;align-items:start;">
+
+      <!-- Hero lockup on indigo -->
+      <div style="background:var(--ai);color:var(--paper-hi);padding:48px 44px;position:relative;overflow:hidden;">
+        <div class="pat-seigaiha fade-15" style="position:absolute;inset:0;--c:var(--paper-hi);background-color:transparent;"></div>
+        <div class="pat-ichimatsu" style="position:absolute;left:0;right:0;bottom:0;height:8px;background-image:
+          linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:8px 8px;"></div>
+
+        <div style="position:relative;display:flex;align-items:center;gap:32px;">
+          <!-- Enso mark -->
+          <div style="flex-shrink:0;width:140px;height:140px;position:relative;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 140 140" style="width:100%;height:100%;">
+              <defs>
+                <filter id="brushFilt"><feTurbulence baseFrequency=".9" numOctaves="2" seed="3"/><feDisplacementMap in="SourceGraphic" scale="2"/></filter>
+              </defs>
+              <circle cx="70" cy="70" r="52" fill="none" stroke="#fbf9f3" stroke-width="11" stroke-linecap="round" stroke-dasharray="280 50" transform="rotate(-25 70 70)" filter="url(#brushFilt)"/>
+              <text x="70" y="80" text-anchor="middle" font-family="Cormorant Garamond" font-weight="700" font-size="22" fill="#fbf9f3">本舗</text>
+            </svg>
+          </div>
+          <div>
+            <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:6px;color:var(--shu-hi);text-transform:uppercase;margin-bottom:6px;">EST · 2 0 1 9 · TOKYO</div>
+            <div style="font-family:var(--f-display);font-weight:600;font-size:64px;line-height:.95;letter-spacing:-.5px;color:var(--paper-hi);">MonoHonpo</div>
+            <div style="font-family:var(--f-display);font-style:italic;font-size:18px;color:var(--paper-edge);margin-top:6px;">The Original Goods Store</div>
+          </div>
+        </div>
+
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:center;margin-top:36px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--paper-edge);text-transform:uppercase;border-top:1px solid rgba(251,249,243,.25);padding-top:14px;">
+          <span>Tokyo · Nakano</span>
+          <span style="color:var(--paper-hi);background:rgba(10,20,35,.55);padding:3px 10px;">★&nbsp;Authentic · Curated · Shipped DDP</span>
+          <span>www.monohonpo.com</span>
+        </div>
+      </div>
+
+      <!-- Construction notes -->
+      <div>
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ai);text-transform:uppercase;margin-bottom:10px;">CONSTRUCTION</div>
+        <h3 style="font-family:var(--f-display);font-size:24px;font-weight:500;color:var(--ink);margin:0 0 12px;">Three locked elements.</h3>
+
+        <div style="border-top:1px solid var(--paper-edge);">
+          <div style="display:grid;grid-template-columns:30px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-mono);font-size:11px;color:var(--shu);font-weight:600;">A</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);">Enso + 本舗 medallion</div>
+              <div style="font-size:12px;color:var(--ink-3);font-style:italic;font-family:var(--f-display);">Brushstroke circle with the kanji "honpo" (本舗 — original/headquarters store) sitting inside.</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:30px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-mono);font-size:11px;color:var(--shu);font-weight:600;">B</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);">Wordmark · Cormorant 600</div>
+              <div style="font-size:12px;color:var(--ink-3);font-style:italic;font-family:var(--f-display);">Single tracked-tight setting. Cap-height equals 40% of the medallion diameter.</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:30px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-mono);font-size:11px;color:var(--shu);font-weight:600;">C</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);">Ichimatsu base bar · 8px</div>
+              <div style="font-size:12px;color:var(--ink-3);font-style:italic;font-family:var(--f-display);">Shu checker stripe under every full lockup. Doubles as a print bleed registration mark.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color pairings -->
+    <div style="margin-top:32px;">
+      <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ai);text-transform:uppercase;margin-bottom:14px;">APPROVED COLOR PAIRINGS</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+
+        <!-- 1 paper -->
+        <div style="background:var(--paper);border:1px solid var(--paper-edge);padding:24px 18px;text-align:center;position:relative;">
+          <div style="display:inline-flex;align-items:center;gap:10px;">
+            <span style="display:block;width:40px;height:40px;border:2.5px solid var(--ink);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:11px;color:var(--ink);transform:rotate(25deg);">本舗</span></span>
+            <span style="font-family:var(--f-display);font-weight:600;font-size:22px;color:var(--ink);">MonoHonpo</span>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background-image:
+            linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:5px 5px;"></div>
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:2px;color:var(--ink-4);margin-top:14px;text-transform:uppercase;">Primary · paper</div>
+        </div>
+
+        <!-- 2 indigo -->
+        <div style="background:var(--ai);border:1px solid var(--ai);padding:24px 18px;text-align:center;position:relative;">
+          <div style="display:inline-flex;align-items:center;gap:10px;color:var(--paper-hi);">
+            <span style="display:block;width:40px;height:40px;border:2.5px solid var(--paper-hi);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:11px;color:var(--paper-hi);transform:rotate(25deg);">本舗</span></span>
+            <span style="font-family:var(--f-display);font-weight:600;font-size:22px;color:var(--paper-hi);">MonoHonpo</span>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background-image:
+            linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:5px 5px;"></div>
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:2px;color:var(--paper-edge);margin-top:14px;text-transform:uppercase;">Indigo · brand</div>
+        </div>
+
+        <!-- 3 sumi -->
+        <div style="background:var(--ink);border:1px solid var(--ink);padding:24px 18px;text-align:center;position:relative;">
+          <div style="display:inline-flex;align-items:center;gap:10px;color:var(--paper-hi);">
+            <span style="display:block;width:40px;height:40px;border:2.5px solid var(--shu-hi);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:11px;color:var(--shu-hi);transform:rotate(25deg);">本舗</span></span>
+            <span style="font-family:var(--f-display);font-weight:600;font-size:22px;color:var(--paper-hi);">MonoHonpo</span>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background-image:
+            linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:5px 5px;"></div>
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:2px;color:var(--paper-edge);margin-top:14px;text-transform:uppercase;">Sumi · night</div>
+        </div>
+
+        <!-- 4 reverse: paper on shu w indigo accents -->
+        <div style="background:var(--shu);border:1px solid var(--shu);padding:24px 18px;text-align:center;position:relative;">
+          <div style="display:inline-flex;align-items:center;gap:10px;color:var(--paper-hi);">
+            <span style="display:block;width:40px;height:40px;border:2.5px solid var(--paper-hi);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:11px;color:var(--paper-hi);transform:rotate(25deg);">本舗</span></span>
+            <span style="font-family:var(--f-display);font-weight:600;font-size:22px;color:var(--paper-hi);">MonoHonpo</span>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;height:5px;background-image:
+            linear-gradient(45deg,var(--ai-deep) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--ai-deep) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--ai-deep) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--ai-deep) 75%);background-size:5px 5px;"></div>
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:2px;color:var(--paper-edge);margin-top:14px;text-transform:uppercase;">Festival · alt</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Sub-marks: tate (vertical) sub-brands -->
+    <div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;">
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);padding:20px;display:flex;gap:18px;align-items:center;">
+        <div style="width:44px;min-height:120px;background:var(--ai);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.1;padding:14px 0;">電<br>気</div>
+        <div>
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">SUB-BRAND</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink);">Denki</div>
+          <div style="font-family:var(--f-display);font-style:italic;font-size:12px;color:var(--ink-3);">Electronics · gadgets</div>
+        </div>
+      </div>
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);padding:20px;display:flex;gap:18px;align-items:center;">
+        <div style="width:44px;min-height:120px;background:var(--ai);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.1;padding:14px 0;">音<br>響</div>
+        <div>
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">SUB-BRAND</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink);">Onkyo</div>
+          <div style="font-family:var(--f-display);font-style:italic;font-size:12px;color:var(--ink-3);">Audio · hi-fi</div>
+        </div>
+      </div>
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);padding:20px;display:flex;gap:18px;align-items:center;">
+        <div style="width:44px;min-height:120px;background:var(--ai);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.1;padding:14px 0;">光<br>学</div>
+        <div>
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">SUB-BRAND</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink);">Kogaku</div>
+          <div style="font-family:var(--f-display);font-style:italic;font-size:12px;color:var(--ink-3);">Optics · cameras</div>
+        </div>
+      </div>
+      <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);padding:20px;display:flex;gap:18px;align-items:center;">
+        <div style="width:44px;min-height:120px;background:var(--ai);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.1;padding:14px 0;">工<br>具</div>
+        <div>
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">SUB-BRAND</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--ink);">Kogu</div>
+          <div style="font-family:var(--f-display);font-style:italic;font-size:12px;color:var(--ink-3);">Tools · industrial</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ 03 · STORE HERO + FEATURED ============ -->
+<div class="frame-label" id="f03">03 · Store hero &amp; Featured Collection <span class="sub">Wagara framing · indigo header · gadget-friendly grid</span></div>
+<div class="frame">
+  <!-- store top bar -->
+  <div style="background:var(--ai);color:var(--paper-hi);padding:14px 32px;display:flex;justify-content:space-between;align-items:center;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;">
+    <div style="display:flex;gap:24px;align-items:center;">
+      <span style="color:var(--shu-hi);">●</span>
+      <span>Ships from Tokyo</span>
+      <span style="color:var(--paper-edge);">·</span>
+      <span>DDP — duties &amp; tax included</span>
+      <span style="color:var(--paper-edge);">·</span>
+      <span>30-day return</span>
+    </div>
+    <div>USD ▾ &nbsp; · &nbsp; Sign in</div>
+  </div>
+
+  <!-- store header w/ lockup + nav -->
+  <div style="background:var(--paper);border-bottom:1px solid var(--paper-edge);position:relative;">
+    <div class="pat-ichimatsu" style="position:absolute;left:0;right:0;bottom:0;height:6px;background-image:
+      linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:6px 6px;opacity:.85;"></div>
+    <div style="padding:22px 32px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="display:block;width:48px;height:48px;border:3px solid var(--ink);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:13px;color:var(--ink);transform:rotate(25deg);">本舗</span></span>
+        <div>
+          <div style="font-family:var(--f-display);font-weight:600;font-size:26px;color:var(--ink);line-height:1;">MonoHonpo</div>
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:2.5px;color:var(--shu);margin-top:3px;">EST · 2 0 1 9 · TOKYO</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:28px;font-family:var(--f-display);font-size:14px;color:var(--ink);">
+        <a href="#" style="color:var(--shu);text-decoration:none;border-bottom:2px solid var(--shu);padding-bottom:4px;">Home</a>
+        <a href="#" style="color:var(--ink);text-decoration:none;">Denki · Electronics</a>
+        <a href="#" style="color:var(--ink);text-decoration:none;">Onkyo · Audio</a>
+        <a href="#" style="color:var(--ink);text-decoration:none;">Kogaku · Optics</a>
+        <a href="#" style="color:var(--ink);text-decoration:none;">Kogu · Tools</a>
+        <a href="#" style="color:var(--ink);text-decoration:none;">About</a>
+      </div>
+      <div style="display:flex;gap:18px;align-items:center;font-family:var(--f-mono);font-size:11px;color:var(--ink-3);">
+        <span>⌕ Search</span>
+        <span style="background:var(--ai);color:var(--paper-hi);padding:6px 12px;">CART · 0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div style="position:relative;background:var(--paper-hi);overflow:hidden;">
+    <!-- Left wagara strip -->
+    <div class="pat-seigaiha" style="position:absolute;top:0;bottom:0;left:0;width:54px;border-right:1px solid var(--paper-edge);"></div>
+    <!-- Right wagara strip -->
+    <div class="pat-uroko" style="position:absolute;top:0;bottom:0;right:0;width:54px;border-left:1px solid var(--paper-edge);"></div>
+
+    <div style="padding:60px 100px;display:grid;grid-template-columns:1.1fr 1fr;gap:50px;align-items:center;position:relative;">
+      <!-- Hero copy -->
+      <div>
+        <div style="display:inline-flex;align-items:center;gap:10px;font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--ai);text-transform:uppercase;margin-bottom:16px;">
+          <span class="enso" style="color:var(--ai);"></span> SPRING · CHERRY RELEASE 2026
+        </div>
+        <h1 style="font-family:var(--f-display);font-weight:500;font-size:58px;line-height:1.08;letter-spacing:-1px;margin:0 0 22px;color:var(--ink);padding-bottom:8px;">
+          Goods, sourced &amp; sealed<br>in <em style="color:var(--shu);">Tokyo.</em>
+        </h1>
+        <p style="font-family:var(--f-display);font-style:italic;font-size:19px;color:var(--ink-3);max-width:480px;margin:0 0 26px;line-height:1.4;">
+          From manual-focus lenses to handheld recorders — every item inspected, ranked, and shipped <b style="color:var(--ai);font-style:normal;font-weight:600;">DDP</b> with duties prepaid. No customs surprises.
+        </p>
+        <div style="display:flex;gap:14px;align-items:center;">
+          <a href="#" style="background:var(--ai);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:17px;padding:14px 28px;text-decoration:none;letter-spacing:.3px;white-space:nowrap;">Browse all 312 items →</a>
+          <a href="#" style="font-family:var(--f-mono);font-size:11px;letter-spacing:2px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:3px;text-transform:uppercase;">Read the ranking guide</a>
+        </div>
+
+        <!-- Stat strip -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:36px;border-top:1px solid var(--paper-edge);">
+          <div style="padding:14px 0;border-right:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--ai);">312</div>
+            <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Items in stock</div>
+          </div>
+          <div style="padding:14px 14px;border-right:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--ai);">7,420</div>
+            <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Shipped to 38 countries</div>
+          </div>
+          <div style="padding:14px 14px;border-right:1px solid var(--paper-edge);">
+            <div style="font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--ai);">99.4<span style="font-size:14px;">%</span></div>
+            <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Positive feedback</div>
+          </div>
+          <div style="padding:14px 14px;">
+            <div style="font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--shu);">★&nbsp;TOP RATED</div>
+            <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">eBay Plus seller · 6yrs</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero visual: gadget on indigo wagara mat -->
+      <div style="position:relative;aspect-ratio:1/1;background:var(--ai);overflow:hidden;">
+        <div class="pat-asanoha" style="position:absolute;inset:0;background-color:var(--ai);background-image:
+          linear-gradient(60deg,transparent 49%,var(--ai-hi) 49%,var(--ai-hi) 51%,transparent 51%),
+          linear-gradient(-60deg,transparent 49%,var(--ai-hi) 49%,var(--ai-hi) 51%,transparent 51%),
+          linear-gradient(0deg,transparent 49%,var(--ai-hi) 49%,var(--ai-hi) 51%,transparent 51%);opacity:.55;"></div>
+
+        <!-- "photographic" product silhouette -->
+        <div style="position:absolute;inset:14% 18%;background:var(--paper-hi);box-shadow:0 30px 70px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;">
+          <!-- camera + lens silhouette -->
+          <svg viewBox="0 0 220 220" style="width:80%;height:80%;" fill="none">
+            <rect x="20" y="80" width="180" height="100" rx="6" fill="#1a1817"/>
+            <rect x="60" y="68" width="80" height="18" fill="#1a1817"/>
+            <circle cx="110" cy="130" r="42" fill="#2d2822" stroke="#0a0908" stroke-width="2"/>
+            <circle cx="110" cy="130" r="32" fill="radial-gradient(circle,#3a332c,#0a0908)" stroke="#0a0908" stroke-width="2"/>
+            <circle cx="110" cy="130" r="18" fill="#0a0908"/>
+            <circle cx="110" cy="130" r="6" fill="#a8341b"/>
+            <rect x="160" y="92" width="22" height="12" rx="2" fill="#a8341b"/>
+            <text x="33" y="174" font-family="JetBrains Mono" font-size="9" fill="#5b524a">NIKKOR · 50/1.4 Ai-S</text>
+          </svg>
+        </div>
+
+        <!-- Round shu seal overlay -->
+        <div class="seal-round" style="position:absolute;top:24px;right:24px;width:76px;height:76px;font-size:14px;">
+          <span style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;line-height:1;">RANK</span>
+          <span style="font-family:var(--f-display);font-weight:700;font-size:30px;line-height:1;margin:2px 0;">A</span>
+          <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1.2px;line-height:1;">CERT JP</span>
+        </div>
+
+        <!-- Indigo seal w/ kanji on bottom -->
+        <div class="seal-tate seal-ai" style="position:absolute;bottom:24px;left:24px;width:46px;min-height:108px;font-size:18px;">
+          <span style="line-height:1;">電</span>
+          <span style="line-height:1;">氣</span>
+          <span style="line-height:1;">部</span>
+        </div>
+
+        <!-- spec ticket -->
+        <div style="position:absolute;bottom:24px;right:24px;background:var(--paper-hi);padding:10px 14px;border:1px solid var(--paper-edge);font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink);">
+          <div style="color:var(--shu);font-size:8px;margin-bottom:3px;">FEATURED · $186</div>
+          <div>Ai-S · 255g · 0.45m</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom seigaiha strip -->
+    <div class="pat-seigaiha" style="height:36px;border-top:1px solid var(--paper-edge);"></div>
+  </div>
+
+  <!-- FEATURED COLLECTION -->
+  <div style="padding:54px 56px 60px;background:var(--paper);">
+    <div style="display:grid;grid-template-columns:1fr auto;align-items:end;margin-bottom:24px;">
+      <div>
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--ai);text-transform:uppercase;margin-bottom:8px;"><span class="eyebrow-line">F E A T U R E D · C O L L E C T I O N</span></div>
+        <h2 style="font-family:var(--f-display);font-weight:500;font-size:38px;margin:0;color:var(--ink);">Spring picks <em style="color:var(--shu);">— gadgets &amp; glass.</em></h2>
+      </div>
+      <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;">
+        06 ITEMS &nbsp; · &nbsp; <a href="#" style="color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink);">View all 312 →</a>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">
+      <!-- Card template, 6× -->
+      <!-- 1: Camera (gadget) -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:72%;height:72%;" fill="none">
+            <rect x="20" y="70" width="160" height="100" rx="8" fill="#1a1817"/>
+            <rect x="55" y="58" width="80" height="16" fill="#1a1817"/>
+            <circle cx="100" cy="120" r="42" fill="#2d2822" stroke="#0a0908" stroke-width="2"/>
+            <circle cx="100" cy="120" r="28" fill="#0a0908"/>
+            <circle cx="100" cy="120" r="12" fill="#3a332c"/>
+            <rect x="148" y="80" width="20" height="10" fill="#a8341b"/>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK A</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">DENKI · MIRRORLESS</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Fujifilm X-T4 Body</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$842</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · ships Mon</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- 2: Headphones -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:74%;height:74%;" fill="none">
+            <path d="M40 110 C 40 60,80 30,100 30 C 120 30,160 60,160 110" stroke="#1a1817" stroke-width="6" stroke-linecap="round"/>
+            <rect x="30" y="100" width="26" height="56" rx="6" fill="#1a1817"/>
+            <rect x="144" y="100" width="26" height="56" rx="6" fill="#1a1817"/>
+            <rect x="32" y="106" width="22" height="44" rx="3" fill="#3a332c"/>
+            <rect x="146" y="106" width="22" height="44" rx="3" fill="#3a332c"/>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK A</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">ONKYO · WIRELESS</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Sony WH-1000XM5</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$289</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · save $60</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- 3: Lens (Kogaku) -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:62%;height:62%;" fill="none">
+            <ellipse cx="100" cy="100" rx="74" ry="78" fill="#2d2822" stroke="#0a0908" stroke-width="2"/>
+            <ellipse cx="100" cy="100" rx="56" ry="60" fill="#1a1817"/>
+            <ellipse cx="100" cy="100" rx="38" ry="42" fill="radial-gradient(circle,#3a332c 0%,#0a0908 80%)"/>
+            <circle cx="100" cy="100" r="14" fill="#0a0908"/>
+            <text x="100" y="184" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#5b524a">50mm 1:1.4</text>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK S</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">KOGAKU · LENS</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Nikkor 50mm f/1.4 Ai-S</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$186</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · last 2</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- 4: Recorder -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:52%;height:78%;" fill="none">
+            <rect x="10" y="10" width="180" height="180" rx="8" fill="#1a1817"/>
+            <rect x="22" y="22" width="156" height="60" fill="#1f4d3a"/>
+            <text x="34" y="44" font-family="JetBrains Mono" font-size="11" fill="#6bc49b">REC 02:14</text>
+            <g transform="translate(28,56)">
+              <rect width="6" height="14" fill="#6bc49b"/><rect x="10" width="6" height="22" fill="#6bc49b"/><rect x="20" width="6" height="18" fill="#6bc49b"/><rect x="30" width="6" height="26" fill="#6bc49b"/><rect x="40" width="6" height="20" fill="#6bc49b"/><rect x="50" width="6" height="16" fill="#6bc49b"/><rect x="60" width="6" height="24" fill="#6bc49b"/><rect x="70" width="6" height="12" fill="#6bc49b"/><rect x="80" width="6" height="22" fill="#6bc49b"/><rect x="90" width="6" height="14" fill="#6bc49b"/><rect x="100" width="6" height="18" fill="#6bc49b"/><rect x="110" width="6" height="22" fill="#6bc49b"/><rect x="120" width="6" height="14" fill="#6bc49b"/><rect x="130" width="6" height="20" fill="#6bc49b"/><rect x="140" width="6" height="10" fill="#6bc49b"/>
+            </g>
+            <g transform="translate(22,100)">
+              <rect width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect x="40" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect x="80" width="34" height="34" fill="#a8341b" stroke="#0a0908"/>
+              <rect x="120" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect y="40" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect x="40" y="40" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect x="80" y="40" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+              <rect x="120" y="40" width="34" height="34" fill="#2d2822" stroke="#0a0908"/>
+            </g>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK S</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">ONKYO · FIELD RECORDER</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Zoom H6 Black 6-track</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$318</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · firmware 2.1</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- 5: Mechanical pencil (Kogu) -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:80%;height:80%;" fill="none">
+            <rect x="40" y="92" width="120" height="14" rx="2" fill="#3a332c"/>
+            <rect x="36" y="94" width="6" height="10" fill="#1a1817"/>
+            <polygon points="160,92 174,99 160,106" fill="#a8341b"/>
+            <rect x="50" y="89" width="2" height="20" fill="#a9893f"/>
+            <rect x="60" y="89" width="2" height="20" fill="#a9893f"/>
+            <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#5b524a">PILOT · S20 · 0.5</text>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK B+</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">KOGU · STATIONERY</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Pilot S20 Mechanical 0.5mm</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$48</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · 12 in stock</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- 6: Hi-Fi amp -->
+      <a href="#" style="text-decoration:none;color:inherit;background:var(--paper-hi);border:1px solid var(--paper-edge);display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:5px 5px;"></div>
+        <div style="aspect-ratio:1/1;background:linear-gradient(180deg,#f4ede0,#ddd2bb);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--paper-edge);">
+          <svg viewBox="0 0 200 200" style="width:84%;height:62%;" fill="none">
+            <rect x="6" y="40" width="188" height="110" rx="3" fill="#2d2822" stroke="#0a0908"/>
+            <rect x="14" y="50" width="60" height="92" fill="#1f4d3a"/>
+            <text x="44" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="20" fill="#6bc49b">VU</text>
+            <circle cx="110" cy="96" r="22" fill="#3a332c" stroke="#0a0908"/>
+            <line x1="110" y1="96" x2="120" y2="86" stroke="#a8341b" stroke-width="2"/>
+            <circle cx="155" cy="96" r="22" fill="#3a332c" stroke="#0a0908"/>
+            <line x1="155" y1="96" x2="155" y2="80" stroke="#fbf9f3" stroke-width="2"/>
+            <rect x="14" y="148" width="172" height="6" fill="#a9893f"/>
+          </svg>
+          <span style="position:absolute;top:14px;right:14px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:11px;padding:3px 8px;letter-spacing:1px;">RANK A</span>
+        </div>
+        <div style="padding:14px 16px 16px;">
+          <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ai);text-transform:uppercase;">ONKYO · INTEGRATED AMP</div>
+          <h4 style="font-family:var(--f-display);font-weight:500;font-size:17px;margin:4px 0 10px;color:var(--ink);">Sansui AU-D707X (1985)</h4>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:21px;font-weight:600;color:var(--ink);">$1,240</span>
+            <span style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;color:var(--shu);">DDP · 110V→100/240V</span>
+          </div>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- Indigo footer band -->
+  <div style="background:var(--ai);color:var(--paper-hi);padding:30px 56px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:30px;font-family:var(--f-mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;position:relative;">
+    <div class="pat-ichimatsu" style="position:absolute;top:0;left:0;right:0;height:5px;background-image:
+      linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:5px 5px;"></div>
+    <div>
+      <div style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--paper-hi);text-transform:none;letter-spacing:0;margin-bottom:8px;">MonoHonpo · 本舗</div>
+      <div style="color:var(--paper-edge);line-height:1.7;">2-14-3 Nakano · Tokyo<br>EST · 2 0 1 9</div>
+    </div>
+    <div>
+      <div style="color:var(--shu-hi);margin-bottom:8px;">SHOP</div>
+      <div style="line-height:1.7;color:var(--paper-edge);">Denki · Onkyo<br>Kogaku · Kogu</div>
+    </div>
+    <div>
+      <div style="color:var(--shu-hi);margin-bottom:8px;">HELP</div>
+      <div style="line-height:1.7;color:var(--paper-edge);">DDP shipping<br>Returns · Ranking guide</div>
+    </div>
+    <div>
+      <div style="color:var(--shu-hi);margin-bottom:8px;">CONTACT</div>
+      <div style="line-height:1.7;color:var(--paper-edge);">store@monohonpo.com<br>JST · within 24h</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ 04 · PRODUCT PAGE ============ -->
+<div class="frame-label" id="f04">04 · Product page <span class="sub">Wagara framing · indigo info column · gadget-friendly</span></div>
+<div class="frame">
+  <!-- header (compact) -->
+  <div style="background:var(--paper);border-bottom:1px solid var(--paper-edge);padding:14px 32px;display:flex;justify-content:space-between;align-items:center;position:relative;">
+    <div class="pat-ichimatsu" style="position:absolute;left:0;right:0;bottom:0;height:4px;background-image:
+      linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:4px 4px;"></div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="display:block;width:34px;height:34px;border:2.5px solid var(--ink);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:9px;color:var(--ink);transform:rotate(25deg);">本舗</span></span>
+      <span style="font-family:var(--f-display);font-weight:600;font-size:20px;color:var(--ink);">MonoHonpo</span>
+    </div>
+    <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;">
+      Home / Onkyo · Audio / Headphones / <b style="color:var(--ai);">Sony WH-1000XM5</b>
+    </div>
+    <div style="font-family:var(--f-mono);font-size:10px;color:var(--ai);">CART · 0</div>
+  </div>
+
+  <div style="padding:48px 56px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;">
+
+      <!-- Gallery -->
+      <div>
+        <!-- Hero image w/ wagara frame -->
+        <div style="aspect-ratio:1/1;background:var(--paper-hi);border:1px solid var(--paper-edge);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          <!-- corner asanoha decoration -->
+          <div class="pat-asanoha fade-25" style="position:absolute;top:0;left:0;width:80px;height:80px;background-color:transparent;"></div>
+          <div class="pat-asanoha fade-25" style="position:absolute;bottom:0;right:0;width:80px;height:80px;background-color:transparent;"></div>
+
+          <svg viewBox="0 0 320 320" style="width:74%;height:74%;" fill="none">
+            <path d="M70 180 C 70 100,130 50,160 50 C 190 50,250 100,250 180" stroke="#1a1817" stroke-width="9" stroke-linecap="round"/>
+            <rect x="56" y="170" width="40" height="84" rx="8" fill="#1a1817"/>
+            <rect x="224" y="170" width="40" height="84" rx="8" fill="#1a1817"/>
+            <rect x="60" y="180" width="32" height="62" rx="4" fill="#3a332c"/>
+            <rect x="228" y="180" width="32" height="62" rx="4" fill="#3a332c"/>
+            <circle cx="76" cy="208" r="4" fill="#a8341b"/>
+            <circle cx="76" cy="226" r="3" fill="#5b524a"/>
+            <text x="160" y="296" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#5b524a">SONY · WH-1000XM5</text>
+          </svg>
+
+          <!-- shu round seal -->
+          <div class="seal-round" style="position:absolute;top:20px;right:20px;width:78px;height:78px;font-size:14px;">
+            <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1.2px;line-height:1;">RANK</span>
+            <span style="font-family:var(--f-display);font-weight:700;font-size:32px;line-height:1;margin:2px 0;">A</span>
+            <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1.2px;line-height:1;">CERT JP</span>
+          </div>
+          <!-- indigo tate seal w/ kanji -->
+          <div class="seal-tate seal-ai" style="position:absolute;bottom:20px;left:20px;">
+            <span>音</span><span>響</span><span>部</span>
+          </div>
+
+          <span style="position:absolute;bottom:20px;right:20px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);background:rgba(251,249,243,.85);padding:4px 10px;border:1px solid var(--paper-edge);">01 · HERO</span>
+        </div>
+
+        <!-- thumbnail row -->
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;">
+          <div style="aspect-ratio:1/1;background:#f1eadb;border:2px solid var(--ink);"></div>
+          <div style="aspect-ratio:1/1;background:#e7dfca;border:1px solid var(--paper-edge);"></div>
+          <div style="aspect-ratio:1/1;background:#1a1817;"></div>
+          <div style="aspect-ratio:1/1;background:#e7dfca;border:1px solid var(--paper-edge);position:relative;"><div class="pat-asanoha fade-40" style="position:absolute;inset:0;background-color:transparent;"></div></div>
+          <div style="aspect-ratio:1/1;background:#e7dfca;border:1px solid var(--paper-edge);"></div>
+          <div style="aspect-ratio:1/1;background:#e7dfca;border:1px solid var(--paper-edge);font-family:var(--f-mono);font-size:9px;display:flex;align-items:center;justify-content:center;color:var(--ink-3);">+4</div>
+        </div>
+
+        <!-- Gadget extras: port diagram strip below gallery -->
+        <div style="margin-top:18px;background:var(--ink);color:var(--paper-hi);padding:18px 20px;position:relative;">
+          <div class="pat-ichimatsu fade-25" style="position:absolute;top:0;left:0;right:0;height:4px;background-image:
+            linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:4px 4px;opacity:.6;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--shu-hi);text-transform:uppercase;">PORT DIAGRAM</div>
+            <div style="font-family:var(--f-mono);font-size:9px;color:var(--paper-edge);">100–240V · USB-C</div>
+          </div>
+          <div style="position:relative;height:42px;">
+            <div style="position:absolute;left:5%;right:5%;top:50%;height:18px;background:linear-gradient(180deg,#3a332c,#1a1817);border:1px solid #0a0908;transform:translateY(-50%);"></div>
+            <div style="position:absolute;left:22%;top:50%;transform:translate(-50%,-50%);width:18px;height:8px;background:#0a0908;border:1px solid #2d2822;border-radius:4px;"></div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;background:#0a0908;border:1px solid #2d2822;border-radius:50%;"></div>
+            <div style="position:absolute;left:78%;top:50%;transform:translate(-50%,-50%);width:8px;height:14px;background:#a8341b;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;font-family:var(--f-mono);font-size:9px;letter-spacing:1px;color:var(--paper-edge);text-transform:uppercase;">
+            <div>01 · USB-C</div><div>02 · 3.5mm</div><div>03 · LED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info column on indigo tint -->
+      <div style="background:var(--ai-tint);padding:36px 32px;border:1px solid var(--paper-edge);position:relative;">
+        <div class="pat-uroko fade-25" style="position:absolute;top:0;right:0;width:60px;height:60px;background-color:transparent;"></div>
+
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ai);text-transform:uppercase;margin-bottom:6px;">ONKYO · WIRELESS HEADPHONES</div>
+        <h1 style="font-family:var(--f-display);font-weight:500;font-size:38px;line-height:1.1;color:var(--ink);margin:0 0 6px;">Sony WH-1000XM5</h1>
+        <div style="font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--ink-3);margin-bottom:18px;">Noise-cancelling · Black · with original box</div>
+
+        <!-- Ranking + DDP block -->
+        <div style="display:grid;grid-template-columns:auto auto 1fr;gap:14px;align-items:center;padding:14px 0;border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);margin-bottom:18px;">
+          <div style="background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:18px;padding:6px 12px;line-height:1;white-space:nowrap;">RANK A</div>
+          <div style="background:var(--ai);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:18px;padding:6px 12px;line-height:1;white-space:nowrap;">DDP</div>
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;line-height:1.5;">Excellent — light wear, fully tested<br>Duties &amp; tax prepaid · ships to 38 countries</div>
+        </div>
+
+        <!-- Spec grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Bluetooth</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">5.2 · LDAC</div></div>
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Battery</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">30 h · ANC on</div></div>
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Weight</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">250 g</div></div>
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Voltage</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">100–240V OK</div></div>
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Charge</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">USB-C · 3.5h</div></div>
+          <div style="border-top:1px solid var(--paper-edge);padding-top:8px;"><div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Firmware</div><div style="font-family:var(--f-display);font-size:15px;font-weight:600;color:var(--ink);margin-top:2px;">v2.3.0 latest</div></div>
+        </div>
+
+        <!-- Price + CTA -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px;">
+          <div>
+            <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">Price · DDP</div>
+            <div><span style="font-family:var(--f-display);font-size:46px;font-weight:600;color:var(--ink);line-height:1;">$289</span><span style="font-family:var(--f-display);font-size:18px;color:var(--ink-4);text-decoration:line-through;margin-left:8px;">$349</span></div>
+          </div>
+          <div style="text-align:right;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--shu);text-transform:uppercase;">SAVE&nbsp;$60<br><span style="color:var(--ink-3);">2 watching now</span></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <a href="#" style="background:var(--ai);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:18px;padding:16px;text-decoration:none;text-align:center;">Add to cart</a>
+          <a href="#" style="background:var(--paper-hi);border:1.5px solid var(--ai);color:var(--ai);font-family:var(--f-display);font-weight:600;font-size:18px;padding:14.5px;text-decoration:none;text-align:center;">Watch item</a>
+        </div>
+
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink-3);text-transform:uppercase;line-height:1.7;border-top:1px solid var(--paper-edge);padding-top:12px;">
+          <div>★ Ships within 24h JST · arrives US in 4–6 days</div>
+          <div>★ Inspected by Kenta Mori · serial recorded</div>
+          <div>★ 30-day return · DDP refund includes duties</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 05 · PACKAGE / INSERT CARD ============ -->
+<div class="frame-label" id="f05">05 · Package &amp; insert card <span class="sub">Outer carton · interior asanoha · noshi-style insert</span></div>
+<div class="frame">
+  <div style="padding:48px 56px;background:#2a2520;color:var(--paper-hi);">
+    <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--shu-hi);text-transform:uppercase;margin-bottom:8px;"><span class="eyebrow-line">P A C K A G I N G · S Y S T E M</span></div>
+    <h2 style="font-family:var(--f-display);font-size:36px;font-weight:500;line-height:1.1;color:var(--paper-hi);margin:0 0 32px;">Outside <em style="color:var(--shu-hi);">restraint,</em> inside <em style="color:var(--shu-hi);">surprise.</em></h2>
+
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:24px;">
+
+      <!-- Outer carton: simple kraft w/ ichimatsu band -->
+      <div style="background:#c9b896;color:var(--ink);aspect-ratio:1.4/1;position:relative;overflow:hidden;box-shadow:0 30px 60px rgba(0,0,0,.5);">
+        <!-- ichimatsu band wrapping -->
+        <div style="position:absolute;left:0;right:0;top:38%;height:36px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:18px 18px;background-color:var(--paper-hi);"></div>
+
+        <!-- Logo lockup centered on band -->
+        <div style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);background:var(--paper-hi);padding:12px 26px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 16px rgba(0,0,0,.2);">
+          <span style="display:block;width:36px;height:36px;border:2.5px solid var(--ink);border-radius:50%;border-right-color:transparent;transform:rotate(-25deg);position:relative;"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:10px;color:var(--ink);transform:rotate(25deg);">本舗</span></span>
+          <div>
+            <div style="font-family:var(--f-display);font-weight:600;font-size:20px;color:var(--ink);line-height:1;">MonoHonpo</div>
+            <div style="font-family:var(--f-mono);font-size:7px;letter-spacing:2px;color:var(--shu);margin-top:2px;">EST · 2 0 1 9 · TOKYO</div>
+          </div>
+        </div>
+
+        <!-- shipping label corner -->
+        <div style="position:absolute;top:24px;right:24px;background:var(--paper-hi);padding:10px 14px;color:var(--ink);font-family:var(--f-mono);font-size:9px;letter-spacing:1.2px;line-height:1.5;border:1px dashed var(--ink-3);">
+          <div style="color:var(--shu);font-weight:600;">DDP · DUTIES PREPAID</div>
+          <div style="margin-top:4px;">TO: J. Larson · Austin TX</div>
+          <div>FROM: MonoHonpo Tokyo</div>
+          <div style="margin-top:4px;">TRACKING · EJ4823901JP</div>
+        </div>
+
+        <!-- shu seal corner -->
+        <div class="seal-round" style="position:absolute;bottom:24px;left:24px;">
+          <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1px;line-height:1;">CERT</span>
+          <span style="font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1;margin:2px 0;">JP</span>
+        </div>
+
+        <!-- side this side up etc. -->
+        <div style="position:absolute;bottom:24px;right:24px;font-family:var(--f-mono);font-size:9px;letter-spacing:1.5px;color:var(--ink);text-transform:uppercase;">
+          <div>↑ THIS SIDE UP</div>
+          <div style="color:var(--shu);">FRAGILE · ELECTRONICS</div>
+        </div>
+
+        <!-- caption -->
+        <div style="position:absolute;top:24px;left:24px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink);text-transform:uppercase;background:var(--paper-hi);padding:4px 8px;">01 · OUTER CARTON</div>
+      </div>
+
+      <!-- Open box: asanoha tissue surprise + insert card -->
+      <div style="background:#3a332c;aspect-ratio:1.4/1;position:relative;overflow:hidden;box-shadow:0 30px 60px rgba(0,0,0,.5);">
+        <!-- box flaps -->
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,#c9b896 0%,#c9b896 22%,transparent 22%);"></div>
+        <div style="position:absolute;inset:0;background:linear-gradient(0deg,#c9b896 0%,#c9b896 18%,transparent 18%);"></div>
+
+        <!-- interior pattern -->
+        <div class="pat-asanoha" style="position:absolute;left:8%;right:8%;top:18%;bottom:22%;background-color:#fbf9f3;background-image:
+          linear-gradient(60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+          linear-gradient(-60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+          linear-gradient(0deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%);
+          opacity:.45;"></div>
+
+        <!-- Insert card -->
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-3deg);width:62%;background:var(--paper-hi);color:var(--ink);box-shadow:0 18px 40px rgba(0,0,0,.4);">
+          <!-- top wagara strip -->
+          <div style="height:8px;background-image:
+            linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+            linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+            linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+            linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:8px 8px;"></div>
+          <div style="padding:18px 22px;">
+            <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:3px;color:var(--ai);text-transform:uppercase;">A NOTE FROM THE OWNER</div>
+            <div style="font-family:var(--f-display);font-style:italic;font-size:18px;color:var(--ink);margin:6px 0 10px;line-height:1.35;">"Thank you for choosing this piece. It was tested, cleaned, and sealed by hand in Nakano."</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--paper-edge);padding-top:10px;">
+              <div>
+                <div style="font-family:var(--f-display);font-weight:600;font-size:14px;color:var(--ink);">Kenta Mori · Owner</div>
+                <div style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;color:var(--ink-4);text-transform:uppercase;">MonoHonpo · Tokyo</div>
+              </div>
+              <div class="seal-round" style="width:54px;height:54px;font-size:11px;">
+                <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1px;line-height:1;">CERT</span>
+                <span style="font-family:var(--f-display);font-weight:700;font-size:14px;line-height:1;margin:2px 0;">JP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- caption -->
+        <div style="position:absolute;top:24px;left:24px;font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink);text-transform:uppercase;background:var(--paper-hi);padding:4px 8px;">02 · INTERIOR + INSERT</div>
+      </div>
+    </div>
+
+    <!-- Insert card detail spread -->
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+      <!-- Care card -->
+      <div style="background:var(--paper-hi);color:var(--ink);position:relative;">
+        <div style="height:6px;background-image:
+          linear-gradient(45deg,var(--shu) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--shu) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--shu) 75%),
+          linear-gradient(-45deg,transparent 75%,var(--shu) 75%);background-size:6px 6px;"></div>
+        <div style="padding:18px 20px;">
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--shu);text-transform:uppercase;margin-bottom:6px;">CARE CARD · 03</div>
+          <h3 style="font-family:var(--f-display);font-size:20px;font-weight:600;margin:0 0 8px;color:var(--ink);">How to keep it new.</h3>
+          <ul style="margin:0;padding:0;list-style:none;font-size:12px;color:var(--ink-3);line-height:1.7;">
+            <li>·&nbsp;Charge fully before first use (USB-C)</li>
+            <li>·&nbsp;Wipe ear cushions w/ dry microfiber</li>
+            <li>·&nbsp;Store flat in supplied pouch</li>
+            <li>·&nbsp;Update firmware via Sony Headphones app</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Cert card -->
+      <div style="background:var(--paper-hi);color:var(--ink);position:relative;">
+        <div style="height:6px;background-image:
+          linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+          linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+          linear-gradient(-45deg,var(--ai) 25%,transparent 25%);background-size:6px 6px;"></div>
+        <div style="padding:18px 20px;">
+          <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);text-transform:uppercase;margin-bottom:6px;">CERT CARD · 04</div>
+          <h3 style="font-family:var(--f-display);font-size:20px;font-weight:600;margin:0 0 8px;color:var(--ink);">Inspection record.</h3>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-family:var(--f-mono);font-size:10px;color:var(--ink-3);">
+            <span style="color:var(--ink-4);">SERIAL</span><b style="color:var(--ink);font-weight:500;">XM5-A4-2261</b>
+            <span style="color:var(--ink-4);">RANK</span><b style="color:var(--shu);font-weight:600;">A · Excellent</b>
+            <span style="color:var(--ink-4);">TESTED</span><b style="color:var(--ink);font-weight:500;">2026-04-19 JST</b>
+            <span style="color:var(--ink-4);">BY</span><b style="color:var(--ink);font-weight:500;">K. Mori</b>
+            <span style="color:var(--ink-4);">FIRMWARE</span><b style="color:var(--ink);font-weight:500;">v2.3.0</b>
+          </div>
+          <div style="margin-top:10px;border-top:1px dotted var(--paper-edge);padding-top:8px;font-family:var(--f-mono);font-size:8px;color:var(--ink-4);letter-spacing:1.2px;text-transform:uppercase;">Signed &amp; sealed in Nakano · Tokyo</div>
+        </div>
+      </div>
+
+      <!-- Sticker sheet -->
+      <div style="background:var(--paper-hi);color:var(--ink);position:relative;padding:14px;">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);text-transform:uppercase;margin-bottom:10px;">GIFT · 05 STICKER SHEET</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div class="seal-round" style="width:auto;aspect-ratio:1/1;height:auto;font-size:11px;"><span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1px;">RANK</span><span style="font-family:var(--f-display);font-weight:700;font-size:18px;line-height:1;">A</span></div>
+          <div class="seal-round seal-ai" style="width:auto;aspect-ratio:1/1;height:auto;background:var(--ai);box-shadow:inset 0 0 0 1.5px var(--paper-hi),0 0 0 2px var(--ai);">
+            <span style="font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1;">本</span>
+            <span style="font-family:var(--f-display);font-weight:700;font-size:16px;line-height:1;">舗</span>
+          </div>
+          <div style="aspect-ratio:1/1;background:var(--paper);border:1.5px dashed var(--ink-4);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:11px;color:var(--ink-4);font-style:italic;">enso</div>
+          <div style="aspect-ratio:1/1;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;">DDP</div>
+          <div style="aspect-ratio:1/1;background:var(--ai);color:var(--paper-hi);font-family:var(--f-display);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;">CERT</div>
+          <div style="aspect-ratio:1/1;background:var(--paper);position:relative;border:1px solid var(--paper-edge);"><div class="pat-seigaiha fade-40" style="position:absolute;inset:0;background-color:transparent;"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 06 · PROMO BANNERS ============ -->
+<div class="frame-label" id="f06">06 · Promo banners &amp; seasonal campaigns <span class="sub">3 banner formats · cherry / matsuri / new-year</span></div>
+<div class="frame">
+  <div style="padding:48px 56px;">
+    <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:22px;">
+      <div>
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--ai);text-transform:uppercase;margin-bottom:8px;"><span class="eyebrow-line">S E A S O N A L · C A M P A I G N S</span></div>
+        <h2 style="font-family:var(--f-display);font-weight:500;font-size:34px;color:var(--ink);margin:0;">Three banners, <em style="color:var(--shu);">one rhythm.</em></h2>
+      </div>
+      <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;">1280×420 · web · email</div>
+    </div>
+
+    <!-- Banner 1: Cherry / Spring -->
+    <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);position:relative;overflow:hidden;display:grid;grid-template-columns:1.4fr 1fr;height:280px;margin-bottom:18px;">
+      <div class="pat-seigaiha" style="position:absolute;right:0;top:0;bottom:0;width:38%;background-color:var(--ai);background-image:
+        radial-gradient(circle at 50% 100%, transparent 18px, var(--paper-hi) 18px, var(--paper-hi) 19px, transparent 20px, transparent 28px, var(--paper-hi) 28px, var(--paper-hi) 29px, transparent 30px, transparent 38px, var(--paper-hi) 38px, var(--paper-hi) 39px, transparent 40px),
+        radial-gradient(circle at 0 100%, transparent 18px, var(--paper-hi) 18px, var(--paper-hi) 19px, transparent 20px, transparent 28px, var(--paper-hi) 28px, var(--paper-hi) 29px, transparent 30px, transparent 38px, var(--paper-hi) 38px, var(--paper-hi) 39px, transparent 40px),
+        radial-gradient(circle at 100% 100%, transparent 18px, var(--paper-hi) 18px, var(--paper-hi) 19px, transparent 20px, transparent 28px, var(--paper-hi) 28px, var(--paper-hi) 29px, transparent 30px, transparent 38px, var(--paper-hi) 38px, var(--paper-hi) 39px, transparent 40px);
+        opacity:.5;"></div>
+
+      <div style="padding:38px 46px;display:flex;flex-direction:column;justify-content:space-between;position:relative;">
+        <div style="display:inline-flex;align-items:center;gap:10px;font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--shu);text-transform:uppercase;">
+          <span class="enso" style="color:var(--shu);"></span> CHERRY RELEASE · APRIL 2026
+        </div>
+        <div>
+          <h3 style="font-family:var(--f-display);font-weight:500;font-size:54px;line-height:.95;color:var(--ink);margin:0 0 10px;">A new season, <em style="color:var(--ai);">a new shelf.</em></h3>
+          <p style="font-family:var(--f-display);font-style:italic;font-size:16px;color:var(--ink-3);margin:0 0 16px;max-width:520px;">26 lenses, recorders, and field tools — added this week. All ranked, all DDP.</p>
+          <div style="display:flex;gap:12px;">
+            <a href="#" style="background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:15px;padding:10px 22px;text-decoration:none;">Shop the release →</a>
+            <a href="#" style="font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:3px;text-transform:uppercase;align-self:center;">Free DDP over $200</a>
+          </div>
+        </div>
+      </div>
+
+      <div style="position:relative;">
+        <!-- cherry petals (simple) -->
+        <svg style="position:absolute;inset:0;width:100%;height:100%;" viewBox="0 0 300 280">
+          <g fill="#fbf9f3" opacity=".95">
+            <path d="M60 50 q-8 -10 0 -20 q8 10 0 20" />
+            <path d="M150 90 q-10 -12 0 -24 q10 12 0 24" />
+            <path d="M220 60 q-7 -9 0 -18 q7 9 0 18" />
+            <path d="M90 160 q-9 -11 0 -22 q9 11 0 22" />
+            <path d="M210 200 q-8 -10 0 -20 q8 10 0 20" />
+            <path d="M260 140 q-7 -9 0 -18 q7 9 0 18" />
+            <path d="M40 220 q-8 -10 0 -20 q8 10 0 20" />
+            <path d="M170 240 q-9 -11 0 -22 q9 11 0 22" />
+          </g>
+        </svg>
+        <!-- big seal -->
+        <div class="seal-round" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-8deg);width:120px;height:120px;font-size:14px;">
+          <span style="font-family:var(--f-mono);font-size:8px;letter-spacing:1.5px;line-height:1;">SAVE UP TO</span>
+          <span style="font-family:var(--f-display);font-weight:700;font-size:36px;line-height:1;margin:2px 0;">25%</span>
+          <span style="font-family:var(--f-mono);font-size:7px;letter-spacing:1.5px;line-height:1;">CHERRY · APRIL</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Banner 2: Matsuri / Festival flash sale (full indigo + shu) -->
+    <div style="background:var(--ai);color:var(--paper-hi);position:relative;overflow:hidden;height:280px;display:grid;grid-template-columns:1fr 1.3fr 1fr;margin-bottom:18px;">
+      <div class="pat-asanoha" style="background-color:var(--ai);background-image:
+        linear-gradient(60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+        linear-gradient(-60deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%),
+        linear-gradient(0deg,transparent 49%,var(--shu) 49%,var(--shu) 51%,transparent 51%);opacity:.6;"></div>
+
+      <div style="padding:38px 32px;display:flex;flex-direction:column;justify-content:space-between;">
+        <div style="font-family:var(--f-mono);font-size:10px;letter-spacing:5px;color:var(--shu-hi);text-transform:uppercase;">★ FLASH · 48 HOURS</div>
+        <div>
+          <h3 style="font-family:var(--f-display);font-weight:500;font-size:48px;line-height:.95;color:var(--paper-hi);margin:0 0 8px;">Matsuri <em style="color:var(--shu-hi);">Sale.</em></h3>
+          <p style="font-family:var(--f-display);font-style:italic;font-size:15px;color:var(--paper-edge);margin:0 0 16px;">Twelve flagship items. Festival prices. Once a year.</p>
+          <a href="#" style="background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:15px;padding:10px 22px;text-decoration:none;">Browse 12 deals →</a>
+        </div>
+      </div>
+
+      <!-- Center: lantern row (chochin) -->
+      <div style="position:relative;display:flex;justify-content:center;align-items:center;gap:18px;">
+        <!-- lanterns -->
+        <div style="display:flex;gap:14px;align-items:center;">
+          <!-- lantern 1 -->
+          <div style="width:52px;height:80px;background:var(--shu);border-radius:50%/40%;position:relative;box-shadow:inset -10px -6px 14px rgba(0,0,0,.25);">
+            <div style="position:absolute;inset:14px 0;background:repeating-linear-gradient(0deg,transparent 0 6px,rgba(0,0,0,.18) 6px 7px);border-radius:50%/40%;"></div>
+            <div style="position:absolute;left:50%;top:-6px;width:2px;height:8px;background:#fbf9f3;transform:translateX(-50%);"></div>
+            <div style="position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:18px;height:6px;background:var(--ink);"></div>
+          </div>
+          <div style="width:62px;height:96px;background:var(--shu);border-radius:50%/40%;position:relative;box-shadow:inset -12px -8px 18px rgba(0,0,0,.25);">
+            <div style="position:absolute;inset:16px 0;background:repeating-linear-gradient(0deg,transparent 0 7px,rgba(0,0,0,.18) 7px 8px);border-radius:50%/40%;"></div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-weight:700;font-size:22px;color:var(--paper-hi);">祭</div>
+            <div style="position:absolute;left:50%;top:-6px;width:2px;height:8px;background:#fbf9f3;transform:translateX(-50%);"></div>
+            <div style="position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:22px;height:6px;background:var(--ink);"></div>
+          </div>
+          <div style="width:52px;height:80px;background:var(--shu);border-radius:50%/40%;position:relative;box-shadow:inset -10px -6px 14px rgba(0,0,0,.25);">
+            <div style="position:absolute;inset:14px 0;background:repeating-linear-gradient(0deg,transparent 0 6px,rgba(0,0,0,.18) 6px 7px);border-radius:50%/40%;"></div>
+            <div style="position:absolute;left:50%;top:-6px;width:2px;height:8px;background:#fbf9f3;transform:translateX(-50%);"></div>
+            <div style="position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:18px;height:6px;background:var(--ink);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right side: discount stack -->
+      <div class="pat-uroko" style="background-color:var(--ai);background-image:
+        linear-gradient(60deg,var(--shu) 25%,transparent 25.5%),
+        linear-gradient(-60deg,var(--shu) 25%,transparent 25.5%);opacity:.55;position:relative;">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+          <div style="background:var(--paper-hi);color:var(--ink);padding:18px 22px;text-align:center;transform:rotate(4deg);box-shadow:0 12px 30px rgba(0,0,0,.4);">
+            <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);">FROM</div>
+            <div style="font-family:var(--f-display);font-weight:700;font-size:50px;line-height:1;color:var(--shu);">−40<span style="font-size:24px;">%</span></div>
+            <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ai);margin-top:4px;">+ FREE DDP</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Banner 3: Quiet new-arrival narrow strip with ichimatsu -->
+    <div style="background:var(--paper-hi);border:1px solid var(--paper-edge);position:relative;overflow:hidden;height:140px;display:grid;grid-template-columns:140px 1fr auto 140px;align-items:center;">
+      <div class="pat-ichimatsu" style="height:100%;background-image:
+        linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+        linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+        linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:14px 14px;"></div>
+
+      <div style="padding:0 30px;">
+        <div style="font-family:var(--f-mono);font-size:9px;letter-spacing:4px;color:var(--ai);text-transform:uppercase;margin-bottom:4px;">JUST ARRIVED · 04 ITEMS</div>
+        <h3 style="font-family:var(--f-display);font-weight:500;font-size:26px;color:var(--ink);margin:0;">Three Nikkor primes &amp; one Sansui amp <em style="color:var(--shu);">— landed today.</em></h3>
+      </div>
+
+      <a href="#" style="background:var(--ink);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:14px;padding:10px 20px;text-decoration:none;margin-right:24px;">See arrivals →</a>
+
+      <div class="pat-ichimatsu" style="height:100%;background-image:
+        linear-gradient(45deg,var(--ai) 25%,transparent 25%),
+        linear-gradient(-45deg,var(--ai) 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,var(--ai) 75%),
+        linear-gradient(-45deg,transparent 75%,var(--ai) 75%);background-size:14px 14px;"></div>
+    </div>
+
+  </div>
+</div>
+
+
+<div class="doc-foot">
+  <span class="enso"></span> MonoHonpo · Maximal Japan v1 · Drafted 2026-04-20 · Extends v3
+</div>
+
+</body>
+</html>

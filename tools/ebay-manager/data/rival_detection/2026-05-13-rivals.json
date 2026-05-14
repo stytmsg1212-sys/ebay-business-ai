@@ -1,0 +1,44 @@
+{
+  "date": "2026-05-13",
+  "timestamp": "2026-05-13T22:41:52.081898",
+  "new_sellers": [
+    {
+      "seller": "japan_mt.fuji",
+      "feedback_score": 172,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100 Bluetooth Portable Cassette Player White MXCP-P100WH New Japan",
+          "price_usd": 100.8,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "147308735374"
+        },
+        {
+          "title": "Maxell MXCP-P100 Bluetooth Portable Cassette Player White MXCP-P100WH New Japan",
+          "price_usd": 100.8,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "147308735374"
+        }
+      ],
+      "first_seen": "2026-05-13T22:41:43.175766",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "manamin56",
+      "feedback_score": 1,
+      "competing_items": [
+        {
+          "title": "Sanrio Characters x Ohuhu Markers 80 Colors Set Brush & Fine Dual Tips",
+          "price_usd": 130.0,
+          "keyword": "Ohuhu x Sanrio 80",
+          "legacy_item_id": "188378539161"
+        }
+      ],
+      "first_seen": "2026-05-13T22:41:49.810860",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 2,
+  "total_sellers_scanned": 145
+}

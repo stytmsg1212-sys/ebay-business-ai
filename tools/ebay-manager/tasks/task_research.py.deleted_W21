@@ -1,0 +1,463 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Task: 新商品リサーチ - ウォッチリストサイトのRSS/新着チェック + eBay需要確認
+
+定時実行で使える手段（Claude不要）:
+1. ウォッチリストサイトの新着ページをHTTPで取得
+2. eBay API で "Japan exclusive" "Japan only" の売れ筋を取得
+3. 基準ファイルに基づいてフィルタリング
+4. 結果をresearch/notes/に保存
+"""
+
+import sys
+import json
+import logging
+import re
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List
+
+import sqlite3
+
+import httpx
+
+# pythonw.exe では sys.stdout が None のため安全ガード
+if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).parent.parent
+DB_PATH = BASE_DIR / 'data' / 'monitor.db'
+
+
+def get_company_root():
+    """Get the .company directory path."""
+    project_root = Path(__file__).parent.parent.parent.parent / ".company"
+    if project_root.exists():
+        return project_root
+
+    company_path = Path.home() / ".company"
+    if company_path.exists():
+        return company_path
+    return None
+
+
+def load_research_criteria() -> str:
+    """リサーチ基準ファイルを読み込む"""
+    company_root = get_company_root()
+    if not company_root:
+        return ""
+
+    criteria_file = company_root / "research" / "topics" / "daily-research-criteria.md"
+    if criteria_file.exists():
+        return criteria_file.read_text(encoding='utf-8')
+    return ""
+
+
+def analyze_own_listings_by_category() -> List[Dict]:
+    """
+    monitor.db の自分の出品データからカテゴリ別の分析を行う
+    - 各カテゴリの出品数、平均価格、売上パフォーマンス
+    - ウォッチ数が高い（需要がある）カテゴリを特定
+    """
+    if not DB_PATH.exists():
+        logger.warning(f"データベースが見つかりません: {DB_PATH}")
+        return []
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+
+        # ランク別の出品分布
+        cursor.execute("""
+            SELECT rank, COUNT(*) as cnt,
+                   AVG(current_price) as avg_price,
+                   SUM(watch_count) as total_watches,
+                   SUM(sales_count_30d) as total_sales
+            FROM ebay_listings
+            WHERE rank IS NOT NULL
+            GROUP BY rank
+            ORDER BY total_watches DESC
+        """)
+        rank_stats = cursor.fetchall()
+
+        # ウォッチ数TOP商品（需要が高い = 仕入れ候補のヒント）
+        cursor.execute("""
+            SELECT title, current_price, watch_count, view_count, sales_count_30d, rank
+            FROM ebay_listings
+            ORDER BY watch_count DESC
+            LIMIT 10
+        """)
+        top_watched = cursor.fetchall()
+
+        # 売れている商品（直近30日）
+        cursor.execute("""
+            SELECT title, current_price, sales_count_30d, watch_count, rank
+            FROM ebay_listings
+            WHERE sales_count_30d > 0
+            ORDER BY sales_count_30d DESC
+            LIMIT 10
+        """)
+        top_selling = cursor.fetchall()
+
+        conn.close()
+
+        return {
+            'rank_distribution': [
+                {'rank': r[0], 'count': r[1], 'avg_price': round(r[2], 2),
+                 'total_watches': r[3], 'total_sales': r[4]}
+                for r in rank_stats
+            ],
+            'top_watched': [
+                {'title': r[0], 'price': r[1], 'watches': r[2],
+                 'views': r[3], 'sales_30d': r[4], 'rank': r[5]}
+                for r in top_watched
+            ],
+            'top_selling': [
+                {'title': r[0], 'price': r[1], 'sales_30d': r[2],
+                 'watches': r[3], 'rank': r[4]}
+                for r in top_selling
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"出品分析エラー: {e}")
+        return {}
+
+
+def search_ebay_market_trends(config) -> List[Dict]:
+    """
+    eBay Browse API で市場トレンドを調査
+    日本発セラーの人気カテゴリ・価格帯を分析
+    """
+    from monitor.credentials import get_ebay_credentials
+    _creds = get_ebay_credentials(config)
+    app_id = _creds.get('app_id', '')
+    cert_id = _creds.get('cert_id', '')
+
+    if not app_id or not cert_id:
+        logger.warning("eBay API credentials が未設定のため Browse API スキップ")
+        return []
+
+    try:
+        from tasks.ebay_browse_api import BrowseAPIClient
+        client = BrowseAPIClient(app_id, cert_id)
+    except Exception as e:
+        logger.warning(f"BrowseAPIClient 初期化エラー: {e}")
+        return []
+
+    # リサーチ基準からキーワードを構築
+    # daily-research-criteria.md の重点カテゴリに基づく
+    criteria = load_research_criteria()
+
+    search_keywords = [
+        "Japan exclusive vintage",
+        "Japanese limited edition",
+        "Japan only collector",
+    ]
+
+    # リサーチ基準の重点カテゴリを反映
+    if criteria:
+        criteria_keywords = [
+            "Japan retro cassette player",     # レトロ家電・アナログ音響
+            "Japan exclusive instax camera",   # 日本限定カラー家電・カメラ
+            "Japanese stationery set bundle",  # 日本文具（バンドル）
+            "Japan exclusive collaboration",   # 日本のIPコラボ商品
+        ]
+        search_keywords.extend(criteria_keywords)
+
+    # DB の売れ筋タイトルからキーワードも追加
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT title FROM ebay_listings
+                WHERE watch_count > 5 OR sales_count_30d > 0
+                ORDER BY watch_count DESC LIMIT 3
+            """)
+            for row in cursor.fetchall():
+                # タイトルの最初の3語をキーワードとして使用
+                words = row[0].split()[:3]
+                kw = ' '.join(words)
+                if kw and len(kw) > 5:
+                    search_keywords.append(kw)
+            conn.close()
+        except Exception as e:
+            logger.warning(f"DB キーワード抽出エラー: {e}")
+
+    market_items = []
+    for kw in search_keywords:
+        try:
+            items = client.search_items(kw, limit=10, item_location_country="JP")
+            for item in items:
+                item['search_keyword'] = kw
+            market_items.extend(items)
+        except Exception as e:
+            logger.warning(f"Browse API 検索エラー ({kw}): {e}")
+
+    # セラー別の集計
+    seller_stats = {}
+    for item in market_items:
+        seller = item.get('seller', 'unknown')
+        if seller not in seller_stats:
+            seller_stats[seller] = {'count': 0, 'total_price': 0, 'items': []}
+        seller_stats[seller]['count'] += 1
+        seller_stats[seller]['total_price'] += item.get('price_usd', 0)
+        seller_stats[seller]['items'].append(item['title'][:60])
+
+    logger.info(f"Browse API 市場調査: {len(market_items)}件, {len(seller_stats)}セラー")
+
+    return market_items
+
+
+def check_watchlist_rss() -> List[Dict]:
+    """
+    ウォッチリストサイトの新着情報をチェック（RSS/Atom）
+    """
+    feeds = [
+        {
+            'name': 'Fujifilm Instax プレスリリース',
+            'url': 'https://www.fujifilm.com/jp/ja/news/list?category=camera',
+            'type': 'html',
+        },
+    ]
+
+    results = []
+    for feed in feeds:
+        try:
+            resp = httpx.get(feed['url'], timeout=10, follow_redirects=True,
+                           headers={'User-Agent': 'Mozilla/5.0'})
+            if resp.status_code == 200:
+                # HTMLからタイトルタグを簡易抽出
+                titles = re.findall(r'<title[^>]*>(.*?)</title>', resp.text, re.DOTALL)
+                if titles:
+                    results.append({
+                        'source': feed['name'],
+                        'status': 'accessible',
+                        'sample_title': titles[0].strip()[:100] if titles else 'N/A',
+                    })
+                    logger.info(f"ウォッチリスト確認OK: {feed['name']}")
+            else:
+                results.append({
+                    'source': feed['name'],
+                    'status': f'HTTP {resp.status_code}',
+                })
+        except Exception as e:
+            results.append({
+                'source': feed['name'],
+                'status': f'error: {str(e)[:80]}',
+            })
+            logger.warning(f"ウォッチリスト確認失敗: {feed['name']} - {e}")
+
+    return results
+
+
+def save_research_result(report: Dict):
+    """リサーチ結果を .company/research/notes/ に保存"""
+    company_root = get_company_root()
+    if not company_root:
+        # フォールバック: data/ に保存
+        output = BASE_DIR / 'data' / 'daily_research_results.json'
+        with open(output, 'w', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        logger.info(f"リサーチ結果を保存（フォールバック）: {output}")
+        return
+
+    notes_dir = company_root / "research" / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    result_file = notes_dir / f"{today}-new-product-research.md"
+
+    # 既存ファイルがあれば追記
+    mode = 'a' if result_file.exists() else 'w'
+    timestamp = datetime.now().strftime('%H:%M:%S')
+
+    content = ""
+    if mode == 'w':
+        content += f"# デイリーリサーチ結果 - {today}\n\n"
+
+    content += f"\n---\n## 自動リサーチ（{timestamp}実行）\n\n"
+
+    # 自社出品分析結果
+    for category in report.get('categories', []):
+        name = category['name']
+
+        content += f"### {name}\n\n"
+
+        # ランク分布
+        rank_dist = category.get('rank_distribution', [])
+        if rank_dist:
+            content += "**ランク分布:**\n\n"
+            content += "| ランク | 出品数 | 平均価格 | 総ウォッチ | 総売上(30d) |\n"
+            content += "|--------|--------|----------|-----------|------------|\n"
+            for r in rank_dist:
+                content += f"| {r['rank']} | {r['count']} | ${r['avg_price']:.2f} | {r['total_watches']} | {r['total_sales']} |\n"
+            content += "\n"
+
+        # ウォッチ数TOP（需要が高い商品）
+        top_watched = category.get('top_watched', [])
+        if top_watched:
+            content += "**ウォッチ数TOP（需要が高い商品）:**\n\n"
+            content += "| 商品名 | 価格 | Watch | Views | Sales |\n"
+            content += "|--------|------|-------|-------|-------|\n"
+            for item in top_watched[:5]:
+                title = item['title'][:45]
+                content += f"| {title} | ${item['price']:.2f} | {item['watches']} | {item['views']} | {item['sales_30d']} |\n"
+            content += "\n"
+
+        # 売れている商品
+        top_selling = category.get('top_selling', [])
+        if top_selling:
+            content += "**直近30日の売れ筋:**\n\n"
+            content += "| 商品名 | 価格 | 売上(30d) | Watch |\n"
+            content += "|--------|------|-----------|-------|\n"
+            for item in top_selling[:5]:
+                title = item['title'][:45]
+                content += f"| {title} | ${item['price']:.2f} | {item['sales_30d']} | {item['watches']} |\n"
+            content += "\n"
+
+        # Browse API 市場トレンド
+        top_items = category.get('top_items', [])
+        if top_items:
+            content += f"**eBay市場トレンド（{category.get('total_found', 0)}件検出）:**\n\n"
+            price_dist = category.get('price_distribution', {})
+            if price_dist:
+                content += f"価格帯分布: ~$50: {price_dist.get('under_50', 0)}件 | "
+                content += f"$50-100: {price_dist.get('50_100', 0)}件 | "
+                content += f"$100-300: {price_dist.get('100_300', 0)}件 | "
+                content += f"$300+: {price_dist.get('over_300', 0)}件\n\n"
+            content += "| 商品名 | 価格 | セラー | 検索KW |\n"
+            content += "|--------|------|--------|--------|\n"
+            for item in top_items[:10]:
+                title = item['title'][:45]
+                content += f"| {title} | ${item['price']:.2f} | {item['seller']} | {item.get('keyword', '')[:20]} |\n"
+            content += "\n"
+
+    # ウォッチリスト結果
+    watchlist = report.get('watchlist', [])
+    if watchlist:
+        content += "### ウォッチリスト確認\n\n"
+        for w in watchlist:
+            content += f"- **{w['source']}**: {w['status']}\n"
+        content += "\n"
+
+    content += f"\n**実行時刻**: {datetime.now().isoformat()}\n"
+
+    with open(result_file, mode, encoding='utf-8') as f:
+        f.write(content)
+
+    logger.info(f"リサーチ結果を保存: {result_file}")
+
+
+def run_research(config):
+    """
+    新商品リサーチを自動実行
+
+    1. eBay Finding API で重点カテゴリの売れ筋を調査
+    2. ウォッチリストサイトの新着を確認
+    3. 結果をresearch/notes/に保存
+
+    Args:
+        config: 設定辞書
+
+    Returns:
+        {'success': bool, 'topics': list, 'results': list, 'message': str}
+    """
+
+    logger.info("【開始】新商品リサーチタスク")
+
+    try:
+        from monitor.credentials import get_ebay_credentials
+        app_id = get_ebay_credentials(config).get('app_id', '')
+
+        # 自分の出品データから需要分析
+        logger.info("自分の出品データを分析中...")
+        analysis = analyze_own_listings_by_category()
+
+        categories = []
+        if analysis:
+            categories.append({
+                'name': '自社出品分析',
+                'rank_distribution': analysis.get('rank_distribution', []),
+                'top_watched': analysis.get('top_watched', []),
+                'top_selling': analysis.get('top_selling', []),
+                'sold_count': sum(r.get('total_sales', 0) or 0
+                                  for r in analysis.get('rank_distribution', [])),
+            })
+
+        # Browse API で市場トレンド調査
+        logger.info("eBay Browse API で市場調査中...")
+        market_items = search_ebay_market_trends(config)
+        if market_items:
+            # 価格帯別に集計
+            price_ranges = {'under_50': [], '50_100': [], '100_300': [], 'over_300': []}
+            for item in market_items:
+                p = item.get('price_usd', 0)
+                if p < 50:
+                    price_ranges['under_50'].append(item)
+                elif p < 100:
+                    price_ranges['50_100'].append(item)
+                elif p < 300:
+                    price_ranges['100_300'].append(item)
+                else:
+                    price_ranges['over_300'].append(item)
+
+            categories.append({
+                'name': 'eBay市場トレンド（Browse API）',
+                'total_found': len(market_items),
+                'price_distribution': {
+                    k: len(v) for k, v in price_ranges.items()
+                },
+                'top_items': [
+                    {'title': i['title'][:60], 'price': i['price_usd'],
+                     'seller': i['seller'], 'keyword': i.get('search_keyword', '')}
+                    for i in sorted(market_items, key=lambda x: x.get('price_usd', 0), reverse=True)[:10]
+                ],
+                'sold_count': 0,
+            })
+
+        # ウォッチリスト確認
+        logger.info("ウォッチリスト確認中...")
+        watchlist_results = check_watchlist_rss()
+
+        # レポート作成・保存
+        total_sold_found = sum(c.get('sold_count', 0) for c in categories)
+
+        report = {
+            'date': datetime.now().strftime("%Y-%m-%d"),
+            'timestamp': datetime.now().isoformat(),
+            'categories': categories,
+            'watchlist': watchlist_results,
+            'total_sold_found': total_sold_found,
+        }
+
+        save_research_result(report)
+
+        topic_names = [c['name'] for c in categories]
+
+        logger.info(f"新商品リサーチ完了: {len(categories)}カテゴリ、売れた商品{total_sold_found}件")
+
+        return {
+            'success': True,
+            'topics': topic_names,
+            'results': categories,
+            'total_sold_found': total_sold_found,
+            'message': f'リサーチ完了: {len(categories)}カテゴリ、売れた商品{total_sold_found}件発見',
+            'status': 'completed'
+        }
+
+    except Exception as e:
+        logger.error(f"リサーチエラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            'success': False,
+            'topics': [],
+            'results': [],
+            'error': str(e),
+            'status': 'error'
+        }

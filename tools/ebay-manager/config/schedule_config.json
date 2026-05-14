@@ -1,0 +1,262 @@
+{
+  "version": "1.0",
+  "created_at": "2026-04-11",
+  "description": "日々全体フロー自動化システム - スケジュール設定",
+  "discord": {
+    "webhook_url": "https://discord.com/api/webhooks/1492273797292621895/9OSE_Xqn7R_0qHVMTj7GwSKGigtfmtthV-ZxKjUll7dUbDHiVf8fN3yBJbBLPMg_xpJI",
+    "enabled": true,
+    "notification_channel": "#notifications"
+  },
+  "ebay": {
+    "app_id": "",
+    "dev_id": "",
+    "cert_id": "",
+    "user_token": "",
+    "_comment": "値は .env に移動 (EBAY_APP_ID / EBAY_DEV_ID / EBAY_CERT_ID / EBAY_USER_TOKEN)"
+  },
+  "gmail": {
+    "credentials_path": "./config/credentials.json",
+    "enabled": true,
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.compose",
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.send"
+    ],
+    "importance_threshold": 3,
+    "_scope_migration_note": "2026-04-24 W14 Step 12 段階 2: send 追加. 実装完了後に python -m scripts.gmail_reauth で再認可実施."
+  },
+  "execution_schedule": {
+    "times": [
+      2,
+      11,
+      15,
+      18,
+      22
+    ],
+    "minutes": {
+      "2": 30,
+      "11": 0,
+      "15": 0,
+      "18": 0,
+      "22": 0
+    },
+    "timezone": "Asia/Tokyo",
+    "description": "2026-04-19改定: 02:30(朝バッチ), 11:00(軽), 15:00(クレーム検知), 18:00(夜バッチ), 22:00(日次サマリー)"
+  },
+  "tasks_enabled": {
+    "ebay_sync": {
+      "enabled": true,
+      "description": "eBay連携・498件同期 + ランク再計算",
+      "priority": 1,
+      "note": "最初に実行。他タスクが最新ランクデータを参照するため"
+    },
+    "inventory_check": {
+      "enabled": true,
+      "description": "348件の仕入先在庫チェック（Selenium）",
+      "priority": 2
+    },
+    "inventory_alert": {
+      "enabled": true,
+      "description": "在庫切れ変動の検出・通知",
+      "priority": 3,
+      "note": "inventory_check の結果に依存"
+    },
+    "supplier_select": {
+      "enabled": true,
+      "description": "長期在庫切れ商品（3日以上）の仕入先候補選出",
+      "priority": 4,
+      "note": "inventory_check + sku_conversion_results に依存"
+    },
+    "supplier_sweep": {
+      "enabled": true,
+      "description": "Pattern 2: 長期在庫切れSKUの仕入先候補を朝バッチ一括探索（Mercari/Yahoo）",
+      "priority": 4,
+      "execution_times": [
+        2
+      ],
+      "oos_days_threshold": 3,
+      "skip_if_searched_within_days": 7,
+      "max_skus_per_run": 30,
+      "sleep_between_skus_sec": 3,
+      "use_batch_api": true,
+      "note": "朝02:30のみ実行。Pattern 1 async で拾えなかった既存の長期OOSを定期スイープ. W94 Phase 7 (2026-05-02 開始, 3 日間 shadow run): use_batch_api=true で Anthropic Batch API + 1h Cache 経路に切替。緊急停止条件: supplier_eval_pending 累計 5 件超 → 即 false へ戻す"
+    },
+    "enrich_listings_physical": {
+      "enabled": true,
+      "description": "ebay_listings に GetItem API で weight/dimensions を populate（profit計算の前提）",
+      "priority": 4,
+      "execution_times": [
+        2
+      ],
+      "max_items_per_run": 100,
+      "sleep_between_items_sec": 0.5,
+      "note": "朝02:30のみ。weight_g=0 の listing を 100件ずつ埋める。498件は約5日でブートストラップ完了"
+    },
+    "estimate_weights_claude": {
+      "enabled": true,
+      "description": "Claude Haiku で default_500g listing の weight を推定→上書き",
+      "priority": 4,
+      "execution_times": [
+        2
+      ],
+      "max_items_per_run": 50,
+      "sleep_between_items_sec": 0.2,
+      "note": "朝02:30のみ。enrich_listings_physical の後に走らせる。Haiku でタイトルから重量推定"
+    },
+    "email_pickup": {
+      "enabled": true,
+      "description": "重要メール(eBay売上通知等)をピックアップ",
+      "priority": 5,
+      "execution_times": [
+        11,
+        15,
+        18,
+        22
+      ],
+      "note": "02:30は秘書ルーティンで実行されるため除外（2026-04-19改定スケジュールに追従）"
+    },
+    "_deprecated_research": {
+      "enabled": false,
+      "description": "W21 (2026-04-26) で削除. 出力 .company/research/notes/*.md が DASHBOARD 削除 (4/23) で死蔵化。W23 Research 脳が代替予定",
+      "priority": 6,
+      "deprecated_at": "2026-04-26"
+    },
+    "research_morning_brief": {
+      "enabled": true,
+      "description": "W24 (2026-04-26): 朝 02:30 に Research 脳 (Opus 4.7) が本日の重点 3 項目を自動生成 → DASHBOARD 表示. 1 日 1 回のみ.",
+      "priority": 6,
+      "execution_times": [
+        2
+      ],
+      "note": "Method A (Max plan 内、API 課金 $0). 約 60-90 秒. 失敗してもバッチ全体は継続"
+    },
+    "rival_detection": {
+      "enabled": true,
+      "description": "新規ライバルセラー検出（Browse API）",
+      "priority": 7,
+      "note": "ebay_sync後の最新キーワードを使用"
+    },
+    "news_check": {
+      "enabled": false,
+      "description": "Claude/AIニュース確認（Anthropic公式サイト）",
+      "priority": 11,
+      "note": "独立タスク。最後に実行",
+      "_migration_note": "2026-04-24 W13 吸収により停止。x_news_check が後継。"
+    },
+    "data_sync": {
+      "enabled": true,
+      "description": "sku_conversion + inventory_check → monitor.db 統合",
+      "priority": 8,
+      "note": "ebay_sync + inventory_check 後に実行。DBを単一真実源に"
+    },
+    "price_optimization": {
+      "enabled": true,
+      "description": "ランク + 競合データに基づく価格調整提案",
+      "priority": 9,
+      "note": "data_sync 後に実行。ランク・競合データが最新の状態で分析"
+    },
+    "sales_tracking": {
+      "enabled": true,
+      "description": "Gmail売上通知から販売データ抽出 → sales_history",
+      "priority": 10,
+      "note": "Gmail API 使用。finance部署にレポート配信"
+    },
+    "video_learning_queue": {
+      "enabled": true,
+      "description": "動画学習キュー処理: pending の YouTube 動画を Gemini で構造化知識抽出 + Opus 4.7 深掘り (W22 ハイブリッド)",
+      "priority": 13,
+      "execution_times": [
+        2,
+        18
+      ],
+      "max_items_per_run": 8,
+      "note": "朝02:30 + 夜18:00 (計16件/日、Gemini Flash 20RPD 内 + Opus 4.7 自動連動 W22)。W28 (2026-04-26) で 5→8 に増量、Free tier 20RPD 余力 4 件残し",
+      "_re_enabled": "2026-04-26 W19 (permanent_failed 自動判別) + W22 Phase A 完了後に再 enable. W28 で max_items 5→8 に増量"
+    },
+    "daily_relist": {
+      "enabled": true,
+      "description": "End→Relist SEO ブースト: watch=0 かつ rank=E の listing を毎日最大7件、手動で終了→再出品して検索順位を底上げ",
+      "priority": 13,
+      "execution_times": [
+        2
+      ],
+      "max_per_run": 7,
+      "dry_run": false,
+      "skip_verify": true,
+      "sleep_between_sec": 3,
+      "note": "朝02:30のみ実行。time_left が少ないものから優先。shipping override は API経由で自動継承される"
+    },
+    "cleanup_old_relisted": {
+      "enabled": true,
+      "description": "退役listing 90日経過cleanup: daily_relist 由来 is_ended=1 row を物理 DELETE。relist_history に旧→新系譜が保存済のため履歴消失なし",
+      "priority": 13,
+      "execution_times": [
+        2
+      ],
+      "note": "朝02:30のみ実行 (daily_relist 直後)。ended_reason='daily_relist_seo' のみ対象 (not_in_active_list 由来は qty=0 復活機能と互換のため永続保持)。2026-04-30 D案 + 90日 user公認。90日固定値は tasks/task_cleanup_old_relisted.py の CLEANUP_DAYS 定数を直接編集"
+    },
+    "fuel_surcharge_check": {
+      "enabled": true,
+      "description": "FedEx/DHL公式サイトから燃料サーチャージ取得、settings.json反映",
+      "priority": 12,
+      "execution_times": [
+        2
+      ],
+      "execution_weekday": [
+        0
+      ],
+      "note": "毎週月曜02:30のみ実行。取得失敗時はDiscord通知。週次更新なのでこれで十分"
+    },
+    "x_news_check": {
+      "enabled": true,
+      "description": "W13: X/Reddit/HN から AI ニュースを取得 (search-x + Claude Haiku)",
+      "priority": 15,
+      "cron_hour": 6,
+      "cron_minute": 0,
+      "note": "独立 CronJob (06:00)。失敗・暴走防止のため feature flag で rollback 可。"
+    },
+    "customs_check": {
+      "enabled": true,
+      "description": "W14: FedEx/DHL/UPS 通関要求メールの検知→ドラフト生成",
+      "priority": 7,
+      "cron_hour": 6,
+      "cron_minute": 10,
+      "note": "独立 CronJob 06:10 (W13 06:00 とオフセット). 送信は MONO Deck UI から明示実行."
+    }
+  },
+  "supplier_selection_criteria": {
+    "weights": {
+      "stock_quantity": 0.35,
+      "price": 0.35,
+      "shipping_time": 0.3
+    },
+    "top_candidates": 3,
+    "description": "複数条件で仕入先Top 3を自動選出"
+  },
+  "database": {
+    "path": "./data/monitor.db",
+    "backup_enabled": true,
+    "backup_dir": "./data/backups"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "./logs/scheduler.log",
+    "max_size_mb": 50,
+    "backup_count": 5
+  },
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay": 30,
+    "timeout": 300
+  },
+  "notification_settings": {
+    "include_summary": true,
+    "include_errors": true,
+    "include_timestamps": true
+  },
+  "customs_automation": {
+    "send_enabled": true,
+    "_kill_switch_note": "送信を緊急停止したい時は send_enabled を false に. scheduler 再起動不要."
+  }
+}

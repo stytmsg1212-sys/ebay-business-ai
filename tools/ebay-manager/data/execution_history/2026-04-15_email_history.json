@@ -1,0 +1,178 @@
+[
+  {
+    "timestamp": "2026-04-15T00:17:24.389519",
+    "result": {
+      "timestamp": "2026-04-15T00:17:24.385533",
+      "task_name": "email",
+      "status": "success",
+      "message": "📧 メール取得 完了",
+      "execution_time_sec": 10.235989093780518,
+      "details": {
+        "success": true,
+        "count": 10,
+        "emails": [
+          {
+            "id": "19d8784f49bbb13a",
+            "timestamp": "2026-04-15T00:17:20.777844",
+            "subject": "michelemota sent a message about Oriental Motor BMUD200-A Brushless DC Motor Driver Single-Phase 100-120 VAC New #357197894617",
+            "from": "eBay - michelemota <michel_jyiu2356uej@members.ebay.com>",
+            "date": "Mon, 13 Apr 2026 08:45:29 -0700"
+          },
+          {
+            "id": "19d84fdbe4c161d9",
+            "timestamp": "2026-04-15T00:17:21.186692",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:34 -0700"
+          },
+          {
+            "id": "19d84fd8d7648950",
+            "timestamp": "2026-04-15T00:17:21.596229",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:21 -0700"
+          },
+          {
+            "id": "19d817b723f04b07",
+            "timestamp": "2026-04-15T00:17:22.006212",
+            "subject": "Re: mono_honpo_japan sent a message about Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray from Japan #358178581550",
+            "from": "eBay - perr1754 <perr17_jtd5848rgzx@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 04:37:23 -0700"
+          },
+          {
+            "id": "19d6e83af1c21513",
+            "timestamp": "2026-04-15T00:17:22.377805",
+            "subject": "These items haven't sold yet? Let’s change that.",
+            "from": "eBay <ebay@ebay.com>",
+            "date": "Wed, 8 Apr 2026 12:13:35 -0700"
+          },
+          {
+            "id": "19d6b78bc1fc494f",
+            "timestamp": "2026-04-15T00:17:22.698858",
+            "subject": "augistarismissing sent a message about ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan #357618434395",
+            "from": "eBay - augistarismissing <sabh56_gtn3248rhtc@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 22:02:47 -0700"
+          },
+          {
+            "id": "19d675ba95a65360",
+            "timestamp": "2026-04-15T00:17:23.031321",
+            "subject": "Re: alex865550 sent a message about HIOKI DT4282 Digital Multimeter 10A Slightly New from Japan #356894589481",
+            "from": "eBay - alex865550 <alekko_hz5129ubt@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 02:52:32 -0700"
+          },
+          {
+            "id": "19d604c80a071b49",
+            "timestamp": "2026-04-15T00:17:23.542090",
+            "subject": "loopeez sent a message about maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan #357039873158",
+            "from": "eBay - loopeez <bmen42_mq5828uitg@members.ebay.com>",
+            "date": "Sun, 5 Apr 2026 17:58:39 -0700"
+          },
+          {
+            "id": "19d572712d48cd9c",
+            "timestamp": "2026-04-15T00:17:23.953830",
+            "subject": "arch22888 sent a message about HP 53131A 225MHz Universal Counter Frequency Counter Power On & Tested Japan #358240034876",
+            "from": "eBay - arch22888 <arch22_mtd6197net@members.ebay.com.hk>",
+            "date": "Fri, 3 Apr 2026 23:21:10 -0700"
+          },
+          {
+            "id": "19d57246c6ebfdf1",
+            "timestamp": "2026-04-15T00:17:24.361650",
+            "subject": "arch22888 sent a message about HP 53131A 225MHz Universal Counter Frequency Counter Power On & Tested Japan #358240034876",
+            "from": "eBay - arch22888 <arch22_mtd6197net@members.ebay.com.hk>",
+            "date": "Fri, 3 Apr 2026 23:18:17 -0700"
+          }
+        ],
+        "message": "取得したメール: 10件",
+        "status": "success"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-04-15T06:10:17.600666",
+    "result": {
+      "timestamp": "2026-04-15T06:10:17.590652",
+      "task_name": "email",
+      "status": "success",
+      "message": "📧 メール取得 完了",
+      "execution_time_sec": 5.497479438781738,
+      "details": {
+        "success": true,
+        "count": 10,
+        "emails": [
+          {
+            "id": "19d8784f49bbb13a",
+            "timestamp": "2026-04-15T06:10:14.083285",
+            "subject": "michelemota sent a message about Oriental Motor BMUD200-A Brushless DC Motor Driver Single-Phase 100-120 VAC New #357197894617",
+            "from": "eBay - michelemota <michel_jyiu2356uej@members.ebay.com>",
+            "date": "Mon, 13 Apr 2026 08:45:29 -0700"
+          },
+          {
+            "id": "19d84fdbe4c161d9",
+            "timestamp": "2026-04-15T06:10:14.405645",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:34 -0700"
+          },
+          {
+            "id": "19d84fd8d7648950",
+            "timestamp": "2026-04-15T06:10:15.005323",
+            "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+            "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 20:58:21 -0700"
+          },
+          {
+            "id": "19d817b723f04b07",
+            "timestamp": "2026-04-15T06:10:15.372386",
+            "subject": "Re: mono_honpo_japan sent a message about Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray from Japan #358178581550",
+            "from": "eBay - perr1754 <perr17_jtd5848rgzx@members.ebay.com>",
+            "date": "Sun, 12 Apr 2026 04:37:23 -0700"
+          },
+          {
+            "id": "19d6e83af1c21513",
+            "timestamp": "2026-04-15T06:10:15.783541",
+            "subject": "These items haven't sold yet? Let’s change that.",
+            "from": "eBay <ebay@ebay.com>",
+            "date": "Wed, 8 Apr 2026 12:13:35 -0700"
+          },
+          {
+            "id": "19d6b78bc1fc494f",
+            "timestamp": "2026-04-15T06:10:16.124686",
+            "subject": "augistarismissing sent a message about ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan #357618434395",
+            "from": "eBay - augistarismissing <sabh56_gtn3248rhtc@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 22:02:47 -0700"
+          },
+          {
+            "id": "19d675ba95a65360",
+            "timestamp": "2026-04-15T06:10:16.558082",
+            "subject": "Re: alex865550 sent a message about HIOKI DT4282 Digital Multimeter 10A Slightly New from Japan #356894589481",
+            "from": "eBay - alex865550 <alekko_hz5129ubt@members.ebay.com>",
+            "date": "Tue, 7 Apr 2026 02:52:32 -0700"
+          },
+          {
+            "id": "19d604c80a071b49",
+            "timestamp": "2026-04-15T06:10:16.965144",
+            "subject": "loopeez sent a message about maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan #357039873158",
+            "from": "eBay - loopeez <bmen42_mq5828uitg@members.ebay.com>",
+            "date": "Sun, 5 Apr 2026 17:58:39 -0700"
+          },
+          {
+            "id": "19d572712d48cd9c",
+            "timestamp": "2026-04-15T06:10:17.284470",
+            "subject": "arch22888 sent a message about HP 53131A 225MHz Universal Counter Frequency Counter Power On & Tested Japan #358240034876",
+            "from": "eBay - arch22888 <arch22_mtd6197net@members.ebay.com.hk>",
+            "date": "Fri, 3 Apr 2026 23:21:10 -0700"
+          },
+          {
+            "id": "19d57246c6ebfdf1",
+            "timestamp": "2026-04-15T06:10:17.585416",
+            "subject": "arch22888 sent a message about HP 53131A 225MHz Universal Counter Frequency Counter Power On & Tested Japan #358240034876",
+            "from": "eBay - arch22888 <arch22_mtd6197net@members.ebay.com.hk>",
+            "date": "Fri, 3 Apr 2026 23:18:17 -0700"
+          }
+        ],
+        "message": "取得したメール: 10件",
+        "status": "success"
+      }
+    }
+  }
+]

@@ -1,0 +1,74 @@
+{
+  "date": "2026-04-20",
+  "timestamp": "2026-04-20T18:49:26.882047",
+  "new_sellers": [
+    {
+      "seller": "chiri-initiative",
+      "feedback_score": 2601,
+      "competing_items": [
+        {
+          "title": "Hatsune Miku V4X Vocaloid4 Software English Included Cubase LE Piapro Studio JDM",
+          "price_usd": 146.48,
+          "keyword": "CRYPTON VOCALOID4 Hatsune Miku"
+        }
+      ],
+      "first_seen": "2026-04-20T18:49:22.869022",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "crosss-65",
+      "feedback_score": 638,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100 Bluetooth Cassette Player USB-C Rechargeable White Japan",
+          "price_usd": 88.8,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "Maxell MXCP-P100 Bluetooth Cassette Player USB-C Rechargeable White Japan",
+          "price_usd": 88.8,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-20T18:49:21.336029",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "suzuhal1776",
+      "feedback_score": 312,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH New from Japan",
+          "price_usd": 82.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH New from Japan",
+          "price_usd": 82.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-20T18:49:21.336038",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "yuni.nana.-16",
+      "feedback_score": 0,
+      "competing_items": [
+        {
+          "title": "Unused Le Creuset Mini Blueberry Cocotte 0.6L 20zo Artichoke Cocotte 0.4L set",
+          "price_usd": 299.99,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-04-20T18:49:26.880835",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 4,
+  "total_sellers_scanned": 151
+}

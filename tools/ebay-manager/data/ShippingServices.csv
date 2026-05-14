@@ -1,0 +1,23 @@
+﻿ServiceID,Carrier,ServiceName,VolumetricDivisor
+1,日本郵便,日本郵便 - EMS,5000
+2,日本郵便,日本郵便 - 小形包装物(書留),5000
+3,日本郵便,日本郵便 - 書状(書留),5000
+4,日本郵便,日本郵便 - eパケットライト,5000
+5,FedEx,FedEx(直契約) - FICP,5000
+6,FedEx,FedEx(直契約) - IP Envelope,5000
+7,FedEx,FedEx(直契約) - IP Pack,5000
+8,FedEx,FedEx(直契約) - IP Package,5000
+9,FedEx,FedEx(直契約) - IE Package,5000
+10,DHL,DHL(直契約) - Express,6000
+11,CPaSS,CPaSS - FedEx - FICP,5000
+12,CPaSS,CPaSS - FedEx - IP Envelope,5000
+13,CPaSS,CPaSS - FedEx - IP Pack,5000
+14,CPaSS,CPaSS - FedEx - IP Package,5000
+15,CPaSS,CPaSS - DHL,6000
+16,CPaSS,CPaSS - Economy,8000
+17,eLogi,eLogi - FedEx - FICP,5000
+18,eLogi,eLogi - FedEx - IP Envelope,5000
+19,eLogi,eLogi - FedEx - IP Pack,5000
+20,eLogi,eLogi - FedEx - IP Package,5000
+21,eLogi,eLogi - FedEx - IE Package,6000
+22,eLogi,eLogi - DHL,6000

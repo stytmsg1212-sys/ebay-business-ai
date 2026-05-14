@@ -1,0 +1,445 @@
+"""W7-A 注文アラート (30 分 polling).
+
+検知対象 2 種:
+  1. **DDP-B 発送 invoice アラート**: primary_market='US_only' SKU の新規注文
+     → 発送時 invoice には商品価格 (関税抜) を記載するよう Discord で通知
+  2. **Override #2 改 ($1500+ DE/IT/FR/KZ アラート)**: 高額 EU 注文発生
+     → DDU 発送 + 関税通知メールテンプレを生成 → user に提示
+
+両方とも GetOrders API で 30 分ごとに新規注文を検知.
+
+冪等性:
+  - high_value_eu_alerts.order_id / ddpb_dispatch_alerts.order_id で dedupe
+  - INSERT OR IGNORE 使用
+"""
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Override #2 改 適用対象国
+HIGH_VALUE_COUNTRIES = {"DE", "IT", "FR", "KZ"}
+HIGH_VALUE_THRESHOLD_USD = 1500.0
+
+# 動画 [dM6U7cVYumE] (2026-04-21) 最新値
+DEFAULT_TARIFF_RATE = 0.10  # US 向け日本製基本値 10%
+
+
+def _conn() -> sqlite3.Connection:
+    """Wave A (2026-05-12): monitor.database.get_conn に統一.
+
+    旧実装はハードコード path で `monitor.database.DB_PATH` の monkeypatch を
+    bypass していたため、pytest tmp_db fixture が機能しなかった (test 不能).
+    `get_conn` は WAL + busy_timeout 付きで本番経路と同条件、かつ tmp_db で差替可能.
+    """
+    from monitor.database import get_conn
+    return get_conn()
+
+
+def _get_credentials() -> Optional[tuple]:
+    """eBay API 認証情報を取得."""
+    try:
+        from monitor.credentials import get_ebay_credentials
+        return get_ebay_credentials()
+    except (ImportError, KeyError, OSError, ValueError) as e:
+        # H8 (Wave C): broad except → specific exceptions (qiita 9 原則).
+        # ImportError: credentials module 読込失敗 / KeyError: dict 構造不整合 /
+        # OSError: file IO エラー / ValueError: 復号失敗等.
+        logger.error(f"認証取得失敗: {e}")
+        return None
+
+
+def _send_discord(webhook: str, embed: dict) -> bool:
+    if not webhook:
+        return False
+    try:
+        import httpx
+        r = httpx.post(webhook, json={"embeds": [embed]}, timeout=10.0)
+        return r.status_code in (200, 204)
+    except (httpx.HTTPError, httpx.TimeoutException) as e:
+        # H8 (Wave C): broad except → httpx specific exceptions.
+        # HTTPError は HTTPStatusError / RequestError 等の親、TimeoutException も含む.
+        logger.warning(f"Discord 送信失敗: {e}")
+        return False
+
+
+def _build_high_value_template(order: dict) -> str:
+    """Override #2 改 関税通知メールテンプレ."""
+    buyer_country = order.get("buyer_country_name") or order.get("buyer_country") or ""
+    item_price = order.get("item_price_usd") or 0
+    title = order.get("title") or ""
+    order_id = order.get("order_id") or ""
+
+    return (
+        f"Dear Buyer,\n\n"
+        f"Thank you for your purchase of:\n"
+        f"  {title}\n"
+        f"  Order #: {order_id}\n\n"
+        f"Please be aware that this item will be shipped via DDU "
+        f"(Delivered Duty Unpaid). Import customs duties and VAT (typically "
+        f"around 19-22% of the item value, varies by country) will be "
+        f"collected by the carrier upon delivery.\n\n"
+        f"Estimated item value declared: ${item_price:.2f} USD\n"
+        f"Destination: {buyer_country}\n\n"
+        f"If you have any concerns, please reply to this message within "
+        f"48 hours so we can discuss alternatives before shipment.\n\n"
+        f"Thank you for your understanding.\n\n"
+        f"Best regards,\n"
+        f"MonoHonpo Japan"
+    )
+
+
+def _process_high_value_eu(order: dict, webhook: str) -> bool:
+    """$1500+ DE/IT/FR/KZ 検知 + 通知."""
+    item_price = order.get("item_price_usd") or 0
+    shipping = order.get("shipping_usd") or 0
+    total = item_price + shipping
+    buyer_country = order.get("buyer_country") or ""
+    order_id = order.get("order_id") or ""
+
+    if total < HIGH_VALUE_THRESHOLD_USD:
+        return False
+    if buyer_country not in HIGH_VALUE_COUNTRIES:
+        return False
+    if not order_id:
+        return False
+
+    # 既存 alert 確認 (dedupe)
+    with _conn() as c:
+        existing = c.execute(
+            "SELECT id, discord_sent FROM high_value_eu_alerts WHERE order_id = ?",
+            (order_id,),
+        ).fetchone()
+        if existing:
+            return False  # 既処理
+
+        template = _build_high_value_template(order)
+        c.execute(
+            """INSERT INTO high_value_eu_alerts
+               (order_id, sku, ebay_item_id, buyer_country, item_price_usd,
+                shipping_usd, total_usd, detected_at, discord_sent, template_text)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+            (order_id, order.get("sku"), order.get("ebay_item_id"),
+             buyer_country, item_price, shipping, total,
+             datetime.now().isoformat(), template),
+        )
+        new_id = c.lastrowid
+
+    # Discord 通知
+    embed = {
+        "title": f"[CRITICAL] $1500+ EU 高額注文 ({buyer_country})",
+        "description": (
+            f"DDU 発送 + 関税通知メール送信が必要です.\n"
+            f"テンプレートを MonoDeck 「市場戦略」タブで確認 → eBay メッセージで送信.\n"
+            f"発送 timeout: 48 時間"
+        ),
+        "color": 0xD84C38,
+        "fields": [
+            {"name": "Order", "value": order_id, "inline": True},
+            {"name": "SKU", "value": order.get("sku") or "-", "inline": True},
+            {"name": "Buyer", "value": buyer_country, "inline": True},
+            {"name": "Item price", "value": f"${item_price:.2f}", "inline": True},
+            {"name": "Shipping", "value": f"${shipping:.2f}", "inline": True},
+            {"name": "Total", "value": f"${total:.2f}", "inline": True},
+            {"name": "Title", "value": (order.get("title") or "")[:200], "inline": False},
+        ],
+        "timestamp": datetime.now().isoformat(),
+    }
+    sent = _send_discord(webhook, embed)
+    if sent:
+        with _conn() as c:
+            c.execute(
+                "UPDATE high_value_eu_alerts SET discord_sent = 1 WHERE id = ?",
+                (new_id,),
+            )
+    logger.info(f"high_value_eu alert: order={order_id} sent={sent}")
+    return True
+
+
+def _process_ddpb_dispatch(order: dict, webhook: str) -> bool:
+    """DDP-B (US_only) 注文の発送 invoice アラート."""
+    sku = order.get("sku") or ""
+    order_id = order.get("order_id") or ""
+    if not sku or not order_id:
+        return False
+
+    # listing 単位 primary_market 確認 (W7-A Phase 3 SKU cascade 排除).
+    # order の ebay_item_id 優先. 無ければ警告して skip (Q0 silent skip 防止).
+    ebay_item_id = order.get("ebay_item_id") or ""
+    with _conn() as c:
+        if ebay_item_id:
+            row = c.execute(
+                "SELECT primary_market FROM ebay_listings "
+                "WHERE ebay_item_id = ?",
+                (ebay_item_id,),
+            ).fetchone()
+        else:
+            logger.warning(
+                f"order_id={order_id} sku={sku} に ebay_item_id 無し → "
+                "DDP-B 判定 skip (要 order 取得元の調査)"
+            )
+            return False
+        # FINDING 6 (2026-05-05): primary_market=NULL (= W7-A 分析未済) と
+        # 'US_only 以外' を区別. NULL の場合は Discord に warning + alert を出して
+        # 「分析未済 listing で US 注文発生」を user に通知 (silent skip 防止 / Q0 適合).
+        # 業務リスク: Section 232 該当品が NULL のまま US 売上発生 → 関税申告漏れで赤字.
+        if not row:
+            return False
+        pm = row["primary_market"]
+        if pm is None:
+            # 分析未済 listing で US 注文 → 既存 _send_discord helper で警告通知.
+            warn_embed = {
+                "title": "⚠️ DDP-B 判定不能 (primary_market 未分析)",
+                "description": (
+                    f"ebay_item_id={ebay_item_id or '?'} sku={sku or '?'} order_id={order_id} の "
+                    "primary_market が NULL です. W7-A market_analysis_refresh で当該 listing を "
+                    "再分析してください. Section 232 該当の場合 invoice 関税申告漏れリスクあり."
+                ),
+                "color": 16753920,  # オレンジ (warning)
+            }
+            # _send_discord は内部で httpx HTTPError を吸収して bool を返すため、
+            # 通常の path で例外は出ない. 防御的に httpx 系のみ catch.
+            import httpx as _h
+            try:
+                _send_discord(webhook, warn_embed)
+            except (_h.HTTPError, _h.TimeoutException) as _e:
+                logger.warning(f"Discord 通知失敗 (primary_market=NULL): {_e}")
+            logger.warning(
+                f"primary_market=NULL listing で US 注文発生: ebay_item_id={ebay_item_id} "
+                f"order_id={order_id} → DDP-B 通知 skip (W7-A 分析後に再評価必要)"
+            )
+            return False
+        # W109(3) (2026-05-09): primary_market='unknown' (= W110 新標準でも sample <3 で
+        # 統計不能と確定済) は警告 spam 不要、ただし「分析済だが skip した」痕跡は logger.info
+        # で必ず残す (Q0 silent skip 防止). NULL=未分析 vs unknown=分析済不能 を区別.
+        if pm == "unknown":
+            logger.info(
+                f"primary_market='unknown' listing で US 注文発生: "
+                f"ebay_item_id={ebay_item_id} sku={sku or '?'} order_id={order_id} "
+                f"→ DDP-B 通知 skip (sample 不足で統計不能、Discord 警告は省略)"
+            )
+            return False
+        if pm != "US_only":
+            return False
+
+        existing = c.execute(
+            "SELECT id FROM ddpb_dispatch_alerts WHERE order_id = ?",
+            (order_id,),
+        ).fetchone()
+        if existing:
+            return False  # 既処理
+
+        sale_price = order.get("item_price_usd") or 0
+        tariff_buffer = sale_price * DEFAULT_TARIFF_RATE / (1 + DEFAULT_TARIFF_RATE)
+        # 例: 販売 $115 → buffer $10.45 → invoice 申告 $104.55
+        invoice_declared = sale_price - tariff_buffer
+
+        c.execute(
+            """INSERT INTO ddpb_dispatch_alerts
+               (order_id, sku, ebay_item_id, buyer_country, sale_price_usd,
+                tariff_buffer_usd, invoice_declared_usd, detected_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (order_id, sku, order.get("ebay_item_id"),
+             order.get("buyer_country") or "",
+             sale_price, tariff_buffer, invoice_declared,
+             datetime.now().isoformat()),
+        )
+
+    # Discord 通知 (注文直後)
+    embed = {
+        "title": "[ALERT] DDP-B 発送 invoice 注意",
+        "description": (
+            f"US_only SKU の注文発生. 発送 invoice には **関税抜き商品価格** を "
+            f"記載してください (販売価格そのままだと二重課税)."
+        ),
+        "color": 0xC89B2A,
+        "fields": [
+            {"name": "Order", "value": order_id, "inline": True},
+            {"name": "SKU", "value": sku, "inline": True},
+            {"name": "Buyer", "value": order.get("buyer_country") or "", "inline": True},
+            {"name": "販売価格", "value": f"${sale_price:.2f}", "inline": True},
+            {"name": "推定関税 (10%)", "value": f"${tariff_buffer:.2f}", "inline": True},
+            {"name": "Invoice 申告額", "value": f"**${invoice_declared:.2f}**", "inline": True},
+            {"name": "Title", "value": (order.get("title") or "")[:200], "inline": False},
+        ],
+        "timestamp": datetime.now().isoformat(),
+    }
+    sent = _send_discord(webhook, embed)
+    logger.info(f"ddpb_dispatch alert: order={order_id} sku={sku} sent={sent}")
+    return True
+
+
+def _decrement_inventory_for_stock_sku(order: dict) -> Optional[dict]:
+    """W119 (2026-05-12): 有在庫 SKU の order 検知時に inventory_count を売れた数だけ減算.
+
+    対象: order["sku"] が "stock" prefix の listing.
+    冪等性: order_inventory_decrement_log で order_id × ebay_item_id を track して dedupe.
+
+    Returns: 減算実施時 dict (notify 用)、対象外 / 既処理なら None.
+    """
+    sku = order.get("sku") or ""
+    if not sku.startswith("stock"):
+        return None
+    ebay_item_id = order.get("ebay_item_id") or ""
+    order_id = order.get("order_id") or ""
+    qty = int(order.get("qty") or 1)
+    if not ebay_item_id or not order_id or qty <= 0:
+        return None
+
+    # H2 (Wave A) atomic ordering:
+    #   INSERT OR IGNORE を **先に** 実行し rowcount で「真に新規 insert か」判定.
+    #   rowcount=0 = 既処理 (重複 polling) → 即 return None.
+    #   rowcount=1 = 自分が claim 成立 → 在庫 UPDATE + new_inventory_count back-fill.
+    # これにより check-then-act race (二重減算) を排除.
+    # inventory_decrement_log のスキーマは migration v37 で init_db に集約済 (H1).
+    with _conn() as c:
+        # placeholder new_inventory_count=-1 で claim. 後で UPDATE で実値書込.
+        cur = c.execute(
+            """INSERT OR IGNORE INTO inventory_decrement_log
+               (order_id, ebay_item_id, sku, quantity_decremented, new_inventory_count)
+               VALUES (?, ?, ?, ?, ?)""",
+            (order_id, ebay_item_id, sku, qty, -1),
+        )
+        if cur.rowcount == 0:
+            return None  # 重複 polling、何もしない
+
+        # claim 成立 → 在庫 UPDATE.
+        row = c.execute(
+            "SELECT inventory_count, title FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+        if not row:
+            # claim を rollback (整合性維持)
+            c.execute(
+                "DELETE FROM inventory_decrement_log WHERE order_id=? AND ebay_item_id=?",
+                (order_id, ebay_item_id),
+            )
+            logger.warning(
+                f"[inventory] order {order_id} の ebay_item_id={ebay_item_id} が DB に無い"
+            )
+            return None
+        current = row["inventory_count"]
+        title = row["title"]
+        if current is None:
+            # claim を rollback (在庫数未入力 listing は減算対象外)
+            c.execute(
+                "DELETE FROM inventory_decrement_log WHERE order_id=? AND ebay_item_id=?",
+                (order_id, ebay_item_id),
+            )
+            logger.warning(
+                f"[inventory] {ebay_item_id} sku={sku} inventory_count=NULL "
+                f"(stock SKU だが在庫数未設定). 商品管理タブで入力推奨. 減算 skip."
+            )
+            return None
+
+        new_count = max(0, int(current) - qty)
+        c.execute(
+            "UPDATE ebay_listings SET inventory_count=? WHERE ebay_item_id=?",
+            (new_count, ebay_item_id),
+        )
+        c.execute(
+            """UPDATE inventory_decrement_log SET new_inventory_count=?
+               WHERE order_id=? AND ebay_item_id=?""",
+            (new_count, order_id, ebay_item_id),
+        )
+
+    logger.info(
+        f"[inventory] decremented {ebay_item_id} sku={sku}: "
+        f"{current} → {new_count} (order {order_id} qty={qty})"
+    )
+    return {
+        "order_id": order_id,
+        "ebay_item_id": ebay_item_id,
+        "sku": sku,
+        "title": title,
+        "qty": qty,
+        "old_count": int(current),
+        "new_count": new_count,
+    }
+
+
+def run_order_alert_check(config: Optional[dict] = None,
+                          num_days: int = 1) -> dict:
+    """30 分 cron で呼ばれる本体.
+
+    Args:
+        config: schedule_config.json
+        num_days: GetOrders 取得日数 (default 1, 30分polling なら 1 で十分)
+    """
+    cfg = config or {}
+    webhook = cfg.get("discord", {}).get("webhook_url") or ""
+
+    creds = _get_credentials()
+    if not creds:
+        return {"success": False, "error": "no_credentials"}
+
+    app_id, dev_id, cert_id, user_token = creds
+
+    from monitor.ebay_client import get_orders
+    started_at = datetime.now()
+    result = get_orders(app_id, dev_id, cert_id, user_token, num_days=num_days)
+    if not result["success"]:
+        logger.error(f"GetOrders failed: {result.get('message')}")
+        return {"success": False, "error": result.get("message")}
+
+    orders = result.get("orders") or []
+    high_value_alerts = 0
+    ddpb_alerts = 0
+    inventory_decrements = 0
+    order_processing_errors = 0  # H3 (Wave A): order 単位失敗を transparency 確保
+    inventory_zero_listings: list[dict] = []  # 在庫 0 になった listing (DASHBOARD で表示)
+
+    for order in orders:
+        try:
+            if _process_high_value_eu(order, webhook):
+                high_value_alerts += 1
+            if _process_ddpb_dispatch(order, webhook):
+                ddpb_alerts += 1
+            # W119 (2026-05-12): 有在庫 SKU の自動 inventory 減算
+            dec = _decrement_inventory_for_stock_sku(order)
+            if dec:
+                inventory_decrements += 1
+                if dec["new_count"] == 0:
+                    inventory_zero_listings.append(dec)
+        except (sqlite3.Error, KeyError, TypeError) as e:
+            order_processing_errors += 1
+            logger.warning(f"order {order.get('order_id')} 処理失敗: {e}")
+
+    duration = (datetime.now() - started_at).total_seconds()
+    logger.info(
+        f"order_alert_check: orders={len(orders)} hv_eu={high_value_alerts} "
+        f"ddpb={ddpb_alerts} inv_dec={inventory_decrements} "
+        f"inv_zero={len(inventory_zero_listings)} errors={order_processing_errors} "
+        f"duration={duration:.1f}s"
+    )
+    return {
+        "success": True,
+        "orders_checked": len(orders),
+        "high_value_eu_alerts": high_value_alerts,
+        "ddpb_alerts": ddpb_alerts,
+        "inventory_decrements": inventory_decrements,
+        "inventory_zero_listings": inventory_zero_listings,
+        "order_processing_errors": order_processing_errors,
+        "duration_sec": duration,
+        "message": (
+            f"orders={len(orders)} hv_eu={high_value_alerts} ddpb={ddpb_alerts} "
+            f"inv_dec={inventory_decrements} errors={order_processing_errors}"
+        ),
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+    result = run_order_alert_check(cfg, num_days=1)
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

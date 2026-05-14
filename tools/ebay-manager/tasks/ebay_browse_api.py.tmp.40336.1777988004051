@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+eBay Browse API クライアント（共有ユーティリティ）
+
+Application Access Token (client_credentials) を使用。
+Finding API の代替として、商品検索・セラー情報取得に使用。
+
+Usage:
+    from tasks.ebay_browse_api import BrowseAPIClient
+
+    client = BrowseAPIClient(app_id, cert_id)
+    results = client.search_items("Japan exclusive cassette player", limit=25)
+"""
+
+import sys
+import time
+import logging
+import base64
+from typing import Dict, List, Optional
+
+import httpx
+
+# pythonw.exe では sys.stdout が None のため安全ガード
+if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+logger = logging.getLogger(__name__)
+
+TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
+BROWSE_API_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+ITEM_BY_LEGACY_URL = "https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id"
+SCOPE = "https://api.ebay.com/oauth/api_scope"
+
+
+class BrowseAPIClient:
+    """eBay Browse API client with automatic token management."""
+
+    def __init__(self, app_id: str, cert_id: str):
+        self.app_id = app_id
+        self.cert_id = cert_id
+        self._token: Optional[str] = None
+        self._token_expires_at: float = 0
+
+    def _get_token(self) -> str:
+        """Application Access Token を取得（キャッシュ付き）"""
+        # 有効期限内ならキャッシュを返す（60秒のマージン）
+        if self._token and time.time() < self._token_expires_at - 60:
+            return self._token
+
+        credentials = base64.b64encode(
+            f"{self.app_id}:{self.cert_id}".encode()
+        ).decode()
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {credentials}",
+        }
+        data = {
+            "grant_type": "client_credentials",
+            "scope": SCOPE,
+        }
+
+        resp = httpx.post(TOKEN_URL, headers=headers, data=data, timeout=15)
+        resp.raise_for_status()
+
+        token_data = resp.json()
+        self._token = token_data["access_token"]
+        self._token_expires_at = time.time() + token_data.get("expires_in", 7200)
+
+        logger.info("eBay Application Access Token を取得しました")
+        return self._token
+
+    def search_items(
+        self,
+        query: str,
+        *,
+        limit: int = 25,
+        item_location_country: str = "JP",
+        sort: str = None,
+        category_ids: str = None,
+        price_range: tuple = None,
+    ) -> List[Dict]:
+        """
+        Browse API で商品を検索
+
+        Args:
+            query: 検索キーワード
+            limit: 最大取得件数（1-200）
+            item_location_country: 出品者の国コード（デフォルト: JP = 日本）
+            sort: ソート順 (例: "price", "-price", "newlyListed")
+            category_ids: カテゴリID（カンマ区切り）
+            price_range: (min, max) USD。None で制限なし
+
+        Returns:
+            [{'title', 'price_usd', 'item_id', 'seller', 'condition',
+              'image_url', 'item_url', 'category_id'}]
+        """
+        token = self._get_token()
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        }
+
+        # フィルタ構築
+        filters = []
+        if item_location_country:
+            filters.append(f"itemLocationCountry:{item_location_country}")
+        if price_range:
+            min_price, max_price = price_range
+            if min_price is not None:
+                filters.append(f"price:[{min_price}..{max_price or ''}]")
+
+        params = {
+            "q": query,
+            "limit": min(limit, 200),
+        }
+        if filters:
+            params["filter"] = ",".join(filters)
+        if sort:
+            params["sort"] = sort
+        if category_ids:
+            params["category_ids"] = category_ids
+
+        try:
+            resp = httpx.get(
+                BROWSE_API_URL, headers=headers, params=params, timeout=20
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Browse API HTTP {e.response.status_code}: {query[:50]}")
+            return []
+        except Exception as e:
+            logger.warning(f"Browse API エラー ({query[:50]}): {e}")
+            return []
+
+        items = []
+        for summary in data.get("itemSummaries", []):
+            price_val = 0.0
+            price_info = summary.get("price", {})
+            if price_info:
+                try:
+                    price_val = float(price_info.get("value", 0))
+                except (ValueError, TypeError):
+                    pass
+
+            seller_info = summary.get("seller", {})
+
+            items.append({
+                "title": summary.get("title", ""),
+                "price_usd": price_val,
+                "currency": price_info.get("currency", "USD"),
+                "item_id": summary.get("itemId", ""),
+                "seller": seller_info.get("username", ""),
+                "feedback_score": seller_info.get("feedbackScore", 0),
+                "feedback_percentage": seller_info.get("feedbackPercentage", ""),
+                "condition": summary.get("condition", ""),
+                "image_url": summary.get("image", {}).get("imageUrl", ""),
+                "item_url": summary.get("itemWebUrl", ""),
+                "category_id": summary.get("categoryId", ""),
+                "category_path": summary.get("categoryPath", ""),
+                "buying_options": summary.get("buyingOptions", []),
+            })
+
+        logger.info(f"Browse API: '{query[:40]}' → {len(items)}件")
+        return items
+
+    def get_item_pricing(self, legacy_item_id: str) -> Optional[Dict]:
+        """
+        Browse API GET /item/get_item_by_legacy_id で 商品価格 + 送料 を取得.
+
+        Args:
+            legacy_item_id: 12 桁前後の eBay item ID (例: "285999999001")
+
+        Returns:
+            {'price_usd': float, 'shipping_usd': float} or None (取得失敗時)
+            送料情報なし (送料無料表示) は shipping_usd=0.0 として扱う.
+        """
+        token = self._get_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        }
+        params = {"legacy_item_id": str(legacy_item_id).strip()}
+        try:
+            resp = httpx.get(
+                ITEM_BY_LEGACY_URL, headers=headers, params=params, timeout=15
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning(
+                f"Browse API get_item_by_legacy_id error (item={legacy_item_id}): {e}"
+            )
+            return None
+
+        # 商品価格
+        price_info = data.get("price") or {}
+        try:
+            price_usd = float(price_info.get("value")) if price_info.get("value") is not None else None
+        except (ValueError, TypeError):
+            price_usd = None
+
+        # 送料 (shippingOptions[0].shippingCost)
+        options = data.get("shippingOptions") or []
+        shipping_usd: float = 0.0
+        if options:
+            try:
+                cost_info = options[0].get("shippingCost") or {}
+                if cost_info.get("value") is not None:
+                    shipping_usd = float(cost_info["value"])
+            except (ValueError, TypeError) as e:
+                logger.warning(f"shipping parse error (item={legacy_item_id}): {e}")
+                shipping_usd = 0.0
+
+        if price_usd is None:
+            return None
+        return {"price_usd": price_usd, "shipping_usd": shipping_usd}
+
+    def get_item_shipping_cost(self, legacy_item_id: str) -> Optional[float]:
+        """後方互換: 送料のみ取得 (内部で get_item_pricing を呼ぶ)"""
+        result = self.get_item_pricing(legacy_item_id)
+        return result["shipping_usd"] if result else None
+
+    def search_sold_items(
+        self,
+        query: str,
+        *,
+        limit: int = 25,
+        item_location_country: str = "JP",
+    ) -> List[Dict]:
+        """
+        売れた商品を検索（FIXED_PRICE + AUCTION の完了品）
+        Browse API では sold items の直接検索はできないため、
+        現在出品中の商品から需要を推測する。
+
+        Returns:
+            search_items と同じ形式
+        """
+        return self.search_items(
+            query,
+            limit=limit,
+            item_location_country=item_location_country,
+            sort="-price",  # 高価格順 = 需要のある商品が上に来やすい
+        )

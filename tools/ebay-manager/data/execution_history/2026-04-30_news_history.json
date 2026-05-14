@@ -1,0 +1,91 @@
+[
+  {
+    "timestamp": "2026-04-30T12:11:22.360557",
+    "result": {
+      "timestamp": "2026-04-30T12:11:22.359344",
+      "task_name": "news",
+      "status": "success",
+      "message": "ニュースチェック 完了",
+      "execution_time_sec": 9.29062032699585,
+      "details": {
+        "success": true,
+        "news_count": 15,
+        "high_impact_count": 11,
+        "medium_impact_count": 1,
+        "news": [
+          {
+            "title": "Introducing Claude Opus 4.7",
+            "impact": "high",
+            "matched_keyword": "introducing",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419781"
+          },
+          {
+            "title": "Apr 28, 2026AnnouncementsClaude for Creative Work",
+            "impact": "high",
+            "matched_keyword": "announce",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419798"
+          },
+          {
+            "title": "Apr 17, 2026ProductIntroducing Claude Design by Anthropic Labs",
+            "impact": "high",
+            "matched_keyword": "introducing",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419803"
+          },
+          {
+            "title": "Apr 16, 2026ProductIntroducing Claude Opus 4.7",
+            "impact": "high",
+            "matched_keyword": "introducing",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419806"
+          },
+          {
+            "title": "Claude Code Enterprise",
+            "impact": "high",
+            "matched_keyword": "claude code",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419808"
+          },
+          {
+            "title": "Claude partner network",
+            "impact": "high",
+            "matched_keyword": "partner network",
+            "source": "Anthropic News",
+            "checked_at": "2026-04-30T12:11:18.419811"
+          },
+          {
+            "title": "An update on recent Claude Code quality reports",
+            "impact": "high",
+            "matched_keyword": "claude code",
+            "source": "Anthropic Engineering Blog",
+            "checked_at": "2026-04-30T12:11:18.419813"
+          },
+          {
+            "title": "Claude Code auto mode: a safer way to skip permissions",
+            "impact": "high",
+            "matched_keyword": "claude code",
+            "source": "Anthropic Engineering Blog",
+            "checked_at": "2026-04-30T12:11:18.419815"
+          },
+          {
+            "title": "Eval awareness in Claude Opus 4.6’s BrowseComp performance",
+            "impact": "high",
+            "matched_keyword": "opus 4",
+            "source": "Anthropic Engineering Blog",
+            "checked_at": "2026-04-30T12:11:18.419817"
+          },
+          {
+            "title": "Introducing advanced tool use on the Claude Developer Platform",
+            "impact": "high",
+            "matched_keyword": "introducing",
+            "source": "Anthropic Engineering Blog",
+            "checked_at": "2026-04-30T12:11:18.419819"
+          }
+        ],
+        "message": "ニュース確認完了: 15件検出"
+      }
+    }
+  }
+]

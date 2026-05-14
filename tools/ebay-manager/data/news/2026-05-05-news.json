@@ -1,0 +1,26 @@
+[
+  {
+    "title": "Introducing Claude Opus 4.7",
+    "source": "Anthropic News",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "url": "https://www.anthropic.com/news/opus-4-7",
+    "checked_at": "2026-05-05T07:15:36.510440"
+  },
+  {
+    "title": "Engineering: Claude Code performance update",
+    "source": "Anthropic Engineering Blog",
+    "impact": "medium",
+    "matched_keyword": "performance",
+    "url": "https://www.anthropic.com/engineering/cc-perf",
+    "checked_at": "2026-05-05T07:15:36.510453"
+  },
+  {
+    "title": "New API: batch processing GA",
+    "source": "Anthropic News",
+    "impact": "high",
+    "matched_keyword": "ga release",
+    "url": "https://www.anthropic.com/news/batch-ga",
+    "checked_at": "2026-05-05T07:15:36.510457"
+  }
+]

@@ -1,0 +1,88 @@
+{
+  "date": "2026-04-19",
+  "timestamp": "2026-04-19T06:07:12.853855",
+  "new_sellers": [
+    {
+      "seller": "tonari",
+      "feedback_score": 885,
+      "competing_items": [
+        {
+          "title": "Crypton Hatsune Miku Rubber Mascot Keychain Hello! Good Smile VOCALOID 4cm",
+          "price_usd": 68.99,
+          "keyword": "CRYPTON VOCALOID4 Hatsune Miku"
+        }
+      ],
+      "first_seen": "2026-04-19T06:07:06.660784",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "kohiro-77",
+      "feedback_score": 718,
+      "competing_items": [
+        {
+          "title": "maxell MXCP-P100WH Portable Cassette Player Bluetooth selec White",
+          "price_usd": 84.79,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        },
+        {
+          "title": "maxell MXCP-P100WH Portable Cassette Player Bluetooth selec White",
+          "price_usd": 84.79,
+          "keyword": "maxell MXCP-P100 Portable Cassette"
+        }
+      ],
+      "first_seen": "2026-04-19T06:07:04.676431",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "japanese-treasure-chest",
+      "feedback_score": 436,
+      "competing_items": [
+        {
+          "title": "Ohuhu x Sanrio 80 Color + 1 Blender Brush & Fine Marker Set Pastel Tones",
+          "price_usd": 125.43,
+          "keyword": "Ohuhu x Sanrio 80"
+        },
+        {
+          "title": "Le Creuset Mini Blueberry Cocotte Vegetable Series 0.6L 20zo Stoneware",
+          "price_usd": 192.77,
+          "keyword": "Le Creuset Mini Blueberry"
+        }
+      ],
+      "first_seen": "2026-04-19T06:07:10.722354",
+      "is_new": true,
+      "competing_count": 2
+    },
+    {
+      "seller": "rarebooksjapan",
+      "feedback_score": 339,
+      "competing_items": [
+        {
+          "title": "4845628708 Guide Book Crypton Future Media Official Hatsune Miku V4X Vocaloid JP",
+          "price_usd": 218.05,
+          "keyword": "CRYPTON VOCALOID4 Hatsune Miku"
+        }
+      ],
+      "first_seen": "2026-04-19T06:07:06.660802",
+      "is_new": true,
+      "competing_count": 1
+    },
+    {
+      "seller": "is-780034",
+      "feedback_score": 285,
+      "competing_items": [
+        {
+          "title": "Sanrio x Ohuhu Alcohol Brush Marker Set Brush Broad Tip Pastel +Blender Japan FS",
+          "price_usd": 119.0,
+          "keyword": "Ohuhu x Sanrio 80"
+        }
+      ],
+      "first_seen": "2026-04-19T06:07:10.722350",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 5,
+  "total_sellers_scanned": 151
+}

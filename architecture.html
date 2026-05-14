@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>eBay物販AI 全体構成図 | 2026-04-20</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg2: #11172b;
+    --card: #1a2140;
+    --border: #2a3358;
+    --text: #e8ecf8;
+    --muted: #8892b0;
+    --accent: #64ffda;
+    --tier1: #ff5470;
+    --tier2: #ffb454;
+    --tier3: #5de2a3;
+    --api: #7aa2ff;
+    --gold: #ffd369;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background: linear-gradient(135deg, var(--bg) 0%, var(--bg2) 100%);
+    color: var(--text);
+    padding: 30px 40px;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+  h1 {
+    font-size: 2.2em;
+    background: linear-gradient(90deg, #64ffda, #7aa2ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 30px;
+    font-size: 0.95em;
+  }
+  h2 {
+    font-size: 1.4em;
+    color: var(--accent);
+    margin: 40px 0 16px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .num {
+    background: var(--accent);
+    color: #000;
+    font-weight: bold;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.7em;
+  }
+  /* === 1. Org Layer === */
+  .org {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .owner {
+    background: linear-gradient(135deg, #ffd369, #ff9c42);
+    color: #000;
+    padding: 12px 28px;
+    border-radius: 50px;
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 14px;
+  }
+  .arrow-down {
+    width: 2px;
+    height: 24px;
+    background: var(--accent);
+    margin-bottom: 0;
+  }
+  .secretary {
+    background: linear-gradient(135deg, #64ffda, #7aa2ff);
+    color: #000;
+    padding: 18px 42px;
+    border-radius: 14px;
+    font-weight: bold;
+    font-size: 1.2em;
+    text-align: center;
+    margin-bottom: 14px;
+    box-shadow: 0 0 24px rgba(100,255,218,0.4);
+  }
+  .secretary small {
+    display: block;
+    font-size: 0.7em;
+    font-weight: normal;
+    opacity: 0.8;
+    margin-top: 4px;
+  }
+  .depts {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 14px;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .dept {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .dept:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent);
+  }
+  .dept .icon { font-size: 1.6em; margin-bottom: 4px; }
+  .dept .name { font-weight: bold; color: var(--accent); margin-bottom: 4px; font-size: 0.95em; }
+  .dept .role { color: var(--muted); font-size: 0.8em; }
+
+  /* === 2. Tier Layer === */
+  .tiers {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .tier {
+    border-radius: 12px;
+    padding: 16px 20px;
+    border-left: 5px solid;
+  }
+  .tier-1 { background: rgba(255,84,112,0.1); border-color: var(--tier1); }
+  .tier-2 { background: rgba(255,180,84,0.08); border-color: var(--tier2); }
+  .tier-3 { background: rgba(93,226,163,0.08); border-color: var(--tier3); }
+  .tier h3 {
+    margin-bottom: 12px;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tier-1 h3 { color: var(--tier1); }
+  .tier-2 h3 { color: var(--tier2); }
+  .tier-3 h3 { color: var(--tier3); }
+  .tier h3 .model {
+    background: rgba(255,255,255,0.08);
+    padding: 2px 10px;
+    border-radius: 14px;
+    font-size: 0.75em;
+    font-family: monospace;
+  }
+  .agents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 8px;
+  }
+  .agent {
+    background: rgba(255,255,255,0.03);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .agent .role-label {
+    color: var(--muted);
+    font-size: 0.82em;
+  }
+  .agent code {
+    background: rgba(0,0,0,0.3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent);
+    font-size: 0.88em;
+  }
+  .new-badge {
+    background: var(--gold);
+    color: #000;
+    font-size: 0.65em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+    margin-left: 6px;
+  }
+
+  /* === 3. Tool Stack === */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stack-layer {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 20px;
+    position: relative;
+  }
+  .stack-layer .title {
+    color: var(--accent);
+    font-weight: bold;
+    margin-bottom: 6px;
+    font-size: 1.02em;
+  }
+  .stack-layer .content {
+    color: var(--muted);
+    font-size: 0.9em;
+    line-height: 1.8;
+  }
+  .stack-layer code {
+    color: #fff;
+    background: rgba(122,162,255,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+  .flow-arrow {
+    text-align: center;
+    color: var(--accent);
+    font-size: 1.3em;
+    height: 10px;
+    line-height: 0.4;
+  }
+
+  /* === 4. External APIs === */
+  .apis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+  }
+  .api-card {
+    background: linear-gradient(135deg, rgba(122,162,255,0.15), rgba(122,162,255,0.04));
+    border: 1px solid var(--api);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  .api-card .name { font-weight: bold; color: var(--api); margin-bottom: 4px; }
+  .api-card .role { color: var(--muted); font-size: 0.82em; }
+  .api-card.disabled {
+    opacity: 0.4;
+    border-style: dashed;
+  }
+
+  /* === 5. Matrix === */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: rgba(100,255,218,0.08);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.92em;
+  }
+  td { font-size: 0.9em; }
+  td code {
+    background: rgba(0,0,0,0.3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--gold);
+    font-size: 0.88em;
+  }
+  .tier-tag {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: bold;
+  }
+  .tier-tag.t1 { background: rgba(255,84,112,0.25); color: var(--tier1); }
+  .tier-tag.t2 { background: rgba(255,180,84,0.22); color: var(--tier2); }
+  .tier-tag.t3 { background: rgba(93,226,163,0.22); color: var(--tier3); }
+
+  /* === Schedule === */
+  .schedule {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .sched-item {
+    background: rgba(255,211,105,0.08);
+    border: 1px solid rgba(255,211,105,0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .sched-time {
+    font-family: monospace;
+    color: var(--gold);
+    font-weight: bold;
+    font-size: 1.05em;
+  }
+  .sched-desc { color: var(--muted); font-size: 0.85em; margin-top: 3px; }
+
+  footer {
+    margin-top: 50px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.82em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>🚀 eBay物販AI 全体構成図</h1>
+<div class="subtitle">2026-04-20 現在 / 7部署 × 9エージェント × 3モデル階層</div>
+
+<!-- ============ 1. ORG LAYER ============ -->
+<h2><span class="num">1</span>仮想組織レイヤー（.company/）</h2>
+<div class="org">
+  <div class="owner">👤 オーナー (gucch)</div>
+  <div class="arrow-down"></div>
+  <div class="secretary">
+    🎩 秘書室
+    <small>Claude Opus 4.7 (1M context) ― 指揮・窓口・並行委任ハブ</small>
+  </div>
+  <div class="arrow-down"></div>
+  <div class="depts">
+    <div class="dept"><div class="icon">⚙️</div><div class="name">engineering</div><div class="role">ツール開発</div></div>
+    <div class="dept"><div class="icon">🔍</div><div class="name">research</div><div class="role">商品/競合調査</div></div>
+    <div class="dept"><div class="icon">📦</div><div class="name">daily-ops</div><div class="role">出品/注文/CS</div></div>
+    <div class="dept"><div class="icon">💰</div><div class="name">finance</div><div class="role">売上/損益</div></div>
+    <div class="dept"><div class="icon">📚</div><div class="name">ebay-knowledge</div><div class="role">ポリシー/ノウハウ</div></div>
+    <div class="dept"><div class="icon">✏️</div><div class="name">ebay-listing</div><div class="role">出品文英語化</div></div>
+    <div class="dept"><div class="icon">📋</div><div class="name">secretary</div><div class="role">TODO/窓口</div></div>
+  </div>
+</div>
+
+<!-- ============ 2. TIER LAYER ============ -->
+<h2><span class="num">2</span>サブエージェント実動レイヤー（3階層）</h2>
+<div class="tiers">
+
+  <div class="tier tier-1">
+    <h3>🔴 Tier 1 <span class="model">claude-opus-4-7</span> — 思考・判断が価値を生む層</h3>
+    <div class="agents-grid">
+      <div class="agent"><code>秘書室</code><span class="role-label">メイン指揮</span></div>
+      <div class="agent"><code>generator</code><span class="role-label">コード実装<span class="new-badge">実動化</span></span></div>
+      <div class="agent"><code>planner</code><span class="role-label">仕様設計<span class="new-badge">実動化</span></span></div>
+      <div class="agent"><code>evaluator</code><span class="role-label">品質評価<span class="new-badge">実動化</span></span></div>
+      <div class="agent"><code>ebay-manager-qa</code><span class="role-label">UIテスト<span class="new-badge">実動化</span></span></div>
+      <div class="agent"><code>ebay-listing</code><span class="role-label">出品英文<span class="new-badge">昇格</span></span></div>
+      <div class="agent"><code>code-architect</code><span class="role-label">大型設計<span class="new-badge">新設</span></span></div>
+      <div class="agent"><code>code-reviewer</code><span class="role-label">厳格レビュー<span class="new-badge">新設</span></span></div>
+      <div class="agent"><code>code-simplifier</code><span class="role-label">簡素化</span></div>
+    </div>
+  </div>
+
+  <div class="tier tier-2">
+    <h3>🟡 Tier 2 <span class="model">claude-sonnet-4-6</span> — 速度×コスト重視層</h3>
+    <div class="agents-grid">
+      <div class="agent"><code>feature-dev:code-explorer</code><span class="role-label">Grep/Glob探索</span></div>
+      <div class="agent"><code>feature-dev:code-architect</code><span class="role-label">簡易設計</span></div>
+      <div class="agent"><code>feature-dev:code-reviewer</code><span class="role-label">簡易レビュー</span></div>
+      <div class="agent"><code>general-purpose</code><span class="role-label">汎用/WebFetch</span></div>
+      <div class="agent"><code>Explore</code><span class="role-label">組込探索</span></div>
+      <div class="agent"><code>Plan</code><span class="role-label">組込計画</span></div>
+    </div>
+  </div>
+
+  <div class="tier tier-3">
+    <h3>🟢 Tier 3 <span class="model">claude-haiku-4-5</span> — 秒単位の量産層</h3>
+    <div class="agents-grid">
+      <div class="agent"><code>task_email_classify</code><span class="role-label">メール三分類</span></div>
+      <div class="agent"><code>日本語要約バッチ</code><span class="role-label">量産処理</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ 3. TOOL STACK ============ -->
+<h2><span class="num">3</span>eBay Manager ツールスタック</h2>
+<div class="stack">
+  <div class="stack-layer">
+    <div class="title">🎨 UI 層 — Streamlit (Port 8501, JARVIS テーマ)</div>
+    <div class="content">
+      Dashboard / メール・ニュース / 在庫監視 / 要対応 / 仕入先候補 / 販売履歴 / 利益計算 / 設定
+    </div>
+  </div>
+  <div class="flow-arrow">▼</div>
+  <div class="stack-layer">
+    <div class="title">🧠 ロジック層 — Python 3.11</div>
+    <div class="content">
+      <code>app.py</code> / <code>calculator.py</code> / <code>monitor/*</code> / <code>tasks/*</code><br>
+      Phase 1 学習（Few-shot注入）/ Claude API 3層キャッシュ（STABLE+DYNAMIC+past_judgments）
+    </div>
+  </div>
+  <div class="flow-arrow">▼</div>
+  <div class="stack-layer">
+    <div class="title">💾 永続化層 — SQLite (WAL mode)</div>
+    <div class="content">
+      ebay_listings / monitored_items / supplier_candidates (v13 <code>auto_rejected</code>) /
+      relist_history / api_call_log / news_items / emails
+    </div>
+  </div>
+  <div class="flow-arrow">▼</div>
+  <div class="stack-layer">
+    <div class="title">⏰ 定時実行層 — APScheduler (pythonw.exe バックグラウンド)</div>
+    <div class="schedule">
+      <div class="sched-item"><div class="sched-time">05:00</div><div class="sched-desc">在庫監視 (全出品スキャン)</div></div>
+      <div class="sched-item"><div class="sched-time">17:00</div><div class="sched-desc">在庫監視 (全出品スキャン)</div></div>
+      <div class="sched-item"><div class="sched-time">02:30</div><div class="sched-desc">朝バッチ (sync/sweep/enrich)</div></div>
+      <div class="sched-item"><div class="sched-time">07:00</div><div class="sched-desc">SEOブースト End→Relist 7件</div></div>
+      <div class="sched-item"><div class="sched-time">随時</div><div class="sched-desc">OOS検知→仕入先候補探索</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4. EXTERNAL APIS ============ -->
+<h2><span class="num">4</span>外部 API / MCP 連携</h2>
+<div class="apis">
+  <div class="api-card">
+    <div class="name">🛒 eBay Trading API</div>
+    <div class="role">EndItem / Relist / Revise / AddItem</div>
+  </div>
+  <div class="api-card">
+    <div class="name">🤖 Anthropic Claude API</div>
+    <div class="role">Opus/Sonnet/Haiku + cache</div>
+  </div>
+  <div class="api-card">
+    <div class="name">🎬 Gemini 2.5 Flash</div>
+    <div class="role">動画学習 (media=LOW)</div>
+  </div>
+  <div class="api-card">
+    <div class="name">🌐 Playwright MCP</div>
+    <div class="role">認証済ブラウザ自動化</div>
+  </div>
+  <div class="api-card">
+    <div class="name">📧 Gmail MCP</div>
+    <div class="role">メール読取/返信下書き</div>
+  </div>
+  <div class="api-card">
+    <div class="name">📁 Google Drive MCP</div>
+    <div class="role">ファイル連携</div>
+  </div>
+  <div class="api-card">
+    <div class="name">🔔 ntfy.sh Hooks</div>
+    <div class="role">承認待ち通知 Beep</div>
+  </div>
+  <div class="api-card disabled">
+    <div class="name">📡 LSP</div>
+    <div class="role">今セッション切断</div>
+  </div>
+</div>
+
+<!-- ============ 5. TASK MATRIX ============ -->
+<h2><span class="num">5</span>業務×担当×モデル マトリクス</h2>
+<table>
+  <tr>
+    <th>業務</th>
+    <th>担当部署</th>
+    <th>使用エージェント</th>
+    <th>モデル</th>
+    <th>Tier</th>
+  </tr>
+  <tr>
+    <td>出品英文生成</td>
+    <td>ebay-listing</td>
+    <td><code>ebay-listing</code></td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>新機能設計</td>
+    <td>engineering</td>
+    <td><code>planner</code>, <code>code-architect</code></td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>実装</td>
+    <td>engineering</td>
+    <td><code>generator</code></td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>コードレビュー</td>
+    <td>engineering</td>
+    <td><code>code-reviewer</code>, <code>evaluator</code></td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>UIテスト</td>
+    <td>engineering</td>
+    <td><code>ebay-manager-qa</code></td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>仕入先候補評価</td>
+    <td>research</td>
+    <td><code>claude_evaluator.py</code> (Phase 1 学習)</td>
+    <td>Opus 4.7</td>
+    <td><span class="tier-tag t1">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>商品調査（並行）</td>
+    <td>research</td>
+    <td><code>general-purpose</code> × N</td>
+    <td>Sonnet</td>
+    <td><span class="tier-tag t2">Tier 2</span></td>
+  </tr>
+  <tr>
+    <td>コード探索</td>
+    <td>全般</td>
+    <td><code>Explore</code>, <code>feature-dev:code-explorer</code></td>
+    <td>Sonnet</td>
+    <td><span class="tier-tag t2">Tier 2</span></td>
+  </tr>
+  <tr>
+    <td>メール三分類</td>
+    <td>daily-ops</td>
+    <td><code>task_email_classify</code></td>
+    <td>Haiku 4.5</td>
+    <td><span class="tier-tag t3">Tier 3</span></td>
+  </tr>
+  <tr>
+    <td>動画学習</td>
+    <td>research / engineering</td>
+    <td><code>gemini_video_learner</code></td>
+    <td>Gemini 2.5 Flash</td>
+    <td><span class="tier-tag t2">外部</span></td>
+  </tr>
+</table>
+
+<!-- ============ 6. MEMORY LAYER ============ -->
+<h2><span class="num">6</span>永続メモリ構造</h2>
+<div class="stack">
+  <div class="stack-layer">
+    <div class="title">🧠 auto memory (~/.claude/projects/.../memory/)</div>
+    <div class="content">
+      <code>MEMORY.md</code> INDEX (毎回読込) ／
+      <code>user_*.md</code> ユーザー情報・モデル好み ／
+      <code>project_*.md</code> 進行プロジェクト ／
+      <code>feedback_*.md</code> 運用ルール（UI/委任/tariff等） ／
+      <code>reference_*.md</code> 外部リソース ／
+      <code>learning_L1-L4.md</code> X投稿/動画学習結果
+    </div>
+  </div>
+  <div class="stack-layer">
+    <div class="title">📂 .company/ 部署ドキュメント</div>
+    <div class="content">
+      各部署の <code>CLAUDE.md</code> に役割・ルール・L1-L4学習反映済（2026-04-20 全部署強化）
+    </div>
+  </div>
+</div>
+
+<footer>
+  eBay物販AI / cc-company × eBay Manager / Generated 2026-04-20 by 秘書室 (Claude Opus 4.7)
+</footer>
+
+</body>
+</html>

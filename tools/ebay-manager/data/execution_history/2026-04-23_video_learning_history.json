@@ -1,0 +1,34 @@
+[
+  {
+    "timestamp": "2026-04-23T18:12:38.075310",
+    "result": {
+      "timestamp": "2026-04-23T18:12:38.073917",
+      "task_name": "video_learning",
+      "status": "success",
+      "message": "動画学習 完了",
+      "execution_time_sec": 1277.7076909542084,
+      "details": {
+        "success": true,
+        "processed": 1,
+        "errors": 2,
+        "message": "1件処理 / 2件エラー"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-04-23T18:44:39.596019",
+    "result": {
+      "timestamp": "2026-04-23T18:44:39.583066",
+      "task_name": "video_learning",
+      "status": "success",
+      "message": "動画学習 完了",
+      "execution_time_sec": 1189.733333349228,
+      "details": {
+        "success": true,
+        "processed": 3,
+        "errors": 0,
+        "message": "3件処理 / 0件エラー"
+      }
+    }
+  }
+]

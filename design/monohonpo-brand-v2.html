@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MonoHonpo — Brand System v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Noto+Serif+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   MonoHonpo Brand System v2
+   Design direction: 和モダンクラフト (Wabi-sabi meets modern editorial)
+   Motifs: Enso (円相) / Sumi ink / Washi paper / Hanko (朱印)
+   ========================================================= */
+
+:root{
+  /* Paper layers — warm washi */
+  --paper:#f6f2ea;
+  --paper-hi:#fbf9f3;
+  --paper-lo:#ece4d3;
+  --paper-edge:#d8cdb5;
+
+  /* Sumi ink */
+  --ink:#1a1817;
+  --ink-2:#3a332c;
+  --ink-3:#6b6157;
+  --ink-4:#9a8f82;
+
+  /* Shu-iro 朱色 (vermillion hanko red) */
+  --shu:#a8341b;
+  --shu-dim:#8a2b17;
+  --shu-hi:#c54a2c;
+
+  /* Accents */
+  --brass:#8b7355;
+  --sage:#6b7a5c;
+  --green-ok:#4d6b3c;
+
+  /* Typography */
+  --f-display:'Cormorant Garamond',serif;
+  --f-body:'Inter','Noto Sans JP',system-ui,sans-serif;
+  --f-jp:'Noto Serif JP',serif;
+  --f-mono:'JetBrains Mono',monospace;
+}
+
+/* -------- Global page (reference doc) -------- */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#2d2822;color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;}
+.doc-hero{padding:28px 40px 20px;background:#1a1817;color:#d8cdb5;border-bottom:1px solid #3a332c;}
+.doc-hero h1{margin:0 0 4px;font-family:var(--f-display);font-size:24px;font-weight:500;letter-spacing:.5px;color:#f6f2ea;}
+.doc-hero p{margin:0;font-size:12px;color:#8a7f74;letter-spacing:1px;text-transform:uppercase;}
+.frame-label{max-width:1100px;margin:40px auto -12px;padding:14px 20px;background:#3a332c;color:#d8cdb5;font-family:var(--f-mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;border-left:3px solid var(--shu);}
+.frame{max-width:1100px;margin:0 auto;background:var(--paper);box-shadow:0 20px 60px rgba(0,0,0,.4),0 8px 20px rgba(0,0,0,.2);position:relative;overflow:hidden;}
+
+/* Paper texture */
+.frame::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.35;
+  background:
+    radial-gradient(ellipse 800px 400px at 20% 10%,rgba(139,115,85,.08),transparent 60%),
+    radial-gradient(ellipse 600px 300px at 85% 85%,rgba(26,24,23,.05),transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.2  0 0 0 .08 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+.frame>*{position:relative;z-index:1;}
+
+/* =========================================================
+   1. BRAND PLATE — Tokens, logo usage, signature
+   ========================================================= */
+.plate{padding:56px 60px;}
+.plate-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start;}
+.logo-plate{padding:32px;background:var(--paper-hi);border:1px solid var(--paper-edge);position:relative;}
+.logo-plate img{display:block;width:160px;height:auto;margin:0 auto 12px;}
+.logo-plate .name-row{text-align:center;border-top:1px solid var(--paper-edge);padding-top:14px;}
+.logo-plate .name-en{font-family:var(--f-display);font-size:28px;font-weight:500;letter-spacing:6px;color:var(--ink);}
+.logo-plate .name-jp{font-family:var(--f-jp);font-size:14px;color:var(--ink-3);letter-spacing:8px;margin-top:4px;}
+.logo-plate .tagline{font-family:var(--f-mono);font-size:10px;letter-spacing:3px;color:var(--ink-4);text-transform:uppercase;margin-top:14px;}
+
+.tokens h2{font-family:var(--f-display);font-size:26px;font-weight:400;margin:0 0 6px;color:var(--ink);}
+.tokens .kicker{font-family:var(--f-jp);font-size:12px;color:var(--shu);letter-spacing:4px;}
+.tokens p.lede{font-family:var(--f-display);font-size:18px;font-style:italic;color:var(--ink-2);line-height:1.5;margin:18px 0 28px;border-left:2px solid var(--shu);padding-left:18px;}
+
+.swatch-row{display:flex;gap:10px;margin-bottom:20px;}
+.swatch{flex:1;text-align:center;}
+.swatch .chip{height:54px;border:1px solid var(--paper-edge);}
+.swatch .label{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);margin-top:6px;text-transform:uppercase;}
+.swatch .hex{font-family:var(--f-mono);font-size:10px;color:var(--ink);margin-top:2px;}
+
+.type-row{border-top:1px solid var(--paper-edge);padding-top:20px;}
+.type-row>div{margin-bottom:12px;display:flex;align-items:baseline;gap:16px;}
+.type-row .tag{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;width:80px;flex-shrink:0;}
+.type-sample-display{font-family:var(--f-display);font-size:28px;font-weight:500;color:var(--ink);}
+.type-sample-body{font-family:var(--f-body);font-size:15px;color:var(--ink-2);}
+.type-sample-jp{font-family:var(--f-jp);font-size:18px;color:var(--ink-2);}
+.type-sample-mono{font-family:var(--f-mono);font-size:13px;color:var(--ink-2);letter-spacing:1px;}
+
+/* =========================================================
+   2. eBay STORE HERO — public shop front
+   ========================================================= */
+.store{padding:0;}
+.store-hero{
+  padding:80px 60px 64px;
+  background:
+    radial-gradient(ellipse 600px 300px at 85% 30%,rgba(168,52,27,.06),transparent 70%),
+    var(--paper);
+  border-bottom:1px solid var(--paper-edge);
+  position:relative;
+}
+.store-hero::after{
+  content:'';position:absolute;right:-80px;top:50%;transform:translateY(-50%);
+  width:420px;height:420px;border-radius:50%;
+  background:url("assets/MONO-logo.jpg") center/contain no-repeat;
+  opacity:.04;
+  filter:grayscale(1);
+}
+.store-hero-inner{max-width:640px;position:relative;z-index:2;}
+.store-hero .eyebrow{font-family:var(--f-jp);font-size:11px;letter-spacing:8px;color:var(--shu);margin-bottom:20px;font-weight:500;}
+.store-hero h1{font-family:var(--f-display);font-size:60px;font-weight:500;line-height:1.05;letter-spacing:-1px;margin:0 0 16px;color:var(--ink);}
+.store-hero .lede{font-family:var(--f-display);font-size:22px;font-style:italic;color:var(--ink-2);line-height:1.4;margin:0 0 28px;font-weight:300;}
+.store-hero .meta{display:flex;gap:28px;padding-top:20px;border-top:1px solid var(--ink);border-top-width:1px;align-items:flex-start;}
+.store-hero .meta>div{flex:1;}
+.store-hero .meta .k{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;margin-bottom:4px;}
+.store-hero .meta .v{font-family:var(--f-display);font-size:18px;color:var(--ink);font-weight:500;}
+.store-hero .meta .v .jp{font-family:var(--f-jp);font-size:13px;color:var(--ink-2);margin-left:6px;}
+
+/* Trust strip */
+.trust-strip{padding:20px 60px;background:var(--ink);color:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:24px;}
+.trust-strip .item{display:flex;align-items:center;gap:12px;flex:1;}
+.trust-strip .icon{width:32px;height:32px;border:1px solid var(--paper-lo);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--f-display);font-size:16px;color:var(--paper);}
+.trust-strip .t{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:2px;}
+.trust-strip .d{font-family:var(--f-body);font-size:13px;color:var(--paper);line-height:1.3;}
+.trust-strip .sep{width:1px;height:40px;background:var(--ink-2);}
+
+/* Featured shelf */
+.shelf{padding:60px 60px;}
+.shelf-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:36px;padding-bottom:14px;border-bottom:1px solid var(--paper-edge);}
+.shelf-head h2{font-family:var(--f-display);font-size:32px;font-weight:500;margin:0;color:var(--ink);}
+.shelf-head .jp{font-family:var(--f-jp);font-size:12px;color:var(--ink-3);letter-spacing:3px;}
+.shelf-head .link{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--shu);text-transform:uppercase;text-decoration:none;border-bottom:1px solid var(--shu);padding-bottom:2px;}
+.items{display:grid;grid-template-columns:1fr 1fr 1fr;gap:28px;}
+.item-card{background:var(--paper-hi);border:1px solid var(--paper-edge);}
+.item-card .img{aspect-ratio:4/3;background:#e5ddca;display:flex;align-items:center;justify-content:center;color:var(--ink-4);font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;position:relative;}
+.item-card .img::after{content:'IMG';}
+.item-card .rank-corner{position:absolute;top:12px;left:12px;width:36px;height:36px;background:var(--ink);color:var(--paper);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:16px;}
+.item-card .body{padding:18px 20px 20px;}
+.item-card .cat{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:8px;}
+.item-card .title{font-family:var(--f-display);font-size:18px;font-weight:500;line-height:1.3;color:var(--ink);margin:0 0 10px;min-height:46px;}
+.item-card .price-row{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--paper-edge);}
+.item-card .price{font-family:var(--f-display);font-size:20px;font-weight:600;color:var(--ink);}
+.item-card .ddp{font-family:var(--f-mono);font-size:9px;letter-spacing:1px;color:var(--shu);text-transform:uppercase;}
+
+/* =========================================================
+   3. LISTING DESCRIPTION v4 — product page inner HTML
+   ========================================================= */
+.listing{padding:60px 60px;background:var(--paper-hi);border-top:8px solid var(--ink);}
+.listing-inner{max-width:720px;margin:0 auto;}
+
+/* Product masthead */
+.prod-mast{text-align:center;padding:0 0 36px;border-bottom:1px solid var(--paper-edge);margin-bottom:40px;}
+.prod-mast .origin{font-family:var(--f-jp);font-size:11px;letter-spacing:6px;color:var(--shu);margin-bottom:14px;}
+.prod-mast h1{font-family:var(--f-display);font-size:36px;font-weight:500;line-height:1.2;margin:0 0 16px;color:var(--ink);}
+.prod-mast .sub{font-family:var(--f-display);font-style:italic;font-size:17px;color:var(--ink-3);margin:0;}
+
+/* Hanko DDP seal */
+.hanko-block{display:flex;gap:28px;align-items:center;padding:28px;background:var(--paper);border:1px solid var(--paper-edge);margin-bottom:36px;position:relative;}
+.hanko-block::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--shu);}
+.hanko{width:110px;height:110px;border-radius:50%;background:var(--shu);color:var(--paper-hi);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;transform:rotate(-6deg);box-shadow:0 0 0 3px var(--shu),inset 0 0 0 2px var(--paper-hi);position:relative;}
+.hanko::after{content:'';position:absolute;inset:8px;border:1px solid rgba(246,242,234,.3);border-radius:50%;}
+.hanko .top{font-family:var(--f-jp);font-size:10px;letter-spacing:3px;font-weight:500;}
+.hanko .main{font-family:var(--f-jp);font-size:22px;font-weight:700;line-height:1;margin:2px 0;}
+.hanko .bot{font-family:var(--f-mono);font-size:8px;letter-spacing:2px;margin-top:2px;}
+.hanko-body h3{font-family:var(--f-display);font-size:22px;font-weight:600;margin:0 0 8px;color:var(--ink);}
+.hanko-body p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.55;}
+.hanko-body .guarantee-strong{color:var(--shu);font-weight:600;}
+
+/* Condition rank — enso brush */
+.rank-block{padding:32px;background:var(--paper);border:1px solid var(--paper-edge);margin-bottom:36px;text-align:center;}
+.rank-block .kicker{font-family:var(--f-jp);font-size:11px;letter-spacing:6px;color:var(--ink-3);margin-bottom:16px;}
+.rank-brush{width:120px;height:120px;margin:0 auto 18px;position:relative;}
+.rank-brush svg{width:100%;height:100%;}
+.rank-brush .letter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:48px;font-weight:600;color:var(--ink);}
+.rank-block h3{font-family:var(--f-display);font-size:28px;font-weight:500;margin:0 0 8px;color:var(--ink);}
+.rank-block .rank-jp{font-family:var(--f-jp);font-size:14px;color:var(--ink-3);margin:0 0 18px;}
+.rank-block .quick{max-width:480px;margin:0 auto;padding:16px 20px;background:var(--paper-hi);border-left:2px solid var(--ink);text-align:left;font-style:italic;color:var(--ink-2);font-family:var(--f-display);font-size:16px;}
+
+/* Includes — editorial list */
+.section{margin-bottom:40px;}
+.section-head{display:flex;align-items:baseline;gap:16px;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid var(--paper-edge);}
+.section-head h3{font-family:var(--f-display);font-size:24px;font-weight:500;margin:0;color:var(--ink);}
+.section-head .jp{font-family:var(--f-jp);font-size:11px;color:var(--ink-3);letter-spacing:4px;}
+.section-head .num{margin-left:auto;font-family:var(--f-mono);font-size:10px;color:var(--ink-4);letter-spacing:2px;}
+.includes-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.inc-item{padding:14px 16px 14px 36px;background:var(--paper);border:1px solid var(--paper-edge);position:relative;font-size:14px;color:var(--ink-2);}
+.inc-item::before{content:'';position:absolute;left:14px;top:18px;width:10px;height:10px;border:1.5px solid var(--shu);border-radius:50%;}
+.inc-item::after{content:'';position:absolute;left:17px;top:21px;width:4px;height:4px;background:var(--shu);border-radius:50%;}
+.inc-item strong{display:block;color:var(--ink);font-family:var(--f-display);font-size:15px;font-weight:600;margin-bottom:2px;}
+
+/* Specs table */
+.specs{width:100%;border-collapse:collapse;}
+.specs tr{border-bottom:1px solid var(--paper-edge);}
+.specs tr:last-child{border-bottom:0;}
+.specs td{padding:14px 0;font-size:14px;vertical-align:top;}
+.specs td:first-child{font-family:var(--f-mono);font-size:10px;letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;width:180px;padding-top:17px;}
+.specs td:last-child{color:var(--ink);font-family:var(--f-display);font-size:17px;}
+
+/* Shipping block */
+.ship-block{padding:32px;background:var(--ink);color:var(--paper);margin-bottom:40px;}
+.ship-block h3{font-family:var(--f-display);font-size:24px;color:var(--paper-hi);margin:0 0 16px;font-weight:500;}
+.ship-block h3 .jp{font-family:var(--f-jp);font-size:11px;color:var(--ink-4);letter-spacing:4px;margin-left:12px;}
+.ship-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px 32px;}
+.ship-grid>div strong{display:block;font-family:var(--f-mono);font-size:9px;color:var(--paper-edge);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
+.ship-grid>div span{color:var(--paper);font-size:14px;}
+
+/* Story block */
+.story{padding:36px 0;border-top:1px solid var(--paper-edge);border-bottom:1px solid var(--paper-edge);margin-bottom:36px;text-align:center;}
+.story .mark{font-family:var(--f-display);font-size:60px;color:var(--shu);font-style:italic;line-height:.8;}
+.story p{font-family:var(--f-display);font-size:20px;font-style:italic;color:var(--ink-2);line-height:1.55;max-width:540px;margin:10px auto 0;}
+
+/* About MonoHonpo */
+.about{text-align:center;padding:36px 20px 0;}
+.about img{width:72px;margin:0 auto 16px;display:block;}
+.about .name{font-family:var(--f-display);font-size:22px;font-weight:500;color:var(--ink);letter-spacing:4px;margin-bottom:4px;}
+.about .jp{font-family:var(--f-jp);font-size:12px;color:var(--ink-3);letter-spacing:6px;margin-bottom:14px;}
+.about p{font-size:13px;color:var(--ink-3);max-width:480px;margin:0 auto 8px;line-height:1.6;}
+.about .contact{font-family:var(--f-mono);font-size:10px;color:var(--ink-4);letter-spacing:2px;text-transform:uppercase;margin-top:14px;}
+
+/* =========================================================
+   4. MANAGER UI — admin paper variant
+   ========================================================= */
+.admin{padding:60px;background:var(--ink);color:var(--paper);}
+.admin-inner{max-width:860px;margin:0 auto;}
+.admin-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:32px;padding-bottom:14px;border-bottom:1px solid var(--ink-2);}
+.admin-head h2{font-family:var(--f-display);font-size:26px;font-weight:400;margin:0;color:var(--paper-hi);}
+.admin-head .status{font-family:var(--f-mono);font-size:10px;color:var(--shu-hi);letter-spacing:2px;}
+.admin-head .status::before{content:'●';margin-right:6px;}
+.admin-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:28px;}
+.admin-metric{padding:22px 20px;background:#24201c;border:1px solid #3a332c;position:relative;}
+.admin-metric::before{content:'';position:absolute;top:0;left:0;width:2px;height:24px;background:var(--shu);}
+.admin-metric .k{font-family:var(--f-mono);font-size:9px;letter-spacing:2px;color:var(--ink-4);text-transform:uppercase;margin-bottom:10px;}
+.admin-metric .v{font-family:var(--f-display);font-size:36px;font-weight:500;color:var(--paper-hi);line-height:1;margin-bottom:6px;}
+.admin-metric .d{font-family:var(--f-mono);font-size:10px;color:var(--green-ok);letter-spacing:1px;}
+.admin-metric .d.warn{color:var(--shu-hi);}
+
+.admin-list{background:#24201c;border:1px solid #3a332c;}
+.admin-list-head{padding:16px 20px;border-bottom:1px solid #3a332c;display:flex;justify-content:space-between;align-items:center;}
+.admin-list-head h3{font-family:var(--f-display);font-size:18px;font-weight:500;margin:0;color:var(--paper-hi);}
+.admin-list-head .c{font-family:var(--f-mono);font-size:10px;color:var(--ink-4);letter-spacing:2px;}
+.admin-row{display:grid;grid-template-columns:60px 1fr 100px 120px;gap:16px;padding:14px 20px;border-bottom:1px solid #2d2822;align-items:center;font-size:13px;}
+.admin-row:last-child{border-bottom:0;}
+.admin-row .sku{font-family:var(--f-mono);font-size:10px;color:var(--ink-4);}
+.admin-row .t{color:var(--paper-edge);font-family:var(--f-display);font-size:15px;}
+.admin-row .r{display:inline-block;padding:3px 10px;background:var(--shu);color:var(--paper-hi);font-family:var(--f-display);font-weight:600;font-size:12px;border-radius:2px;text-align:center;letter-spacing:1px;}
+.admin-row .r.ok{background:transparent;color:var(--green-ok);border:1px solid var(--green-ok);}
+.admin-row .a{font-family:var(--f-mono);font-size:10px;color:var(--shu-hi);letter-spacing:1px;text-transform:uppercase;text-align:right;}
+
+/* footer */
+.doc-foot{max-width:1100px;margin:40px auto 60px;padding:20px 0;color:#6b6157;font-family:var(--f-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:center;}
+
+</style>
+</head>
+<body>
+
+<div class="doc-hero">
+  <h1>MonoHonpo · Unified Brand System v2</h1>
+  <p>和モダンクラフト · Wabi-sabi editorial for cross-border eBay</p>
+</div>
+
+<!-- ====== 1. BRAND PLATE ====== -->
+<div class="frame-label">01 · Brand Plate — Identity, Palette, Typography</div>
+<div class="frame">
+  <div class="plate">
+    <div class="plate-grid">
+
+      <div class="logo-plate">
+        <img src="assets/MONO-logo.jpg" alt="MonoHonpo">
+        <div class="name-row">
+          <div class="name-en">M O N O H O N P O</div>
+          <div class="name-jp">モ ノ 本 舗</div>
+          <div class="tagline">Est. Japan · Ships Worldwide · DDP</div>
+        </div>
+      </div>
+
+      <div class="tokens">
+        <div class="kicker">ブ ラ ン ド 原 則</div>
+        <h2>Quiet goods, carefully chosen.</h2>
+        <p class="lede">"We curate Japanese industrial, audio, and specialist goods — tested, documented, and shipped with US duties prepaid. Every listing earns its place."</p>
+
+        <div class="swatch-row">
+          <div class="swatch"><div class="chip" style="background:#f6f2ea"></div><div class="label">Washi</div><div class="hex">#f6f2ea</div></div>
+          <div class="swatch"><div class="chip" style="background:#1a1817"></div><div class="label">Sumi</div><div class="hex">#1a1817</div></div>
+          <div class="swatch"><div class="chip" style="background:#a8341b"></div><div class="label">Shu 朱</div><div class="hex">#a8341b</div></div>
+          <div class="swatch"><div class="chip" style="background:#8b7355"></div><div class="label">Brass</div><div class="hex">#8b7355</div></div>
+          <div class="swatch"><div class="chip" style="background:#6b7a5c"></div><div class="label">Sage</div><div class="hex">#6b7a5c</div></div>
+        </div>
+
+        <div class="type-row">
+          <div><span class="tag">Display</span><span class="type-sample-display">Cormorant Garamond</span></div>
+          <div><span class="tag">Body</span><span class="type-sample-body">Inter — clean, readable, global. 15px default.</span></div>
+          <div><span class="tag">Japanese</span><span class="type-sample-jp">源ノ明朝 — 信頼の署名</span></div>
+          <div><span class="tag">Mono</span><span class="type-sample-mono">JetBrains Mono — SKU · SYSTEM</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ====== 2. STORE HERO + SHELF ====== -->
+<div class="frame-label">02 · eBay Store Page — Public hero &amp; curated shelf</div>
+<div class="frame">
+
+  <div class="store-hero">
+    <div class="store-hero-inner">
+      <div class="eyebrow">J A P A N · E S T. T O K Y O</div>
+      <h1>Considered goods,<br>from Japan to your door.</h1>
+      <p class="lede">Industrial sensors. Vintage audio. Specialist tools. Every item tested, documented, and shipped with US duties prepaid — no surprise fees on arrival.</p>
+      <div class="meta">
+        <div>
+          <div class="k">Ships From</div>
+          <div class="v">Tokyo, Japan <span class="jp">東京発送</span></div>
+        </div>
+        <div>
+          <div class="k">Duty Policy</div>
+          <div class="v">DDP · Prepaid</div>
+        </div>
+        <div>
+          <div class="k">Handling</div>
+          <div class="v">1 – 3 Business Days</div>
+        </div>
+        <div>
+          <div class="k">Feedback</div>
+          <div class="v">99.8% · 2,401+</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="trust-strip">
+    <div class="item"><div class="icon">&#9678;</div><div><div class="t">Every item</div><div class="d">Photographed and tested<br>before listing.</div></div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="icon">&#10070;</div><div><div class="t">DDP Guarantee</div><div class="d">US duties prepaid —<br>zero fees at delivery.</div></div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="icon">&#9733;</div><div><div class="t">30-day returns</div><div class="d">Misdescribed or damaged<br>— we cover return shipping.</div></div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="icon">&#9872;</div><div><div class="t">Tracked globally</div><div class="d">DHL / FedEx SpeedPAK<br>with full insurance.</div></div></div>
+  </div>
+
+  <div class="shelf">
+    <div class="shelf-head">
+      <div>
+        <h2>Currently on the shelf</h2>
+        <div class="jp">最 新 入 荷</div>
+      </div>
+      <a href="#" class="link">Browse all →</a>
+    </div>
+    <div class="items">
+
+      <div class="item-card">
+        <div class="img"><div class="rank-corner">A</div></div>
+        <div class="body">
+          <div class="cat">Industrial · Sensor</div>
+          <h3 class="title">Keyence FL-001 Fiber Optic Amplifier</h3>
+          <div class="price-row">
+            <span class="price">$248</span>
+            <span class="ddp">DDP · Ships Mon</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="item-card">
+        <div class="img"><div class="rank-corner">S</div></div>
+        <div class="body">
+          <div class="cat">Audio · Vintage</div>
+          <h3 class="title">Pioneer KP-717G Cassette Deck, Restored</h3>
+          <div class="price-row">
+            <span class="price">$412</span>
+            <span class="ddp">DDP · Ships Tue</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="item-card">
+        <div class="img"><div class="rank-corner">A</div></div>
+        <div class="body">
+          <div class="cat">Audio · Portable</div>
+          <h3 class="title">Sony WH-1000XM5 Wireless · Black</h3>
+          <div class="price-row">
+            <span class="price">$289</span>
+            <span class="ddp">DDP · Ships Mon</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ====== 3. LISTING v4 ====== -->
+<div class="frame-label">03 · Listing Description v4 — per-item public HTML</div>
+<div class="frame">
+  <div class="listing">
+    <div class="listing-inner">
+
+      <div class="prod-mast">
+        <div class="origin">日 本 よ り · S H I P P E D F R O M J A P A N</div>
+        <h1>Sony WH-1000XM5 Wireless<br>Noise Cancelling Headphones</h1>
+        <p class="sub">Black · Flagship model · Tested and documented</p>
+      </div>
+
+      <!-- HANKO DDP SEAL -->
+      <div class="hanko-block">
+        <div class="hanko">
+          <div class="top">保 証</div>
+          <div class="main">DDP</div>
+          <div class="bot">PREPAID</div>
+        </div>
+        <div class="hanko-body">
+          <h3>No surprise customs fees. Ever.</h3>
+          <p>
+            Since October 2025, the US eliminated the $800 de minimis exemption — most sellers now ship DDU, meaning buyers receive unexpected customs invoices after delivery.
+            <br><br>
+            <span class="guarantee-strong">MonoHonpo ships every US order DDP (Delivered Duty Paid).</span> Your listed price includes the item, international shipping, US customs duties, and import taxes. When the package arrives, you pay nothing more.
+          </p>
+        </div>
+      </div>
+
+      <!-- CONDITION RANK -->
+      <div class="rank-block">
+        <div class="kicker">コ ン デ ィ シ ョ ン ・ ラ ン ク</div>
+        <div class="rank-brush">
+          <svg viewBox="0 0 120 120" fill="none">
+            <path d="M60 14 C 28 14, 14 38, 14 60 C 14 86, 36 106, 62 106 C 88 106, 106 86, 106 60 C 106 46, 98 30, 82 22"
+              stroke="#1a1817" stroke-width="5" stroke-linecap="round" fill="none"
+              style="filter:url(#rough)"/>
+            <filter id="rough">
+              <feTurbulence type="fractalNoise" baseFrequency=".02" numOctaves="3" seed="2"/>
+              <feDisplacementMap in="SourceGraphic" scale="3"/>
+            </filter>
+          </svg>
+          <div class="letter">A</div>
+        </div>
+        <h3>Rank A — Excellent</h3>
+        <div class="rank-jp">美 品 ・ 動 作 確 認 済</div>
+        <div class="quick">Tested working. Minor surface scuffs on the underside of the headband; all functions including ANC, Bluetooth 5.2 pairing, and touch controls verified. Retains 80%+ original battery life.</div>
+      </div>
+
+      <!-- INCLUDES -->
+      <div class="section">
+        <div class="section-head">
+          <h3>In the box</h3>
+          <div class="jp">付 属 品</div>
+          <div class="num">6 items</div>
+        </div>
+        <div class="includes-grid">
+          <div class="inc-item"><strong>Headphones</strong>Sony WH-1000XM5 (Black)</div>
+          <div class="inc-item"><strong>Carry case</strong>Original foldable hard case</div>
+          <div class="inc-item"><strong>USB-C cable</strong>30cm charging cable</div>
+          <div class="inc-item"><strong>Aux cable</strong>3.5mm to 3.5mm</div>
+          <div class="inc-item"><strong>Airline adapter</strong>Dual-pin to 3.5mm</div>
+          <div class="inc-item"><strong>Quick start guide</strong>JP/EN printed booklet</div>
+        </div>
+      </div>
+
+      <!-- SPECS -->
+      <div class="section">
+        <div class="section-head">
+          <h3>Specifications</h3>
+          <div class="jp">仕 様</div>
+        </div>
+        <table class="specs">
+          <tr><td>Brand</td><td>Sony</td></tr>
+          <tr><td>Model</td><td>WH-1000XM5</td></tr>
+          <tr><td>Connectivity</td><td>Bluetooth 5.2 · 3.5mm wired</td></tr>
+          <tr><td>Battery life</td><td>Up to 30 hours (ANC on)</td></tr>
+          <tr><td>Weight</td><td>250 g / 8.8 oz</td></tr>
+          <tr><td>Dimensions</td><td>254 × 220 × 78 mm packed</td></tr>
+          <tr><td>Voltage note</td><td>USB-C charging · universal 100–240V adapter compatible</td></tr>
+        </table>
+      </div>
+
+      <!-- SHIPPING -->
+      <div class="ship-block">
+        <h3>Shipping &amp; handling<span class="jp">配 送 ・ 梱 包</span></h3>
+        <div class="ship-grid">
+          <div><strong>Origin</strong><span>Tokyo, Japan</span></div>
+          <div><strong>Carrier</strong><span>DHL SpeedPAK · tracked, insured</span></div>
+          <div><strong>Handling</strong><span>Ships within 1–3 business days</span></div>
+          <div><strong>Delivery (US)</strong><span>6–10 business days typical</span></div>
+          <div><strong>Packaging</strong><span>Double-boxed · bubble-wrapped · waterproof liner</span></div>
+          <div><strong>Duties</strong><span>DDP — US import duties prepaid by seller</span></div>
+        </div>
+      </div>
+
+      <!-- STORY -->
+      <div class="story">
+        <div class="mark">"</div>
+        <p>Before this listing was photographed, it sat on a workbench in Tokyo for two hours — tested, cleaned, documented. That is the only way anything leaves the shop.</p>
+      </div>
+
+      <!-- ABOUT -->
+      <div class="about">
+        <img src="assets/MONO-logo.jpg" alt="MonoHonpo mark">
+        <div class="name">M O N O H O N P O</div>
+        <div class="jp">モ ノ 本 舗</div>
+        <p>Founded in Tokyo, Japan. We specialize in industrial equipment, vintage audio, and specialist tools — curated, verified, and shipped worldwide with prepaid US duties.</p>
+        <p>If anything about this listing is unclear, ask before you buy. Messages answered within 24 hours on business days.</p>
+        <div class="contact">eBay Messages · Response &lt; 24h · Tokyo JST</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ====== 4. MANAGER UI ADMIN VARIANT ====== -->
+<div class="frame-label">04 · eBay Manager — Internal admin (dark paper variant)</div>
+<div class="frame">
+  <div class="admin">
+    <div class="admin-inner">
+
+      <div class="admin-head">
+        <h2>Dashboard <span style="font-family:var(--f-jp);font-size:12px;color:var(--ink-4);letter-spacing:4px;margin-left:10px;">管 理 画 面</span></h2>
+        <div class="status">Live · last sync 17:04 JST</div>
+      </div>
+
+      <div class="admin-grid">
+        <div class="admin-metric">
+          <div class="k">Active Listings</div>
+          <div class="v">498</div>
+          <div class="d">+ 7 this week</div>
+        </div>
+        <div class="admin-metric">
+          <div class="k">Sold (30d)</div>
+          <div class="v">62</div>
+          <div class="d">+ 12 vs. prev</div>
+        </div>
+        <div class="admin-metric">
+          <div class="k">Out of Stock</div>
+          <div class="v">8</div>
+          <div class="d warn">Needs review</div>
+        </div>
+      </div>
+
+      <div class="admin-list">
+        <div class="admin-list-head">
+          <h3>Needs attention <span style="font-family:var(--f-jp);font-size:11px;color:var(--ink-4);letter-spacing:4px;margin-left:10px;">要 対 応</span></h3>
+          <div class="c">8 items</div>
+        </div>
+        <div class="admin-row">
+          <div class="sku">YH-1225</div>
+          <div class="t">Pioneer KP-717G Cassette Deck</div>
+          <div><span class="r">OOS</span></div>
+          <div class="a">Supplier found ↗</div>
+        </div>
+        <div class="admin-row">
+          <div class="sku">PF-1157</div>
+          <div class="t">Keyence FL-001 Fiber Amplifier</div>
+          <div><span class="r">OOS</span></div>
+          <div class="a">3 candidates</div>
+        </div>
+        <div class="admin-row">
+          <div class="sku">ME-0832</div>
+          <div class="t">Sony WH-1000XM5 Black</div>
+          <div><span class="r ok">A-Rank</span></div>
+          <div class="a">Ready to list</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="doc-foot">
+  MonoHonpo · Brand System v2 · Drafted 2026-04-20
+</div>
+
+</body>
+</html>

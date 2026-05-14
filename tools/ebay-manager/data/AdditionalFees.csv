@@ -1,0 +1,28 @@
+﻿FeeID,ServiceID,CountryCode,FeeName,CalculationType,FeeValue
+1,10,US,緊急事態追加金 - DHL(直契約),PER_KG,80
+2,15,US,緊急事態追加金 - CPaSS DHL,PER_KG,80
+3,22,US,緊急事態追加金 - eLogi DHL,PER_KG,80
+4,2,US,書留料金,FIXED,460
+5,3,US,書留料金,FIXED,460
+6,6,US,個人宅向け配達料,FIXED,420
+7,7,US,個人宅向け配達料,FIXED,420
+8,8,US,個人宅向け配達料,FIXED,420
+9,9,US,個人宅向け配達料,FIXED,420
+10,12,US,個人宅向け配達料,FIXED,420
+11,13,US,個人宅向け配達料,FIXED,420
+12,14,US,個人宅向け配達料,FIXED,420
+13,18,US,個人宅向け配達料,FIXED,420
+14,19,US,個人宅向け配達料,FIXED,420
+15,20,US,個人宅向け配達料,FIXED,420
+16,21,US,個人宅向け配達料,FIXED,420
+17,6,US,米国輸入手続き手数料,FIXED,230
+18,7,US,米国輸入手続き手数料,FIXED,230
+19,8,US,米国輸入手続き手数料,FIXED,230
+20,9,US,米国輸入手続き手数料,FIXED,230
+21,12,US,米国輸入手続き手数料,FIXED,230
+22,13,US,米国輸入手続き手数料,FIXED,230
+23,14,US,米国輸入手続き手数料,FIXED,230
+24,18,US,米国輸入手続き手数料,FIXED,230
+25,19,US,米国輸入手続き手数料,FIXED,230
+26,20,US,米国輸入手続き手数料,FIXED,230
+27,21,US,米国輸入手続き手数料,FIXED,230

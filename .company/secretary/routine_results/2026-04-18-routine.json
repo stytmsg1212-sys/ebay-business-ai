@@ -1,0 +1,266 @@
+{
+  "timestamp": "2026-04-18T05:00:21.261579",
+  "date": "2026-04-18",
+  "status": "success",
+  "email": {
+    "checked": true,
+    "count": 10,
+    "emails": [
+      {
+        "id": "19d944e49092ac8c",
+        "timestamp": "2026-04-18T05:00:05.188869",
+        "subject": "rcj_2485 sent a message about PFU HHKB Professional Classic Keyboard English Layout - White- US #357348261946",
+        "from": "eBay - rcj_2485 <rcj248_dy4145ngj@members.ebay.com.au>",
+        "date": "Wed, 15 Apr 2026 20:20:50 -0700"
+      },
+      {
+        "id": "19d8f41c0e37bb12",
+        "timestamp": "2026-04-18T05:00:05.763107",
+        "subject": "bleakneonblack sent a message about Google Pixel Tablet Case Porcelain GA04446-WW Genuine New from Japan #358133622869",
+        "from": "eBay - bleakneonblack <bleakn_gqn3706ugtm@members.ebay.com>",
+        "date": "Tue, 14 Apr 2026 20:49:03 -0700"
+      },
+      {
+        "id": "19d8784f49bbb13a",
+        "timestamp": "2026-04-18T05:00:06.193117",
+        "subject": "michelemota sent a message about Oriental Motor BMUD200-A Brushless DC Motor Driver Single-Phase 100-120 VAC New #357197894617",
+        "from": "eBay - michelemota <michel_jyiu2356uej@members.ebay.com>",
+        "date": "Mon, 13 Apr 2026 08:45:29 -0700"
+      },
+      {
+        "id": "19d84fdbe4c161d9",
+        "timestamp": "2026-04-18T05:00:06.824120",
+        "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+        "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+        "date": "Sun, 12 Apr 2026 20:58:34 -0700"
+      },
+      {
+        "id": "19d84fd8d7648950",
+        "timestamp": "2026-04-18T05:00:07.320070",
+        "subject": "kawi.sonth sent a message about OMRON NS8-TV01B-V2 HMI Touchscreen Operator Panel 8.4\" Display New from Japan #357665436046",
+        "from": "\"eBay - kawi.sonth\" <kawiso_jyw4745ocf@members.ebay.com>",
+        "date": "Sun, 12 Apr 2026 20:58:21 -0700"
+      },
+      {
+        "id": "19d817b723f04b07",
+        "timestamp": "2026-04-18T05:00:07.762767",
+        "subject": "Re: mono_honpo_japan sent a message about Google Pixel Tablet Charging Speaker Dock GA03944-US Hazel Gray from Japan #358178581550",
+        "from": "eBay - perr1754 <perr17_jtd5848rgzx@members.ebay.com>",
+        "date": "Sun, 12 Apr 2026 04:37:23 -0700"
+      },
+      {
+        "id": "19d6e83af1c21513",
+        "timestamp": "2026-04-18T05:00:08.389748",
+        "subject": "These items haven't sold yet? Let’s change that.",
+        "from": "eBay <ebay@ebay.com>",
+        "date": "Wed, 8 Apr 2026 12:13:35 -0700"
+      },
+      {
+        "id": "19d6b78bc1fc494f",
+        "timestamp": "2026-04-18T05:00:08.891326",
+        "subject": "augistarismissing sent a message about ONYX BOOX Leaf2 White 7-inch E Ink Reader with Page-Turn Buttons Used fro Japan #357618434395",
+        "from": "eBay - augistarismissing <sabh56_gtn3248rhtc@members.ebay.com>",
+        "date": "Tue, 7 Apr 2026 22:02:47 -0700"
+      },
+      {
+        "id": "19d675ba95a65360",
+        "timestamp": "2026-04-18T05:00:09.512296",
+        "subject": "Re: alex865550 sent a message about HIOKI DT4282 Digital Multimeter 10A Slightly New from Japan #356894589481",
+        "from": "eBay - alex865550 <alekko_hz5129ubt@members.ebay.com>",
+        "date": "Tue, 7 Apr 2026 02:52:32 -0700"
+      },
+      {
+        "id": "19d604c80a071b49",
+        "timestamp": "2026-04-18T05:00:09.980682",
+        "subject": "loopeez sent a message about maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan #357039873158",
+        "from": "eBay - loopeez <bmen42_mq5828uitg@members.ebay.com>",
+        "date": "Sun, 5 Apr 2026 17:58:39 -0700"
+      }
+    ],
+    "status": "success"
+  },
+  "todo": {
+    "carried_over": 8,
+    "file_created": true
+  },
+  "research": {
+    "executed": true,
+    "topics": [
+      "自社出品分析",
+      "eBay市場トレンド（Browse API）"
+    ],
+    "results": [
+      {
+        "name": "自社出品分析",
+        "rank_distribution": [
+          {
+            "rank": "E",
+            "count": 498,
+            "avg_price": 531.87,
+            "total_watches": 0,
+            "total_sales": 0
+          }
+        ],
+        "top_watched": [
+          {
+            "title": "KEYENCE LR-XH50 Laser Sensor Head New in Box LR-X Series From Japan",
+            "price": 187.44,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "Pioneer KA-E454 Cassette Deck Lonesome Carboy Restored Built-in Amp from Japan",
+            "price": 498.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "KEYENCE FL-001 FL001 Guide Pulse Type Level Sensor Amplifier Used Teset from JP",
+            "price": 0.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "KEYENCE FD-Q10C Digital Clamp-on Flow Sensor Control System New from Japan",
+            "price": 298.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "For sun65218 AGILENT E1709A REMOTE HIGH PERFORMANCE RECEIVER Set of 2 pcs Used",
+            "price": 429.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "VESSEL Air Driver Impact Type GT-PLP NEW From Japan",
+            "price": 270.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "Leica Disto X310 Laser Distance Measurement Used Tested from Japan",
+            "price": 158.99,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "Vocaloid4 CRYPTON KAGAMINE RIN LEN V4X English Bundle DVD Software Japan New",
+            "price": 149.38,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "TRIFIELD TF2 Digital EMF Meter Electromagnetic Field Radiation Detector Tested",
+            "price": 198.0,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          },
+          {
+            "title": "Herend Figurine Owl on a Book series M size Green Fishnet H 8.3 in. from japan",
+            "price": 479.99,
+            "watches": 0,
+            "views": 0,
+            "sales_30d": 0,
+            "rank": "E"
+          }
+        ],
+        "top_selling": [],
+        "sold_count": 0
+      },
+      {
+        "name": "eBay市場トレンド（Browse API）",
+        "total_found": 70,
+        "price_distribution": {
+          "under_50": 22,
+          "50_100": 16,
+          "100_300": 21,
+          "over_300": 11
+        },
+        "top_items": [
+          {
+            "title": "Vintage Barbie Francie Japan Exclusive version 1965 with out",
+            "price": 1359.99,
+            "seller": "mdrllc",
+            "keyword": "Japan exclusive vintage"
+          },
+          {
+            "title": "Sony Walkman TPS-L2 First generation stereo cassette player ",
+            "price": 617.76,
+            "seller": "pilina2.2.16",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "TOSHIBA Walky KT-AS10 Vintage Portable Cassette Player Radio",
+            "price": 590.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "Brand New & Unused – FUJIFILM instax mini Evo PINK – Japan E",
+            "price": 562.56,
+            "seller": "shiba_00_japan",
+            "keyword": "Japan exclusive instax camera"
+          },
+          {
+            "title": "TOSHIBA BOMBEAT RT-S90 Radio Cassette Player Japan Tested Re",
+            "price": 525.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "Yamanbagiri Kunihiro Touken Ranbu x Seiko Collaboration Watc",
+            "price": 490.5,
+            "seller": "kenjin0-japan_yokohama",
+            "keyword": "Japan exclusive collaboration"
+          },
+          {
+            "title": "National RQ-203 Vintage Retro Cassette Player Tested Japan",
+            "price": 470.49,
+            "seller": "japan_tech_and_play",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "SONY Cassette Player Walkman Beans WM-EQ7 Boxed Untested Jap",
+            "price": 410.0,
+            "seller": "k.moto77",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "National RQ-313 Vintage Showa Retro Cassette Player Tested J",
+            "price": 312.21,
+            "seller": "japan_tech_and_play",
+            "keyword": "Japan retro cassette player"
+          },
+          {
+            "title": "National RQ-313 Vintage Retro Cassette Player 1976 Tested Ja",
+            "price": 310.49,
+            "seller": "japan_tech_and_play",
+            "keyword": "Japan retro cassette player"
+          }
+        ],
+        "sold_count": 0
+      }
+    ],
+    "status": "completed"
+  },
+  "execution_time_sec": 20.711761
+}

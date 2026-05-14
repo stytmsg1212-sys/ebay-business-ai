@@ -1,0 +1,36 @@
+{
+  "tasks": [
+    {
+      "sku": "ebayme_32400850054",
+      "source": "メルカリ",
+      "original_url": "https://jp.mercari.com/item/m32400850054",
+      "status_change": "在庫有 → 在庫無",
+      "changed_at": "2026-04-11T10:00:00",
+      "product_name": "レアアイテム A",
+      "queries": [
+        "レアアイテム A メルカリ 販売中"
+      ],
+      "keywords": [
+        "レアアイテム A"
+      ],
+      "platform_filter": "メルカリ",
+      "status": "pending"
+    },
+    {
+      "sku": "ebayyh_g1225005638",
+      "source": "Yahoo Auctions",
+      "original_url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225005638",
+      "status_change": "在庫有 → ページなし",
+      "changed_at": "2026-04-11T10:00:00",
+      "product_name": "レアアイテム B",
+      "queries": [
+        "レアアイテム B Yahoo Auctions 販売中"
+      ],
+      "keywords": [
+        "レアアイテム B"
+      ],
+      "platform_filter": "Yahoo Auctions",
+      "status": "pending"
+    }
+  ]
+}

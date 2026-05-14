@@ -1,0 +1,171 @@
+# =================================================================
+# eBay Business AI — root .gitignore (W126 GitHub 移行用)
+# =================================================================
+# 目的: secrets / business data / large binaries / OS junk を全部除外
+# 既存 tools/ebay-manager/.gitignore 内容を内包し、root 集約版にする
+
+# === Secrets (絶対 commit 禁止) ===
+.env
+.env.local
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.keys.json
+**/*.keys.json
+gcp-oauth.keys.json
+**/gcp-oauth*
+**/oauth*.json
+config/credentials.json
+config/gmail_token.json
+**/credentials.json
+**/credentials.json.example
+**/gmail_token.json
+**/oauth_token*.json
+**/token*.json
+google_oauth_token.json
+.claude/settings.local.json
+.company/secretary/learning-pipeline/cookies/
+
+# === Personal artifacts / screenshots (容量・機微) ===
+*.png
+*.jpg
+*.jpeg
+*.heic
+*.HEIC
+*.url
+*.lnk
+*作業終了時.txt
+めも.txt
+
+# === Business data (容量大、機微) ===
+monitor.db
+monitor.db-journal
+monitor.db-wal
+monitor.db-shm
+tools/ebay-manager/monitor.db*
+tools/ebay-manager/data/*.db
+tools/ebay-manager/data/*.db-*
+tools/ebay-manager/data/*.db.bak*
+tools/ebay-manager/data/*.db.backup_*
+tools/ebay-manager/data/monitor.log
+tools/ebay-manager/data/monitor.pid
+tools/ebay-manager/data/backups/
+tools/ebay-manager/data/system_improvements.json.bak*
+tools/ebay-manager/data/*.json.bak*
+tools/ebay-manager/data/*_snapshot.json
+tools/ebay-manager/data/fastpath_classify_*.json
+tools/ebay-manager/data/rollback_*.json
+tools/ebay-manager/data/fix_w*.json
+tools/ebay-manager/data/pending_*_snapshot.json
+tools/ebay-manager/data/terapeak_poc_*.json
+tools/ebay-manager/data/test_*.json
+tools/ebay-manager/monitor.log
+tools/ebay-manager/monitor.pid
+
+# === Browser profiles (容量大、機密、別 path 移行で corrupt) ===
+tools/ebay-manager/data/.chrome_cdp_profile/
+tools/ebay-manager/data/.terapeak_browser_profile/
+tools/ebay-manager/data/.selenium_profile/
+**/.chrome_cdp_profile/
+**/.terapeak_browser_profile/
+**/.selenium_profile/
+
+# === 動画キャッシュ (各 100MB+ で GitHub 100MB ファイル制限超過) ===
+tools/ebay-manager/data/video_cache/
+**/video_cache/
+*.mp4
+*.webm
+*.avi
+*.mov
+
+# === Scraper / 検証 dump (容量大、再生成可) ===
+tools/ebay-manager/data/scraper_debug/
+**/scraper_debug/
+tools/ebay-manager/data/w*_bulk_results.json
+tools/ebay-manager/data/w*_results.json
+tools/ebay-manager/data/EbayFeeRates.csv
+
+# === Sample HTML (yahoo_auction_sample 等、再取得可) ===
+tools/ebay-manager/yahoo_auction_sample.html
+tools/ebay-manager/yahoo_auctions_retest_results.csv
+
+# === Python build artifacts ===
+*.whl
+*.tar.gz
+*.zip
+
+# === Logs ===
+logs/
+tools/ebay-manager/logs/
+*.log
+tools/ebay-manager/python_install_*.log
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# === Generated / large binaries ===
+models/*.onnx
+**/models/*.onnx
+data/processed_images/
+tools/ebay-manager/data/processed_images/
+tests/fixtures/design_samples/*.HEIC
+tests/fixtures/design_samples/*.heic
+tools/ebay-manager/tests/fixtures/design_samples/*.HEIC
+tools/ebay-manager/tests/fixtures/design_samples/*.heic
+cookies/*.txt
+!cookies/.gitkeep
+**/cookies/*.txt
+photos/
+videos/
+backups/
+*.zip
+*.tar.gz
+
+# === OS / IDE ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+Desktop.ini
+*.lnk
+$RECYCLE.BIN/
+
+# === OneDrive 残骸 ===
+**/.OneDrive*
+**/*-conflict-*
+
+# === Settings (per-machine、絶対 path embed) ===
+settings.json
+tools/ebay-manager/settings.json
+
+# === Temp / cache ===
+*.tmp
+*.cache
+*.bak
+*.bak.*
+node_modules/
+.archive/
+_archive/
+
+# === Test artifacts ===
+tools/ebay-manager/.pytest_cache/
+**/.pytest_cache/
+
+# === backup ディレクトリ (Phase 0 で作成、移行非対象) ===
+C--backup_*/

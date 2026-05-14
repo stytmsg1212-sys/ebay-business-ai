@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eBay Manager - Phase 3 UI Preview</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }
+        h1 { font-size: 32px; margin-bottom: 5px; }
+        .tabs { display: flex; border-bottom: 2px solid #e0e0e0; background: #fafafa; }
+        .tab { padding: 15px 30px; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.3s; font-weight: 500; }
+        .tab:hover { background: #f0f0f0; }
+        .tab.active { color: #667eea; border-bottom-color: #667eea; background: white; }
+        .content { padding: 30px; }
+        .section { margin-bottom: 30px; }
+        .section-title { font-size: 20px; font-weight: 600; margin-bottom: 15px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        button { background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin-right: 10px; margin-bottom: 10px; transition: background 0.3s; }
+        button:hover { background: #764ba2; }
+        button.secondary { background: #6c757d; }
+        button.secondary:hover { background: #5a6268; }
+        .info-box { background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        .success-box { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        .warning-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead { background: #f5f5f5; }
+        th { padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
+        td { padding: 12px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f9f9f9; }
+        .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 15px; }
+        .metric { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea; }
+        .metric-value { font-size: 24px; font-weight: bold; color: #667eea; }
+        .metric-label { font-size: 12px; color: #666; margin-top: 5px; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 10px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>eBay Manager</h1>
+            <p style="opacity: 0.9;">Phase 3: eBay API連携システム</p>
+        </header>
+
+        <div class="tabs">
+            <div class="tab">📊 利益計算</div>
+            <div class="tab">📡 在庫監視</div>
+            <div class="tab active">🔗 eBay連携 ← Phase 3 新規</div>
+            <div class="tab">⚙️ 設定</div>
+        </div>
+
+        <div class="content">
+            <!-- eBay連携タブ -->
+            <div class="section">
+                <div class="section-title">eBay出品との同期</div>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button style="background: #28a745;">🔄 eBay出品取得・同期</button>
+                    <button class="secondary">📊 レポート表示</button>
+                </div>
+                <div class="success-box">✅ 同期完了: 498件同期, 0件マッチ</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">eBay出品一覧</div>
+                <p style="margin-bottom: 15px; font-size: 13px; color: #666;">498個のeBay出品がDBに登録されています。仕入元在庫と自動マッチング可能。</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item ID</th>
+                            <th>SKU</th>
+                            <th>Title</th>
+                            <th>Price</th>
+                            <th>eBay Qty</th>
+                            <th>Source Status</th>
+                            <th>Last Sync</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>358278773058</td>
+                            <td>ebayme_44731528581</td>
+                            <td>Kikkoman Lumitester PD-30 ATP Hygiene...</td>
+                            <td>$0.00</td>
+                            <td>1</td>
+                            <td><span style="background: #fff3cd; padding: 3px 8px; border-radius: 3px; font-size: 12px;">unknown</span></td>
+                            <td>2026-04-06 06:11:34</td>
+                        </tr>
+                        <tr>
+                            <td>357412799482</td>
+                            <td>ebayme_35359409025</td>
+                            <td>New OEM Genuine Brother LC3219XL Yellow...</td>
+                            <td>$15.99</td>
+                            <td>0</td>
+                            <td><span style="background: #fff3cd; padding: 3px 8px; border-radius: 3px; font-size: 12px;">unknown</span></td>
+                            <td>2026-04-06 06:11:34</td>
+                        </tr>
+                        <tr>
+                            <td>354892456123</td>
+                            <td>ebayme_92345678901</td>
+                            <td>Vintage Camera Lens 50mm F/2.0 Pentax...</td>
+                            <td>$89.50</td>
+                            <td>3</td>
+                            <td><span style="background: #d4edda; padding: 3px 8px; border-radius: 3px; font-size: 12px;">available</span></td>
+                            <td>2026-04-06 06:11:34</td>
+                        </tr>
+                        <tr>
+                            <td>354892456124</td>
+                            <td>ebayme_92345678902</td>
+                            <td>Industrial Grade Thermal Camera...</td>
+                            <td>$599.00</td>
+                            <td>0</td>
+                            <td><span style="background: #f8d7da; padding: 3px 8px; border-radius: 3px; font-size: 12px;">unavailable</span></td>
+                            <td>2026-04-06 06:11:34</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 15px; font-size: 13px; color: #666;">合計: 498件 | ソース紐付: 1件</p>
+            </div>
+
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value">498</div>
+                    <div class="metric-label">eBay出品</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">1</div>
+                    <div class="metric-label">ソース紐付</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">在庫有</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">1</div>
+                    <div class="metric-label">在庫無</div>
+                </div>
+            </div>
+
+            <!-- 設定タブプレビュー -->
+            <div class="section" style="margin-top: 50px; padding-top: 30px; border-top: 2px solid #e0e0e0;">
+                <div class="section-title">eBay API認証情報 (⚙️設定タブ)</div>
+                <p style="margin-bottom: 15px; font-size: 13px; color: #666;">設定タブで eBay Trading API の認証情報を管理します。</p>
+                <div class="grid-2">
+                    <div>
+                        <div class="form-group">
+                            <label>App ID (Client ID)</label>
+                            <input type="text" value="ToyotaSu-eStocks-PRD-2b039095c..." disabled style="background: #f5f5f5;">
+                        </div>
+                        <div class="form-group">
+                            <label>Dev ID</label>
+                            <input type="text" value="f96cc7fb-4ddd-459d-a430-dfc3c045b043" disabled style="background: #f5f5f5;">
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label>Cert ID (Client Secret)</label>
+                            <input type="password" value="●●●●●●●●●●●●●●" disabled style="background: #f5f5f5;">
+                        </div>
+                        <div class="form-group">
+                            <label>User Token</label>
+                            <textarea disabled style="background: #f5f5f5; height: 80px;">v^1.1#i^1#r^1#f^0#p^3#I^3#t^Ul4xMF8zOkZBM0I3QUI2RjZBOUQ5QTc1MjgzODVERUQ4OTcyRUY4XzFfMSNFXjI2MA==</textarea>
+                        </div>
+                    </div>
+                </div>
+                <button style="background: #667eea;">💾 設定を保存</button>
+            </div>
+
+            <div class="info-box" style="margin-top: 30px;">
+                <strong>ℹ️ Phase 3 稼働状態</strong><br>
+                ✅ eBay API接続: OK (614出品取得)<br>
+                ✅ Database同期: OK (498件登録)<br>
+                ✅ SKUマッピング: 準備完了<br>
+                ⏳ ソース在庫: 監視リスト追加待ち
+            </div>
+        </div>
+    </div>
+</body>
+</html>

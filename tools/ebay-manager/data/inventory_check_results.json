@@ -1,0 +1,3496 @@
+{
+  "checked_at": "2026-05-14T15:37:52.967649",
+  "total_items": 361,
+  "stats": {
+    "in_stock": 103,
+    "out_of_stock": 151,
+    "page_not_found": 81,
+    "error": 26,
+    "by_source": {
+      "ヤフオク": {
+        "total": 204,
+        "in_stock": 62,
+        "out_of_stock": 114,
+        "page_not_found": 17,
+        "error": 11
+      },
+      "Paypayフリマ": {
+        "total": 21,
+        "in_stock": 5,
+        "out_of_stock": 0,
+        "page_not_found": 2,
+        "error": 14
+      },
+      "メルカリ": {
+        "total": 80,
+        "in_stock": 17,
+        "out_of_stock": 33,
+        "page_not_found": 30,
+        "error": 0
+      },
+      "FA機器": {
+        "total": 5,
+        "in_stock": 0,
+        "out_of_stock": 2,
+        "page_not_found": 3,
+        "error": 0
+      },
+      "Yahoo!ショッピング": {
+        "total": 12,
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "page_not_found": 12,
+        "error": 0
+      },
+      "楽天市場": {
+        "total": 13,
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "page_not_found": 13,
+        "error": 0
+      },
+      "TSUKUMO": {
+        "total": 1,
+        "in_stock": 1,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 0
+      },
+      "Caster House": {
+        "total": 1,
+        "in_stock": 1,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 0
+      },
+      "Amazon": {
+        "total": 3,
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "page_not_found": 3,
+        "error": 0
+      },
+      "KINBON WEB SHOP（盆栽）": {
+        "total": 14,
+        "in_stock": 14,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 0
+      },
+      "HILTI": {
+        "total": 1,
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 1
+      },
+      "ヨドバシカメラ": {
+        "total": 2,
+        "in_stock": 0,
+        "out_of_stock": 2,
+        "page_not_found": 0,
+        "error": 0
+      },
+      "ATAGO": {
+        "total": 2,
+        "in_stock": 2,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 0
+      },
+      "OFFモール（ハードオフ）": {
+        "total": 1,
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "page_not_found": 1,
+        "error": 0
+      },
+      "トンカタストア": {
+        "total": 1,
+        "in_stock": 1,
+        "out_of_stock": 0,
+        "page_not_found": 0,
+        "error": 0
+      }
+    }
+  },
+  "by_source": {
+    "ヤフオク": {
+      "total": 204,
+      "in_stock": 62,
+      "out_of_stock": 114,
+      "page_not_found": 17,
+      "error": 11
+    },
+    "Paypayフリマ": {
+      "total": 21,
+      "in_stock": 5,
+      "out_of_stock": 0,
+      "page_not_found": 2,
+      "error": 14
+    },
+    "メルカリ": {
+      "total": 80,
+      "in_stock": 17,
+      "out_of_stock": 33,
+      "page_not_found": 30,
+      "error": 0
+    },
+    "FA機器": {
+      "total": 5,
+      "in_stock": 0,
+      "out_of_stock": 2,
+      "page_not_found": 3,
+      "error": 0
+    },
+    "Yahoo!ショッピング": {
+      "total": 12,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 12,
+      "error": 0
+    },
+    "楽天市場": {
+      "total": 13,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 13,
+      "error": 0
+    },
+    "TSUKUMO": {
+      "total": 1,
+      "in_stock": 1,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "Caster House": {
+      "total": 1,
+      "in_stock": 1,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "Amazon": {
+      "total": 3,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 3,
+      "error": 0
+    },
+    "KINBON WEB SHOP（盆栽）": {
+      "total": 14,
+      "in_stock": 14,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "HILTI": {
+      "total": 1,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 1
+    },
+    "ヨドバシカメラ": {
+      "total": 2,
+      "in_stock": 0,
+      "out_of_stock": 2,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "ATAGO": {
+      "total": 2,
+      "in_stock": 2,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "OFFモール（ハードオフ）": {
+      "total": 1,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 1,
+      "error": 0
+    },
+    "トンカタストア": {
+      "total": 1,
+      "in_stock": 1,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 0
+    }
+  },
+  "results": [
+    {
+      "id": 372,
+      "ebay_id": "358541081518",
+      "sku": "ebayyh_h1170771780",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1170771780",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 371,
+      "ebay_id": "358321229357",
+      "sku": "ebayyh_p1226005644",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1226005644",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 370,
+      "ebay_id": "358541081287",
+      "sku": "ebayyh_q1223941198",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1223941198",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 369,
+      "ebay_id": "358038924298",
+      "sku": "ebayyh_l1165131409",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1165131409",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 368,
+      "ebay_id": "358062208935",
+      "sku": "ebayyh_f1225404921",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1225404921",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 367,
+      "ebay_id": "356776795931",
+      "sku": "ebayyh_l1228500320",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1228500320",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 366,
+      "ebay_id": "358333826811",
+      "sku": "ebayPF_z591889606",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z591889606",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 365,
+      "ebay_id": "358369896020",
+      "sku": "ebayyh_r1224420721",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1224420721",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 364,
+      "ebay_id": "358342224526",
+      "sku": "ebayyh_p1227485162",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1227485162",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 363,
+      "ebay_id": "358274830101",
+      "sku": "ebayyh_g1219328156",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1219328156",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 271,
+      "ebay_id": null,
+      "sku": "ebayyh_q1224194132",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1224194132",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 272,
+      "ebay_id": null,
+      "sku": "ebayyh_c1213147655",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1213147655",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 273,
+      "ebay_id": null,
+      "sku": "ebayyh_e1129385732",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1129385732",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 274,
+      "ebay_id": null,
+      "sku": "ebayyh_s1220316348",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1220316348",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 275,
+      "ebay_id": null,
+      "sku": "ebayyh_u1219355319",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1219355319",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 276,
+      "ebay_id": null,
+      "sku": "ebayyh_h1215919606",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1215919606",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 277,
+      "ebay_id": null,
+      "sku": "ebayyh_1191338305",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1191338305",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 279,
+      "ebay_id": null,
+      "sku": "ebayyh_w1201778700",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1201778700",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 280,
+      "ebay_id": null,
+      "sku": "ebayyh_j1222392954",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1222392954",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 281,
+      "ebay_id": "358467370614",
+      "sku": "ebayyh_1153924917",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1153924917",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 282,
+      "ebay_id": null,
+      "sku": "ebayme_23742578741",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m23742578741",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 283,
+      "ebay_id": null,
+      "sku": "ebayyh_p1115547614",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1115547614",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 284,
+      "ebay_id": null,
+      "sku": "ebayyh_k1194741917",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1194741917",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 285,
+      "ebay_id": null,
+      "sku": "ebayyh_r1152721169",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1152721169",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 286,
+      "ebay_id": null,
+      "sku": "ebayyh_l1203018330",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1203018330",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 287,
+      "ebay_id": "358467370861",
+      "sku": "ebayyh_w1219471843",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1219471843",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 288,
+      "ebay_id": "358467370943",
+      "sku": "ebayyh_l1189574309",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1189574309",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 289,
+      "ebay_id": null,
+      "sku": "ebayyh_l1185437016",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1185437016",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 290,
+      "ebay_id": null,
+      "sku": "ebayyh_j1187065410",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1187065410",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 291,
+      "ebay_id": null,
+      "sku": "ebayyh_w1174049004",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1174049004",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 292,
+      "ebay_id": null,
+      "sku": "ebayyh_s1124178394",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1124178394",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 293,
+      "ebay_id": null,
+      "sku": "ebayyh_s1204314713",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1204314713",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 294,
+      "ebay_id": null,
+      "sku": "ebayyh_v1207628835",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1207628835",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 295,
+      "ebay_id": null,
+      "sku": "ebayyh_f1179225312",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1179225312",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 296,
+      "ebay_id": "358467371115",
+      "sku": "ebayyh_v1224152609",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1224152609",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 297,
+      "ebay_id": null,
+      "sku": "ebayyh_d1215362637",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1215362637",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 298,
+      "ebay_id": null,
+      "sku": "ebayyh_j1193473176",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1193473176",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 299,
+      "ebay_id": null,
+      "sku": "ebayyh_c1191677059",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1191677059",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 300,
+      "ebay_id": null,
+      "sku": "ebayyh_n1206765919",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1206765919",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 301,
+      "ebay_id": null,
+      "sku": "ebayyh_c1208998697",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1208998697",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 302,
+      "ebay_id": null,
+      "sku": "ebayyh_l1209014834",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1209014834",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 303,
+      "ebay_id": null,
+      "sku": "ebayyh_l1212849709",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1212849709",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 305,
+      "ebay_id": null,
+      "sku": "ebayyh_s1046210112",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1046210112",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 306,
+      "ebay_id": null,
+      "sku": "ebayyh_j1224031365",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1224031365",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 307,
+      "ebay_id": null,
+      "sku": "ebayyh_o1223917962",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1223917962",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 308,
+      "ebay_id": null,
+      "sku": "ebayyh_n1225440991",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1225440991",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 309,
+      "ebay_id": null,
+      "sku": "ebayyh_q1223902441",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1223902441",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 310,
+      "ebay_id": null,
+      "sku": "ebayyh_b1200301578",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1200301578",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 311,
+      "ebay_id": null,
+      "sku": "ebayyh_m1153748556",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1153748556",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 312,
+      "ebay_id": null,
+      "sku": "ebayyh_m1132498865",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1132498865",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 313,
+      "ebay_id": null,
+      "sku": "ebayyh_x1197834054",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1197834054",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 314,
+      "ebay_id": null,
+      "sku": "ebayyh_q1157910854",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1157910854",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 315,
+      "ebay_id": null,
+      "sku": "ebayyh_f1215342913",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1215342913",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 316,
+      "ebay_id": null,
+      "sku": "ebayyh_g1213687976",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1213687976",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 317,
+      "ebay_id": null,
+      "sku": "ebayyh_q1208285646",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1208285646",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 318,
+      "ebay_id": null,
+      "sku": "ebayyh_d1222684422",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1222684422",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 319,
+      "ebay_id": null,
+      "sku": "ebayyh_r1209142679",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1209142679",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 320,
+      "ebay_id": "358486607984",
+      "sku": "ebayyh_u1217319083",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1217319083",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 321,
+      "ebay_id": null,
+      "sku": "ebayyh_o1216687534",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1216687534",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 322,
+      "ebay_id": null,
+      "sku": "ebayyh_t1201149043",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1201149043",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 323,
+      "ebay_id": null,
+      "sku": "ebayyh_d1192212606",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1192212606",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 324,
+      "ebay_id": null,
+      "sku": "ebayyh_n1217403661",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1217403661",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 325,
+      "ebay_id": null,
+      "sku": "ebayyh_x1093322879",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1093322879",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 327,
+      "ebay_id": null,
+      "sku": "ebayyh_d1217484594",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1217484594",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 328,
+      "ebay_id": null,
+      "sku": "ebayyh_n1223153267",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1223153267",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 329,
+      "ebay_id": null,
+      "sku": "ebayyh_1204370725",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1204370725",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 330,
+      "ebay_id": null,
+      "sku": "ebayyh_p1221413657",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1221413657",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 331,
+      "ebay_id": null,
+      "sku": "ebayyh_u1225432766",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1225432766",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 332,
+      "ebay_id": null,
+      "sku": "ebayyh_f1222778254",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1222778254",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 333,
+      "ebay_id": null,
+      "sku": "ebayyh_f1223945810",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1223945810",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 334,
+      "ebay_id": "358490122257",
+      "sku": "ebayyh_o1215763902",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1215763902",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 335,
+      "ebay_id": null,
+      "sku": "ebayme_72681238000",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m72681238000",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 336,
+      "ebay_id": "358490123386",
+      "sku": "ebayPF_r1226199554",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/r1226199554",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 337,
+      "ebay_id": null,
+      "sku": "ebayyh_g1224816587",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1224816587",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 338,
+      "ebay_id": "358497700552",
+      "sku": "ebayyh_x1115522403",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1115522403",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 339,
+      "ebay_id": null,
+      "sku": "ebayyh_p1206303295",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1206303295",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 340,
+      "ebay_id": null,
+      "sku": "ebayyh_o1224683891",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1224683891",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 341,
+      "ebay_id": null,
+      "sku": "ebayyh_w1218984186",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1218984186",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 342,
+      "ebay_id": null,
+      "sku": "ebayyh_b1213920587",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1213920587",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 343,
+      "ebay_id": null,
+      "sku": "ebayyh_w1211261773",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1211261773",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 344,
+      "ebay_id": null,
+      "sku": "ebayyh_d1225840724",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1225840724",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 345,
+      "ebay_id": "358497701505",
+      "sku": "ebayyh_h1204858377",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1204858377",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 347,
+      "ebay_id": null,
+      "sku": "ebayyh_p1215914077",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1215914077",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 348,
+      "ebay_id": "358497703345",
+      "sku": "ebayyh_w1162751376",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1162751376",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 349,
+      "ebay_id": null,
+      "sku": "ebayyh_n1220926694",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1220926694",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 350,
+      "ebay_id": null,
+      "sku": "ebayyh_t1221568673",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1221568673",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 351,
+      "ebay_id": null,
+      "sku": "ebayyh_m1208996117",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1208996117",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 352,
+      "ebay_id": null,
+      "sku": "ebayyh_o1216555930",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1216555930",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 353,
+      "ebay_id": "358502738187",
+      "sku": "ebayyh_c1205874003",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1205874003",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 354,
+      "ebay_id": null,
+      "sku": "ebayyh_n1211047272",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1211047272",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 355,
+      "ebay_id": null,
+      "sku": "ebayyh_j1203267025",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1203267025",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 356,
+      "ebay_id": null,
+      "sku": "ebayyh_p1206302905",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1206302905",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 357,
+      "ebay_id": null,
+      "sku": "ebayyh_c1221747865",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1221747865",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 358,
+      "ebay_id": null,
+      "sku": "ebayyh_o1225873031",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1225873031",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 359,
+      "ebay_id": null,
+      "sku": "ebayyh_r1202223437",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1202223437",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 360,
+      "ebay_id": null,
+      "sku": "ebayyh_l1202312692",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1202312692",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 361,
+      "ebay_id": null,
+      "sku": "ebayyh_p1208500426",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1208500426",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 362,
+      "ebay_id": null,
+      "sku": "ebayyh_n1196774667",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1196774667",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 154,
+      "ebay_id": null,
+      "sku": "ebayyh_w1195336864",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1195336864",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 155,
+      "ebay_id": null,
+      "sku": "ebayyh_s1115535580",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1115535580",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 156,
+      "ebay_id": null,
+      "sku": "ebayyh_l1198731920",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1198731920",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 157,
+      "ebay_id": null,
+      "sku": "ebayyh_c1206445526",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1206445526",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 158,
+      "ebay_id": null,
+      "sku": "ebayyh_v1179542044",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1179542044",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 159,
+      "ebay_id": null,
+      "sku": "ebayyh_m1220198760",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1220198760",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 160,
+      "ebay_id": null,
+      "sku": "ebayyh_s1221830158",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1221830158",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 161,
+      "ebay_id": null,
+      "sku": "ebayyh_o1221617156",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1221617156",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 162,
+      "ebay_id": "358502739076",
+      "sku": "ebayyh_w1216761623",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1216761623",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 163,
+      "ebay_id": null,
+      "sku": "ebayyh_x1222161720",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1222161720",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 164,
+      "ebay_id": null,
+      "sku": "ebayyh_1205669690",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1205669690",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 165,
+      "ebay_id": null,
+      "sku": "ebayyh_s1209007032",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1209007032",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 166,
+      "ebay_id": null,
+      "sku": "ebayyh_m1214430988",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1214430988",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 167,
+      "ebay_id": null,
+      "sku": "ebayyh_p1150757756",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1150757756",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 168,
+      "ebay_id": null,
+      "sku": "ebayyh_m1160182853",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1160182853",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 169,
+      "ebay_id": null,
+      "sku": "ebayyh_j1168642155",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1168642155",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 170,
+      "ebay_id": null,
+      "sku": "ebayyh_p1211601964",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1211601964",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 171,
+      "ebay_id": null,
+      "sku": "ebayyh_k1221648415",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1221648415",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 172,
+      "ebay_id": null,
+      "sku": "ebayyh_h1214436890",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1214436890",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 173,
+      "ebay_id": null,
+      "sku": "ebayyh_h1141306867",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1141306867",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 174,
+      "ebay_id": null,
+      "sku": "ebayyh_g1218698269",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1218698269",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 175,
+      "ebay_id": null,
+      "sku": "ebayyh_x1222593170",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1222593170",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 176,
+      "ebay_id": null,
+      "sku": "ebayyh_b1217245604",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1217245604",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 177,
+      "ebay_id": null,
+      "sku": "ebayyh_b1206659463",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1206659463",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 178,
+      "ebay_id": null,
+      "sku": "ebayyh_r1221416503",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1221416503",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 179,
+      "ebay_id": null,
+      "sku": "ebayyh_s1217600007",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1217600007",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 180,
+      "ebay_id": null,
+      "sku": "ebayyh_1183323850",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1183323850",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 181,
+      "ebay_id": null,
+      "sku": "ebayyh_t1213574764",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1213574764",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 182,
+      "ebay_id": null,
+      "sku": "ebayyh_l1215887265",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1215887265",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 183,
+      "ebay_id": null,
+      "sku": "ebayyh_s1222017513",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1222017513",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 184,
+      "ebay_id": null,
+      "sku": "ebayyh_1203815469",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1203815469",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 185,
+      "ebay_id": null,
+      "sku": "ebayyh_m1201924443",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1201924443",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 186,
+      "ebay_id": null,
+      "sku": "ebayyh_w1218915259",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1218915259",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 187,
+      "ebay_id": null,
+      "sku": "ebayyh_l1194836799",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1194836799",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 188,
+      "ebay_id": null,
+      "sku": "ebayyh_k1211306575",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1211306575",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 189,
+      "ebay_id": null,
+      "sku": "ebayyh_q1013329511",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1013329511",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 190,
+      "ebay_id": null,
+      "sku": "ebayyh_c1224346671",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1224346671",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 191,
+      "ebay_id": null,
+      "sku": "ebayyh_d1226522884",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1226522884",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 193,
+      "ebay_id": null,
+      "sku": "ebayyh_d1170338216",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1170338216",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 194,
+      "ebay_id": null,
+      "sku": "ebayyh_q1190876799",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1190876799",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 195,
+      "ebay_id": null,
+      "sku": "ebayyh_p1222664658",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222664658",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 196,
+      "ebay_id": null,
+      "sku": "ebayyh_h1200656191",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1200656191",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 197,
+      "ebay_id": null,
+      "sku": "ebayyh_x1221365091",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1221365091",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 199,
+      "ebay_id": null,
+      "sku": "ebayyh_h1223243839",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1223243839",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 200,
+      "ebay_id": null,
+      "sku": "ebayyh_b1189813429",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1189813429",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 201,
+      "ebay_id": null,
+      "sku": "ebayyh_h1219601244",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1219601244",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 202,
+      "ebay_id": null,
+      "sku": "ebayyh_f1201447450",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1201447450",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 203,
+      "ebay_id": null,
+      "sku": "ebayyh_q1167024293",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1167024293",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 204,
+      "ebay_id": null,
+      "sku": "ebayyh_e1200524301",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1200524301",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 205,
+      "ebay_id": null,
+      "sku": "ebayyh_t1153319674",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1153319674",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 206,
+      "ebay_id": null,
+      "sku": "ebayyh_q1205183519",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1205183519",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 207,
+      "ebay_id": null,
+      "sku": "ebayyh_g1225005638",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225005638",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 209,
+      "ebay_id": null,
+      "sku": "ebayyh_h1164283583",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1164283583",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 210,
+      "ebay_id": null,
+      "sku": "ebayyh_v1222773359",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1222773359",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 211,
+      "ebay_id": null,
+      "sku": "ebayyh_b1217451474",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1217451474",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 212,
+      "ebay_id": null,
+      "sku": "ebayyh_x1158320250",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1158320250",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 213,
+      "ebay_id": null,
+      "sku": "ebayyh_q1206873661",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1206873661",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 214,
+      "ebay_id": null,
+      "sku": "ebayyh_1187983564",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1187983564",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 215,
+      "ebay_id": null,
+      "sku": "ebayyh_s1115526940",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1115526940",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 216,
+      "ebay_id": null,
+      "sku": "ebayyh_g1181130813",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1181130813",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 217,
+      "ebay_id": null,
+      "sku": "ebayyh_s1170372712",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1170372712",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 218,
+      "ebay_id": null,
+      "sku": "ebayyh_x1206039278",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1206039278",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 219,
+      "ebay_id": null,
+      "sku": "ebayyh_x1226971838",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1226971838",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 220,
+      "ebay_id": null,
+      "sku": "ebayyh_w1224478209",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1224478209",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 222,
+      "ebay_id": null,
+      "sku": "ebayyh_t1219168012",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1219168012",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 223,
+      "ebay_id": null,
+      "sku": "ebayyh_q1172485375",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1172485375",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 224,
+      "ebay_id": null,
+      "sku": "ebayyh_o1168715321",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1168715321",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 225,
+      "ebay_id": null,
+      "sku": "ebayyh_q1219600215",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1219600215",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 226,
+      "ebay_id": null,
+      "sku": "ebayyh_f1115530087",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1115530087",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 227,
+      "ebay_id": null,
+      "sku": "ebayyh_l1222575957",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1222575957",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 228,
+      "ebay_id": null,
+      "sku": "ebayyh_e1215790386",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1215790386",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 229,
+      "ebay_id": null,
+      "sku": "ebayyh_h1216184845",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1216184845",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 230,
+      "ebay_id": null,
+      "sku": "ebayyh_r1216215778",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1216215778",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 231,
+      "ebay_id": null,
+      "sku": "ebayyh_r1215882048",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1215882048",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 232,
+      "ebay_id": null,
+      "sku": "ebayyh_1218909290",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1218909290",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 234,
+      "ebay_id": null,
+      "sku": "ebayyh_1215878993",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1215878993",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 236,
+      "ebay_id": null,
+      "sku": "ebayyh_d1210158984",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1210158984",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 237,
+      "ebay_id": null,
+      "sku": "ebayyh_v1206466122",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206466122",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 238,
+      "ebay_id": null,
+      "sku": "ebayyh_1216225990",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1216225990",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 239,
+      "ebay_id": null,
+      "sku": "ebayyh_1226795678",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1226795678",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 240,
+      "ebay_id": null,
+      "sku": "ebayyh_t1141295648",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1141295648",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 242,
+      "ebay_id": null,
+      "sku": "ebayyh_v1207872084",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1207872084",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 243,
+      "ebay_id": null,
+      "sku": "ebayyh_v1206136150",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206136150",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 244,
+      "ebay_id": null,
+      "sku": "ebayyh_k1114086083",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1114086083",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 245,
+      "ebay_id": null,
+      "sku": "ebayyh_c1115546465",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1115546465",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 246,
+      "ebay_id": null,
+      "sku": "ebayyh_d1213446672",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1213446672",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 247,
+      "ebay_id": null,
+      "sku": "ebayyh_k1224102596",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1224102596",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 248,
+      "ebay_id": null,
+      "sku": "ebayyh_g1219434164",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1219434164",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 249,
+      "ebay_id": null,
+      "sku": "ebayyh_w1216422817",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1216422817",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 250,
+      "ebay_id": null,
+      "sku": "ebayyh_w1174283364",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1174283364",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 251,
+      "ebay_id": null,
+      "sku": "ebayyh_s1218565486",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1218565486",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 252,
+      "ebay_id": null,
+      "sku": "ebayyh_h1222590926",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1222590926",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 253,
+      "ebay_id": null,
+      "sku": "ebayyh_q1215096425",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1215096425",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 254,
+      "ebay_id": null,
+      "sku": "ebayyh_k1220914337",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1220914337",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 255,
+      "ebay_id": null,
+      "sku": "ebayyh_v1205926445",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1205926445",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 256,
+      "ebay_id": null,
+      "sku": "ebayyh_p1222096637",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222096637",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 257,
+      "ebay_id": null,
+      "sku": "ebayyh_p1222682323",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222682323",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 258,
+      "ebay_id": null,
+      "sku": "ebayyh_1186482429",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1186482429",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 259,
+      "ebay_id": null,
+      "sku": "ebayyh_1016457067",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1016457067",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 260,
+      "ebay_id": null,
+      "sku": "ebayyh_m1222546134",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1222546134",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 261,
+      "ebay_id": null,
+      "sku": "ebayyh_v1216414671",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1216414671",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 262,
+      "ebay_id": null,
+      "sku": "ebayyh_c1130862429",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1130862429",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 263,
+      "ebay_id": null,
+      "sku": "ebayyh_o1226372797",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1226372797",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 264,
+      "ebay_id": null,
+      "sku": "ebayyh_o1223384079",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1223384079",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 265,
+      "ebay_id": null,
+      "sku": "ebayyh_d1197413108",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1197413108",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 266,
+      "ebay_id": null,
+      "sku": "ebayyh_1164096874",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1164096874",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 267,
+      "ebay_id": null,
+      "sku": "ebayyh_c1211157181",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1211157181",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 268,
+      "ebay_id": null,
+      "sku": "ebayyh_w1209241221",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1209241221",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 269,
+      "ebay_id": null,
+      "sku": "ebayyh_r1226436587",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1226436587",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 270,
+      "ebay_id": null,
+      "sku": "ebayyh_t1184152737",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1184152737",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 141,
+      "ebay_id": "358313895116",
+      "sku": "ebayme_74396658434",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m74396658434",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 142,
+      "ebay_id": "358212313412",
+      "sku": "ebayme_58229585221",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m58229585221",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 143,
+      "ebay_id": "358212417187",
+      "sku": "ebayme_20103954450",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m20103954450",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 144,
+      "ebay_id": "358522548270",
+      "sku": "ebayFA_GvAO7",
+      "source": "FA機器",
+      "url": "https://x.gd/GvAO7",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 145,
+      "ebay_id": "358526485672",
+      "sku": "ebayYS_WyUJx",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/WyUJx",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 146,
+      "ebay_id": "358109293491",
+      "sku": "ebayme_15777687812",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m15777687812",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 147,
+      "ebay_id": "358526485786",
+      "sku": "ebayFA_222-495",
+      "source": "FA機器",
+      "url": "https://x.gd/222-495",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 148,
+      "ebay_id": "357097745633",
+      "sku": "ebayme_21595824946",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m21595824946",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 149,
+      "ebay_id": "358526486603",
+      "sku": "ebayPF_b1207350828",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/b1207350828",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 150,
+      "ebay_id": "357896463926",
+      "sku": "ebayme_16556773134",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m16556773134",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 151,
+      "ebay_id": "358530499685",
+      "sku": "ebayme_49633796170",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m49633796170",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 152,
+      "ebay_id": "358331143020",
+      "sku": "ebayPF_w1208800540",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/w1208800540",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 153,
+      "ebay_id": "358331166129",
+      "sku": "ebayme_80522728058",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m80522728058",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 120,
+      "ebay_id": "357051575355",
+      "sku": "ebayPF_z403885168",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z403885168",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 121,
+      "ebay_id": "358198045298",
+      "sku": "ebayRT_gxc7m",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/gxc7m/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 122,
+      "ebay_id": "358198845736",
+      "sku": "ebayRT_HkI1t0",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/HkI1t0/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 123,
+      "ebay_id": "358521323969",
+      "sku": "ebayTK_000000002637",
+      "source": "TSUKUMO",
+      "url": "https://fa-tsukumo.100-1.co.jp/shopdetail/000000002637",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 124,
+      "ebay_id": "358299347668",
+      "sku": "ebayme_58084060843",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m58084060843",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 125,
+      "ebay_id": "358521324117",
+      "sku": "ebayme_98531836411",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m98531836411",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 126,
+      "ebay_id": "357058261270",
+      "sku": "ebayme_75766922167",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m75766922167",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 127,
+      "ebay_id": "357058262058",
+      "sku": "ebayme_22866637305",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m22866637305",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 128,
+      "ebay_id": "357058263323",
+      "sku": "ebayme_15436896746",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m15436896746",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 129,
+      "ebay_id": "357058266894",
+      "sku": "ebayme_84692355300",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m84692355300",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 130,
+      "ebay_id": "357251092437",
+      "sku": "ebayYS_RFj8r",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/RFj8r",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 131,
+      "ebay_id": "357719413065",
+      "sku": "ebayme_30278227189",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m30278227189",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 132,
+      "ebay_id": "357719417112",
+      "sku": "ebayme_94578140692",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m94578140692",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 133,
+      "ebay_id": "357998268272",
+      "sku": "ebayme_13786463372",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m13786463372",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 134,
+      "ebay_id": "357061154041",
+      "sku": "ebayYS_I8lHe",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/I8lHe",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 135,
+      "ebay_id": "357435093266",
+      "sku": "ebayme_82773248459",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m82773248459",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 136,
+      "ebay_id": "357723710307",
+      "sku": "ebayPF_z301014652",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z301014652",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 137,
+      "ebay_id": "357723723909",
+      "sku": "ebayYS_9Y1rg",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/9Y1rg",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 138,
+      "ebay_id": "358100445011",
+      "sku": "ebayme_99148442019",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m99148442019",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 139,
+      "ebay_id": "358003801388",
+      "sku": "ebayPF_z424286554",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z424286554",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 140,
+      "ebay_id": "357440667626",
+      "sku": "ebayRT_vywOZ",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/vywOZ/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 103,
+      "ebay_id": "357039805668",
+      "sku": "ebayme_70860737734",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m70860737734",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 104,
+      "ebay_id": "357040009637",
+      "sku": "ebayme_37956040255",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m37956040255",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 105,
+      "ebay_id": "358502738625",
+      "sku": "ebayYS_0TIYt",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/0TIYt",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 106,
+      "ebay_id": "357229843582",
+      "sku": "ebayPF_f1187821169",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/f1187821169",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 107,
+      "ebay_id": "357412799482",
+      "sku": "ebayme_35359409025",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m35359409025",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 108,
+      "ebay_id": "358502738836",
+      "sku": "ebayPF_z473769182",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z473769182",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 109,
+      "ebay_id": "358502738955",
+      "sku": "ebayme_91971457024",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m91971457024",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 110,
+      "ebay_id": "357042138955",
+      "sku": "ebayme_91634797640",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m91634797640",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 111,
+      "ebay_id": "357866939096",
+      "sku": "ebayPF_z478969594",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z478969594",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 112,
+      "ebay_id": "357418184869",
+      "sku": "ebayme_61081474573",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m61081474573",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 113,
+      "ebay_id": "358293723954",
+      "sku": "ebayRT_u66z4",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/u66z4/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 114,
+      "ebay_id": "358293805432",
+      "sku": "ebayme_12007088063",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m12007088063",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 115,
+      "ebay_id": "357237222884",
+      "sku": "ebayme_48179739657",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m48179739657",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 116,
+      "ebay_id": "357237226216",
+      "sku": "ebayme_34004542298",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m34004542298",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 117,
+      "ebay_id": "358521323779",
+      "sku": "ebayFA_130-156",
+      "source": "FA機器",
+      "url": "https://x.gd/130-156",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 118,
+      "ebay_id": "358195666531",
+      "sku": "ebayme_43831808668",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m43831808668",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 119,
+      "ebay_id": "358195739493",
+      "sku": "ebayme_39476065799",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m39476065799",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 87,
+      "ebay_id": "357383352429",
+      "sku": "ebayme_68097265970",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m68097265970",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 88,
+      "ebay_id": "357010895215",
+      "sku": "ebayCH_44825",
+      "source": "Caster House",
+      "url": "https://www.casterhouse.co.jp/shop/products/detail/44825",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 89,
+      "ebay_id": "357011020594",
+      "sku": "ebayAM_3le7O",
+      "source": "Amazon",
+      "url": "https://www.amazon.co.jp/dp/3le7O",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 90,
+      "ebay_id": "358177619706",
+      "sku": "ebayme_23602681051",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m23602681051",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 91,
+      "ebay_id": "357014028076",
+      "sku": "ebayPF_h1201321820",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/h1201321820",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 92,
+      "ebay_id": "357015542068",
+      "sku": "ebayRT_uEuyC",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/uEuyC/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 93,
+      "ebay_id": "358497702582",
+      "sku": "ebayPF_c1161386549",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/c1161386549",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 94,
+      "ebay_id": "357978784016",
+      "sku": "ebayme_71922763669",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m71922763669",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 95,
+      "ebay_id": "357979944862",
+      "sku": "ebayYS_ndLkZ",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/ndLkZ",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 96,
+      "ebay_id": "357979977777",
+      "sku": "ebayme_79865930870",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m79865930870",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 97,
+      "ebay_id": "357859072999",
+      "sku": "ebayme_69160132571",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m69160132571",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 98,
+      "ebay_id": "358188230961",
+      "sku": "ebayPF_z567607732",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z567607732",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 99,
+      "ebay_id": "357859463912",
+      "sku": "ebayme_12486564092",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m12486564092",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 100,
+      "ebay_id": "358286453220",
+      "sku": "ebayme_41033809537",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m41033809537",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 101,
+      "ebay_id": "357571149159",
+      "sku": "ebayPF_z475307054",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z475307054",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 102,
+      "ebay_id": "357039030883",
+      "sku": "ebayRT_OG5wq",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/OG5wq/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 71,
+      "ebay_id": "357371074899",
+      "sku": "ebayme_75967437293",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m75967437293",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 72,
+      "ebay_id": "357371421703",
+      "sku": "ebayme_62896386627",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m62896386627",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 73,
+      "ebay_id": "358486608392",
+      "sku": "ebayBS_9406",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/9406",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 74,
+      "ebay_id": "358062317889",
+      "sku": "ebayme_43296413328",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m43296413328",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 75,
+      "ebay_id": "357682809100",
+      "sku": "ebayPF_z565054494",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z565054494",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 76,
+      "ebay_id": "357197963540",
+      "sku": "ebayYS_eo5iA",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/eo5iA",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 77,
+      "ebay_id": "358490118866",
+      "sku": "ebayBS_5850",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/5850",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 78,
+      "ebay_id": "358490119748",
+      "sku": "ebayBS_10892",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/10892",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 79,
+      "ebay_id": "358490120553",
+      "sku": "ebayBS_12851",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/12851",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 80,
+      "ebay_id": "358490121440",
+      "sku": "ebayBS_14946",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/14946",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 81,
+      "ebay_id": "356420645893",
+      "sku": "ebayme_32400850054",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m32400850054",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 82,
+      "ebay_id": "358490122944",
+      "sku": "ebayme_27412233551",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m27412233551",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 83,
+      "ebay_id": "357835516768",
+      "sku": "ebayme_52194163687",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m52194163687",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 84,
+      "ebay_id": "358497700985",
+      "sku": "ebayme_64853248651",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m64853248651",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 85,
+      "ebay_id": "357383173250",
+      "sku": "ebayYS_uIL73",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/uIL73",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 86,
+      "ebay_id": "358173678265",
+      "sku": "ebayme_67772929009",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m67772929009",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 59,
+      "ebay_id": "357947963186",
+      "sku": "ebayme_11858831196",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m11858831196",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 60,
+      "ebay_id": "356829055464",
+      "sku": "ebayme_73002319293",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m73002319293",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 61,
+      "ebay_id": "357669238923",
+      "sku": "ebayYS_SLPFZ",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/SLPFZ",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 62,
+      "ebay_id": "358485951288",
+      "sku": "ebayBS_11820",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/11820",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 63,
+      "ebay_id": "357670925857",
+      "sku": "ebayPF_q1176161825",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/q1176161825",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 64,
+      "ebay_id": "358485951457",
+      "sku": "ebayBS_373",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/373",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 65,
+      "ebay_id": "358485951544",
+      "sku": "ebayBS_1725",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/1725",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 66,
+      "ebay_id": "358486607668",
+      "sku": "ebayBS_1431",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/1431",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 67,
+      "ebay_id": "358486607776",
+      "sku": "ebayBS_1318",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/1318",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 68,
+      "ebay_id": "358486607879",
+      "sku": "ebayBS_1174",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/1174",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 69,
+      "ebay_id": "358486608104",
+      "sku": "ebayFA_Hphvn",
+      "source": "FA機器",
+      "url": "https://x.gd/Hphvn",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 70,
+      "ebay_id": "358162739239",
+      "sku": "ebayme_25339922175",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m25339922175",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 48,
+      "ebay_id": "358045787764",
+      "sku": "ebayme_77169832374",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m77169832374",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 49,
+      "ebay_id": "357164737968",
+      "sku": "ebayRT_k6Yos",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/k6Yos/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 50,
+      "ebay_id": "356817162296",
+      "sku": "ebayme_59150634702",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m59150634702",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 51,
+      "ebay_id": "357659207139",
+      "sku": "ebayme_67371177485",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m67371177485",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 52,
+      "ebay_id": "357166122965",
+      "sku": "ebayHI_ih6S2",
+      "source": "HILTI",
+      "url": null,
+      "status": "エラー",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 53,
+      "ebay_id": "357348261946",
+      "sku": "ebayRT_eHN4k",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/eHN4k/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 54,
+      "ebay_id": "358485950477",
+      "sku": "ebayPF_z400651116",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z400651116",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 55,
+      "ebay_id": "357665437851",
+      "sku": "ebayBS_14797",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/14797",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 56,
+      "ebay_id": "358485950633",
+      "sku": "ebayBS_3708",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/3708",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 57,
+      "ebay_id": "358485950813",
+      "sku": "ebayBS_269",
+      "source": "KINBON WEB SHOP（盆栽）",
+      "url": "https://www.bonsai.co.jp/products/detail/269",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 58,
+      "ebay_id": "357174731081",
+      "sku": "ebayme_39976223117",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m39976223117",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 38,
+      "ebay_id": "358140797738",
+      "sku": "ebayAM_x29VO",
+      "source": "Amazon",
+      "url": "https://www.amazon.co.jp/dp/x29VO",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 39,
+      "ebay_id": "358052065626",
+      "sku": "ebayYD_100000001007833513",
+      "source": "ヨドバシカメラ",
+      "url": "https://www.yodobashi.com/product/100000001007833513",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 40,
+      "ebay_id": "357650195070",
+      "sku": "ebayme_62451594099",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m62451594099",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 41,
+      "ebay_id": "357154563670",
+      "sku": "ebayAM_LuODR",
+      "source": "Amazon",
+      "url": "https://www.amazon.co.jp/dp/LuODR",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 42,
+      "ebay_id": "357650371827",
+      "sku": "ebayme_8862099721",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m8862099721",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 43,
+      "ebay_id": "357935772166",
+      "sku": "ebayme_69793220268",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m69793220268",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 44,
+      "ebay_id": "357159869804",
+      "sku": "ebayme_83497661362",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m83497661362",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 45,
+      "ebay_id": "357334710416",
+      "sku": "ebayPF_z505137716",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z505137716",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 46,
+      "ebay_id": "357654939066",
+      "sku": "ebayYS_LK1jL",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/LK1jL",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 47,
+      "ebay_id": "357160266297",
+      "sku": "ebayRT_hWe8O",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/hWe8O/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 28,
+      "ebay_id": "356926874032",
+      "sku": "ebayRT_DjJe2",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/DjJe2/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 29,
+      "ebay_id": "357142186268",
+      "sku": "ebayAT_JBM49988",
+      "source": "ATAGO",
+      "url": "https://www.atago.net/japanese/new/atagoshop-index.php?key=JBM49988",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 30,
+      "ebay_id": "357487868142",
+      "sku": "ebayAT_PEV34351",
+      "source": "ATAGO",
+      "url": "https://www.atago.net/japanese/new/atagoshop-index.php?key=PEV34351",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 31,
+      "ebay_id": "357321100358",
+      "sku": "ebayYS_Qm3OE",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/Qm3OE",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 32,
+      "ebay_id": "358240001005",
+      "sku": "ebayme_72766968854",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m72766968854",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 33,
+      "ebay_id": "358467370423",
+      "sku": "ebayRT_xpDg0",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/xpDg0/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 34,
+      "ebay_id": "356805605040",
+      "sku": "ebayYS_iiIcrM",
+      "source": "Yahoo!ショッピング",
+      "url": "https://store.shopping.yahoo.co.jp/iiIcrM",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 35,
+      "ebay_id": "358139740232",
+      "sku": "ebayme_90532998731",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m90532998731",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 36,
+      "ebay_id": "358140706429",
+      "sku": "ebayme_17358493382",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m17358493382",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 37,
+      "ebay_id": "357933117584",
+      "sku": "ebayYD_100000001007833512",
+      "source": "ヨドバシカメラ",
+      "url": "https://www.yodobashi.com/product/100000001007833512",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 19,
+      "ebay_id": "358537337369",
+      "sku": "ebayme_35939610654",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m35939610654",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 20,
+      "ebay_id": "358027647403",
+      "sku": "ebayme_56500264607",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m56500264607",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 21,
+      "ebay_id": "357129118538",
+      "sku": "ebayme_16317274359",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m16317274359",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 22,
+      "ebay_id": "357476483322",
+      "sku": "ebayme_54454064838",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m54454064838",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 23,
+      "ebay_id": "357636245982",
+      "sku": "ebayme_34163664597",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m34163664597",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 24,
+      "ebay_id": "357480662511",
+      "sku": "ebayOFF_5125292",
+      "source": "OFFモール（ハードオフ）",
+      "url": "https://netmall.hardoff.co.jp/product/5125292",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 25,
+      "ebay_id": "358130087298",
+      "sku": "ebayme_45499542220",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m45499542220",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 26,
+      "ebay_id": "356924389532",
+      "sku": "ebayme_24631554748",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m24631554748",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 27,
+      "ebay_id": "358132396521",
+      "sku": "ebayPF_z418707210",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z418707210",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 12,
+      "ebay_id": "358337936945",
+      "sku": "ebayme_12229124936",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m12229124936",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 13,
+      "ebay_id": "358534187038",
+      "sku": "ebayTS_ll2182",
+      "source": "トンカタストア",
+      "url": "https://shop.tonkachi.co.jp/products/ll2182",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 14,
+      "ebay_id": "358338047911",
+      "sku": "ebayme_66031703696",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m66031703696",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 15,
+      "ebay_id": "356788801428",
+      "sku": "ebayRT_sg6ei",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/sg6ei/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 16,
+      "ebay_id": "358537337009",
+      "sku": "ebayFA_130-683",
+      "source": "FA機器",
+      "url": "https://x.gd/130-683",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 17,
+      "ebay_id": "357915823659",
+      "sku": "ebayme_75813078759",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m75813078759",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 18,
+      "ebay_id": "358228925781",
+      "sku": "ebayme_48903649695",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m48903649695",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 6,
+      "ebay_id": "358333743978",
+      "sku": "ebayPF_z514064178",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z514064178",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 7,
+      "ebay_id": "358335045646",
+      "sku": "ebayme_34498052605",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m34498052605",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 8,
+      "ebay_id": "357623624690",
+      "sku": "ebayPF_z450068452",
+      "source": "Paypayフリマ",
+      "url": "https://paypayfleamarket.yahoo.co.jp/item/z450068452",
+      "status": "不明",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 9,
+      "ebay_id": "357468170662",
+      "sku": "ebayRT_xwbZF",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/xwbZF/",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 10,
+      "ebay_id": "358534186281",
+      "sku": "ebayme_10652897161",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m10652897161",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 11,
+      "ebay_id": "358337872918",
+      "sku": "ebayme_29606365464",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m29606365464",
+      "status": "在庫有",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 5,
+      "ebay_id": "358331236308",
+      "sku": "ebayme_74983762893",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m74983762893",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 4,
+      "ebay_id": "",
+      "sku": "ebayme_m95434266490",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/mm95434266490",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 3,
+      "ebay_id": "",
+      "sku": "ebayme_95434266490",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m95434266490",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 2,
+      "ebay_id": "",
+      "sku": "ebayme_92345678901",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m92345678901",
+      "status": "ページなし",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    },
+    {
+      "id": 1,
+      "ebay_id": "358278773058",
+      "sku": "ebayme_44731528581",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m44731528581",
+      "status": "在庫無",
+      "checked_at": "2026-05-14T15:37:52.955398"
+    }
+  ],
+  "changes": {
+    "changed_items": [
+      {
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1046210112",
+        "sku": "ebayyh_s1046210112",
+        "source": "ヤフオク",
+        "prev_status": "ページなし",
+        "current_status": "在庫有",
+        "changed_at": "2026-05-14T15:37:52.965437"
+      },
+      {
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1093322879",
+        "sku": "ebayyh_x1093322879",
+        "source": "ヤフオク",
+        "prev_status": "ページなし",
+        "current_status": "在庫有",
+        "changed_at": "2026-05-14T15:37:52.965469"
+      }
+    ],
+    "became_out_of_stock": []
+  }
+}

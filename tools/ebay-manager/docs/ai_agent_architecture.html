@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>eBay Manager AI エージェント構成図</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    background: linear-gradient(180deg, #0a1826 0%, #0d1f36 100%);
+    color: #d4e4f4;
+    padding: 30px;
+    line-height: 1.5;
+  }
+  h1 {
+    text-align: center;
+    color: #4dd0e1;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+    font-weight: 400;
+    font-size: 28px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #78909c;
+    margin-bottom: 40px;
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+  .layer {
+    margin: 24px 0;
+    padding: 20px;
+    border: 1px solid rgba(77, 208, 225, 0.3);
+    border-radius: 8px;
+    background: rgba(13, 31, 54, 0.6);
+  }
+  .layer-title {
+    font-size: 12px;
+    color: #4dd0e1;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgba(77, 208, 225, 0.4);
+  }
+  .nodes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-start;
+  }
+  .node {
+    border-radius: 6px;
+    padding: 12px 16px;
+    min-width: 180px;
+    max-width: 260px;
+    flex: 1 1 200px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .node-name {
+    font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .node-model {
+    font-size: 10px;
+    font-family: monospace;
+    color: #ffab91;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .node-desc {
+    font-size: 11px;
+    color: rgba(212, 228, 244, 0.75);
+    line-height: 1.4;
+  }
+  .node-tools {
+    font-size: 10px;
+    font-family: monospace;
+    color: #90a4ae;
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  /* レイヤー別カラー */
+  .L-user { border-color: #66bb6a; }
+  .L-user .layer-title { color: #81c784; border-color: #66bb6a66; }
+  .L-user .node { background: rgba(102, 187, 106, 0.12); border-color: #66bb6a44; }
+
+  .L-main { border-color: #4dd0e1; }
+  .L-main .layer-title { color: #4dd0e1; }
+  .L-main .node { background: rgba(77, 208, 225, 0.15); border-color: #4dd0e166; }
+
+  .L-ebay { border-color: #ffab91; }
+  .L-ebay .layer-title { color: #ffab91; border-color: #ffab9166; }
+  .L-ebay .node { background: rgba(255, 171, 145, 0.1); border-color: #ffab9144; }
+
+  .L-builtin { border-color: #ce93d8; }
+  .L-builtin .layer-title { color: #ce93d8; border-color: #ce93d866; }
+  .L-builtin .node { background: rgba(206, 147, 216, 0.1); border-color: #ce93d844; }
+
+  .L-cc { border-color: #ffd54f; }
+  .L-cc .layer-title { color: #ffd54f; border-color: #ffd54f66; }
+  .L-cc .node { background: rgba(255, 213, 79, 0.1); border-color: #ffd54f44; }
+
+  .L-mcp { border-color: #64b5f6; }
+  .L-mcp .layer-title { color: #64b5f6; border-color: #64b5f666; }
+  .L-mcp .node { background: rgba(100, 181, 246, 0.1); border-color: #64b5f644; }
+
+  .arrow {
+    text-align: center;
+    color: #4dd0e1;
+    font-size: 22px;
+    margin: 4px 0;
+    letter-spacing: 2px;
+  }
+
+  .highlight {
+    color: #ffab91;
+    font-weight: bold;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 4px;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+  .badge-active { background: #66bb6a; color: #0d1f36; }
+  .badge-inactive { background: #455a64; color: #90a4ae; }
+  .badge-now { background: #4dd0e1; color: #0d1f36; font-weight: bold; }
+
+  .flow-section {
+    margin-top: 50px;
+    padding: 25px;
+    background: rgba(8, 20, 34, 0.7);
+    border-radius: 10px;
+    border: 1px solid rgba(77, 208, 225, 0.3);
+  }
+  .flow-title {
+    font-size: 14px;
+    color: #4dd0e1;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(77, 208, 225, 0.3);
+    padding-bottom: 8px;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+    padding: 10px 15px;
+    background: rgba(77, 208, 225, 0.06);
+    border-left: 3px solid #4dd0e1;
+    font-size: 13px;
+  }
+  .flow-step .step-num {
+    display: inline-block;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #4dd0e1;
+    color: #0d1f36;
+    text-align: center;
+    line-height: 24px;
+    font-weight: bold;
+    margin-right: 12px;
+    font-size: 12px;
+  }
+  .flow-step .step-agent {
+    font-family: monospace;
+    color: #ffab91;
+    margin: 0 8px;
+    padding: 2px 8px;
+    background: rgba(255, 171, 145, 0.1);
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  .legend {
+    margin-top: 30px;
+    padding: 15px 20px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #90a4ae;
+  }
+  .legend strong { color: #d4e4f4; }
+
+  .model-opus47 { color: #ffab91; }
+  .model-sonnet46 { color: #81d4fa; }
+  .model-haiku45 { color: #a5d6a7; }
+  .model-gemini { color: #f48fb1; }
+</style>
+</head>
+<body>
+
+<h1>eBay Manager · AI エージェント構成図</h1>
+<p class="subtitle">現在稼働中のエージェント / モデル / 責務マップ — 2026-04-22 時点</p>
+
+<!-- ===== LAYER 1: USER ===== -->
+<div class="layer L-user">
+  <div class="layer-title">① User Layer — 人 (あなた)</div>
+  <div class="nodes">
+    <div class="node">
+      <div class="node-name">User (オペレーター)</div>
+      <div class="node-desc">eBay セラー。Claude Code CLI または eBay Manager の Streamlit UI を通じて指示を出す。</div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">▼ 指示 / プロンプト</div>
+
+<!-- ===== LAYER 2: MAIN ASSISTANT (ME) ===== -->
+<div class="layer L-main">
+  <div class="layer-title">② Main Assistant — 対話窓口</div>
+  <div class="nodes">
+    <div class="node" style="min-width:100%;">
+      <div class="node-name">私 (このチャット) <span class="badge badge-now">NOW</span></div>
+      <div class="node-model model-opus47">model: claude-opus-4-7 [1M context]</div>
+      <div class="node-desc">
+        ユーザーの窓口。タスクを理解→適切な専門エージェントに delegate / 直接対応を判断。
+        この会話全体の指揮権を持つ。memory (feedback_*.md, project_*.md) を参照して挙動を調整。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">▼ Task tool で呼出 (並列可)</div>
+
+<!-- ===== LAYER 3: SPECIALIZED EBAY AGENTS ===== -->
+<div class="layer L-ebay">
+  <div class="layer-title">③ eBay Manager 専用エージェント (~/.claude/agents/*.md)</div>
+  <div class="nodes">
+    <div class="node">
+      <div class="node-name">planner <span class="badge badge-active">稼働</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">開発要件(1-4行) → 詳細 PRD(docs/spec.md)。TODO 分解、ビルドシーケンス策定。</div>
+      <div class="node-tools">tools: Read/Glob/Grep/WebFetch/WebSearch/Write/TodoWrite</div>
+    </div>
+    <div class="node">
+      <div class="node-name">generator <span class="badge badge-active">稼働</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">planner の仕様書 → 実コード。新機能 / バグ修正 / リファクタ実装。</div>
+      <div class="node-tools">tools: Read/Edit/Write/Glob/Grep/Bash/TodoWrite</div>
+    </div>
+    <div class="node">
+      <div class="node-name">evaluator <span class="badge badge-active">稼働</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">コードレビュー+テスト実行+バグ検出+パフォーマンス評価。品質スコア返却。</div>
+      <div class="node-tools">tools: Read/Grep/Glob/Bash</div>
+    </div>
+    <div class="node">
+      <div class="node-name">ebay-manager-qa <span class="badge badge-active">稼働</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">Streamlit UI の自動 E2E テスト。Playwright で UI 回帰テスト、qa_tester.py 実行。</div>
+      <div class="node-tools">tools: Read/Bash/Grep/Glob</div>
+    </div>
+    <div class="node">
+      <div class="node-name">ebay-listing <span class="badge badge-active">稼働</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7 (推定)</div>
+      <div class="node-desc">日本語商品名+状態 → eBay 出品文を生成 (title/condition/specs/HTML description)。</div>
+      <div class="node-tools">tools: WebSearch/WebFetch/Read/Write</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LAYER 4: BUILT-IN CLAUDE CODE AGENTS ===== -->
+<div class="layer L-builtin">
+  <div class="layer-title">④ Claude Code 組込エージェント (Anthropic 提供)</div>
+  <div class="nodes">
+    <div class="node">
+      <div class="node-name">code-reviewer <span class="badge badge-now">本セッションで多用</span></div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">コードレビュー専門。HIGH 確信度のバグのみ報告。本セッション中 4 回稼働し HIGH を計 5 件検出。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">code-architect</div>
+      <div class="node-model model-opus47">claude-opus-4-7</div>
+      <div class="node-desc">大型機能のアーキテクチャ設計。W37-W42 級の複雑設計担当。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">code-simplifier</div>
+      <div class="node-desc">コードの簡潔化/保守性向上。既存ロジック保持。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">Explore <span class="badge badge-now">本セッションで使用</span></div>
+      <div class="node-desc">コードベース横断探索。Glob/Grep/Read 高速版。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">Plan</div>
+      <div class="node-desc">実装戦略の立案。設計トレードオフ評価。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">general-purpose</div>
+      <div class="node-desc">汎用タスクエージェント。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">claude-code-guide</div>
+      <div class="node-desc">Claude Code 自身の使い方質問専門。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">statusline-setup</div>
+      <div class="node-desc">ステータスライン設定。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LAYER 5: CC-COMPANY VIRTUAL ORG ===== -->
+<div class="layer L-cc">
+  <div class="layer-title">⑤ cc-company 仮想組織 (.company/*/CLAUDE.md)</div>
+  <div class="nodes">
+    <div class="node">
+      <div class="node-name">秘書室 secretary <span class="badge badge-active">常設窓口</span></div>
+      <div class="node-desc">ユーザー対話の窓口。TODO 管理、壁打ち、スケジュール、notes/inbox。全部署のハブ。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">経理 finance</div>
+      <div class="node-desc">売上管理、仕入コスト、経費、損益計算。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">eBay知識 ebay-knowledge</div>
+      <div class="node-desc">eBay ポリシー、規約、出品ノウハウ、トラブル対応知識ベース。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">システム開発 engineering</div>
+      <div class="node-desc">ツール開発、自動化スクリプト、API 連携。eBay Manager 本体の開発統括。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">日々業務 daily-operations</div>
+      <div class="node-desc">商品出品、在庫管理、注文処理、カスタマーサポート。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">リサーチ research</div>
+      <div class="node-desc">商品リサーチ、競合分析、トレンド調査、仕入先調査。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">出品 ebay-listing (部署版)</div>
+      <div class="node-desc">出品文生成の部署ナレッジ。listing テンプレや過去事例を保有。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LAYER 6: EMBEDDED AI (IN-APP CLAUDE API) ===== -->
+<div class="layer L-main" style="border-color:#ef5350;">
+  <div class="layer-title" style="color:#ef9a9a;border-color:#ef5350;">⑥ eBay Manager アプリ内蔵 AI (Anthropic API 直接呼出)</div>
+  <div class="nodes">
+    <div class="node" style="background:rgba(239,83,80,0.1);border-color:#ef535044;">
+      <div class="node-name">rank_classifier</div>
+      <div class="node-model model-haiku45">claude-haiku-4-5</div>
+      <div class="node-desc">商品状態 → 8段階ランク (N/S/A/B/C/D/PO/As-Is) 判定。軽量分類タスク。</div>
+    </div>
+    <div class="node" style="background:rgba(239,83,80,0.1);border-color:#ef535044;">
+      <div class="node-name">listing_generator</div>
+      <div class="node-model model-sonnet46">claude-sonnet-4-6</div>
+      <div class="node-desc">仕入先データ → eBay 英語タイトル / Item Specifics / description HTML 生成。SEO 最適化。</div>
+    </div>
+    <div class="node" style="background:rgba(239,83,80,0.1);border-color:#ef535044;">
+      <div class="node-name">claude_summarizer</div>
+      <div class="node-model model-haiku45">claude-haiku-4-5</div>
+      <div class="node-desc">メール要約+優先度判定 (summary_ja/action_ja/buyer_message_ja)。24時間以内返信判定。</div>
+    </div>
+    <div class="node" style="background:rgba(239,83,80,0.1);border-color:#ef535044;">
+      <div class="node-name">claude_evaluator</div>
+      <div class="node-model model-sonnet46">claude-sonnet-4-6</div>
+      <div class="node-desc">仕入先候補の match_score 評価 (0-100)。閾値 60 以上で候補登録。</div>
+    </div>
+    <div class="node" style="background:rgba(239,83,80,0.1);border-color:#ef535044;">
+      <div class="node-name">video_learning</div>
+      <div class="node-model model-gemini">gemini-2.5-flash</div>
+      <div class="node-desc">YouTube 動画 → 文字起こし + 要約 → KB 索引化。リサーチ部署の知識源。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LAYER 7: MCP / EXTERNAL ===== -->
+<div class="layer L-mcp">
+  <div class="layer-title">⑦ MCP / 外部ツール (全エージェントが利用可)</div>
+  <div class="nodes">
+    <div class="node">
+      <div class="node-name">Playwright MCP <span class="badge badge-now">本セッションで使用</span></div>
+      <div class="node-desc">ブラウザ操作 (navigate/click/snapshot)。Streamlit UI E2E 検証、Mercari スクレイプ。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">Gmail MCP</div>
+      <div class="node-desc">メール取得/検索/ラベル管理。⚠️ 現在 refresh_token 失効中 → 再認可必要。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">eBay Trading API</div>
+      <div class="node-desc">VerifyAdd / AddFixedPriceItem / ReviseItem。XML ベース。OAuth 自動 refresh 済。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">eBay REST API</div>
+      <div class="node-desc">Marketing (Promoted Listings)、Taxonomy (leaf category)、Browse。</div>
+    </div>
+    <div class="node">
+      <div class="node-name">Google Drive MCP</div>
+      <div class="node-desc">ドキュメント連携 (未使用に近い)。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FLOW EXAMPLE ===== -->
+<div class="flow-section">
+  <div class="flow-title">▶ 本セッションで発生した実際の呼出フロー (LD-S9 出品バグ修正例)</div>
+
+  <div class="flow-step">
+    <span class="step-num">1</span>
+    <strong>User</strong> → <span class="step-agent">私 (Opus 4.7)</span> 「VerifyAdd エラー: category not valid」
+  </div>
+  <div class="flow-step">
+    <span class="step-num">2</span>
+    <span class="step-agent">私</span> → <span class="step-agent">rank_classifier (Haiku)</span> 直接 Anthropic API 呼出 (ランク判定検証)
+  </div>
+  <div class="flow-step">
+    <span class="step-num">3</span>
+    <span class="step-agent">私</span> → <span class="step-agent">eBay Taxonomy API</span> (有効 leaf カテゴリ取得)
+  </div>
+  <div class="flow-step">
+    <span class="step-num">4</span>
+    <span class="step-agent">私</span> (Edit/Write) コード修正 + pytest
+  </div>
+  <div class="flow-step">
+    <span class="step-num">5</span>
+    <span class="step-agent">私</span> → <span class="step-agent">code-reviewer</span> delegate (HIGH 確認 → 2件 指摘)
+  </div>
+  <div class="flow-step">
+    <span class="step-num">6</span>
+    <span class="step-agent">私</span> HIGH 2件 修正 + regression test 追加
+  </div>
+  <div class="flow-step">
+    <span class="step-num">7</span>
+    <span class="step-agent">私</span> → <span class="step-agent">code-reviewer</span> 再確認 (HIGH=0 confirmed)
+  </div>
+  <div class="flow-step">
+    <span class="step-num">8</span>
+    <span class="step-agent">私</span> → <span class="step-agent">Playwright MCP</span> Streamlit UI E2E 検証 → User 報告
+  </div>
+</div>
+
+<!-- ===== LEGEND ===== -->
+<div class="legend">
+  <p><strong>凡例</strong> —
+    <span class="model-opus47">Opus 4.7</span> = 複雑判断/コード生成
+    <span class="model-sonnet46">Sonnet 4.6</span> = 通常コード/出品文生成
+    <span class="model-haiku45">Haiku 4.5</span> = 軽量分類/要約
+    <span class="model-gemini">Gemini 2.5 Flash</span> = 動画学習
+  </p>
+  <p><strong>色分け</strong> —
+    緑=User / 水色=Main / 橙=eBay専用 / 紫=Claude組込 / 黄=cc-company / 青=MCP / 赤=アプリ内蔵API
+  </p>
+  <p><strong>レイヤーの意味</strong> —
+    ③④ は **対話ベースのサブエージェント** (Task tool 経由で呼出)。
+    ⑥ は **アプリ内で Python から直接 Anthropic API を叩く AI 機能** (サブエージェントではない)。
+    ⑤ は **ナレッジ集約用の仮想組織フォルダ** (.company/)。</p>
+</div>
+
+</body>
+</html>

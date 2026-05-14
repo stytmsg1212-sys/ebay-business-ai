@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eBay Manager 仕様書 v5.0</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif; line-height: 1.6; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 28px; border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { font-size: 22px; color: var(--accent); margin: 36px 0 16px; padding-left: 12px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 17px; color: var(--purple); margin: 20px 0 10px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin: 12px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 768px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  th { background: #1c2129; color: var(--accent); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:hover { background: #1c2129; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .tag-green { background: #0d4429; color: var(--green); }
+  .tag-orange { background: #3d2e00; color: var(--orange); }
+  .tag-red { background: #3d1418; color: var(--red); }
+  .tag-blue { background: #0c2d6b; color: var(--accent); }
+  .tag-purple { background: #2a1a4e; color: var(--purple); }
+
+  /* 図解用 */
+  .diagram { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin: 16px 0; overflow-x: auto; }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .flow-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .box { padding: 10px 16px; border-radius: 6px; text-align: center; font-size: 13px; font-weight: 500; min-width: 120px; }
+  .box-primary { background: #1a3a5c; border: 2px solid var(--accent); color: var(--accent); }
+  .box-green { background: #0d3321; border: 2px solid var(--green); color: var(--green); }
+  .box-orange { background: #3d2e00; border: 2px solid var(--orange); color: var(--orange); }
+  .box-red { background: #3d1418; border: 2px solid var(--red); color: var(--red); }
+  .box-purple { background: #2a1a4e; border: 2px solid var(--purple); color: var(--purple); }
+  .box-gray { background: #21262d; border: 1px solid var(--border); color: var(--muted); }
+  .box-wide { min-width: 280px; }
+  .arrow { color: var(--muted); font-size: 20px; }
+  .arrow-h { color: var(--muted); font-size: 16px; padding: 0 4px; }
+  .bracket { border: 1px dashed var(--border); border-radius: 8px; padding: 16px; margin: 8px 0; }
+  .bracket-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .stat { text-align: center; }
+  .stat-num { font-size: 32px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 12px; color: var(--muted); }
+  .step-num { display: inline-block; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--bg); text-align: center; line-height: 24px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .timeline-item { position: relative; margin-bottom: 16px; }
+  .timeline-item::before { content: ''; position: absolute; left: -25px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+  .timeline-item.done::before { background: var(--green); }
+  .timeline-item.warn::before { background: var(--orange); }
+  .note { background: #1a2332; border-left: 3px solid var(--accent); padding: 10px 14px; font-size: 13px; margin: 8px 0; border-radius: 0 6px 6px 0; }
+</style>
+</head>
+<body>
+
+<h1>📦 eBay Manager 仕様書</h1>
+<div class="meta">
+  Version 5.0 | 2026-04-15 | Opus 4.6 作成<br>
+  eBay越境EC物販ビジネスの統合管理ダッシュボード + 定時自動実行システム
+</div>
+
+<!-- ===== 概要 ===== -->
+<h2>1. システム概要</h2>
+
+<div class="grid3">
+  <div class="card stat">
+    <div class="stat-num">479</div>
+    <div class="stat-label">eBay出品数</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-num">348</div>
+    <div class="stat-label">在庫監視対象</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-num">11</div>
+    <div class="stat-label">自動実行タスク</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>プロダクト構成</h3>
+  <div class="diagram">
+    <div class="flow">
+      <div class="box box-primary box-wide">eBay Manager（Streamlit UI）<br><span style="font-size:11px; color:var(--muted)">app.py — 1996行 / 8タブ</span></div>
+      <div class="arrow">▼</div>
+      <div class="flow-row">
+        <div class="box box-green">daily_scheduler.py<br><span style="font-size:11px">定時実行エンジン</span></div>
+        <div class="box box-orange">tasks/ (18ファイル)<br><span style="font-size:11px">ビジネスロジック</span></div>
+        <div class="box box-purple">monitor/ (DB+API)<br><span style="font-size:11px">データ層</span></div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="flow-row">
+        <div class="box box-gray">monitor.db<br>SQLite</div>
+        <div class="box box-gray">eBay API<br>Trading API</div>
+        <div class="box box-gray">Selenium<br>在庫巡回</div>
+        <div class="box box-gray">Discord<br>通知</div>
+        <div class="box box-gray">.company/<br>組織配信</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== UI タブ構成 ===== -->
+<h2>2. UI タブ構成</h2>
+
+<table>
+  <thead><tr><th>タブ</th><th>機能</th><th>主な操作</th></tr></thead>
+  <tbody>
+    <tr><td>📈 ダッシュボード</td><td>全体俯瞰・実行ログ・秘書ルーティン結果</td><td>閲覧のみ</td></tr>
+    <tr><td>📊 利益計算</td><td>仕入値→送料→手数料→利益率を自動計算</td><td>数値入力→計算実行</td></tr>
+    <tr><td>📡 在庫監視</td><td><strong>🚨要対応</strong>（在庫切れ/確認不可の一覧）・監視リスト・サイト設定</td><td>一括在庫0、個別チェック</td></tr>
+    <tr><td>🔗 eBay連携</td><td>出品取得・メトリクス・ランク管理（S〜E）・送料警告</td><td>eBay同期、ランク更新</td></tr>
+    <tr><td>🏪 競合監視</td><td>Japanセラーのライバル検知・価格比較</td><td>確認/無視アクション</td></tr>
+    <tr><td>🔀 SKU変換</td><td>SKU→仕入先URL変換ルール管理（10プラットフォーム）</td><td>ルール追加/編集/テスト</td></tr>
+    <tr><td>▶️ 手動実行</td><td>各タスクをボタンで即時実行（9タスク対応）</td><td>ボタン押下→結果表示</td></tr>
+    <tr><td>⚙️ 設定</td><td>eBay APIキー・送料・手数料率・Discord Webhook</td><td>設定保存</td></tr>
+  </tbody>
+</table>
+
+<!-- ===== 定時実行 ===== -->
+<h2>3. 定時実行システム</h2>
+
+<div class="card">
+  <h3>実行アーキテクチャ</h3>
+  <div class="diagram">
+    <div class="flow">
+      <div class="box box-primary box-wide">Windows タスクスケジューラ<br><span style="font-size:11px">run_scheduler.py を起動</span></div>
+      <div class="arrow">▼</div>
+      <div class="box box-green box-wide">APScheduler（常駐プロセス）<br><span style="font-size:11px">daily_scheduler.py — cronジョブ管理</span></div>
+      <div class="arrow">▼</div>
+      <div class="flow-row">
+        <div class="box box-orange">05:00</div>
+        <div class="box box-orange">11:00</div>
+        <div class="box box-orange">17:00</div>
+        <div class="box box-orange">22:00</div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="box box-purple box-wide">execute_daily_tasks()<br><span style="font-size:11px">11タスクを順次実行 → Discord通知 → 組織配信</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>タスク実行フロー（全11ステップ）</h3>
+  <div class="diagram">
+    <div class="flow">
+      <!-- 朝のみ -->
+      <div class="bracket">
+        <div class="bracket-label">🌅 朝 05:00 のみ</div>
+        <div class="box box-purple box-wide">秘書ルーティン<br><span style="font-size:11px">メール確認 + TODO繰越 + デイリーリサーチ</span></div>
+      </div>
+      <div class="arrow">▼</div>
+
+      <!-- Phase 1: データ収集 -->
+      <div class="bracket">
+        <div class="bracket-label">Phase 1: データ収集</div>
+        <div class="flow-row">
+          <div class="box box-primary"><span class="step-num">1</span>eBay同期<br><span style="font-size:11px">479件取得+ランク計算</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-primary"><span class="step-num">2</span>在庫チェック<br><span style="font-size:11px">348件Selenium巡回</span></div>
+        </div>
+      </div>
+      <div class="arrow">▼</div>
+
+      <!-- Phase 2: 分析・判定 -->
+      <div class="bracket">
+        <div class="bracket-label">Phase 2: 分析・判定</div>
+        <div class="flow-row">
+          <div class="box box-green"><span class="step-num">3</span>在庫アラート<br><span style="font-size:11px">在庫切れ検知</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-green"><span class="step-num">4</span>仕入先候補<br><span style="font-size:11px">代替仕入先選出</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-green"><span class="step-num">5</span>メール取得<br><span style="font-size:11px">Gmail eBay関連抽出</span></div>
+        </div>
+      </div>
+      <div class="arrow">▼</div>
+
+      <!-- Phase 3: リサーチ -->
+      <div class="bracket">
+        <div class="bracket-label">Phase 3: リサーチ・検出</div>
+        <div class="flow-row">
+          <div class="box box-orange"><span class="step-num">6</span>リサーチ<br><span style="font-size:11px">新商品候補調査</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-orange"><span class="step-num">7</span>ライバル検出<br><span style="font-size:11px">Japanセラー検知</span></div>
+        </div>
+      </div>
+      <div class="arrow">▼</div>
+
+      <!-- Phase 4: 統合・最適化 -->
+      <div class="bracket">
+        <div class="bracket-label">Phase 4: 統合・最適化</div>
+        <div class="flow-row">
+          <div class="box box-red"><span class="step-num">8</span>データ統合<br><span style="font-size:11px">JSON→DB突合</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-red"><span class="step-num">9</span>価格最適化<br><span style="font-size:11px">競合比較→提案</span></div>
+          <div class="arrow-h">→</div>
+          <div class="box box-red"><span class="step-num">10</span>売上追跡<br><span style="font-size:11px">Gmail売上記録</span></div>
+        </div>
+      </div>
+      <div class="arrow">▼</div>
+
+      <div class="box box-gray"><span class="step-num">11</span>ニュース確認</div>
+      <div class="arrow">▼</div>
+
+      <!-- 後処理 -->
+      <div class="flow-row">
+        <div class="box box-purple">company_router<br><span style="font-size:11px">結果→.company各部署配信</span></div>
+        <div class="arrow-h">→</div>
+        <div class="box box-purple">Discord通知<br><span style="font-size:11px">サマリー+アラート送信</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 在庫監視パイプライン ===== -->
+<h2>4. 在庫監視パイプライン</h2>
+
+<div class="card">
+  <h3>在庫突合フロー</h3>
+  <div class="diagram">
+    <div class="flow">
+      <div class="flow-row">
+        <div class="box box-primary">eBay API<br><span style="font-size:11px">quantity_ebay取得</span></div>
+        <div style="width:40px"></div>
+        <div class="box box-orange">Selenium巡回<br><span style="font-size:11px">仕入先在庫確認</span></div>
+      </div>
+      <div class="flow-row">
+        <div class="arrow" style="margin-right:60px">▼</div>
+        <div class="arrow" style="margin-left:60px">▼</div>
+      </div>
+      <div class="flow-row">
+        <div class="box box-gray">ebay_listings<br><span style="font-size:11px">quantity_ebay</span></div>
+        <div class="arrow-h">← SKU結合 →</div>
+        <div class="box box-gray">inventory_results<br><span style="font-size:11px">source_status</span></div>
+      </div>
+      <div class="arrow">▼ data_sync</div>
+      <div class="box box-green box-wide">monitor.db 統合<br><span style="font-size:11px">ebay_listings.source_status に反映</span></div>
+      <div class="arrow">▼ UI表示</div>
+      <div class="flow-row">
+        <div class="box box-red">🚨 要対応タブ<br><span style="font-size:11px">eBay在庫≥1 かつ<br>仕入先=在庫無/ページなし</span></div>
+        <div class="arrow-h">→</div>
+        <div class="box box-green">一括在庫0<br><span style="font-size:11px">eBay API で停止</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>対応プラットフォーム（在庫検出方式）</h3>
+  <table>
+    <thead><tr><th>プラットフォーム</th><th>検出方式</th><th>在庫有の指標</th><th>在庫無の指標</th></tr></thead>
+    <tbody>
+      <tr><td>メルカリ</td><td>disabled属性</td><td>購入手続きボタン有効</td><td>disabledボタン</td></tr>
+      <tr><td>Yahoo Auctions</td><td>テキスト検出</td><td>「入札する」</td><td>「このオークションは終了」</td></tr>
+      <tr><td>PayPayフリマ</td><td>Implicit判定</td><td>「購入手続きへ」有</td><td>テキスト非表示</td></tr>
+      <tr><td>ラクマ</td><td>テキスト検出</td><td>「購入に進む」</td><td>「SOLD OUT」</td></tr>
+      <tr><td>楽天市場 / Amazon / Yahoo!ショッピング</td><td>汎用ルール</td><td>カートボタン系</td><td>404/品切れ表示</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== 組織配信 ===== -->
+<h2>5. 組織配信（.company）</h2>
+
+<div class="card">
+  <div class="diagram">
+    <div class="flow">
+      <div class="box box-green box-wide">タスク実行結果</div>
+      <div class="arrow">▼ company_router.py</div>
+      <div class="flow-row" style="gap:12px">
+        <div class="box box-primary" style="min-width:140px">
+          📋 秘書室<br>
+          <span style="font-size:11px">在庫アラート<br>メール<br>売上</span>
+        </div>
+        <div class="box box-orange" style="min-width:140px">
+          📦 日々業務<br>
+          <span style="font-size:11px">eBay同期ログ<br>在庫チェックログ</span>
+        </div>
+        <div class="box box-purple" style="min-width:140px">
+          🔍 リサーチ<br>
+          <span style="font-size:11px">ライバル検出<br>仕入先候補</span>
+        </div>
+        <div class="box box-green" style="min-width:140px">
+          🔧 開発<br>
+          <span style="font-size:11px">AI/技術ニュース</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DB スキーマ ===== -->
+<h2>6. データベース（monitor.db）</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h3>ebay_listings（メインテーブル）</h3>
+    <table>
+      <thead><tr><th>カラム</th><th>型</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td>ebay_item_id</td><td>TEXT UNIQUE</td><td>eBay商品ID</td></tr>
+        <tr><td>sku</td><td>TEXT</td><td>SKU（結合キー）</td></tr>
+        <tr><td>title</td><td>TEXT</td><td>商品タイトル</td></tr>
+        <tr><td>current_price</td><td>REAL</td><td>販売価格 USD</td></tr>
+        <tr><td>quantity_ebay</td><td>INT</td><td>eBay在庫数</td></tr>
+        <tr><td>source</td><td>TEXT</td><td>仕入先名</td></tr>
+        <tr><td>source_url</td><td>TEXT</td><td>仕入先URL</td></tr>
+        <tr><td>source_status</td><td>TEXT</td><td>在庫有/無/ページなし</td></tr>
+        <tr><td>rank</td><td>TEXT</td><td>S〜Eランク</td></tr>
+        <tr><td>metrics_score</td><td>REAL</td><td>ランク計算スコア</td></tr>
+        <tr><td>watch_count</td><td>INT</td><td>Watch数</td></tr>
+        <tr><td>view_count</td><td>INT</td><td>View数</td></tr>
+        <tr><td>sales_count_30d</td><td>INT</td><td>30日販売数</td></tr>
+        <tr><td>competitor_min_price</td><td>REAL</td><td>競合最安値</td></tr>
+        <tr><td>price_suggestion</td><td>REAL</td><td>価格提案</td></tr>
+        <tr><td>total_sold_count</td><td>INT</td><td>累計販売数</td></tr>
+        <tr><td>total_revenue_usd</td><td>REAL</td><td>累計売上</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>その他テーブル</h3>
+    <table>
+      <thead><tr><th>テーブル</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td>monitored_items</td><td>在庫監視対象リスト</td></tr>
+        <tr><td>site_configs</td><td>仕入先サイト設定（33サイト）</td></tr>
+        <tr><td>check_logs</td><td>在庫チェック履歴</td></tr>
+        <tr><td>sales_history</td><td>売上履歴</td></tr>
+      </tbody>
+    </table>
+    <h3 style="margin-top:20px">SKUフォーマット</h3>
+    <table>
+      <thead><tr><th>プレフィックス</th><th>仕入先</th></tr></thead>
+      <tbody>
+        <tr><td>ebayme_</td><td>メルカリ</td></tr>
+        <tr><td>ebayMS_</td><td>メルカリショップ</td></tr>
+        <tr><td>ebayh_ / ebayyh_</td><td>Yahoo Auctions</td></tr>
+        <tr><td>ebayPF_</td><td>PayPayフリマ</td></tr>
+        <tr><td>ebayrm_</td><td>ラクマ</td></tr>
+        <tr><td>ebayRT_</td><td>楽天市場</td></tr>
+        <tr><td>ebayRB_</td><td>楽天ブックス</td></tr>
+        <tr><td>ebayYS_</td><td>Yahoo!ショッピング</td></tr>
+        <tr><td>ebayAM_</td><td>Amazon</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== ファイル構成 ===== -->
+<h2>7. ファイル構成</h2>
+
+<div class="card" style="font-size:13px; font-family: monospace;">
+<pre style="color: var(--text); white-space: pre-wrap;">
+ebay-manager/
+├── app.py                          <span style="color:var(--muted)"># Streamlit UI (1996行)</span>
+├── daily_scheduler.py              <span style="color:var(--muted)"># 定時実行エンジン (418行)</span>
+├── run_scheduler.py                <span style="color:var(--muted)"># タスクスケジューラ用ラッパー</span>
+├── run_task.py                     <span style="color:var(--muted)"># CLI即時実行ツール</span>
+├── company_router.py               <span style="color:var(--muted)"># 結果→.company部署配信 (505行)</span>
+├── sku_conversion.py               <span style="color:var(--muted)"># SKU→URL変換エンジン</span>
+├── sku_mapping_manager.py          <span style="color:var(--muted)"># SKUマッピング管理</span>
+├── inventory_checker_selenium.py   <span style="color:var(--muted)"># Selenium在庫巡回 (700行+)</span>
+├── company_integration.py          <span style="color:var(--muted)"># .company連携</span>
+├── harness_test.py                 <span style="color:var(--muted)"># パイプライン自己検証 (64項目)</span>
+│
+├── tasks/                          <span style="color:var(--accent)"># ビジネスロジック (18ファイル)</span>
+│   ├── task_ebay_sync.py           <span style="color:var(--muted)"># eBay API同期</span>
+│   ├── task_inventory_check.py     <span style="color:var(--muted)"># 在庫チェック実行</span>
+│   ├── task_inventory_alert.py     <span style="color:var(--muted)"># 在庫切れアラート</span>
+│   ├── task_supplier_select.py     <span style="color:var(--muted)"># 仕入先候補選出</span>
+│   ├── task_email_pickup.py        <span style="color:var(--muted)"># Gmail取得</span>
+│   ├── task_research.py            <span style="color:var(--muted)"># 商品リサーチ</span>
+│   ├── task_rival_detection.py     <span style="color:var(--muted)"># ライバル検出</span>
+│   ├── task_sync_data_stores.py    <span style="color:var(--muted)"># JSON→DB統合</span>
+│   ├── task_price_optimization.py  <span style="color:var(--muted)"># 価格最適化</span>
+│   ├── task_sales_tracking.py      <span style="color:var(--muted)"># 売上追跡</span>
+│   ├── task_news_check.py          <span style="color:var(--muted)"># ニュース確認</span>
+│   └── task_company_secretary.py   <span style="color:var(--muted)"># 秘書ルーティン</span>
+│
+├── monitor/                        <span style="color:var(--accent)"># データ層</span>
+│   ├── database.py                 <span style="color:var(--muted)"># SQLite DB管理</span>
+│   ├── ebay_client.py              <span style="color:var(--muted)"># eBay Trading API</span>
+│   ├── ebay_sync.py                <span style="color:var(--muted)"># 同期+ランク計算</span>
+│   ├── scrapers.py                 <span style="color:var(--muted)"># スクレイピング</span>
+│   └── notifier.py                 <span style="color:var(--muted)"># 通知</span>
+│
+├── notifiers/
+│   └── discord_notifier.py         <span style="color:var(--muted)"># Discord通知 (284行)</span>
+│
+├── config/
+│   ├── schedule_config.json        <span style="color:var(--muted)"># 実行時刻+タスク設定</span>
+│   └── settings.json               <span style="color:var(--muted)"># APIキー等</span>
+│
+├── data/
+│   ├── monitor.db                  <span style="color:var(--muted)"># メインDB</span>
+│   ├── sourced_items_for_playwright.csv <span style="color:var(--muted)"># 在庫チェック入力</span>
+│   ├── inventory_check_results.json    <span style="color:var(--muted)"># 在庫チェック結果</span>
+│   └── sku_mappings.json           <span style="color:var(--muted)"># SKU変換ルール</span>
+│
+└── logs/
+    ├── scheduler.log               <span style="color:var(--muted)"># スケジューラログ</span>
+    └── run_task.log                <span style="color:var(--muted)"># 手動実行ログ</span>
+</pre>
+</div>
+
+<!-- ===== 技術スタック ===== -->
+<h2>8. 技術スタック</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h3>実行環境</h3>
+    <table>
+      <tbody>
+        <tr><td>OS</td><td>Windows 11</td></tr>
+        <tr><td>Python</td><td>3.13</td></tr>
+        <tr><td>UI</td><td>Streamlit</td></tr>
+        <tr><td>DB</td><td>SQLite3</td></tr>
+        <tr><td>スクレイピング</td><td>Selenium + ChromeDriver</td></tr>
+        <tr><td>スケジューラ</td><td>APScheduler + Windows Task Scheduler</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>外部連携</h3>
+    <table>
+      <tbody>
+        <tr><td>eBay Trading API</td><td>出品取得・在庫変更</td></tr>
+        <tr><td>Gmail API / MCP</td><td>メール取得・トリアージ</td></tr>
+        <tr><td>Discord Webhook</td><td>アラート・日次レポート</td></tr>
+        <tr><td>Google OAuth</td><td>Gmail認証</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== 定時実行の詳細 ===== -->
+<h2>9. 定時実行タスク詳細</h2>
+
+<table>
+  <thead><tr><th>Step</th><th>タスク</th><th>処理内容</th><th>入力</th><th>出力</th><th>所要時間</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="step-num">1</span></td><td>eBay同期</td>
+      <td>eBay APIで全出品取得→DB upsert→ランク計算</td>
+      <td>eBay API</td><td>ebay_listings 479件</td>
+      <td>~8分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">2</span></td><td>在庫チェック</td>
+      <td>仕入先URLをSeleniumで巡回→在庫判定</td>
+      <td>sourced_items CSV</td><td>inventory_results JSON</td>
+      <td>~40分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">3</span></td><td>在庫アラート</td>
+      <td>在庫有→無に変化した商品を検出</td>
+      <td>前回結果との差分</td><td>アラートリスト</td>
+      <td><1秒</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">4</span></td><td>仕入先候補</td>
+      <td>在庫切れ商品の代替仕入先を選出</td>
+      <td>在庫切れリスト</td><td>候補リスト</td>
+      <td>~1分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">5</span></td><td>メール取得</td>
+      <td>Gmail APIでeBay関連メール抽出</td>
+      <td>Gmail API</td><td>メール件数・詳細</td>
+      <td>~10秒</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">6</span></td><td>リサーチ</td>
+      <td>新商品候補の調査（基準ファイル参照）</td>
+      <td>criteria.md</td><td>research/notes/</td>
+      <td>~2分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">7</span></td><td>ライバル検出</td>
+      <td>同一商品を出品するJapanセラーを検知</td>
+      <td>eBay API</td><td>ライバルリスト</td>
+      <td>~5分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">8</span></td><td>データ統合</td>
+      <td>JSON→DB突合（SKU変換+在庫ステータス）</td>
+      <td>各種JSON</td><td>monitor.db更新</td>
+      <td><1秒</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">9</span></td><td>価格最適化</td>
+      <td>競合価格比較→価格改定提案</td>
+      <td>ebay_listings</td><td>提案リスト</td>
+      <td>~2分</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">10</span></td><td>売上追跡</td>
+      <td>Gmailの売上通知→DB記録</td>
+      <td>Gmail</td><td>sales_history</td>
+      <td>~10秒</td>
+    </tr>
+    <tr>
+      <td><span class="step-num">11</span></td><td>ニュース確認</td>
+      <td>AI/eBay関連ニュース取得</td>
+      <td>Web</td><td>ニュースサマリー</td>
+      <td>~1分</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>合計所要時間:</strong> 約60分/回 × 4回/日 = 約4時間/日の自動処理<br>
+  <strong>在庫チェック</strong>が全体の約67%を占める（Selenium巡回のため）
+</div>
+
+<!-- ===== フッター ===== -->
+<div style="margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; text-align: center;">
+  eBay Manager Spec v5.0 — Generated by Claude Opus 4.6 — 2026-04-15
+</div>
+
+</body>
+</html>

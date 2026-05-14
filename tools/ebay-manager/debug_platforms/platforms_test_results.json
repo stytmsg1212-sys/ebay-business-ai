@@ -1,0 +1,62 @@
+[
+  {
+    "platform": "Yahoo Auctions",
+    "label": "在庫有",
+    "url": "https://auctions.yahoo.co.jp/jp/auction/f1225404921",
+    "expected": "在庫有",
+    "result": "在庫有",
+    "passed": true,
+    "title": "Yahoo!オークション - EIMAC 真空管 3CX1200A7",
+    "visible_text_length": 2763
+  },
+  {
+    "platform": "Yahoo Auctions",
+    "label": "在庫無",
+    "url": "https://auctions.yahoo.co.jp/jp/auction/o1221650119",
+    "expected": "在庫無",
+    "result": "在庫無",
+    "passed": true,
+    "title": "Yahoo!オークション - [DW] 8日保証 SelfTestOK R6243 ADVANTEST アド...",
+    "visible_text_length": 9486
+  },
+  {
+    "platform": "ラクマ",
+    "label": "在庫有",
+    "url": "https://item.fril.jp/f8da0517978940b30addc31183c06db6?rtg=b27b4775b0f688c980ea28ce76f7db99",
+    "expected": "在庫有",
+    "result": "在庫有",
+    "passed": true,
+    "title": "ファーバーカステルポリクロモス　１２０色木箱の通販 by ケケ's shop｜ラクマ",
+    "visible_text_length": 1259
+  },
+  {
+    "platform": "ラクマ",
+    "label": "在庫無",
+    "url": "https://item.fril.jp/1cc444fd6b66084eb187d9cbcfbf351c",
+    "expected": "在庫無",
+    "result": "在庫無",
+    "passed": true,
+    "title": "【限定品】ユニカラー 240リミテッドエディション 色鉛筆の通販 by pipi´s shop｜ラクマ",
+    "visible_text_length": 2413
+  },
+  {
+    "platform": "PayPayフリマ",
+    "label": "在庫有",
+    "url": "https://paypayfleamarket.yahoo.co.jp/item/z587339852",
+    "expected": "在庫有",
+    "result": "在庫有",
+    "passed": true,
+    "title": "DENON PMA-900HNE シルバー｜Yahoo!フリマ（旧PayPayフリマ）",
+    "visible_text_length": 2599
+  },
+  {
+    "platform": "PayPayフリマ",
+    "label": "在庫無",
+    "url": "https://paypayfleamarket.yahoo.co.jp/item/z582394556",
+    "expected": "在庫無",
+    "result": "在庫無",
+    "passed": true,
+    "title": "Denon PMA-900HNE 美品 元箱付 付属品完備 動作良好 非喫煙環境｜Yahoo!フリマ（旧PayPayフリマ）",
+    "visible_text_length": 3234
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "date": "2026-05-01",
+  "timestamp": "2026-05-01T22:34:41.333511",
+  "new_sellers": [
+    {
+      "seller": "osap10",
+      "feedback_score": 289,
+      "competing_items": [
+        {
+          "title": "[☆New] Sanrio x Ohuhu Marker Pens 80 Colors Pastel Marker Set Brush Type",
+          "price_usd": 119.49,
+          "keyword": "Ohuhu x Sanrio 80"
+        }
+      ],
+      "first_seen": "2026-05-01T22:34:39.889636",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 149
+}

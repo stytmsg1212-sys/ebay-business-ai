@@ -1,0 +1,85 @@
+{
+  "checked_at": "2026-04-12T15:01:41.607874",
+  "total_items": 5,
+  "stats": {
+    "in_stock": 2,
+    "out_of_stock": 2,
+    "page_not_found": 0,
+    "error": 1
+  },
+  "by_source": {
+    "メルカリ": {
+      "total": 1,
+      "in_stock": 0,
+      "out_of_stock": 1,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "Yahoo Auctions": {
+      "total": 3,
+      "in_stock": 2,
+      "out_of_stock": 1,
+      "page_not_found": 0,
+      "error": 0
+    },
+    "楽天市場": {
+      "total": 1,
+      "in_stock": 0,
+      "out_of_stock": 0,
+      "page_not_found": 0,
+      "error": 1
+    }
+  },
+  "results": [
+    {
+      "ebay_id": "356663753260",
+      "sku": "ebayyh_g1225005638",
+      "source": "Yahoo Auctions",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225005638",
+      "status": "在庫有",
+      "retry_count": 0,
+      "error": null,
+      "checked_at": "2026-04-12T15:01:27.870667"
+    },
+    {
+      "ebay_id": "356742447708",
+      "sku": "ebayyh_v1179542044",
+      "source": "Yahoo Auctions",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1179542044",
+      "status": "在庫無",
+      "retry_count": 0,
+      "error": null,
+      "checked_at": "2026-04-12T15:01:30.655313"
+    },
+    {
+      "ebay_id": "356776795931",
+      "sku": "ebayyh_x1223813859",
+      "source": "Yahoo Auctions",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1223813859",
+      "status": "在庫有",
+      "retry_count": 0,
+      "error": null,
+      "checked_at": "2026-04-12T15:01:33.131118"
+    },
+    {
+      "ebay_id": "356420645893",
+      "sku": "ebayme_32400850054",
+      "source": "メルカリ",
+      "url": "https://jp.mercari.com/item/m32400850054",
+      "status": "在庫無",
+      "retry_count": 0,
+      "error": null,
+      "checked_at": "2026-04-12T15:01:39.757240"
+    },
+    {
+      "ebay_id": "356788801428",
+      "sku": "ebayRT_sg6ei",
+      "source": "楽天市場",
+      "url": "https://item.rakuten.co.jp/sg6ei/",
+      "status": "不明",
+      "retry_count": 0,
+      "error": null,
+      "checked_at": "2026-04-12T15:01:41.607768"
+    }
+  ]
+}
