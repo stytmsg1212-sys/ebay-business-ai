@@ -44,7 +44,7 @@
 |----------|------|
 | 本 CLAUDE.md (project root) | プロジェクト構造・絶対ルール・規約 |
 | `~/.claude/rules/*.md` (user global) | 全プロジェクト共通 coding / security |
-| `.claude/rules/*.md` (project 横断) | Karpathy / DB migration / silent-skip / supplier-matching / **sku-rules** / **md-files-can-be-wrong** |
+| `.claude/rules/*.md` (project 横断) | Karpathy / DB migration / silent-skip / supplier-matching / **sku-rules** / **md-files-can-be-wrong** / **discord-notification** |
 | `tools/ebay-manager/CLAUDE.md` (subdir) | eBay 規制 4 セクション (出品 / 通関 / DDP / ランク) |
 | `USER_MANUAL.md` (project root) | **user (人間) が手で実行する手順** 集約 (scheduler 操作 / Phase 7 監視・緊急停止 / kill switch / メンテ / トラブル対処 / slash command 早見表) |
 | `~/.claude/projects/.../memory/feedback_*.md` | 個別事故 / 学び |

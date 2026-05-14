@@ -7,7 +7,7 @@ REM 専用 user-data-dir を使うので別プロセスとして起動される.
 setlocal
 
 set CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
-set PROFILE_DIR=C:\Users\gucch\OneDrive\work\claude\tools\ebay-manager\data\.chrome_cdp_profile
+set PROFILE_DIR=C:\Users\gucch\projects\claude\tools\ebay-manager\data\.chrome_cdp_profile
 
 echo ===========================================
 echo Chrome CDP debug port 9222 起動

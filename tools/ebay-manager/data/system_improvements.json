@@ -1111,5 +1111,33 @@
     "status": "未着手",
     "priority": "通常",
     "created": "2026-05-14"
+  },
+  {
+    "id": 210,
+    "tag": "W126",
+    "title": "OneDrive → Local + GitHub 移行 (project path 一新)",
+    "description": "Cal Rueb red flag #1 (OneDrive 同期依存 = 単一障害点) 解消 + GitHub 履歴管理 + hook の dynamic hash 化を一気に完遂. 移行先: C:\\Users\\gucch\\projects\\claude\\. GitHub: stytmsg1212-sys/ebay-business-ai (Private, commit 4a0972b push 済). 完了: robocopy (1.82GB / 4368 files / 12 秒) + 40 件 path 置換 (11 ファイル) + hook 4 個 refactor ($CLAUDE_PROJECT_DIR + dynamic hash) + .gitignore 強化 (secret/video/selenium/scraper_debug 除外) + WAL checkpoint + integrity_check OK + Hash dir COPY (memory 143 件). 2026-05-14 夜時点: 新 path scheduler PID 46588 起動 + watchdog.ps1 + Task Scheduler watchdog entry path 修正. **Phase 3 verification 進行中 (5/14 19:24 〜 5/21 19:24、7 日間 monitor、5 fail signal #1-#4 クリア、#5 は 20:00 cron で verify 予定)**. 残作業: daily scheduler Task の admin 権限 path 修正 (LastRun 04-18 で低リスク) / 旧 hash dir 削除 (7 日後) / OneDrive 旧 project 削除 (30 日後) / start_chrome_cdp.bat path 修正 (CDP 利用頻度低).",
+    "status": "進行中 (Phase 3 verification 初日 5 fail signal 全クリア、残り 6 日 + 5/15 07:00 W122 初発火が本山)",
+    "priority": "高",
+    "created": "2026-05-14"
+  },
+  {
+    "id": 211,
+    "tag": "W127",
+    "title": "SessionStart hook auto-load 間欠不具合 + ERROR grep 精度改善",
+    "description": "2026-05-14 W126 移行後の初回 session 起動時、新 hash dir に _NEXT_SESSION.md (3840 bytes、17:01 書込) が存在するのに session-start-load-incantation.sh が「[INFO] _NEXT_SESSION.md なし (初回起動 or session-close 未実行)」を report → user 補助なしでは前 session 文脈 (W126) を完全に失っていた重大運用リスク. 同セッション内で手動再現を試みたが正常動作 (フル内容読込 + scheduler 警告生成) = 間欠的 / one-time の不具合で root cause 特定不能. 仮説: (a) Claude Code 起動直後の hook 出力 cache / (b) 環境変数 CLAUDE_PROJECT_DIR の race / (c) hook timing race / (d) MEM_DIR resolution での Windows path 区切りエッジケース. 対策案: (1) hook script に永続 debug log 追加 (stderr → logs/sessionstart_hook.log) で次回再現時に即原因特定 (2) Step 4 scheduler.log ERROR grep の false positive 削減 (多重起動防止 ERROR は除外、Traceback / locked / silent.skip に絞る) (3) hookSpecificOutput に MEM_DIR + 解決 ROOT_DIR を一行明示 (debug 用) (4) `_NEXT_SESSION.md` の最終書込時刻が session_start より新しい場合の sanity check.",
+    "status": "対策案 #1 #2 #3 #4 実装完了 (2026-05-14 本 session 内). 残課題: 次回 hook 不具合再現時の log 解析で root cause 特定",
+    "priority": "高",
+    "created": "2026-05-14",
+    "progress_note": "(1) 永続 debug log = tools/ebay-manager/logs/sessionstart_hook.log に env+path+分岐結果記録 (2) ERROR grep から多重起動防止/concurrent_run_skip false positive 除外 (3) additionalContext 冒頭に [hook] ROOT_DIR/MEM_DIR を 1 行明示 (4) _NEXT_SESSION.md mtime が現在時刻+60s 以上未来なら [SANITY] warning"
+  },
+  {
+    "id": 212,
+    "tag": "W128",
+    "title": "Discord メタ health check + Email 二重通知 (user 視認保証)",
+    "description": "2026-05-14 W126 Phase 3 verification で発覚: scheduler は今日 5 回 Discord webhook POST 成功 (HTTP 204 No Content) していたが user は **別 Discord アカウント login で気付けず**、過去 N 日間のヘルスチェック / 予算アラート / silent skip 検出 alert がすべて user 不到達だった (silent skip ではないが「user 監視機構が user 不到達」のメタ silent skip 状態). 対策: (1) Discord 通知の **user 視認確認** を週 1 回 user に問う仕組み (例: 毎週月曜の morning_brief に「先週の Discord 通知に気付いたか」1 問追加) (2) **Email 二重通知** (HV 注文 / silent skip 検出 / health check missed) を Gmail SMTP 経由で並列送信、Discord と email の AND で通知到達率を冗長化 (3) **Heartbeat 通知** (毎日 06:00 etc) を Discord に固定送信して「届いてる/届いてない」を user が定期的に sanity check できるようにする (4) CLAUDE.md project root に Discord 設定 (server / channel / login account メモ) を明示記載. 関連 R-11 (feedback_discord_visual_verify_required.md). 出典: 2026-05-14 W126 Phase 3 verification 5 fail signal #5.",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-14"
   }
 ]

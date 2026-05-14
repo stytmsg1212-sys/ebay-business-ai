@@ -3,7 +3,7 @@
 # daily_scheduler.py プロセスが落ちていたら再起動 + Discord 通知。
 # 出典: 2026-04-30 PC sleep で 24h silent skip 事故 (Cal Rueb red flag #1 単一障害点)。
 $ErrorActionPreference = 'Stop'
-$BaseDir = 'C:\Users\gucch\OneDrive\work\claude\tools\ebay-manager'
+$BaseDir = 'C:\Users\gucch\projects\claude\tools\ebay-manager'
 $LogFile = Join-Path $BaseDir 'logs\watchdog.log'
 $LockFile = Join-Path $BaseDir '.watchdog_lock'
 

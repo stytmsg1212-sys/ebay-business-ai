@@ -31,6 +31,19 @@ export MEM_DIR
 # stderr に DEBUG ログ (journal で動作確認可、stdout には影響しない)
 echo "[DEBUG session-start-load-incantation] fired @ $(date '+%Y-%m-%d %H:%M:%S')" >&2
 
+# W127 #1 (2026-05-14): 永続 debug log (次回 hook 不具合再現時の root cause 特定用)
+HOOK_LOG="$ROOT_DIR/tools/ebay-manager/logs/sessionstart_hook.log"
+mkdir -p "$(dirname "$HOOK_LOG")" 2>/dev/null
+{
+  echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
+  echo "  CLAUDE_PROJECT_DIR='${CLAUDE_PROJECT_DIR:-<unset>}'"
+  echo "  HOME='${HOME:-<unset>}'"
+  echo "  ROOT_DIR='${ROOT_DIR}'"
+  echo "  PROJECT_HASH='${PROJECT_HASH}'"
+  echo "  MEM_DIR='${MEM_DIR}'"
+  echo "  PWD='$(pwd)'"
+} >> "$HOOK_LOG" 2>/dev/null || true
+
 # 5 段検査を Python でまとめて実行 (json.dumps 一発で escape 確実、Issue #13650 回避)
 python <<'PYEOF'
 import os, sys, json, time, hashlib, re
@@ -50,33 +63,68 @@ ns_file = Path(os.environ['MEM_DIR']) / '_NEXT_SESSION.md'
 mem_dir = Path(os.environ['MEM_DIR'])
 root_dir = Path(os.environ['ROOT_DIR'])
 
+# W127 #1 (2026-05-14): 永続 debug log 追記用 helper
+hook_log = root_dir / 'tools' / 'ebay-manager' / 'logs' / 'sessionstart_hook.log'
+
+def _log_debug(msg: str) -> None:
+    """次回不具合再現時の root cause 特定のため stat/分岐を永続記録. 失敗は無視 (起動を妨げない)."""
+    try:
+        with hook_log.open('a', encoding='utf-8') as f:
+            f.write(f'  py: {msg}\n')
+    except Exception:
+        pass
+
+# W127 #3 (2026-05-14): hookSpecificOutput 冒頭に hook 解決状態を明示 (assistant 即視用)
+debug_header = f'[hook] ROOT_DIR={root_dir} MEM_DIR={mem_dir}'
+
 # Step 1: _NEXT_SESSION.md Read + 不在/0 byte fallback
 try:
-    if not ns_file.exists() or ns_file.stat().st_size == 0:
-        # 初回起動 or session-close 未実行 = silent skip 防止のため明示通知
+    if not ns_file.exists():
+        _log_debug(f'ns_file NOT EXISTS path={ns_file}')
         print(json.dumps({
             'hookSpecificOutput': {
                 'hookEventName': 'SessionStart',
-                'additionalContext': '[INFO] _NEXT_SESSION.md なし (初回起動 or session-close 未実行). 通常起動 = MEMORY.md 経由で文脈把握してください.'
+                'additionalContext': f'{debug_header}\n[INFO] _NEXT_SESSION.md なし (初回起動 or session-close 未実行). 通常起動 = MEMORY.md 経由で文脈把握してください.'
+            }
+        }, ensure_ascii=False))
+        sys.exit(0)
+
+    ns_stat = ns_file.stat()
+    _log_debug(f'ns_file size={ns_stat.st_size} mtime={time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ns_stat.st_mtime))}')
+
+    if ns_stat.st_size == 0:
+        _log_debug('ns_file size=0 -> fallback')
+        print(json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'SessionStart',
+                'additionalContext': f'{debug_header}\n[INFO] _NEXT_SESSION.md が 0 byte (session-close 中断 / 書き込み失敗の可能性). 通常起動 = MEMORY.md 経由で文脈把握してください.'
             }
         }, ensure_ascii=False))
         sys.exit(0)
 
     content = ns_file.read_text(encoding='utf-8')
+    _log_debug(f'ns_file content_len={len(content)}')
 except Exception as e:
-    # OneDrive sync lock 等の競合 = silent skip 防止のため明示通知
+    _log_debug(f'ns_file read EXCEPTION {type(e).__name__}: {e}')
     print(json.dumps({
         'hookSpecificOutput': {
             'hookEventName': 'SessionStart',
-            'additionalContext': f'[WARN] _NEXT_SESSION.md 読込失敗 ({type(e).__name__}: {e}). session-resume skill で手動 review 推奨.'
+            'additionalContext': f'{debug_header}\n[WARN] _NEXT_SESSION.md 読込失敗 ({type(e).__name__}: {e}). session-resume skill で手動 review 推奨.'
         }
     }, ensure_ascii=False))
     sys.exit(0)
 
-# Step 2: staleness 3 段判定
+# Step 2: staleness 3 段判定 + W127 #4 mtime 未来 sanity check
 mtime = ns_file.stat().st_mtime
-age_hours = (time.time() - mtime) / 3600
+now_epoch = time.time()
+age_hours = (now_epoch - mtime) / 3600
 age_days = age_hours / 24
+
+sanity_warning = ''
+if mtime > now_epoch + 60:
+    # 60 秒以上未来 = システム時計ズレ or file timestamp 改ざんの異常
+    sanity_warning = f'[SANITY] _NEXT_SESSION.md mtime ({time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))}) が現在時刻より {(mtime - now_epoch):.0f} 秒未来. system clock 確認推奨.\n\n'
+    _log_debug(f'sanity FUTURE mtime delta={(mtime - now_epoch):.0f}s')
 
 if age_hours <= 24:
     stale_prefix = ''
@@ -111,7 +159,15 @@ if sched_log.exists():
             size = f.tell()
             f.seek(max(0, size - 8000))
             lines = f.readlines()[-50:]
-        hits = [l.strip() for l in lines if re.search(r'ERROR|CRITICAL|database is locked|silent.skip', l, re.I)][:5]
+        # W127 (2026-05-14): 「別のスケジューラーが稼働中 ... 多重起動防止」ERROR は正常動作のため除外.
+        # 他の ERROR / Traceback / locked / silent.skip / CRITICAL は引き続き検出.
+        hits = []
+        for l in lines:
+            if re.search(r'CRITICAL|Traceback|database is locked|silent.skip|RESTART_FAILED', l, re.I):
+                hits.append(l.strip())
+            elif re.search(r'ERROR', l) and '多重起動防止' not in l and 'concurrent_run_skip' not in l:
+                hits.append(l.strip())
+        hits = hits[:5]
         if hits:
             sched_warning = f'[SCHEDULER] 直近 50 行に異常行 {len(hits)} 件:\n'
             for h in hits:
@@ -136,8 +192,8 @@ if ss_block:
         if tasks:
             silent_skip_warning = f'🚨 機会損失中 ({len(tasks)} task silent skip 継続): ' + ', '.join(tasks) + '\n\n'
 
-# 全文構築 (prefix + body)
-full_context = stale_prefix + md5_warning + sched_warning + silent_skip_warning + content
+# 全文構築 (W127 #3: debug_header を冒頭、#4: sanity_warning を直後)
+full_context = f'{debug_header}\n\n' + sanity_warning + stale_prefix + md5_warning + sched_warning + silent_skip_warning + content
 
 # 7000 char strict 上限 enforce (defensive、公式 char 制限は未確認)
 # HIGH-3 (code-reviewer 2026-04-30): 「公式 10000 char」と書いていたが一次情報未照合のため
@@ -146,6 +202,8 @@ MAX_CHARS = 7000
 if len(full_context) > MAX_CHARS:
     truncated_marker = f'\n\n[... {MAX_CHARS} char 上限超過、_NEXT_SESSION.md 直接 Read 推奨: {ns_file} ...]'
     full_context = full_context[:MAX_CHARS - len(truncated_marker)] + truncated_marker
+
+_log_debug(f'OK full_context_len={len(full_context)}')
 
 # JSON 出力 (Claude Code 公式仕様 hookSpecificOutput.additionalContext)
 print(json.dumps({
