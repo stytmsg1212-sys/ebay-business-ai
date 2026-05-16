@@ -409,7 +409,13 @@ def revise_inventory_quantity(
     except Exception as e:
         return {'success': False, 'message': f"通信エラー: {e}"}
 
-    root = ET.fromstring(resp.text)
+    # F5 (Codex 2026-05-16): HTTP 200 でも HTML/不正 body が返ると ET.fromstring
+    # が ParseError を送出し関数外へ伝播 (inventory_sync が qty_sync_error を
+    # 残せず UI/タスクがクラッシュ). graceful に success:False で返す.
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {'success': False, 'message': f"XML parse error: {e}"}
     ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
 
     ack = root.findtext("ns:Ack", namespaces=ns)
@@ -419,6 +425,82 @@ def revise_inventory_quantity(
         errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
         msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
         return {'success': False, 'message': f"API エラー: {msg}"}
+
+
+def _build_get_user_preferences_xml() -> str:
+    """GetUserPreferences (ShowOutOfStockControlPreference のみ要求) リクエスト XML."""
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<GetUserPreferencesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    <eBayAuthToken>{{USER_TOKEN}}</eBayAuthToken>
+  </RequesterCredentials>
+  <ShowOutOfStockControlPreference>true</ShowOutOfStockControlPreference>
+  <Version>{API_VERSION}</Version>
+</GetUserPreferencesRequest>"""
+
+
+def get_out_of_stock_control_enabled(
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> Optional[bool]:
+    """eBay Trading API GetUserPreferences で Out-of-Stock Control の ON/OFF を取得.
+
+    W133 (2026-05-16): 在庫0 の listing を ReviseInventoryStatus で数量0 に
+    する前に **必ず** OOS Control が ON か機械検証するための読み取り専用関数.
+
+    OOS Control が ON のとき eBay は数量0 listing を「販売停止 (hidden)」に
+    するだけで listing 自体は残る (検索順位 / watcher 保持). OFF だと数量0 で
+    listing が **自動 End** され Defect / 再出品コスト発生.
+
+    Returns:
+        True  : OOS Control 有効 (数量0 revise を安全に実行可)
+        False : OOS Control 無効 (数量0 revise すると listing が落ちる → 抑止すべき)
+        None  : 通信 / 認証 / parse 失敗 = **不明** (安全側に倒し抑止判断に使う)
+                Q0 silent skip 防止: 不明を True と誤魔化さず None で返す.
+    """
+    user_token = _resolve_active_token(user_token)
+    xml_body = _build_get_user_preferences_xml().replace("{USER_TOKEN}", user_token)
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "GetUserPreferences",
+        "X-EBAY-API-APP-NAME": app_id,
+        "X-EBAY-API-DEV-NAME": dev_id,
+        "X-EBAY-API-CERT-NAME": cert_id,
+        "Content-Type": "text/xml",
+    }
+    try:
+        resp = httpx.post(
+            TRADING_API_URL, content=xml_body.encode("utf-8"),
+            headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+    except (httpx.HTTPError, OSError) as e:
+        logger.warning(f"GetUserPreferences 通信エラー: {e}")
+        return None
+
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        logger.warning(f"GetUserPreferences XML parse 失敗: {e}")
+        return None
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    ack = root.findtext("ns:Ack", namespaces=ns)
+    if ack not in ("Success", "Warning"):
+        errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+        msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+        logger.warning(f"GetUserPreferences API エラー: {msg}")
+        return None
+
+    raw = root.findtext(
+        ".//ns:OutOfStockControlPreference", namespaces=ns
+    )
+    if raw is None:
+        logger.warning("GetUserPreferences に OutOfStockControlPreference が無い")
+        return None
+    return raw.strip().lower() == "true"
 
 
 def _build_revise_item_sku_xml(item_id: str, new_sku: str) -> str:

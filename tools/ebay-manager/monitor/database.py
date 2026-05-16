@@ -1984,6 +1984,54 @@ def init_db():
                 pass
             conn.execute("PRAGMA user_version = 39")
 
+        # v40 (W133 / 2026-05-16): 有在庫管理 — eBay 在庫数 sync 痕跡 + 仕入確認ログ.
+        # 1) ebay_listings に 3 列 ALTER:
+        #    last_qty_sync_at      : 最終 ReviseInventoryStatus 成功時刻
+        #    last_synced_quantity  : その時 eBay へ送った数量 (= inventory_count)
+        #    qty_sync_error        : sync 失敗 / 数量0 revise 抑止 の理由 (NULL=正常)
+        #    → Q0 silent skip 防止: sync 失敗が DB 列に必ず残る (UI + Discord と併用).
+        # 2) purchase_confirmation_log 新規:
+        #    仕入入荷メール → user が listing と仕入個数を確定した履歴.
+        #    dedupe = UNIQUE(gmail_id, ebay_item_id). SKU は dedupe キーに **含めない**
+        #    (SKU は在庫種別フラグであって listing 識別キーではない / sku-rules.md).
+        #    listing 識別は ebay_item_id 単位 (migration v26 / W7-A 単位化準拠).
+        if schema_ver < 40:
+            for _col_sql in (
+                "ALTER TABLE ebay_listings ADD COLUMN last_qty_sync_at TIMESTAMP",
+                "ALTER TABLE ebay_listings ADD COLUMN last_synced_quantity INTEGER",
+                "ALTER TABLE ebay_listings ADD COLUMN qty_sync_error TEXT",
+            ):
+                try:
+                    conn.execute(_col_sql)
+                except sqlite3.OperationalError:
+                    pass
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS purchase_confirmation_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        gmail_id TEXT NOT NULL,
+                        ebay_item_id TEXT NOT NULL,
+                        sku TEXT,
+                        quantity_added INTEGER NOT NULL,
+                        old_inventory_count INTEGER,
+                        new_inventory_count INTEGER,
+                        ebay_qty_sync_ok INTEGER NOT NULL DEFAULT 0,
+                        confirmed_by TEXT DEFAULT 'user',
+                        confirmed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(gmail_id, ebay_item_id)
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_pcl_item "
+                    "ON purchase_confirmation_log(ebay_item_id, confirmed_at DESC)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            conn.execute("PRAGMA user_version = 40")
+
 
 # ---- サイト設定 ----
 

@@ -84,6 +84,7 @@ from tabs.tab_scheduled_execution import render_tab as render_scheduled_executio
 # W24 Research 脳 タブ
 from tabs.tab_research_brain import render_tab as render_research_brain_tab
 from tabs.tab_morning_discovery import render_morning_discovery_tab
+from tabs.tab_purchase_confirm import render_purchase_confirm_tab
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
 st.set_page_config(page_title="MONO Deck", page_icon="◯", layout="wide")
@@ -138,15 +139,15 @@ if "settings" not in st.session_state:
 s = st.session_state.settings
 
 # Add new tabs for Dashboard and Manual Execution
-(tab_dashboard, tab_product_mgmt, tab_research_brain, tab_morning_discovery,
- tab_calc, tab_monitor, tab_ebay,
- tab_lowest_price, tab_supplier, tab_model_compare, tab_listing, tab_customs,
- tab_market_strategy, tab_video, tab_agents, tab_sku_conversion, tab_execution,
- tab_scheduled, tab_settings) = st.tabs([
+# W134 Phase 1 Step 1: st.tabs は全タブ本体を毎回実行する (単一巨大 app.py で
+# 操作毎に全タブの DB/API 処理が走り激重)。最上位ナビを st.radio 化し、
+# 選択タブの本体だけを実行する (各 with tab_X: → if _w134_sel == "<ラベル>": 機械置換)。
+_W134_TABS = [
     "DASHBOARD",
     "商品管理",      # W119 (2026-05-11) 1 商品の全情報統合 (物理属性/仕入先/在庫/利益/競合)
     "リサーチ脳",     # W24 (2026-04-26) Research 脳 Opus 4.7 チャット UI
     "今日の発掘",     # W122 (2026-05-13) 朝 07:00 Opus 4.7 で 3 件発掘
+    "入荷確認",      # W133 (2026-05-16) 有在庫の入荷 → 在庫加算 + eBay 反映
     "利益計算",
     "在庫監視",
     "eBay連携",
@@ -162,14 +163,18 @@ s = st.session_state.settings
     "手動実行",
     "定時実行",      # 2026-04-25 hour ドリフト事故対応
     "設定"
-])
+]
+_w134_sel = st.radio(
+    "ページ", _W134_TABS, key="_w134_nav",
+    horizontal=True, label_visibility="collapsed",
+)
 # 2026-04-22: MAIL タブを削除 (ダッシュボードに統合)。
 # DASHBOARD には緊急メール (urgent/buyer_message/sale/offer/return) を常時表示し、
 # その下の expander 代替セクションで「非緊急・参考メール」を表示する。
 # 重複出力バグは reset_confirmed_emails() を age-based prune に置き換えて解消済み。
 
 # ========== ダッシュボードタブ ==========
-with tab_dashboard:
+if _w134_sel == "DASHBOARD":
     import re as _re_dash
     from monitor.database import get_recent_emails as _dash_get_emails, set_email_confirmed
     import streamlit.components.v1 as _components
@@ -1670,7 +1675,7 @@ with tab_dashboard:
             st.dataframe(pd.DataFrame(log_data), width="stretch", hide_index=True, height=250)
 
 # ========== 利益計算タブ ==========
-with tab_calc:
+if _w134_sel == "利益計算":
     col1, col2, col3 = st.columns([1.2, 1, 1.2])
 
     with col1:
@@ -1779,7 +1784,7 @@ with tab_calc:
 
 
 # ========== 在庫監視タブ ==========
-with tab_monitor:
+if _w134_sel == "在庫監視":
     monitor_tab_risk, monitor_tab1, monitor_tab2 = st.tabs(["要対応", "監視リスト", "サイト設定"])
 
     # ---------- 要対応（仕入先在庫リスク） ----------
@@ -3150,7 +3155,7 @@ with tab_monitor:
 
 
 # ========== eBay連携タブ ==========
-with tab_ebay:
+if _w134_sel == "eBay連携":
     st.subheader("eBay出品との同期")
     ebay_col1, ebay_col2 = st.columns([2, 1])
 
@@ -3390,7 +3395,7 @@ with tab_ebay:
 # ========== 商品管理 タブ (W119 / 2026-05-11) ==========
 # 1 商品の全情報を 1 画面に統合: 物理属性 / 仕入先 / 在庫 / 利益計算 / 競合
 # クリックで展開、編集して保存 → breakeven 自動再計算.
-with tab_product_mgmt:
+if _w134_sel == "商品管理":
     try:
         # 最安値チェックタブと同じ config 読込
         import json as _pm_json
@@ -3411,7 +3416,7 @@ with tab_product_mgmt:
 # ========== 最安値チェック タブ (W98) ==========
 # 自分の商品ごとに監視したいライバルを登録し、ライバルより 0.01 USD 安く出して
 # eBay 検索順位ブースト (SEO) を狙う。実際の価格巡回・値下げ実行は別タスク (G2-G4) で実装。
-with tab_lowest_price:
+if _w134_sel == "最安値チェック":
     st.title("最安値チェック")
     st.caption(
         "商品ごとに最大 10 ライバルを登録し、ライバルより 1 セント安く出して "
@@ -3979,7 +3984,7 @@ with tab_lowest_price:
 
 
 # ========== 手動実行タブ ==========
-with tab_execution:
+if _w134_sel == "手動実行":
     st.subheader("タスク手動実行")
     st.caption("ここからタスクを即時実行できます。通常は定時実行（5:00 / 11:00 / 17:00 / 22:00）で自動実行されます。")
 
@@ -4507,7 +4512,7 @@ with tab_execution:
 
 
 # ========== 仕入先候補タブ ==========
-with tab_supplier:
+if _w134_sel == "仕入先候補":
     st.title("仕入先候補レビュー")
     st.caption(
         "Claude API が評価した仕入先候補を一覧。"
@@ -5196,7 +5201,7 @@ with tab_supplier:
 # ========== モデル比較タブ (W86 / 2026-05-01) ==========
 # Opus 4.7 vs Sonnet 4.6 supplier evaluation A/B test 結果の並列比較.
 # 元データ: supplier_ab_test_runs テーブル.
-with tab_model_compare:
+if _w134_sel == "モデル比較":
     st.markdown("# モデル比較 (Supplier A/B Test)")
     st.caption(
         "Opus 4.7 vs Sonnet 4.6 で同じ scrape 結果を独立評価し、判定と精度を比較。"
@@ -5427,12 +5432,12 @@ with tab_model_compare:
 
 
 # ========== 個別出品タブ (W9) ==========
-with tab_listing:
+if _w134_sel == "個別出品":
     render_individual_listing_tab(s)
 
 
 # ========== 通関対応タブ (W14 2026-04-24) ==========
-with tab_customs:
+if _w134_sel == "通関対応":
     import json as _json_cust
     from monitor.database import get_conn as _cust_conn
 
@@ -5859,13 +5864,13 @@ with tab_customs:
 
 
 # ========== 市場戦略タブ (W7-A 2026-04-27) ==========
-with tab_market_strategy:
+if _w134_sel == "市場戦略":
     from tabs.tab_market_strategy import render_tab as render_market_strategy_tab
     render_market_strategy_tab()
 
 
 # ========== 動画学習タブ ==========
-with tab_video:
+if _w134_sel == "動画学習":
     import json as _json_vid
     import threading
     from monitor.database import get_conn as _vl_conn
@@ -6086,7 +6091,7 @@ with tab_video:
 
 
 # ========== エージェント監視タブ ==========
-with tab_agents:
+if _w134_sel == "エージェント監視":
     from monitor.database import get_conn as _ag_conn
     import pandas as _pd
 
@@ -6272,7 +6277,7 @@ with tab_agents:
 
 
 # ========== SKU変換ルール設定タブ ==========
-with tab_sku_conversion:
+if _w134_sel == "SKU変換":
     st.title("SKU → 仕入先URL変換ルール")
 
     mappings = load_mappings()
@@ -6444,18 +6449,22 @@ with tab_sku_conversion:
 # 重複バグは monitor.database.prune_old_confirmed_emails(age-based) への切替で解消済み。
 
 # ========== リサーチ脳タブ (W24 2026-04-26) ==========
-with tab_research_brain:
+if _w134_sel == "リサーチ脳":
     render_research_brain_tab()
 
-with tab_morning_discovery:
+if _w134_sel == "今日の発掘":
     render_morning_discovery_tab()
 
+# ========== 入荷確認タブ (W133 2026-05-16) ==========
+if _w134_sel == "入荷確認":
+    render_purchase_confirm_tab()
+
 # ========== 定時実行タブ (2026-04-25 hour ドリフト事故対応) ==========
-with tab_scheduled:
+if _w134_sel == "定時実行":
     render_scheduled_execution_tab()
 
 # ========== 設定タブ ==========
-with tab_settings:
+if _w134_sel == "設定":
     st.subheader("基本設定")
     c1, c2 = st.columns(2)
     with c1:

@@ -36,20 +36,23 @@ class TestMigrationV26:
     # クラス名は v26 (W7-A listing 単位化) 検証由来。W50 で v27 が追加されたが,
     # クラス名 rename は K2 surgical 違反になるため残置。assert 値のみ追従。
     def test_user_version_is_26(self, fresh_db):
-        # 2026-04-30 W50 で v27 (Yahoo Auctions ebayyh_ seed) 追加 →
-        # 2026-05-01 W72 で v28 (monitored_items.UNIQUE(sku) 撤廃) 追加.
-        # init_db を呼んだ後の user_version は 28 が正しい.
+        # 本テストの主眼は v26 (W7-A listing 単位化) が適用済かの検証.
+        # 以降 migration が増える度に exact 値 (旧: 28) を追従させてきたが、
+        # W133 (v40, 2026-05-16) を機に「26 以上」へ変更し brittle 化を解消
+        # (将来 migration 追加で本テストが毎回壊れるのを防ぐ / K2 主旨は保持).
         with sqlite3.connect(str(fresh_db)) as c:
             ver = c.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 28
+            assert ver >= 26
 
     def test_idempotent_double_run(self, fresh_db):
-        """init_db を再度呼んでもエラーなし、 user_version 不変."""
-        db.init_db()
+        """init_db を再度呼んでもエラーなし、 user_version 不変 (>= 26 維持)."""
         db.init_db()
         with sqlite3.connect(str(fresh_db)) as c:
-            ver = c.execute("PRAGMA user_version").fetchone()[0]
-            assert ver == 28
+            ver1 = c.execute("PRAGMA user_version").fetchone()[0]
+        db.init_db()
+        with sqlite3.connect(str(fresh_db)) as c:
+            ver2 = c.execute("PRAGMA user_version").fetchone()[0]
+            assert ver1 == ver2 and ver2 >= 26
 
     def test_canonical_tables_only(self, fresh_db):
         """post-swap state: _new テーブルが消え canonical のみ残る."""

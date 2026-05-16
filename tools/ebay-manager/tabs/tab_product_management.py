@@ -127,6 +127,7 @@ def _fetch_all_products() -> list[dict]:
                 el.source_out_of_stock_since,
                 el.competitor_min_price,
                 el.quantity_ebay, el.inventory_count,
+                el.last_qty_sync_at, el.last_synced_quantity, el.qty_sync_error,
                 (SELECT COUNT(*) FROM competitor_products cp
                  WHERE cp.our_item_id = el.ebay_item_id AND cp.is_active = 1
                 ) AS competitor_count
@@ -451,6 +452,17 @@ def _render_left_basic_and_physical(p: dict, config: dict) -> dict:
                 key=f"pm_inv_{eid}",
                 help="物理在庫. 売れたら GetOrders API で自動減算 (in_stock SKU のみ).",
             )
+            # W133 (2026-05-16): eBay 数量 sync の最終状態を表示 (痕跡層 / Q0).
+            _sync_err = p.get("qty_sync_error")
+            if _sync_err:
+                st.caption(f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}")
+            else:
+                _sync_at = p.get("last_qty_sync_at")
+                _sync_qty = p.get("last_synced_quantity")
+                if _sync_at:
+                    st.caption(
+                        f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
+                    )
         else:
             st.caption("無在庫 SKU (在庫数管理対象外)")
             editing["inventory_count"] = None
@@ -1112,6 +1124,9 @@ def _save_product_data(
                 "UPDATE ebay_listings SET inventory_count=? WHERE ebay_item_id=?",
                 (int(inv), ebay_item_id),
             )
+            _inv_changed = True
+        else:
+            _inv_changed = False
         if editing.get("weight_g") is not None:
             conn.execute(
                 "UPDATE ebay_listings SET weight_g=?, weight_source='manual_edit', "
@@ -1124,6 +1139,25 @@ def _save_product_data(
                 conn.execute(
                     f"UPDATE ebay_listings SET {col}=? WHERE ebay_item_id=?",
                     (float(v), ebay_item_id),
+                )
+
+    # W133 (2026-05-16): 在庫数を手動編集したら eBay 出品数量へ反映.
+    # listing 識別は ebay_item_id (SKU 不使用). 失敗はメッセージ表示のみで
+    # DB は維持 (Q0: 失敗を握り潰さず st.warning + qty_sync_error 列に痕跡).
+    if _inv_changed:
+        from monitor import inventory_sync
+        _sync = inventory_sync.sync_listing_quantity(ebay_item_id)
+        if not _sync.get("success"):
+            if _sync.get("skipped_zero_unsafe"):
+                st.warning(
+                    "在庫0 ですが eBay 数量反映を抑止しました "
+                    "(Out-of-Stock Control 未確認 = listing 自動 End 防止)。"
+                    f" {_sync.get('message') or ''}"
+                )
+            else:
+                st.warning(
+                    "在庫数は DB 保存しましたが eBay 数量反映に失敗しました: "
+                    f"{_sync.get('message') or '不明'}"
                 )
 
     pyen = editing.get("purchase_yen")

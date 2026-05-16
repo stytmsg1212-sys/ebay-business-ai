@@ -861,6 +861,36 @@ def setup_scheduler():
     )
     logger.info("W122 朝の新商品発掘 発火: 毎日 07:00 JST")
 
+    # ── W125 daily_codex_lint (2026-05-15 追加) ──
+    # 毎日 03:00 JST に直近 7 日編集された memory / KB / 設計書を Codex lint.
+    # 主 batch (02:30) 直後の独立 cron, Plus 5h 枠の余裕で動かす.
+    # HIGH 3+ で Discord 通知, 上限 30 files/run.
+    scheduler.add_job(
+        _run_daily_codex_lint,
+        trigger=CronTrigger(hour=3, minute=0, second=0),
+        args=[config, 3],
+        id='daily_codex_lint_03_00',
+        name='W125 daily_codex_lint (03:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    logger.info("W125 daily_codex_lint 発火: 毎日 03:00 JST")
+
+    # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
+    # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
+    # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
+    # 主 batch (00/30 分) 衝突を避けて minute=*/30 + second=15 で発火.
+    scheduler.add_job(
+        _run_claude_loop_healthcheck,
+        trigger=CronTrigger(minute='*/30', second=15),
+        args=[config],
+        id='claude_loop_healthcheck',
+        name='W131 P5 claude-loop watcher (30分ごと)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    logger.info("W131 P5 claude_loop_healthcheck 発火: 30 分ごと (*/30 :15)")
+
     return scheduler
 
 
@@ -922,6 +952,34 @@ def _run_morning_discovery(config: dict, scheduled_hour: int = 7):
     _run_isolated_task('morning_discovery', 'W122 朝の新商品発掘',
                        lambda: run_morning_discovery(config),
                        scheduled_hour=scheduled_hour)
+
+
+def _run_daily_codex_lint(config: dict, scheduled_hour: int = 3):
+    """W125 daily_codex_lint — 直近 7 日編集された memory / KB / 設計書を Codex lint (03:00 JST)."""
+    try:
+        from tasks.task_daily_codex_lint import run as run_daily_codex_lint
+    except ImportError as e:
+        logger.error(f"task_daily_codex_lint import 失敗: {e}")
+        return
+    _run_isolated_task('daily_codex_lint', 'W125 Codex 文書 lint',
+                       lambda: run_daily_codex_lint(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_claude_loop_healthcheck(config: dict):
+    """W131 P5 claude_loop_healthcheck — 30 分ごとに claude auto-restart loop の生存を監視.
+
+    scheduled_hour=None: 30 分毎で固定 hour なし.
+    DOWN 検知時は start-claude-loop.ps1 を spawn + Discord 通知 (R-11).
+    """
+    try:
+        from tasks.task_claude_loop_healthcheck import run as run_healthcheck
+    except ImportError as e:
+        logger.error(f"task_claude_loop_healthcheck import 失敗: {e}")
+        return
+    _run_isolated_task('claude_loop_healthcheck', 'W131 P5 claude-loop watcher',
+                       lambda: run_healthcheck(config),
+                       scheduled_hour=None)
 
 
 def _run_video_learning_after_reset(config: dict, scheduled_hour: int = 16):

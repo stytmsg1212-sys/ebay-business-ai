@@ -156,12 +156,21 @@ tools/ebay-manager/settings.json
 
 # === Temp / cache ===
 *.tmp
+*.tmp.*
+tmp_*.ps1
 *.cache
 *.bak
 *.bak.*
 node_modules/
 .archive/
 _archive/
+
+# === Playwright MCP scratch (UI 検証で自動生成、commit 不要) ===
+.playwright-mcp/
+
+# === Codex review transcript scratch (root scripts/、巨大 txt) ===
+scripts/codex-*
+scripts/__pycache__/
 
 # === Test artifacts ===
 tools/ebay-manager/.pytest_cache/

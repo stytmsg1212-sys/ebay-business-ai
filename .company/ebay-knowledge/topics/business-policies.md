@@ -108,7 +108,29 @@ fetched_at: 2026-04-20
 ※ Stock/NoStock の切替は UI 上でチェックボックス（「在庫あり：1day出荷」「在庫なし：7day出荷」）
 
 ## Out-of-Stock Control
-`OutOfStockControlPreference`: 未設定（None）
+
+`OutOfStockControlPreference` 状態履歴（contradiction-annotation: 値の時系列変化）:
+- **2026-04-20**: 未設定（None）= **OFF**（GetUserPreferences API）
+- **2026-05-16**: user が **ON 化（Seller Hub 手動確認）** → W133 前提クリア。API での再確認は未実施（Phase 0 で GetUserPreferences 取得を足す時に自動 verify 予定）
+
+### 挙動（一次情報照合 2026-05-16, eBay Developers Program / 複数 SaaS KB 一致）
+
+- **OFF（現状）**: GTC 固定価格 listing の数量が 0 になると eBay が listing を **自動 End**（item_id / ウォッチャー / 販売履歴を喪失、再出品が必要）。
+- **ON**: 数量0でも listing は **active のまま保持**、検索結果からは除外され、再入荷で数量を戻すと同一 item_id で復帰。
+- 適用対象: **GTC（Good 'Til Cancelled）固定価格 listing のみ**。ON にすると以後**全 GTC listing に一括適用**。
+
+⚠️ 旧想定「OFF でも End されない」は**誤り**（2026-05-16 W133 設計時に判明、`md-files-can-be-wrong`）。OFF=End が正。
+
+### ON 化手順（2 ルート、ラベルは英語 UI 基準）
+
+1. **Seller Hub 経由**: Seller Hub → Overview → Shortcuts → **Site Preferences** → 「Multi-quantity listings」セクション → **「Listings stay active when you're out of stock」を ON**
+2. **My eBay 経由**: My eBay → Account → Site Preferences → **Selling Preferences** → out-of-stock オプションを編集して有効化
+
+### W133 依存
+
+W133（有在庫管理）の「在庫0で数量0化・listing 保持」は **本設定 ON が前提**。ON 未確認の間は数量0自動 revise を行わず Discord アラートのみ（誤 End による資産喪失防止セーフガード）。
+
+出典: https://developer.ebay.com/api-docs/user-guides/static/trading-user-guide/out-of-stock.html / https://developer.ebay.com/api-docs/user-guides/static/trading-user-guide/out-of-stock-enable.html
 
 ## Copy/重複ポリシーの整理
 "Copy", "Copy (2)", "Copy (3)", "Copy (5)" が複数存在。テスト用と思われる。本番利用前に削除 or アーカイブ推奨。

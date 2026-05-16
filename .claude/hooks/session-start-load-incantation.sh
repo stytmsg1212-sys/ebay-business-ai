@@ -22,7 +22,22 @@ export PYTHONIOENCODING=utf-8
 
 ROOT_DIR="${CLAUDE_PROJECT_DIR:-C:/Users/gucch/projects/claude}"
 # W126 migration 後対応: hash を path から動的計算 (`:` `\` `/` を `-` に変換)
-PROJECT_HASH=$(echo "$ROOT_DIR" | sed 's/:/-/g' | sed 's/[\\/]/-/g')
+# W128 (2026-05-15): Git Bash で CLAUDE_PROJECT_DIR が unix-style /c/Users/... で渡されると
+# sed パイプが PROJECT_HASH=-c-Users-... と崩壊し _NEXT_SESSION.md を miss する事故 (5/14-15) の修正.
+# unix-style を Windows-style C:\Users\... に正規化してから slug 化. ROOT_DIR 本体は元値保持
+# (mkdir / Python Path() 等への副作用回避).
+if [[ "$ROOT_DIR" =~ ^/cygdrive/ ]]; then
+    # H-4 (code-reviewer 2026-05-15): Cygwin /cygdrive/c/... を明示除外.
+    # 元 regex は match してしまい "C--ygdrive-c-..." と silent corrupt するため別 path に流す.
+    # MEM_DIR は不在となり SessionStart hook の Step 1 fallback (MEMORY.md 経由) が起動 = healthy.
+    SLUG_INPUT="$ROOT_DIR"
+elif [[ "$ROOT_DIR" =~ ^/([a-zA-Z])/(.*)$ ]]; then
+    DRIVE_UPPER=$(echo "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]')
+    SLUG_INPUT="${DRIVE_UPPER}:\\${BASH_REMATCH[2]}"
+else
+    SLUG_INPUT="$ROOT_DIR"
+fi
+PROJECT_HASH=$(echo "$SLUG_INPUT" | sed 's/:/-/g' | sed 's/[\\/]/-/g')
 MEM_DIR="$HOME/.claude/projects/${PROJECT_HASH}/memory"
 
 export ROOT_DIR
@@ -179,6 +194,102 @@ if sched_log.exists():
         # silent skip 防止: file 読込/decode 失敗を明示通知 (HIGH-A1 修正)
         sched_warning = f'[SCHEDULER] tail 失敗: {type(e).__name__}: {e}\n\n'
 
+# Step 4.5: claude auto-restart loop health check (W131 P5 watcher-of-watcher / 2026-05-16)
+#   出典: 5/15 夜 W124 P4 v2 + 5/16 -NoExit regression fix セッションで判明したリスク:
+#     - 1h 20回 crash loop guard → 長時間ネット断で loop suicide
+#     - logon しないまま PC 起動で Startup folder shortcut 未発火
+#   対処: heartbeat 60s 超 stale なら auto-recovery (KillSwitch 尊重).
+claude_loop_warning = ''
+import subprocess
+hb_file = Path('C:/Users/gucch/.claude/scripts/claude-loop.heartbeat')
+killswitch_file = Path('C:/Users/gucch/.claude/scripts/claude-loop.STOP')
+loop_script = 'C:/Users/gucch/.claude/scripts/start-claude-loop.ps1'
+
+def _spawn_loop_with_verify(prev_hb_mtime: float) -> tuple[bool, str]:
+    """start-claude-loop.ps1 を Windows で親プロセス独立起動 + spawn 後 verify.
+
+    Codex Round 1 fix HIGH-2 + LOW-6 (2026-05-16): Popen 成功 = RECOVERED は
+    false positive (script 即 exit / claude PATH 不在で silent fail). spawn 前 hb mtime
+    と比較し、20 秒以内に hb 更新 + Popen 生存で真の RECOVERED. powershell PATH も絶対化.
+
+    DETACHED_PROCESS|CREATE_NO_WINDOW は組み合わせると powershell.exe が即 exit する
+    (2026-05-16 verify で判明). CREATE_NEW_PROCESS_GROUP のみで親と独立できる.
+
+    Args:
+        prev_hb_mtime: spawn 前の heartbeat mtime (float). 不在なら -1.
+
+    Returns:
+        (success, pid_or_reason_str)
+    """
+    try:
+        if sys.platform != 'win32':
+            return (False, 'non-Windows platform')
+        import os as _os
+        system_root = _os.environ.get('SystemRoot', r'C:\Windows')
+        powershell_exe = rf'{system_root}\System32\WindowsPowerShell\v1.0\powershell.exe'
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        p = subprocess.Popen(
+            [powershell_exe, '-NoProfile', '-ExecutionPolicy', 'Bypass',
+             '-WindowStyle', 'Hidden', '-File', loop_script],
+            creationflags=CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, FileNotFoundError, PermissionError) as e:
+        return (False, f'{type(e).__name__}: {e}')
+
+    # Codex Round 2 HIGH (2026-05-16): hb mtime 更新だけでは false positive.
+    # `child=<pid>` 付きの hb (= claude 起動成功 signal) を待つ.
+    pid = p.pid
+    deadline = time.monotonic() + 20.0
+    while time.monotonic() < deadline:
+        if p.poll() is not None:
+            return (False, f'PID={pid} exited early (rc={p.returncode})')
+        if hb_file.exists():
+            cur_mtime = hb_file.stat().st_mtime
+            if cur_mtime > prev_hb_mtime:
+                hb_text = hb_file.read_text(encoding='utf-8', errors='ignore')
+                if 'child=' in hb_text:
+                    return (True, f'PID={pid} (hb has child=)')
+        time.sleep(2.0)
+    if p.poll() is None:
+        return (False, f'PID={pid} alive but no child= hb within 20s')
+    return (False, f'PID={pid} exited (rc={p.returncode}) and no child= hb')
+
+try:
+    if killswitch_file.exists():
+        claude_loop_warning = '[CLAUDE-LOOP] KillSwitch active (claude-loop.STOP). auto-recovery skip.\n\n'
+        _log_debug('claude-loop: KillSwitch active, skip')
+    elif not hb_file.exists():
+        ok, info = _spawn_loop_with_verify(prev_hb_mtime=-1.0)
+        if ok:
+            claude_loop_warning = f'[CLAUDE-LOOP] DOWN: heartbeat 不在 → auto-recovery 成功 ({info})\n\n'
+            _log_debug(f'claude-loop: hb absent, spawn+verify OK {info}')
+        else:
+            claude_loop_warning = f'[CLAUDE-LOOP] DOWN: heartbeat 不在 + auto-recovery 失敗 ({info})\n\n'
+            _log_debug(f'claude-loop: hb absent, spawn FAIL {info}')
+    else:
+        prev_hb_mtime = hb_file.stat().st_mtime
+        hb_age_sec = time.time() - prev_hb_mtime
+        hb_content = hb_file.read_text(encoding='utf-8', errors='ignore').strip()
+        if hb_age_sec > 60:
+            ok, info = _spawn_loop_with_verify(prev_hb_mtime=prev_hb_mtime)
+            if ok:
+                claude_loop_warning = f'[CLAUDE-LOOP] DOWN: heartbeat stale ({hb_age_sec:.0f}s) → auto-recovery 成功 ({info})\n  last: {hb_content[:100]}\n\n'
+                _log_debug(f'claude-loop: stale {hb_age_sec:.0f}s, spawn+verify OK {info}')
+            else:
+                claude_loop_warning = f'[CLAUDE-LOOP] DOWN: heartbeat stale ({hb_age_sec:.0f}s) + auto-recovery 失敗 ({info})\n\n'
+                _log_debug(f'claude-loop: stale {hb_age_sec:.0f}s, spawn FAIL {info}')
+        else:
+            claude_loop_warning = f'[CLAUDE-LOOP] ALIVE (hb age={hb_age_sec:.0f}s, {hb_content[:100]})\n\n'
+            _log_debug(f'claude-loop: alive {hb_age_sec:.0f}s')
+except Exception as e:
+    # silent skip 防止: Step 4.5 自体の例外も明示 (Q0)
+    claude_loop_warning = f'[CLAUDE-LOOP] CHECK FAILED: {type(e).__name__}: {e}\n\n'
+    _log_debug(f'claude-loop: check exception {type(e).__name__}: {e}')
+
 # Step 5: silent_skip_ongoing 配列読出 (frontmatter YAML 配列パース簡易版)
 # HIGH-4 (code-reviewer 2026-04-30): 空配列 [] でも明示通知 (= 0 件確定 vs 検査壊れたを区別)
 silent_skip_warning = ''
@@ -193,7 +304,7 @@ if ss_block:
             silent_skip_warning = f'🚨 機会損失中 ({len(tasks)} task silent skip 継続): ' + ', '.join(tasks) + '\n\n'
 
 # 全文構築 (W127 #3: debug_header を冒頭、#4: sanity_warning を直後)
-full_context = f'{debug_header}\n\n' + sanity_warning + stale_prefix + md5_warning + sched_warning + silent_skip_warning + content
+full_context = f'{debug_header}\n\n' + sanity_warning + stale_prefix + md5_warning + sched_warning + claude_loop_warning + silent_skip_warning + content
 
 # 7000 char strict 上限 enforce (defensive、公式 char 制限は未確認)
 # HIGH-3 (code-reviewer 2026-04-30): 「公式 10000 char」と書いていたが一次情報未照合のため

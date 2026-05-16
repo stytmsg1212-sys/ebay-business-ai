@@ -13,7 +13,7 @@
 
 | 種別 | SKU 形式 | 性質 |
 |---|---|---|
-| **有在庫** | `stock**` で始まる文字列 (stock:01 / stock1 / stock / stock01 / stock: 1 等、表記揺れあり) | **複数 listing で同 SKU 共有が正常** (在庫プール構造) |
+| **有在庫** | `stock**` で始まる文字列 (stock:01 / stock1 / stock / stock01 / stock: 1 等、表記揺れあり) | **同一 SKU を多数 listing が持つのが正常** (在庫種別フラグであって集約キーではない。在庫数・識別は `ebay_item_id` 単位、SKU で束ねない) |
 | **無在庫** | `ebay**_*****` (例: `ebayyh_p1221413657` / `ebayme_m32400850054` / `ebayPF_z587339852`) | SKU 変換 → 仕入先 URL (`tools/ebay-manager/sku_mapping_manager.py`) |
 
 ## 絶対禁止 (違反 = 品質事故)

@@ -143,6 +143,10 @@ def render_tab() -> None:
     for t in TASK_SCHEDULE:
         if t.get("weekdays") is not None and weekday not in t["weekdays"]:
             continue
+        # Codex Round 2 MEDIUM (2026-05-16): kind=interval task は main_slots 展開しない.
+        # find_missed_tasks と整合させ、UI 上も main batch slot に "expected" 表示しない.
+        if t.get("kind") == "interval":
+            continue
         hours = t.get("hours") if t.get("hours") is not None else main_slots
         for h in hours:
             schedule_rows.append({
@@ -281,7 +285,11 @@ def render_tab() -> None:
             last_str = "—"
 
         # スケジュール表示
-        if t.get("hours") is None:
+        # Codex Round 2 MEDIUM (2026-05-16): kind=interval は "N分ごと" 専用表示で正しく区別.
+        if t.get("kind") == "interval":
+            interval = t.get("interval_minutes")
+            sched_str = f"{interval}分ごと" if interval else "interval (詳細未指定)"
+        elif t.get("hours") is None:
             sched_str = "毎batch"
         else:
             sched_str = ", ".join(f"{h:02d}時" for h in t["hours"])

@@ -338,11 +338,21 @@ def _decrement_inventory_for_stock_sku(order: dict) -> Optional[dict]:
             )
             return None
 
-        new_count = max(0, int(current) - qty)
+        # F4 (Codex 2026-05-16): SQL atomic 相対減算へ. 旧 Python 絶対値書込は
+        # 並行 confirm_purchase / 手動在庫編集の加算を lost-update で潰す危険が
+        # あった (order dedupe は同一 order 二重減算のみ防ぐ、別経路加算は守れない).
+        # W133 が inventory_count への並行 writer (confirm) を新設したため実害化.
         c.execute(
-            "UPDATE ebay_listings SET inventory_count=? WHERE ebay_item_id=?",
-            (new_count, ebay_item_id),
+            "UPDATE ebay_listings "
+            "SET inventory_count = MAX(0, COALESCE(inventory_count, 0) - ?) "
+            "WHERE ebay_item_id=?",
+            (qty, ebay_item_id),
         )
+        _nrow = c.execute(
+            "SELECT inventory_count FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+        new_count = int(_nrow["inventory_count"]) if _nrow is not None else 0
         c.execute(
             """UPDATE inventory_decrement_log SET new_inventory_count=?
                WHERE order_id=? AND ebay_item_id=?""",
@@ -405,11 +415,56 @@ def run_order_alert_check(config: Optional[dict] = None,
             dec = _decrement_inventory_for_stock_sku(order)
             if dec:
                 inventory_decrements += 1
-                if dec["new_count"] == 0:
+                # W133 (2026-05-16): 減算後の inventory_count を eBay へ反映.
+                # listing 識別は ebay_item_id (SKU 不使用). 数量0 は inventory_sync
+                # 側で OOS Control 機械検証してから revise (Defect 防止).
+                from monitor import inventory_sync
+                sync_res = inventory_sync.sync_listing_quantity(dec["ebay_item_id"])
+                dec["sync_success"] = bool(sync_res.get("success"))
+                dec["sync_skipped_zero_unsafe"] = bool(
+                    sync_res.get("skipped_zero_unsafe")
+                )
+                dec["sync_message"] = sync_res.get("message") or ""
+                # 在庫0 になった / sync 抑止 / sync 失敗 のいずれかなら Discord 対象.
+                if (
+                    dec["new_count"] == 0
+                    or dec["sync_skipped_zero_unsafe"]
+                    or not dec["sync_success"]
+                ):
                     inventory_zero_listings.append(dec)
         except (sqlite3.Error, KeyError, TypeError) as e:
             order_processing_errors += 1
             logger.warning(f"order {order.get('order_id')} 処理失敗: {e}")
+
+    # W133 (2026-05-16): 在庫0 / sync 抑止 / sync 失敗 listing を 1 回まとめて
+    # Discord 通知 (Q0 痕跡層の 1 つ). 商品呼称は title (ebay_item_id 末尾4桁) で、
+    # SKU は表示しない (CLAUDE.md 商品呼称ルール). webhook は既存取得済変数を流用.
+    if inventory_zero_listings:
+        fields = []
+        for d in inventory_zero_listings[:20]:  # embed field 上限保護
+            label = f"{(d.get('title') or '(no title)')[:40]} "
+            label += f"({str(d.get('ebay_item_id') or '')[-4:]})"
+            if d.get("sync_skipped_zero_unsafe"):
+                state = f"在庫{d.get('new_count')} / ⚠️ eBay反映抑止 (OOS未確認)"
+            elif not d.get("sync_success", True):
+                state = (
+                    f"在庫{d.get('new_count')} / ❌ eBay反映失敗: "
+                    f"{(d.get('sync_message') or '')[:80]}"
+                )
+            else:
+                state = f"在庫{d.get('new_count')} / ✅ eBay反映済"
+            fields.append({"name": label, "value": state, "inline": False})
+        embed = {
+            "title": "[在庫] 有在庫 listing が在庫0 / eBay反映に注意",
+            "description": (
+                f"{len(inventory_zero_listings)} 件の有在庫 listing が在庫0 化、"
+                "または eBay 数量反映が抑止/失敗しました. 補充 or 出品停止を確認してください."
+            ),
+            "color": 0xD84C38,
+            "fields": fields,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _send_discord(webhook, embed)
 
     duration = (datetime.now() - started_at).total_seconds()
     logger.info(

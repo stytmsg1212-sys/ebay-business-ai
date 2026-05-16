@@ -32,7 +32,7 @@
 1. ユーザーのメッセージから YouTube URL を抽出
 2. 以下を実行:
    ```powershell
-   cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+   cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
    python run_learning.py "https://www.youtube.com/watch?v=xxxxx"
    ```
 3. 処理完了まで待機（10-15分）

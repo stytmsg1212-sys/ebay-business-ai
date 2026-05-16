@@ -1,8 +1,12 @@
 # W123-W125 統合設計書 + Astro-Han Karpathy LLM Wiki 採用
 
+> ⛔ **SUPERSEDED (2026-05-16)**: 本 v1 は `2026-05-14-W126-W123-W125_unified_design_v2.md` (確定版) に
+> 置き換え済。**新規参照しないこと**。W126 を foundation に含む v2 + 実態反映 §11 が唯一の権威設計書。
+> 本 v1 は判断 trail 保存のため残置 (削除しない)。
+
 **Date**: 2026-05-14
 **Author**: Claude Code (Opus 4.7), reviewed by code-architect (Opus 4.7)
-**Status**: DRAFT — review pending
+**Status**: ⛔ SUPERSEDED by v2 (2026-05-16) — 旧 DRAFT、参照非推奨
 **Scope**: W123 (Obsidian 連携) / W124 (OpenAI Codex 登録) / W125 (Codex non-source reviewer 化) + Astro-Han skill 採用
 
 ---
@@ -76,8 +80,8 @@ Q0-Q6 業務規律 / eBay 規制 KB / SessionStart hook / subagent ecosystem / Q
 
 ```
 C:\Users\gucch\obsidian-vault\          (vault root, OneDrive 外)
-├── memory\          ← junction → C:\Users\gucch\.claude\projects\...\memory\
-├── company\         ← junction → C:\Users\gucch\OneDrive\work\claude\.company\
+├── memory\          ← junction → C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude\memory\
+├── company\         ← junction → C:\Users\gucch\projects\claude\.company\  (W126 後 path、5/15 訂正)
 └── .obsidian\       (Obsidian config、vault 固有)
 ```
 

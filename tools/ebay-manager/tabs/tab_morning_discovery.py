@@ -132,10 +132,15 @@ def _render_candidate(cand: dict) -> None:
                 unsafe_allow_html=True,
             )
         with col2:
-            prof_str = (
-                f"${profit_usd:.0f}"
-                if isinstance(profit_usd, (int, float)) else "—"
-            )
+            # W129 (2026-05-15): profit=0 は「見積不能シグナル」(prompt 制約).
+            # $0 表示は赤字と誤読されるため明示表現に切替.
+            if isinstance(profit_usd, (int, float)):
+                prof_str = (
+                    "見積不能 (理由は根拠欄)"
+                    if profit_usd == 0 else f"${profit_usd:.0f}"
+                )
+            else:
+                prof_str = "—"
             sold_str = f"{sold_30d} 件" if sold_30d is not None else "—"
             st.markdown(
                 f"**想定粗利** {prof_str}<br>**類似 sold(30d)** {sold_str}",

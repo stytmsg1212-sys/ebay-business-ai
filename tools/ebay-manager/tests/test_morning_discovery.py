@@ -239,5 +239,47 @@ def test_today_discovery_query_uses_jst_conversion():
     )
 
 
+# ──────────────────────────────────────────────
+# W129 (2026-05-15): profit=0 = 見積不能シグナル表示
+# ──────────────────────────────────────────────
+
+
+def test_discord_profit_zero_shows_unestimable_not_dollar_zero():
+    """W129: profit=0 (prompt が見積不能シグナルとして返す値) を Discord で『$0』表示しない.
+
+    prompt L181-184 で「estimated_profit_usd は null 不可、見積不能なら 0 + 理由」
+    と指示している. UI で『想定粗利 $0』と表示すると赤字判定と誤読され、
+    user の skip 履歴に流れて Few-shot 学習を歪めるため、明示的に
+    「見積不能 (理由は根拠欄)」と表示すること.
+    """
+    import inspect
+    from tasks.task_morning_discovery import _send_discord
+    src = inspect.getsource(_send_discord)
+    # profit == 0 分岐の存在を確認
+    assert "profit == 0" in src or "profit==0" in src, (
+        "_send_discord に profit==0 の特別 handling がない"
+    )
+    assert "見積不能" in src, (
+        "_send_discord に『見積不能』表示文言がない"
+    )
+
+
+def test_streamlit_profit_zero_shows_unestimable_not_dollar_zero():
+    """W129 (Streamlit 側): tab_morning_discovery.py が profit=0 を『$0』表示しない."""
+    import inspect
+    # tab module を import
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from tabs import tab_morning_discovery
+    # render 系 function を全部 source 取得して文字列検索
+    members = inspect.getmembers(tab_morning_discovery, inspect.isfunction)
+    all_src = "\n".join(inspect.getsource(fn) for _, fn in members)
+    assert "profit_usd == 0" in all_src, (
+        "tab_morning_discovery に profit_usd==0 の特別 handling がない"
+    )
+    assert "見積不能" in all_src, (
+        "tab_morning_discovery に『見積不能』表示文言がない"
+    )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

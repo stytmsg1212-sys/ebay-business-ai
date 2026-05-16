@@ -1139,5 +1139,62 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-05-14"
+  },
+  {
+    "id": 213,
+    "tag": "W129",
+    "title": "Q4 違反: 大型変更後の code-reviewer retrospective review",
+    "description": "2026-05-14 W126 Phase 3 + W127 hook 修正で .claude/hooks/session-start-load-incantation.sh に 78 行追加 + 新規 doc 53 行 + 新規 script 31 行 = 中規模変更を code-reviewer agent に通さず commit 2b39ad7 (CLAUDE.md Q4 違反). 対策: (a) commit 2b39ad7 に対して code-reviewer agent を retrospective review (HIGH 指摘あれば即修正 + 次 commit で fix) (b) PreToolUse hook で .claude/hooks/*.sh への大型変更 (≥50 行) 検出時に code-reviewer 起動 reminder. 出典: 2026-05-14 Opus 4.7 research-brain self-audit. 関連 feedback_auto_review_after_changes.md.",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-14"
+  },
+  {
+    "id": 214,
+    "tag": "W130",
+    "title": "Q3 違反: /feature-dev 起動判断基準の明文化",
+    "description": "2026-05-14 W127 SessionStart hook 対策 4 件は事故対応 patch だったが、hook script 78 行追加 = 「中規模変更」か「軽修正」かの判定基準が不明確だった. CLAUDE.md Q3 は「新機能 / 外部 API / 見積不確実な変更は /feature-dev 必須」と書かれているが、本 case は事故対応 patch / 既存 hook 拡張で /feature-dev 起動するか判断分かれた. 対策: .claude/rules/feature-dev-judgement.md を新設し、起動判断基準を明文化 (e.g. ≥50 行追加 / 新規 file 作成 / 外部 API 呼出変更 / DB スキーマ変更 / scheduler cron 追加 → /feature-dev 起動必須). 関連 feedback_feature_dev_usage.md.",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-14"
+  },
+  {
+    "id": 215,
+    "tag": "W131",
+    "title": "auto-restart loop を mobile Remote Control 対応に再設計 (Task Scheduler→Startup folder pivot)",
+    "description": "2026-05-15 夜 W124 P4 v1 (Task Scheduler + Hidden window + flag なし) は設計欠陥確定: (a) `--remote-control --name` flag が opt-in default で必須 (b) Task Scheduler 起動 powershell は TTY なし → claude が process.stdout.isTTY=false 検知して --print mode 切替 → `Error: Input must be provided...` で即 exit (c) Remote Control session が API bridge 登録できない. Codex 相談 + 実測比較で W124 P4 v2 (Startup folder + Minimized window + flag) に pivot. 解決策確定: (1) Task Scheduler ClaudeCodeAutoLoop は Unregister 済 (2) ~/.claude/scripts/start-claude-loop.ps1 作成 (Start-Process powershell -WindowStyle Minimized -PassThru -Wait で nested 起動 = TTY 取得) (3) shell:startup フォルダに ClaudeAutoLoop.lnk 配置 (4) 実機 verify PASS: PID 78800 起動 / sessions/78800.json 作成 / bridgeSessionId 取得 / mobile app session list で `ClaudeAutoLoop` 表示 user 実視認確認済 (R-11). 次回 logon 時の最終 verify は user 朝の confirm. 関連: start-claude-loop.ps1 / ClaudeAutoLoop.lnk / Anthropic Issue #29116 (closed-dup) #30447 (open) / docs.claude.com/docs/en/remote-control.",
+    "status": "完了",
+    "priority": "中",
+    "created": "2026-05-15",
+    "completed": "2026-05-15"
+  },
+  {
+    "id": 216,
+    "tag": "W132",
+    "title": "claude-loop.ps1 を ghost-session 耐性化 (max-session-duration 監視)",
+    "description": "2026-05-15 W124 P4 auto-restart loop 検証で、claude process が応答せず 2h+ 生き残るケースを観測 (Remote Control /bye 不発による). 対策: claude-loop.ps1 に max-session-duration 監視を追加. 例: (a) iteration 開始時に start_time 保存 (b) 別 thread or background job で N 分毎に経過時間チェック (c) 24h (要 user 議論) 超過なら Stop-Process で強制 kill して restart loop に戻す (d) 同時に Discord 通知で user に ghost-session 検出を報告. 副次効果: heartbeat も session 中継続更新できる (現状: iteration 開始時のみ更新 = 長時間 session 中は heartbeat stale で生死誤判定). 関連: claude-loop.ps1 L25-28 (Update-Heartbeat) / L33-76 (while loop).",
+    "status": "未着手",
+    "priority": "低",
+    "created": "2026-05-15"
+  },
+  {
+    "id": 217,
+    "tag": "W133",
+    "title": "有在庫管理: eBay数量同期＋在庫0自動アラート＋仕入れメール確認UI",
+    "description": "W119既存の注文連動在庫減算(ebay_item_id単位)に、物理在庫数のeBay出品数量revise同期と在庫0時の数量0化を追加。在庫0化はeBay Out-of-Stock Control ON前提で、ON未確認の間はDiscordアラートのみに留めるセーフガードを設ける(誤Endによる資産喪失防止)。仕入れメールをユーザーが確認し、タイトル類似サジェスト(閾値0.55/上位5)→1クリックで該当listingにinventory_count加算する確認サーフェス(最小取消UI付)を新設。SKUをキー/集約に使わずebay_item_id単位を徹底、DB migration v40冪等(purchase_confirmation_log新設)、Defect率最優先、Q1 DoD 11step + code-reviewer HIGH=0。前提のOut-of-Stock Control ON可否(Q1)は実装前に要確認。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-16",
+    "completed": null
+  },
+  {
+    "id": 218,
+    "tag": "W134",
+    "title": "MonoDeck 体感速度改善 (遅延タブ描画＋DBキャッシュ＋form/fragment)",
+    "description": "Streamlit app.py が単一巨大スクリプト(6400+行)で st.tabs 全タブ毎回実行＋@st.cache_data 0件＋生input非form化のため、値入力/選択の度に全再実行＝operator が毎操作で待たされる。Codex(GPT-5.5)相談+実コード診断で確定。段階改修(big-bang禁止/Q3 feature-dev/K2 surgical): Phase1=遅延タブ描画(st.tabs→ナビ+選択ページのみrender, app.py:147)＋重いDBローダ@st.cache_data(ttl)+session_state db_version invalidation(_fetch_all_products/supply_risk/rank/competitors/emails)。Phase2=W133入荷確認タブ cache+form化+生input form化。Phase3=高コスト対話部 fragment。書込後 db_version bump必須(在庫/価格/競合/メール確定/PM保存/W133 confirm/undo)。書込SQLite接続を cache_resource 共有しない。各Phase code-reviewer HIGH=0+Codex+Playwright体感確認。",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-16",
+    "completed": null
   }
 ]

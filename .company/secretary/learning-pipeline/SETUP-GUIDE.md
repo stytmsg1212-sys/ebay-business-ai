@@ -10,7 +10,7 @@
 このガイドを完了すると、秘書は以下のコマンド **1行だけ**で YouTube 動画を学習できるようになります：
 
 ```powershell
-cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
 python youtube_processor_v2.py
 ```
 
@@ -23,7 +23,7 @@ API キーの手動設定は **不要**になります。
 ### 1️⃣ 依存ライブラリをインストール
 
 ```powershell
-cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
 pip install -r requirements.txt
 ```
 
@@ -98,7 +98,7 @@ ffmpeg -version  # 再確認
 セットアップが完了したら、テスト実行してみましょう：
 
 ```powershell
-cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
 python youtube_processor_v2.py
 ```
 
@@ -130,7 +130,7 @@ url = "https://www.youtube.com/watch?v=新しいURL"
 ### スクリプト実行
 
 ```powershell
-cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
 python youtube_processor_v2.py
 ```
 

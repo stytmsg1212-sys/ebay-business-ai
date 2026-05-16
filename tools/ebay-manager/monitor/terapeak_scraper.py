@@ -39,16 +39,12 @@ logger = logging.getLogger(__name__)
 
 CDP_ENDPOINT = "http://localhost:9222"
 
-# 動画 [60JJUZaMdpo] 引用の閾値 + 4 区分化 (W7-A 候補 C / reference_shipping_tariff_logic.md v2.0).
+# 動画 [60JJUZaMdpo] 引用の閾値 + 4 区分化 (W7-A 候補 C / reference_shipping_tariff_logic.md v2.1).
 US_ONLY_THRESHOLD = 0.70       # US 比率 >= この値 → US_only
 GLOBAL_ONLY_THRESHOLD = 0.30   # US 比率 <= この値 → global_only (= 非 US >= 70%)
-# W110(2) (2026-05-09): 2 段サンプル閾値.
-# 旧: MIN_SAMPLE_SIZE = 5 一律 (sample 5 未満は unknown).
-# 新: 一般判定は 3 件以上で OK、US_only 確定は 5 件以上必須.
-# 理由: sample 3 で US 100% (3/3) は偶然性高、DDP 関税 buffer 内蔵で機会損失リスク.
-# 90 日 → 365 日 (W110(2)) で sample 母数が増えるため、3 件閾値でも実用十分.
-MIN_SAMPLE_SIZE = 3             # 一般 (mixed_global / global_only / unknown 判定の最低値)
-MIN_SAMPLE_SIZE_US_ONLY = 5     # US_only 判定は依然 5 件以上必須 (DDP 関税誤判定防止)
+# v2.1 (2026-05-15): US_only 含め一律 sample >= 3 で判定可能 (user 訂正).
+# 旧 v2.0 (2026-05-09): US_only のみ sample >= 5 必須としていたが、機会損失リスクのため撤回.
+MIN_SAMPLE_SIZE = 3             # 全区分共通 (sample < 3 で unknown)
 
 # Condition filter 自動解除対象. ブラウザに残った New/Used 等の chip が
 # Buyer Location 集計を歪めるため、scrape 前に解除する (= All conditions 集計).
@@ -258,13 +254,11 @@ def _clear_condition_filters(target, sku: str) -> list[str]:
 def _judge_primary_market(us_count: int, non_us_count: int) -> tuple[str, str]:
     """4 区分判定 (W7-A: US_only / mixed_global / global_only / unknown).
 
-    詳細仕様: reference_shipping_tariff_logic.md v2.0 § 4.
+    詳細仕様: reference_shipping_tariff_logic.md v2.1 § 4.
 
-    W110(2) (2026-05-09) 2 段サンプル閾値:
+    v2.1 (2026-05-15): US_only 含め一律 sample >= 3 で判定可能.
       - sample < 3: unknown (統計不能).
-      - 3 <= sample < 5: mixed_global / global_only のみ判定可能、US_only は格上げ
-        (sample 3/3 完全 US でも偶然性高、DDP 関税誤判定で機会損失リスク).
-      - sample >= 5: 全判定可能 (US_only 含む).
+      - sample >= 3: 全判定可能 (US_only / mixed_global / global_only).
 
     Returns:
         (primary_market, reason)
@@ -274,12 +268,6 @@ def _judge_primary_market(us_count: int, non_us_count: int) -> tuple[str, str]:
         return "unknown", f"sample {total} < {MIN_SAMPLE_SIZE}"
     us_ratio = us_count / total if total else 0
     if us_ratio >= US_ONLY_THRESHOLD:
-        # W110(2): US_only 判定は sample >= 5 必須 (DDP 関税誤判定防止).
-        if total < MIN_SAMPLE_SIZE_US_ONLY:
-            return (
-                "mixed_global",
-                f"US {us_count}/{total} = {us_ratio*100:.0f}% (US_only 候補だが sample<{MIN_SAMPLE_SIZE_US_ONLY} で DDP 安全側 mixed_global)",
-            )
         return "US_only", f"US {us_count}/{total} = {us_ratio*100:.0f}% >= {US_ONLY_THRESHOLD*100:.0f}%"
     if us_ratio <= GLOBAL_ONLY_THRESHOLD:
         return "global_only", f"US {us_count}/{total} = {us_ratio*100:.0f}% <= {GLOBAL_ONLY_THRESHOLD*100:.0f}%"

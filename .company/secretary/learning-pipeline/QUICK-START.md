@@ -54,7 +54,7 @@
 ### 初回セットアップ（1回のみ）
 
 ```powershell
-cd "C:\Users\gucch\OneDrive\work\claude\.company\secretary\learning-pipeline"
+cd "C:\Users\gucch\projects\claude\.company\secretary\learning-pipeline"
 
 # 1. 依存ライブラリをインストール
 pip install -r requirements.txt
@@ -112,7 +112,7 @@ Claude（Anthropic API）: 要約・構造化
   ├─ 出力: Markdown 形式
   ↓
 ファイル保存
-  └─ 場所: C:\Users\gucch\OneDrive\work\claude\.company\research\learning\
+  └─ 場所: C:\Users\gucch\projects\claude\.company\research\learning\
   └─ ファイル名: YYYY-MM-DD-{動画タイトル}.md
   └─ 形式: YAML フロントマッター + Markdown
 ```

@@ -2,7 +2,7 @@
 
 本ファイルは **user (人間) が手で実行する手順** をまとめた reference。assistant が自律的にやる作業は対象外 (それらは CLAUDE.md / .claude/rules/ 配下)。新しい手順が発生したら本ファイルに追記する運用 (assistant が手順を新規定義する時は同時に本ファイルを update)。
 
-最終更新: 2026-05-02 (W94 Phase 7 切替時に scheduler restart 手順を追加し manual を新設)
+最終更新: 2026-05-16 (§5-8 リモートセッション終了・再起動 暫定手順を追加。前: 2026-05-02 W94 Phase 7 scheduler restart 手順で新設)
 
 ---
 
@@ -263,6 +263,48 @@ permission prompt が頻発する時に呼ぶ。直近 transcript を分析し�
 - `/loop 5m /foo` — `/foo` を 5 分毎に実行
 - `/schedule` — cron スケジュールで remote agent 起動 (例: 「毎週月曜に PR triage」)
 
+### 5-8. リモート (スマホ) セッションの終了・再起動 (W132 実装まで暫定)
+
+**重要**: リモート `/exit` は **接続を切るだけ**で Windows 上の `claude.exe` ホストは
+終了しない (公式 remote-control 仕様)。auto-restart loop (`start-claude-loop.ps1`) は
+**プロセスが本当に終了した時のみ**再起動するため、リモート `/exit` だけでは新
+セッションは立ち上がらない (= 幽霊化、2026-05-16 実機 9.5h 確認)。恒久対策 = W132
+(設計済・未実装: `.company/engineering/docs/2026-05-16-w132-ghost-session-reaper-design.md`)。
+
+| やりたいこと | 正しい操作 |
+|---|---|
+| 別タスク用に会話をリセット (**推奨デフォルト**) | **`/clear`**。同ホスト上で会話だけ初期化。幽霊化せず即時・再起動不要 |
+| 本当に新プロセスで再起動したい | リモートセッション内で下記ワンライナー実行 (or assistant に「ホストを落として再起動して」と依頼)。force-kill で loop が ~15s で新セッション起動 → スマホから再接続 |
+| 一旦離れるだけ | `/exit` or アプリを閉じる = 切断のみ。ホストは生存、**後で同セッションに再接続可能** (何も失われない) |
+
+force-restart ワンライナー (ClaudeAutoLoop ホストのみ kill、watcher は無傷):
+
+```powershell
+Stop-Process -Force -Id (Get-CimInstance Win32_Process -Filter "Name='claude.exe'" |
+  Where-Object { $_.CommandLine -like '*--name ClaudeAutoLoop*' }).ProcessId
+```
+
+**気を付ける点**:
+
+1. リモート `/exit` ≠ セッション終了 (切断のみ、ホストは無期限生存)
+2. SessionStart の `[CLAUDE-LOOP] ALIVE` は heartbeat ベース。**リモート /exit 直後は
+   幽霊でも ALIVE 表示**になる (watcher が幽霊を生存 child と誠実報告)。ALIVE =
+   「使える新セッションが待機」ではない
+3. 幽霊が積み上がる。定期的に `claude.exe --remote-control` のプロセス数を確認し、
+   現行 child 1 個以外は掃除
+4. ネット断 >約10分 で PC 起動中ならホストは自然 exit → loop が再起動 (仕様。長時間
+   電波断 = 意図せぬ新セッション化、その会話 context は失われる)
+5. KillSwitch (`claude-loop.STOP`) は **loop 全停止**レバー。再起動用ではない (逆効果)
+6. 手動テストセッションは別名 + 使用後 kill (同名残骸が watcher / 診断を混乱させる)
+
+確認コマンド (claude-loop の child / 幽霊残骸の一覧):
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='claude.exe'" |
+  Where-Object { $_.CommandLine -like '*--remote-control*' } |
+  Select-Object ProcessId, CreationDate, CommandLine
+```
+
 ---
 
 ## 6. 出品 / 業務操作
@@ -276,6 +318,8 @@ MonoDeck (eBay Manager の Streamlit UI) を起動:
 ```
 
 既に起動していれば URL を返すだけ。停止する時は MonoDeck の「停止」ボタン or 起動した PowerShell window を Ctrl+C。
+
+> ⚠️ 本マシンでの起動は **必ず `tools/ebay-manager/run_monodeck.py` 経由** (bare `streamlit run` は Python 3.13 の WMI ハングで無限停止する。2026-05-16 根治。詳細は `/mono` skill doc 補足 / scripts/streamlit_start.ps1)。手動再起動が必要な時は `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\gucch\projects\claude\tools\ebay-manager\scripts\streamlit_start.ps1"` が確実。
 
 ### 6-2. /listing (出品文作成)
 
@@ -379,6 +423,66 @@ assistant が「これも使えますか?」と提案するもの: `/ultrareview
 
 ---
 
+## 8.5. memory backup / 復元 (claude-memory repo、2026-05-16 D-2 構築)
+
+業務ノウハウ・規約・経緯 (memory) は GitHub private repo に自動 backup 済。
+
+| 項目 | 値 |
+|---|---|
+| repo | `https://github.com/stytmsg1212-sys/claude-memory` (**private**) |
+| backup 対象 | `C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude\memory\` 実体 dir のみ |
+| 方式 | memory 実体 dir 直下を git 管理 (Obsidian Git plugin 不使用、vault は触らない) |
+| .company | 別途 `ebay-business-ai` repo 内で backup 済 (二重不要) |
+
+### 8.5-1. 日常の backup (push)
+
+memory 変更後、以下を実行 (assistant に依頼でも可):
+
+```powershell
+$m = "C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude\memory"
+& "C:\Program Files\GitHub CLI\gh.exe" auth status   # 認証確認 (失敗時は gh auth login)
+git -C $m add -A
+git -C $m commit -m "memory update YYYY-MM-DD"
+git -C $m push
+```
+
+> 自動 push の cron 化は未実装 (Month 2+ 判断)。当面は session-close 時 or 週次で手動 push 推奨。
+
+### 8.5-2. PC 故障時の復元 (disaster recovery)
+
+新 PC / SSD 交換後:
+
+```powershell
+# 1. memory 実体 dir の親を作る (path は固定、auto-memory loader が依存)
+$parent = "C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude"
+New-Item -ItemType Directory -Force $parent
+# 2. clone (memory dir 名で)
+git clone https://github.com/stytmsg1212-sys/claude-memory.git "$parent\memory"
+# 3. 確認: MEMORY.md (tier-1) + MEMORY_*.md (tier-2) + 各 memory が揃っているか
+Get-ChildItem "$parent\memory\*.md" | Measure-Object   # 160 前後
+# 4. Obsidian 利用に戻すなら vault junction 再作成 (Codex 2026-05-16 指摘の手順漏れ修正)
+powershell -ExecutionPolicy Bypass -File C:\Users\gucch\projects\claude\scripts\setup_obsidian_vault.ps1
+```
+
+→ これで SessionStart hook / auto-memory loader が従来通り memory を読める状態に復元。
+
+> ⚠️ **これは memory の復元のみ (Codex 2026-05-16 HIGH 指摘)**。**PC 全損からの完全業務復旧には不足**:
+> 別途必要 = project repo (`ebay-business-ai`: コード/.company/.claude/rules/hook/CLAUDE.md) の clone +
+> `~/.claude/settings.json` / `~/.claude/hooks.sh` / `~/.claude/scripts/*.ps1` / `~/.claude/CLAUDE.md` の手動復元 +
+> `.env` / OAuth token / Discord webhook の **再設定** (これらは backup 対象外 = 再取得)。
+> = 「memory が戻る」だけで「自動運用・規約 enforcement・通知・auto-restart」までは戻らない。
+> **完全災害復旧手順の整備は別 ROADMAP 項目** (本 backup の scope 外、2026-05-16 起票候補)。
+
+### 8.5-3. 「いつ何を変えたか」履歴を見る
+
+```powershell
+$m = "C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude\memory"
+git -C $m log --oneline -20                          # 直近 20 commit
+git -C $m log -p reference_shipping_tariff_logic.md  # 特定 memory の全変更履歴
+```
+
+---
+
 ## 9. 本 manual の運用
 
 - **更新タイミング**: 新しい user 手順が発生したら、assistant は実装と同時に本ファイルに追記する (例: 新 kill switch 追加 / 新メンテ procedure 追加)
@@ -398,5 +502,5 @@ assistant が「これも使えますか?」と提案するもの: `/ultrareview
 | `tools/ebay-manager/logs/scheduler.log` | scheduler 動作ログ |
 | `tools/ebay-manager/logs/watchdog.log` | watchdog 動作ログ |
 | `tools/ebay-manager/data/monitor.db` | 業務 DB (SQLite) |
-| `.claude/rules/*.md` | 横断 rule (Karpathy / DB migration / silent-skip / SKU / sqlite-timezone 等) |
+| `.claude/rules/*.md` | 横断 rule (Karpathy / DB migration / silent-skip / SKU / sqlite-timezone / contradiction-annotation / cascade-update / wiki-frontmatter 等) |
 | `~/.claude/projects/.../memory/` | session 履歴 / feedback / project memory |

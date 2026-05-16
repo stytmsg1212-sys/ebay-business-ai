@@ -50,6 +50,11 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "customs_check", "display": "W14 通関対応", "hours": [6], "weekdays": None, "owner": "customs"},
     {"key": "budget_alert", "display": "予算アラート", "hours": [6, 12, 19], "weekdays": None, "owner": "budget"},
     {"key": "market_analysis_refresh", "display": "W7-A 市場戦略 refresh", "hours": [2], "weekdays": [6], "owner": "market_analysis"},
+    {"key": "daily_codex_lint", "display": "W125 Codex 文書 lint (毎日 03:00)", "hours": [3], "weekdays": None, "owner": "codex_lint"},
+    # Codex Round 1 fix MEDIUM-4 (2026-05-16): kind=interval で main batch slot 期待から除外.
+    # hours=None は本来「全 batch slot で実行」を意味するが、本 task は 30 分毎 cron なので
+    # expected slot 模型と齟齬. kind=interval マーカーで get_today_expected_tasks 側で skip.
+    {"key": "claude_loop_healthcheck", "display": "W131 P5 claude-loop watcher (30分ごと)", "hours": None, "weekdays": None, "owner": "claude_loop_healthcheck", "kind": "interval", "interval_minutes": 30},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}
@@ -232,6 +237,11 @@ def get_today_expected_tasks(
     out: list[dict] = []
     for t in TASK_SCHEDULE:
         if t.get("weekdays") is not None and weekday not in t["weekdays"]:
+            continue
+        # Codex Round 1 fix MEDIUM-4 (2026-05-16): kind=interval task は cron が
+        # batch slot ではなく */30 等で発火するため expected slot 模型から除外.
+        # MonoDeck の missed 判定で false positive を出さない.
+        if t.get("kind") == "interval":
             continue
         hours = t.get("hours")
         slots: list[int]

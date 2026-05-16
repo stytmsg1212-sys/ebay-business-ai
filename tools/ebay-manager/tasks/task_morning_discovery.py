@@ -178,7 +178,12 @@ def _build_discovery_query(
 }}
 ```
 
-確信度の低い数値項目は null. 必ず 3 件 (各階層 1 件) 出力."""
+確信度の低い数値項目は null 許容 (similar_sold_count_30d / competitor_jp_count / supplier_price_jpy 等).
+ただし `estimated_profit_usd` (想定粗利 USD) は **必ず数値で返す** (null 不可).
+見積不能なら 0 を返し、見積不能な理由を rationale に明記すること.
+理由: user の買う/見送る判断の核心軸であり、null は判断材料を奪うため.
+
+必ず 3 件 (各階層 1 件) 出力."""
 
 
 def _parse_response(answer_md: str) -> Optional[list[dict]]:
@@ -299,10 +304,15 @@ def _send_discord(
             star = c.get('star_rating') or '?'
             rationale = (c.get('rationale') or '')[:80]
             profit = c.get('estimated_profit_usd')
-            profit_str = (
-                f"想定粗利 ${profit:.0f}"
-                if isinstance(profit, (int, float)) else ""
-            )
+            # W129 (2026-05-15): profit=0 は「見積不能シグナル」(prompt L181-184 で null 不可
+            # → 0+理由 rationale 制約). $0 と表示すると赤字判定と誤読され Few-shot 履歴を歪める.
+            if isinstance(profit, (int, float)):
+                profit_str = (
+                    "想定粗利 見積不能 (理由は根拠欄)"
+                    if profit == 0 else f"想定粗利 ${profit:.0f}"
+                )
+            else:
+                profit_str = ""
             lines.append(f"#{c.get('rank', '?')} {name} (★{star})")
             lines.append(f"   {rationale} {profit_str}".rstrip())
     lines.append("→ MonoDeck の『今日の発掘』タブで詳細")
@@ -316,7 +326,7 @@ def _send_discord(
             logger.warning(
                 f"Discord 通知 HTTP {r.status_code}: {(r.text or '')[:200]}"
             )
-    except (Exception,) as e:  # httpx.HTTPError + OSError + その他
+    except Exception as e:  # httpx.HTTPError + OSError + その他
         # httpx import error 等も拾うため広めに. ただし silent ではなく warn 記録.
         logger.warning(f"Discord 送信失敗: {type(e).__name__}: {e}")
 
@@ -397,8 +407,11 @@ def run_morning_discovery(
                 pass
         try:
             _send_discord(answer.qa_id, [], config)
-        except Exception:
-            pass
+        except Exception as e:
+            # Q0 silent skip 防止: Discord (error path) 失敗を logger.warning で痕跡記録
+            logger.warning(
+                f"Discord 通知 (error path) 失敗: {type(e).__name__}: {e}"
+            )
         return {
             "success": False,
             "qa_id": answer.qa_id,
@@ -430,8 +443,11 @@ def run_morning_discovery(
                 answer.qa_id, [], config,
                 warning="JSON parse 失敗 or 候補 0 件 (placeholder)",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            # Q0 silent skip 防止: Discord (parse_error path) 失敗を logger.warning で痕跡記録
+            logger.warning(
+                f"Discord 通知 (parse_error path) 失敗: {type(e).__name__}: {e}"
+            )
         return {
             "success": False,  # M-3: 失敗扱いに変更
             "qa_id": answer.qa_id,
