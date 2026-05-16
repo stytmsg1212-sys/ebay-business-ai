@@ -25,6 +25,7 @@ def render_purchase_confirm_tab() -> None:
         suggest_listings,
         undo_purchase,
     )
+    from ui_cache import bump_db_version  # W134 Step2: 書込後 read-cache 無効化
 
     st.subheader("📥 有在庫 入荷確認")
     st.caption(
@@ -117,6 +118,7 @@ def render_purchase_confirm_tab() -> None:
                 use_container_width=True,
             ):
                 res = confirm_purchase(gmail_id, eid, int(qty))
+                bump_db_version()  # W134 Step2: 在庫加算後 read-cache 無効化
                 # 確定結果を session_state に保持 → rerun を跨いで取消可能に
                 # (Streamlit ネスト button は次 run で消えるため: MEDIUM fix).
                 st.session_state["pc_last_confirm"] = {
@@ -150,6 +152,7 @@ def render_purchase_confirm_tab() -> None:
         if kind in ("success", "partial", "already"):
             if st.button("↩ 直前の確定を取消", key="pc_undo_last"):
                 u = undo_purchase(last["gmail_id"], last["ebay_item_id"])
+                bump_db_version()  # W134 Step2: 在庫戻し後 read-cache 無効化
                 if u.get("success") and u.get("sync_success"):
                     st.info(u["message"])
                 elif u.get("success") or u.get("already"):

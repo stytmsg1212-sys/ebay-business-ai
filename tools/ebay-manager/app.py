@@ -87,6 +87,62 @@ from tabs.tab_morning_discovery import render_morning_discovery_tab
 from tabs.tab_purchase_confirm import render_purchase_confirm_tab
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
+# ── W134 Step2: 重い DB ローダの read-cache (体感改善) ──
+# 2 層の安全設計 (2026-05-16 user 判断 = 短 TTL 方式):
+#  (1) **ttl=3s = 正しさの保証**。bump 配線を 1 箇所漏らしても古い在庫/価格は
+#      最悪 3 秒で自動的に最新へ切替わる。app 全体の全書込を網羅 bump する
+#      必要はない (網羅は単一巨大 app.py では証明不能で脆弱なため放棄)。
+#  (2) bump_db_version() = 既知ホットパスの **即時反映最適化** (0 秒)。
+#      在庫確定/保存等で 3 秒すら待たせないための任意配線であり、欠落は
+#      correctness 違反でなく「最大 3 秒の遅延」に縮退する。
+# db_version は **先頭 _ を付けない** (st.cache_data は _ 始まり引数を hash 対象外に
+# するため。token を key に含めるには通常引数である必要)。書込関数は cache せず、
+# SQLite 接続も st.cache_resource で共有しない (ui_cache.py の設計約束参照)。
+from ui_cache import get_db_version, bump_db_version  # noqa: E402
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_execution_summary(db_version: int):
+    from scheduler_integration import get_execution_summary
+    return get_execution_summary()
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_dash_emails(db_version: int, limit: int):
+    from monitor.database import get_recent_emails
+    return get_recent_emails(limit)
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_active_tasks(db_version: int):
+    from company_integration import get_active_tasks
+    return get_active_tasks()
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_supply_risk(db_version: int):
+    from monitor.database import get_ebay_listings_supply_risk
+    return get_ebay_listings_supply_risk()
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_listings_by_rank(db_version: int, order_by_rank: bool):
+    from monitor.database import get_ebay_listings_by_rank
+    return get_ebay_listings_by_rank(order_by_rank=order_by_rank)
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_market_displays(db_version: int, ids: tuple):
+    from monitor.lowest_price import get_listing_market_displays
+    return get_listing_market_displays(list(ids))
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_competitors_grouped(db_version: int, ids: tuple):
+    from monitor.lowest_price import get_competitors_grouped
+    return get_competitors_grouped(list(ids))
+
+
 st.set_page_config(page_title="MONO Deck", page_icon="◯", layout="wide")
 apply_custom_styling()
 
@@ -425,11 +481,11 @@ if _w134_sel == "DASHBOARD":
 
     # ── MONO Deck — Interstellar Cockpit Header ──
     # Cooper's cockpit (Endurance) + TARS terminal + Gargantua amber accent
-    exec_summary = get_execution_summary()
+    exec_summary = _cd_execution_summary(get_db_version())
     _sr = (exec_summary['success'] / max(exec_summary['total'], 1) * 100) if exec_summary['total'] > 0 else 0
-    _dash_emails_all = _dash_get_emails(50)
+    _dash_emails_all = _cd_dash_emails(get_db_version(), 50)
     _dash_unconf = [em for em in _dash_emails_all if em.get('confirmed', 0) == 0]
-    active = get_active_tasks()
+    active = _cd_active_tasks(get_db_version())
     _high_tasks = [t for t in active if t['priority'] in ('高', '中')]
 
     from datetime import datetime as _dt
@@ -1227,6 +1283,7 @@ if _w134_sel == "DASHBOARD":
         if _inbox_confirm_ids:
             if st.button(f"{len(_inbox_confirm_ids)}件を確認済みにする", type="primary", key="inbox_confirm"):
                 set_email_confirmed(_inbox_confirm_ids)
+                bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                 st.rerun()
 
         # 2026-04-22: MAIL タブ廃止に伴い、非緊急メールもダッシュボードに表示する。
@@ -1293,6 +1350,7 @@ if _w134_sel == "DASHBOARD":
                     type="secondary", key="inbox_ref_confirm",
                 ):
                     set_email_confirmed(_ref_confirm_ids)
+                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                     st.rerun()
         elif not _dash_unconf:
             st.markdown('<span class="clear-status">問題なし</span>', unsafe_allow_html=True)
@@ -1789,7 +1847,7 @@ if _w134_sel == "在庫監視":
 
     # ---------- 要対応（仕入先在庫リスク） ----------
     with monitor_tab_risk:
-        risk_data = get_ebay_listings_supply_risk()
+        risk_data = _cd_supply_risk(get_db_version())
         oos_items = risk_data["out_of_stock"]
         pnf_items = risk_data["page_not_found"]
         total_risk = len(oos_items) + len(pnf_items)
@@ -2059,6 +2117,7 @@ if _w134_sel == "在庫監視":
                                         set_ebay_listing_risk_confirmed(eid, 1)
                                     progress.progress((i + 1) / len(sync_targets))
 
+                        bump_db_version()  # W134 Step2: 在庫/SKU/risk 一括変更後 read-cache 無効化
                         st.rerun()  # Reload to update status column
 
         # --- 在庫切れ（インライン候補表示版） ---
@@ -2636,6 +2695,7 @@ if _w134_sel == "在庫監視":
                                 if ok:
                                     set_ebay_listing_risk_confirmed(eid, 1)
                                 progress.progress((i + 1) / len(sync_targets))
+                    bump_db_version()  # W134 Step2: 在庫/SKU/risk 一括変更後 read-cache 無効化
                     st.rerun()
 
             # --- form 外: 候補未探索 SKU の即時探索（form内では button 使えないため分離） ---
@@ -2836,6 +2896,7 @@ if _w134_sel == "在庫監視":
                                 )
                                 if result['success']:
                                     update_ebay_listing_quantity(item["ebay_item_id"], 0)
+                                    bump_db_version()  # W134 Step2: 在庫0化後 read-cache 無効化
                                     # 業務ロジック: 一括在庫0 実行 = RISK 解消 (販売停止)。
                                     # risk_confirmed は自動セットしない。必要な listing は
                                     # user が個別に「確認」チェックで手動追跡。
@@ -3056,6 +3117,7 @@ if _w134_sel == "在庫監視":
                                 )
                                 if result['success']:
                                     update_ebay_listing_quantity(ebay_item_id, 0)
+                                    bump_db_version()  # W134 Step2: 在庫0化後 read-cache 無効化
                                     st.success(f"{ebay_item_id} qty set to 0")
                                     st.rerun()
                                 else:
@@ -3384,6 +3446,7 @@ if _w134_sel == "eBay連携":
                             if st.button("更新", key="rank_update_btn"):
                                 try:
                                     update_ebay_listing_rank(selected_item['ebay_item_id'], new_rank)
+                                    bump_db_version()  # W134 Step2: ランク変更後 read-cache 無効化
                                     st.success(f"{new_rank}に更新しました")
                                     st.rerun()
                                 except Exception as e:
@@ -3464,7 +3527,7 @@ if _w134_sel == "最安値チェック":
         st.warning(f"商品リサーチ wizard 描画エラー: {_e}")
 
     # ── 出品中の商品取得 ──
-    _lp_my_items = get_ebay_listings_by_rank(order_by_rank=True)
+    _lp_my_items = _cd_listings_by_rank(get_db_version(), True)
     _lp_active = [it for it in _lp_my_items if not it.get('is_ended', 0)]
     _lp_items_map = {it['ebay_item_id']: it for it in _lp_my_items}
 
@@ -3473,8 +3536,8 @@ if _w134_sel == "最安値チェック":
     else:
         _lp_our_ids = [it['ebay_item_id'] for it in _lp_active]
         # 区分 (final/proposed/analysis 優先) と ライバル件数を一括取得
-        _lp_market_map = get_listing_market_displays(_lp_our_ids)
-        _lp_grouped = get_competitors_grouped(_lp_our_ids)
+        _lp_market_map = _cd_market_displays(get_db_version(), tuple(_lp_our_ids))
+        _lp_grouped = _cd_competitors_grouped(get_db_version(), tuple(_lp_our_ids))
 
         # ───────────────────────────────────
         # サマリ
@@ -3655,6 +3718,7 @@ if _w134_sel == "最安値チェック":
                                     st.success(f"仕入価格 ¥{_fetched:,} を保存")
                                     _lp_calc_settings = dict(s)
                                     update_listing_breakeven(_lp_selected_id, _lp_calc_settings)
+                                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                                     st.rerun()
                             except Exception as e:
                                 st.error(f"取得エラー: {e}")
@@ -3747,6 +3811,7 @@ if _w134_sel == "最安値チェック":
                             update_listing_breakeven(_lp_selected_id, _lp_calc_settings)
                         # ライバル更新
                         upsert_listing_competitors(_lp_selected_id, _lp_comp_inputs)
+                        bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                         st.success("保存しました")
                         st.rerun()
                     except Exception as e:
@@ -3932,6 +3997,7 @@ if _w134_sel == "最安値チェック":
                                 if _f is None:
                                     st.error("失敗")
                                 else:
+                                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                                     st.rerun()
                             except Exception as e:
                                 st.error(f"err: {e}")
@@ -3966,6 +4032,7 @@ if _w134_sel == "最安値チェック":
                                         _tgt, _existing + [_iid]
                                     )
                                     update_alert_action(_aid, "registered")
+                                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                                     st.success("追加")
                                     st.rerun()
                             except Exception as e:
@@ -3974,6 +4041,7 @@ if _w134_sel == "最安値チェック":
                     if st.button("無視", key=f"lp_alert_skip_{_aid}"):
                         try:
                             update_alert_action(_aid, "ignored")
+                            bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
                             st.rerun()
                         except Exception as e:
                             st.error(f"err: {e}")
@@ -5042,6 +5110,7 @@ if _w134_sel == "仕入先候補":
                                             else:
                                                 if _qres_r.get("success"):
                                                     update_ebay_listing_quantity(_eid, 1)
+                                                    bump_db_version()  # W134 Step2: 在庫復元後 read-cache 無効化
                                                     _msgs.append((
                                                         "success",
                                                         f"{_eid}: 在庫 0 → 1 自動復元 (復活完了)",

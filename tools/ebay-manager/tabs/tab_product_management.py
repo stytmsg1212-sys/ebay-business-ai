@@ -24,6 +24,8 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
+from ui_cache import bump_db_version, get_db_version
+
 from monitor.database import (
     get_conn,
     get_japan_competitor_alerts,
@@ -138,6 +140,19 @@ def _fetch_all_products() -> list[dict]:
             """
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# W134 Step2: 商品管理タブの全 listing 取得は重い (active 全件 + サブクエリ)。
+# st.cache_data(ttl=60) でラップし db_version を cache key に混ぜる。書込側
+# (_save_product_data / _update_ebay_reflected_fields / W133 confirm 等) が
+# bump_db_version() を呼ぶと次回 read で最新を再取得する。
+# 注: 本 wrapper は app.py でなく本モジュール内に置く (呼出元が同一モジュール
+# であり app.py 側に置くと app.py⇄tab の循環 import になるため。spec の
+# 「database.py 不改修・UI 層で wrap」の意図には沿う。db_version は先頭 _ を
+# 付けない = st.cache_data の hash 対象に含めるため)。
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_fetch_all_products(db_version: int) -> list[dict]:
+    return _fetch_all_products()
 
 
 def _fetch_supplier_candidates_for_listing(ebay_item_id: str) -> list[dict]:
@@ -998,6 +1013,7 @@ def _render_cli_bulk_candidates(p: dict, registered_ids: list[str]) -> None:
                 upsert_listing_competitors(
                     our_item_id=eid, competitor_item_ids=deduped,
                 )
+                bump_db_version()  # W134 Step2: 競合更新後 read-cache 無効化
                 st.success(
                     f"✅ {len(selected)} 件追加完了 (合計 {len(deduped)} 件 active)"
                 )
@@ -1077,6 +1093,7 @@ def _render_new_alerts_for_listing(
                                 competitor_item_ids=registered_ids + [iid],
                             )
                             update_alert_action(aid, "registered")
+                            bump_db_version()  # W134 Step2: 競合更新後 read-cache 無効化
                             st.success(f"追加: {iid}")
                             st.rerun()
                     except (sqlite3.OperationalError, ValueError, TypeError) as e:
@@ -1190,6 +1207,9 @@ def _save_product_data(
             update_listing_breakeven(ebay_item_id, config or {})
         except (sqlite3.OperationalError, TypeError, ValueError, KeyError) as e:
             logger.warning(f"[pm_save] breakeven recalc error: {e}")
+
+    # W134 Step2: 全書込完了後に read-cache 無効化 (商品管理一覧へ即時反映)
+    bump_db_version()
 
 
 # =============================================================================
@@ -1419,6 +1439,7 @@ def _update_ebay_reflected_fields(eid: str, editing: dict) -> None:
                 "UPDATE ebay_listings SET shipping_cost=? WHERE ebay_item_id=?",
                 (float(new_ship), eid),
             )
+    bump_db_version()  # W134 Step2: eBay 反映後 DB 同期 → read-cache 無効化
 
 
 # =============================================================================
@@ -1663,7 +1684,7 @@ def render_product_management(config: dict) -> None:
         "編集 + 保存で DB 反映 + breakeven 自動再計算."
     )
 
-    products = _fetch_all_products()
+    products = _cd_fetch_all_products(get_db_version())
     if not products:
         st.info("active listing がありません.")
         return
