@@ -43,10 +43,31 @@ def _conn() -> sqlite3.Connection:
 
 
 def _get_credentials() -> Optional[tuple]:
-    """eBay API 認証情報を取得."""
+    """eBay API 認証情報を (app_id, dev_id, cert_id, user_token) タプルで取得.
+
+    get_ebay_credentials() は **dict** を返す. dict のまま呼び出し側で
+    `a, b, c, d = creds` するとキー文字列 ("app_id" 等) が入り eBay GetOrders
+    認証が静かに全滅する (2026-05-16 W133 item2 で inventory_sync と同型の
+    本番ブロッカーを発見; pytest は tuple の fake creds を mock し不可視だった).
+    ここで明示的にタプル化し、4 値が 1 つでも空なら None を返して
+    呼び出し側の `if not creds` ガードを機能させる.
+    """
     try:
-        from monitor.credentials import get_ebay_credentials
-        return get_ebay_credentials()
+        from monitor.credentials import (
+            ebay_credentials_ok,
+            get_ebay_credentials,
+        )
+        creds = get_ebay_credentials()
+        if not ebay_credentials_ok(creds):
+            logger.error(
+                "eBay 認証情報が未設定 "
+                "(app_id/dev_id/cert_id/user_token のいずれか空)"
+            )
+            return None
+        return (
+            creds["app_id"], creds["dev_id"],
+            creds["cert_id"], creds["user_token"],
+        )
     except (ImportError, KeyError, OSError, ValueError) as e:
         # H8 (Wave C): broad except → specific exceptions (qiita 9 原則).
         # ImportError: credentials module 読込失敗 / KeyError: dict 構造不整合 /

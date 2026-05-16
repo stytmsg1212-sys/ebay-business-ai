@@ -243,3 +243,38 @@ def test_sync_null_inventory_skips(tmp_db):
         res = inventory_sync.sync_listing_quantity("S6")
     assert res["success"] is False
     assert "未入力" in res["message"]
+
+
+# =============================================================================
+# _get_credentials の dict→tuple 契約 (2026-05-16 本番ブロッカー回帰防止)
+#
+# 旧実装は get_ebay_credentials() の dict をそのまま返し、呼び出し側の
+# `a, b, c, d = creds` がキー文字列を取り eBay 認証が静かに全滅していた.
+# 上の sync 系テストは _get_credentials 自体を mock するため不可視だった
+# (fake が tuple、本番が dict = test-reality 形状不一致). 本テストは
+# _get_credentials を mock せず get_ebay_credentials だけ差し替え、実際の
+# 戻りが「値のタプル」であることを直接検証する.
+# =============================================================================
+
+def test_get_credentials_returns_value_tuple_not_dict_keys():
+    """get_ebay_credentials が dict を返しても _get_credentials は値タプル."""
+    from monitor import inventory_sync
+    fake = {
+        "app_id": "APPID-X", "dev_id": "DEVID-Y",
+        "cert_id": "CERTID-Z", "user_token": "v^TOKEN",
+    }
+    with patch("monitor.credentials.get_ebay_credentials",
+               return_value=fake):
+        creds = inventory_sync._get_credentials()
+    assert creds == ("APPID-X", "DEVID-Y", "CERTID-Z", "v^TOKEN"), (
+        f"値タプルでなく {creds!r} (キー文字列混入の本番バグ再発)"
+    )
+
+
+def test_get_credentials_none_when_any_field_blank():
+    """4 値のいずれかが空なら None (呼び出し側 `if not creds` を効かせる)."""
+    from monitor import inventory_sync
+    fake = {"app_id": "A", "dev_id": "", "cert_id": "C", "user_token": "T"}
+    with patch("monitor.credentials.get_ebay_credentials",
+               return_value=fake):
+        assert inventory_sync._get_credentials() is None

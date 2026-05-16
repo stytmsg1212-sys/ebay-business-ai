@@ -154,3 +154,39 @@ def test_no_inventory_zero_no_discord(tmp_db):
 
     inv_embeds = [e for e in sent if "在庫" in e.get("title", "")]
     assert len(inv_embeds) == 0
+
+
+# =============================================================================
+# _get_credentials の dict→tuple 契約 (2026-05-16 本番ブロッカー回帰防止)
+#
+# inventory_sync.py と完全同型の旧バグが task_order_alert._get_credentials
+# にも残存していた (get_ebay_credentials() の dict をそのまま返し、呼出側
+# `app_id, dev_id, cert_id, user_token = creds` がキー文字列を取り eBay
+# GetOrders 認証が静かに全滅). 上の sync 系テストは _get_credentials 自体を
+# mock するため本バグ class (test fake=tuple, 本番=dict 形状不一致) を構造的に
+# 捕捉できない. 本テストは _get_credentials を mock せず get_ebay_credentials
+# だけ差し替え、戻りが「値のタプル」であることを直接検証する.
+# =============================================================================
+
+def test_order_alert_get_credentials_returns_value_tuple_not_dict_keys():
+    """get_ebay_credentials が dict を返しても _get_credentials は値タプル."""
+    from tasks import task_order_alert
+    fake = {
+        "app_id": "APPID-X", "dev_id": "DEVID-Y",
+        "cert_id": "CERTID-Z", "user_token": "v^TOKEN",
+    }
+    with patch("monitor.credentials.get_ebay_credentials",
+               return_value=fake):
+        creds = task_order_alert._get_credentials()
+    assert creds == ("APPID-X", "DEVID-Y", "CERTID-Z", "v^TOKEN"), (
+        f"値タプルでなく {creds!r} (キー文字列混入の本番バグ再発)"
+    )
+
+
+def test_order_alert_get_credentials_none_when_any_field_blank():
+    """4 値のいずれかが空なら None (呼び出し側 `if not creds` を効かせる)."""
+    from tasks import task_order_alert
+    fake = {"app_id": "A", "dev_id": "", "cert_id": "C", "user_token": "T"}
+    with patch("monitor.credentials.get_ebay_credentials",
+               return_value=fake):
+        assert task_order_alert._get_credentials() is None
