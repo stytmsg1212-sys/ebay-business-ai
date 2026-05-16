@@ -33,7 +33,7 @@ from monitor.database import (
 )
 from calculator import load_settings as _load_calc_settings
 from monitor.credentials import get_ebay_credentials
-from monitor.ebay_client import revise_fixed_price_with_shipping
+from monitor.ebay_client import revise_fixed_price_with_shipping, revise_item_sku
 from monitor.lowest_price import (
     fetch_alert_shipping_usd,
     fetch_supplier_purchase_yen,
@@ -1300,23 +1300,52 @@ def _render_one_product(p: dict, config: dict) -> None:
 
             # 1. eBay 反映 (save_ebay の時のみ)
             if save_ebay:
-                ebay_result = _apply_to_ebay(eid, editing, config)
+                # current_sku に DB の p["sku"] を渡し SKU 変更も eBay 反映
+                # (2026-05-17 fix: 旧実装は価格+送料のみ送り SKU 未反映だった)
+                ebay_result = _apply_to_ebay(
+                    eid, editing, config, current_sku=p.get("sku")
+                )
                 if ebay_result["success"]:
-                    # 「\$」エスケープで markdown LaTeX 化を回避.
-                    np = ebay_result.get('new_price') or 0.0
-                    nsh = ebay_result.get('new_ship')
-                    nsh_str = f"\\${float(nsh):.2f}" if nsh is not None else "-"
+                    # 透明な per-part 報告 (価格/送料/SKU) をそのまま表示
                     messages.append(
-                        f"eBay 反映成功: 価格 \\${float(np):.2f} / 送料 {nsh_str}"
+                        f"eBay 反映成功 → {ebay_result.get('message', '')}"
                     )
                     # eBay 成功時のみ ebay_listings.current_price / shipping_cost を更新
                     _update_ebay_reflected_fields(eid, editing)
                 else:
-                    st.error(f"eBay 反映失敗: {ebay_result.get('message', '不明')}")
+                    _msg = ebay_result.get("message", "不明")
+                    # HIGH-1 (2026-05-17 code-reviewer): 価格/送料は eBay
+                    # 反映成功・SKU 失敗の部分成功時、DB を同期しないと
+                    # eBay 新価格 / DB 旧価格が永続乖離し breakeven / W183
+                    # 値下げに誤入力される (money-critical)。反映済みの
+                    # 価格/送料は必ず DB 同期し、未反映 SKU を警告する。
+                    if ebay_result.get("price_ship_ok") is True:
+                        _update_ebay_reflected_fields(eid, editing)
+                        st.warning(
+                            "⚠️ 価格/送料は eBay 反映 + DB 同期 **成功**。"
+                            f"ただし SKU が未反映: {_msg} / "
+                            f"https://www.ebay.com/itm/{eid} で確認し "
+                            "SKU を正しい形式で再設定してください。"
+                            "(仕入価格/在庫数/物理属性など他の編集値も "
+                            "未保存です。再度フォームを保存してください)"
+                        )
+                    elif ebay_result.get("sku_ok") is True:
+                        # 逆: SKU のみ eBay 反映成功・価格/送料失敗。SKU は
+                        # 識別キーでなく金銭計算非依存 (sku-rules) で MEDIUM。
+                        # DB 未同期を明示し user 再保存を促す。
+                        st.warning(
+                            "⚠️ SKU は eBay 反映成功 (DB 未同期)。"
+                            f"価格/送料は失敗: {_msg} / "
+                            "他の編集値も未保存です。再度フォームを "
+                            "保存してください"
+                        )
+                    else:
+                        st.error(f"eBay 反映失敗: {_msg}")
                     # H5 fix (2026-05-11 code-reviewer): エラー時も expander を開いた
                     # ままにする (user が失敗原因を再確認できるよう).
                     st.session_state["pm_keep_open_eid"] = eid
-                    # eBay 失敗時は DB 保存も止める (整合性優先)
+                    # 部分成功分は上で DB 同期済。残りの一括 DB 保存は止める
+                    # (未反映 part の editing 値を DB へ書かない=整合性優先)。
                     return
 
             # 2. DB 保存 (save_db / save_ebay 両方で実行)
@@ -1387,14 +1416,39 @@ def _render_one_product(p: dict, config: dict) -> None:
             st.session_state["pm_keep_open_eid"] = eid
 
 
-def _apply_to_ebay(eid: str, editing: dict, config: dict) -> dict:
-    """eBay 反映: ReviseFixedPriceItem で価格 + 送料 + 追加送料を更新."""
+def _apply_to_ebay(
+    eid: str, editing: dict, config: dict,
+    current_sku: Optional[str] = None,
+) -> dict:
+    """eBay 反映: 価格+送料 (ReviseFixedPriceItem) と、SKU 変更時は SKU
+    (ReviseItem) も eBay へ反映する.
+
+    2026-05-17 修正の前提 (user 就寝中のため明示):
+      - 旧実装は価格+送料のみ送り SKU を eBay へ送っていなかった (DB のみ更新)
+        → 商品管理で SKU 変更しても eBay 未反映のバグ (item 356364841116 で発覚).
+      - SKU 変更検出 = form 入力 (`editing["sku"]`) が現 SKU (`current_sku`,
+        呼出側は DB の `p["sku"]` を渡す) と異なる時. form の SKU 欄 default は
+        DB 値なので、user が触れて値が変われば差分=変更とみなす.
+      - sku-rules.md 準拠: 用途 2 形式 (`stock*` 有在庫 / `ebay**_*****` 無在庫)
+        以外の SKU は **自動正規化せず push 抑止**し理由を明示 (例: 大文字
+        'STOCK' は off-spec、user 判断を仰ぐ). 黙ってスキップしない (Q0).
+      - 価格/送料 と SKU は別 API 呼出. 片方成功・片方失敗を透明に部分報告
+        (Q0 偽装成功禁止). overall success = 試行した全 part 成功.
+    """
     new_price = editing.get("new_ebay_price")
     new_ship = editing.get("new_ship_cost")
     new_add = editing.get("new_ship_additional")
-    # 価格・送料どちらか変更がなければ skip
-    if (new_price is None or new_price <= 0) and new_ship is None:
-        return {"success": False, "message": "価格・送料 どちらも未入力"}
+
+    form_sku = (editing.get("sku") or "").strip()
+    cur_sku = (current_sku or "").strip()
+    sku_changed = bool(form_sku) and form_sku != cur_sku
+
+    price_ship_todo = not (
+        (new_price is None or new_price <= 0) and new_ship is None
+    )
+    if not price_ship_todo and not sku_changed:
+        return {"success": False,
+                "message": "価格・送料・SKU いずれも変更なし"}
 
     try:
         creds = get_ebay_credentials(config or {})
@@ -1408,18 +1462,67 @@ def _apply_to_ebay(eid: str, editing: dict, config: dict) -> dict:
         logger.exception("[pm] credentials 取得エラー")
         return {"success": False, "message": f"credentials 取得エラー: {e}"}
 
-    result = revise_fixed_price_with_shipping(
-        item_id=eid,
-        new_price_usd=float(new_price) if new_price else None,
-        ship_cost_usd=float(new_ship) if new_ship is not None else None,
-        ship_additional_usd=float(new_add) if new_add is not None else None,
-        app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=token,
-    )
+    parts: list[str] = []          # 表示用 "ラベル: 結果" の透明報告
+    overall_ok = True
+    # 部分成功の DB 同期分岐に使う構造化フラグ (None=未試行).
+    # 文字列マッチでなく bool で呼出側が判定する (HIGH-1 2026-05-17).
+    price_ship_ok: Optional[bool] = None
+    sku_ok: Optional[bool] = None
+
+    # ── 価格 / 送料 (変更がある時のみ) ──
+    if price_ship_todo:
+        result = revise_fixed_price_with_shipping(
+            item_id=eid,
+            new_price_usd=float(new_price) if new_price else None,
+            ship_cost_usd=float(new_ship) if new_ship is not None else None,
+            ship_additional_usd=(
+                float(new_add) if new_add is not None else None
+            ),
+            app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=token,
+        )
+        price_ship_ok = bool(result.get("success"))
+        overall_ok = overall_ok and price_ship_ok
+        parts.append(
+            f"価格/送料: {'✅' if price_ship_ok else '❌'} "
+            f"{result.get('message', '')}"
+        )
+
+    # ── SKU (form で変更された時のみ、sku-rules 準拠) ──
+    if sku_changed:
+        # 用途 2 形式以外は自動正規化せず抑止 (sku-rules.md / Q0 痕跡明示)
+        if not (form_sku.startswith("stock")
+                or form_sku.startswith("ebay")):
+            sku_ok = False
+            overall_ok = False
+            parts.append(
+                f"SKU: ⚠️ '{form_sku}' は規約外形式 "
+                "(stock* 有在庫 / ebay**_***** 無在庫 以外)。"
+                "sku-rules により自動正規化せず eBay 反映を抑止。"
+                "正しい形式で再入力してください (大文字 STOCK 等は off-spec)"
+            )
+        else:
+            sku_res = revise_item_sku(
+                eid, form_sku,
+                app_id=app_id, dev_id=dev_id,
+                cert_id=cert_id, user_token=token,
+            )
+            sku_ok = bool(sku_res.get("success"))
+            overall_ok = overall_ok and sku_ok
+            parts.append(
+                f"SKU: {'✅' if sku_ok else '❌'} "
+                f"{sku_res.get('message', '')}"
+            )
+
     return {
-        "success": bool(result.get("success")),
-        "message": result.get("message", ""),
+        "success": overall_ok,
+        "message": " / ".join(parts) if parts else "変更なし",
         "new_price": new_price,
         "new_ship": new_ship,
+        "sku_pushed": sku_changed,
+        # 構造化フラグ: 呼出側が部分成功時の DB 同期を分岐 (HIGH-1).
+        # True=eBay 反映成功 / False=失敗 or 抑止 / None=未試行.
+        "price_ship_ok": price_ship_ok,
+        "sku_ok": sku_ok,
     }
 
 

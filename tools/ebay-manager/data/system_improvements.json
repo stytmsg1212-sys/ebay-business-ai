@@ -1206,5 +1206,15 @@
     "priority": "高",
     "created": "2026-05-16",
     "completed": null
+  },
+  {
+    "id": 220,
+    "tag": "W136",
+    "title": "送料 override 系統的バグ: ShippingServicePriority=1 ハードコード→BP sortOrderId 不一致で無音失敗",
+    "description": "ShippingServiceCostOverride の ShippingServicePriority を 1 にハードコード (ebay_client._build_revise_with_shipping_xml / ebay_lister._build_shipping_service_cost_override_list_xml)。eBay 公式仕様では ShippingServicePriority は Business Policy の sortOrderId と一致必須。sortOrderId≠1 の BP listing では override が Ack=Success のまま無音で無視され BP default cost が表示され続ける (偽装成功)。経験的証拠: audit-2026-05-01-shipping.md で β fix 後も 9件中8件で override 不適用 (多くが actual=BP default $30)。item 356364841116 も同症状 (DB送料29 vs eBay31.6)。要素名 ShippingServiceType は正 (一次情報確認済、誤りではない)。要 /feature-dev (Q3、money-critical 全listing送料波及): Business Policies Management API (GetSellerProfiles) で BP の sortOrderId を動的取得する設計。Phase3 Clarify で BP数・sortOrderId分布・移行戦略を確定。出典: 2026-05-17 商品管理eBay反映バグ調査 + Codex finding1。詳細: reference_shipping_tariff_logic.md v2.2 §5.2。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-17",
+    "completed": null
   }
 ]

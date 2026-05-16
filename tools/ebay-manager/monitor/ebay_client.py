@@ -549,7 +549,13 @@ def revise_item_sku(
     except Exception as e:
         return {'success': False, 'message': f"通信エラー: {e}"}
 
-    root = ET.fromstring(resp.text)
+    # F5 同型 (2026-05-17): HTTP 200 でも HTML/不正 body なら ET.fromstring が
+    # ParseError を送出し関数外へ伝播 (商品管理 UI クラッシュ). graceful に
+    # success:False で返す (revise_inventory_quantity と同じ防御).
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {'success': False, 'message': f"XML parse error: {e}"}
     ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
 
     ack = root.findtext("ns:Ack", namespaces=ns)
@@ -821,7 +827,18 @@ def _call_trading_api(
     except Exception as e:
         return {"success": False, "message": f"通信エラー: {e}", "raw": None}
 
-    root = ET.fromstring(resp.text)
+    # F5 同型 (2026-05-17 Codex finding 4): HTTP 200 でも eBay メンテ HTML /
+    # gateway エラーページ等 非XML body が返ると ET.fromstring が ParseError を
+    # 送出し、本ラッパを経由する全 Revise/Relist/End 系 (revise_fixed_price_with
+    # _shipping 等) へ伝播し UI/scheduler がクラッシュ. graceful に success:False.
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {
+            "success": False,
+            "message": f"XML parse error: {e}",
+            "raw": resp.text,
+        }
     ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
     ack = root.findtext("ns:Ack", namespaces=ns)
     if ack in ("Success", "Warning"):
