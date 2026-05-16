@@ -1300,52 +1300,33 @@ def _render_one_product(p: dict, config: dict) -> None:
 
             # 1. eBay 反映 (save_ebay の時のみ)
             if save_ebay:
-                # current_sku に DB の p["sku"] を渡し SKU 変更も eBay 反映
-                # (2026-05-17 fix: 旧実装は価格+送料のみ送り SKU 未反映だった)
                 ebay_result = _apply_to_ebay(
                     eid, editing, config, current_sku=p.get("sku")
                 )
+                _msg = ebay_result.get("message", "不明")
+                snap2 = ebay_result.get("post_snapshot")
+                # revise が実行され反映後 GetItem が取れた場合は、verify 成否に
+                # 関わらず DB を **実 eBay 値** へ同期する (DB:=真実)。これで
+                # HIGH-1 (価格 eBay 反映済・DB 旧値の永続乖離) も部分 verify 乖離も
+                # 構造的に消える。snap2 が None = revise 未実行 or verify GetItem
+                # 失敗 = DB は触らない (eBay 不明値を DB に書かない=Q0)。
+                if snap2 is not None:
+                    _sync_db_to_actual(eid, snap2)
                 if ebay_result["success"]:
-                    # 透明な per-part 報告 (価格/送料/SKU) をそのまま表示
-                    messages.append(
-                        f"eBay 反映成功 → {ebay_result.get('message', '')}"
-                    )
-                    # eBay 成功時のみ ebay_listings.current_price / shipping_cost を更新
-                    _update_ebay_reflected_fields(eid, editing)
+                    messages.append(f"eBay 反映成功 → {_msg}")
                 else:
-                    _msg = ebay_result.get("message", "不明")
-                    # HIGH-1 (2026-05-17 code-reviewer): 価格/送料は eBay
-                    # 反映成功・SKU 失敗の部分成功時、DB を同期しないと
-                    # eBay 新価格 / DB 旧価格が永続乖離し breakeven / W183
-                    # 値下げに誤入力される (money-critical)。反映済みの
-                    # 価格/送料は必ず DB 同期し、未反映 SKU を警告する。
-                    if ebay_result.get("price_ship_ok") is True:
-                        _update_ebay_reflected_fields(eid, editing)
+                    if snap2 is not None:
                         st.warning(
-                            "⚠️ 価格/送料は eBay 反映 + DB 同期 **成功**。"
-                            f"ただし SKU が未反映: {_msg} / "
-                            f"https://www.ebay.com/itm/{eid} で確認し "
-                            "SKU を正しい形式で再設定してください。"
-                            "(仕入価格/在庫数/物理属性など他の編集値も "
-                            "未保存です。再度フォームを保存してください)"
-                        )
-                    elif ebay_result.get("sku_ok") is True:
-                        # 逆: SKU のみ eBay 反映成功・価格/送料失敗。SKU は
-                        # 識別キーでなく金銭計算非依存 (sku-rules) で MEDIUM。
-                        # DB 未同期を明示し user 再保存を促す。
-                        st.warning(
-                            "⚠️ SKU は eBay 反映成功 (DB 未同期)。"
-                            f"価格/送料は失敗: {_msg} / "
-                            "他の編集値も未保存です。再度フォームを "
-                            "保存してください"
+                            f"⚠️ 一部未反映 (DB は実 eBay 値へ同期済): {_msg} / "
+                            f"https://www.ebay.com/itm/{eid} で確認してください。"
+                            "(仕入価格/在庫数など他の編集値は未保存、"
+                            "再度フォームを保存してください)"
                         )
                     else:
-                        st.error(f"eBay 反映失敗: {_msg}")
-                    # H5 fix (2026-05-11 code-reviewer): エラー時も expander を開いた
-                    # ままにする (user が失敗原因を再確認できるよう).
+                        st.error(f"eBay 反映できず (DB 変更なし): {_msg}")
+                    # H5 fix: エラー時も expander を開いたままにする
                     st.session_state["pm_keep_open_eid"] = eid
-                    # 部分成功分は上で DB 同期済。残りの一括 DB 保存は止める
-                    # (未反映 part の editing 値を DB へ書かない=整合性優先)。
+                    # 未反映項目の editing 値を一括 DB 保存しない (整合性優先)。
                     return
 
             # 2. DB 保存 (save_db / save_ebay 両方で実行)
@@ -1416,39 +1397,46 @@ def _render_one_product(p: dict, config: dict) -> None:
             st.session_state["pm_keep_open_eid"] = eid
 
 
+def _money_eq(a: Optional[float], b: Optional[float]) -> bool:
+    """USD 金額の 0.01 丸め一致 (None はどちらかでも不一致)."""
+    if a is None or b is None:
+        return False
+    return round(float(a), 2) == round(float(b), 2)
+
+
 def _apply_to_ebay(
     eid: str, editing: dict, config: dict,
     current_sku: Optional[str] = None,
 ) -> dict:
-    """eBay 反映: 価格+送料 (ReviseFixedPriceItem) と、SKU 変更時は SKU
-    (ReviseItem) も eBay へ反映する.
+    """eBay 反映: 反映前 GetItem で実 eBay と差分検出 → 差分のみ revise →
+    反映後 GetItem で実値一致を verify (Ack でなく実値で成功判定).
 
-    2026-05-17 修正の前提 (user 就寝中のため明示):
-      - 旧実装は価格+送料のみ送り SKU を eBay へ送っていなかった (DB のみ更新)
-        → 商品管理で SKU 変更しても eBay 未反映のバグ (item 356364841116 で発覚).
-      - SKU 変更検出 = form 入力 (`editing["sku"]`) が現 SKU (`current_sku`,
-        呼出側は DB の `p["sku"]` を渡す) と異なる時. form の SKU 欄 default は
-        DB 値なので、user が触れて値が変われば差分=変更とみなす.
-      - sku-rules.md 準拠: 用途 2 形式 (`stock*` 有在庫 / `ebay**_*****` 無在庫)
-        以外の SKU は **自動正規化せず push 抑止**し理由を明示 (例: 大文字
-        'STOCK' は off-spec、user 判断を仰ぐ). 黙ってスキップしない (Q0).
-      - 価格/送料 と SKU は別 API 呼出. 片方成功・片方失敗を透明に部分報告
-        (Q0 偽装成功禁止). overall success = 試行した全 part 成功.
+    W137 (2026-05-17) 再設計の核心:
+      - **DB を信頼しない**: 変更検出は form vs 実 eBay GetItem (A1). DB↔eBay
+        既存乖離 (例 DB 'STOCK' vs eBay 'stock:01') を確実に検出する。
+        `current_sku` 引数は signature 互換のため残すが未使用。
+      - **W136 送料 fix**: 送料 override 時、反映前 snapshot の 3 profile ID
+        (Payment/Return/Shipping) を seller_profiles で同梱。BP 管理 listing は
+        SellerProfiles 同梱が無いと override が無音失敗 (真因 2 段検証済)。
+      - **fake success 排除 (B1)**: 反映後 GetItem で実値が form 期待値と
+        一致した項目のみ ✅。Ack=Success でも実値不一致なら ❌ + 実値併記。
+      - 反映前/後 snapshot 取得失敗時は revise 中止 or 不明として success:False
+        (Q0: 不明を「変更なし」「成功」と偽らない)。
+      - 戻り `post_snapshot` を呼出側へ渡し、DB は **実 eBay 値へ同期**
+        (DB:=真実 で HIGH-1 / 部分 verify 乖離を構造排除)。
     """
+    from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+
     new_price = editing.get("new_ebay_price")
     new_ship = editing.get("new_ship_cost")
     new_add = editing.get("new_ship_additional")
-
     form_sku = (editing.get("sku") or "").strip()
-    cur_sku = (current_sku or "").strip()
-    sku_changed = bool(form_sku) and form_sku != cur_sku
 
-    price_ship_todo = not (
-        (new_price is None or new_price <= 0) and new_ship is None
-    )
-    if not price_ship_todo and not sku_changed:
-        return {"success": False,
-                "message": "価格・送料・SKU いずれも変更なし"}
+    base = {
+        "success": False, "message": "", "new_price": new_price,
+        "new_ship": new_ship, "sku_pushed": False,
+        "price_ship_ok": None, "sku_ok": None, "post_snapshot": None,
+    }
 
     try:
         creds = get_ebay_credentials(config or {})
@@ -1457,43 +1445,79 @@ def _apply_to_ebay(
         cert_id = creds.get("cert_id", "")
         token = creds.get("user_token", "")
         if not (app_id and dev_id and cert_id and token):
-            return {"success": False, "message": "eBay credentials 不在"}
+            return {**base, "message": "eBay credentials 不在"}
     except (KeyError, ValueError, OSError) as e:
         logger.exception("[pm] credentials 取得エラー")
-        return {"success": False, "message": f"credentials 取得エラー: {e}"}
+        return {**base, "message": f"credentials 取得エラー: {e}"}
 
-    parts: list[str] = []          # 表示用 "ラベル: 結果" の透明報告
-    overall_ok = True
-    # 部分成功の DB 同期分岐に使う構造化フラグ (None=未試行).
-    # 文字列マッチでなく bool で呼出側が判定する (HIGH-1 2026-05-17).
-    price_ship_ok: Optional[bool] = None
-    sku_ok: Optional[bool] = None
+    # ── Phase 1: 反映前 snapshot (実 eBay = 真実源) ──
+    snap = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+    if not snap.ok:
+        return {**base,
+                "message": f"反映前 GetItem 失敗のため反映中止: {snap.error}"}
 
-    # ── 価格 / 送料 (変更がある時のみ) ──
-    if price_ship_todo:
-        result = revise_fixed_price_with_shipping(
+    # ── Phase 2: 差分検出 (form vs 実 eBay、DB 不参照) ──
+    sku_changed = bool(form_sku) and form_sku != (snap.sku or "")
+    price_changed = (
+        new_price is not None and new_price > 0
+        and not _money_eq(float(new_price), snap.start_price_usd)
+    )
+    ship_changed = (
+        new_ship is not None
+        and not _money_eq(float(new_ship), snap.ship_cost_usd)
+    )
+    if not (sku_changed or price_changed or ship_changed):
+        return {**base,
+                "message": "実 eBay と差分なし (反映不要)。"
+                f"eBay 実値: SKU={snap.sku} 価格={snap.start_price_usd} "
+                f"送料={snap.ship_cost_usd}"}
+
+    parts: list[str] = []
+    sku_pushed = False
+
+    # ── Phase 3: revise (差分項目のみ) ──
+    # revise API の失敗原因 (eBay ErrorCode / token 失効等) は最も価値ある
+    # 診断情報。実値 verify が最終 gate だが、API message を握り潰すと
+    # 「W136 無音失敗」と「送信拒否(token失効等)」を user が区別できない
+    # → 必ず message に合流させる (HIGH-1 2026-05-17 / silent-skip 精神)。
+    revise_errs: list[str] = []
+    if price_changed or ship_changed:
+        # HIGH-2: 送料変更だが BP shipping profile ID 不在 = SellerProfiles
+        # 非同梱 = W136 無音失敗の確定条件。silent fallback せず痕跡を残す。
+        if ship_changed and not snap.shipping_profile_id:
+            logger.warning(
+                f"[pm] {eid} 送料変更だが pre-snapshot に "
+                "shipping_profile_id 無し → SellerProfiles 非同梱で "
+                "override 無音失敗の恐れ (W136 条件)"
+            )
+            parts.append(
+                "⚠️ BP shipping profile ID が GetItem から取得できず、"
+                "送料 override が無音失敗する可能性 (要 eBay 手動確認)"
+            )
+        _r = revise_fixed_price_with_shipping(
             item_id=eid,
-            new_price_usd=float(new_price) if new_price else None,
-            ship_cost_usd=float(new_ship) if new_ship is not None else None,
+            new_price_usd=float(new_price) if price_changed else None,
+            ship_cost_usd=float(new_ship) if ship_changed else None,
             ship_additional_usd=(
-                float(new_add) if new_add is not None else None
+                float(new_add) if (ship_changed and new_add is not None)
+                else None
             ),
             app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=token,
+            # W136: BP 参照を同梱 (反映前 snapshot 由来の実 3 ID)
+            seller_profiles={
+                "payment_id": snap.payment_profile_id,
+                "return_id": snap.return_profile_id,
+                "shipping_id": snap.shipping_profile_id,
+            },
         )
-        price_ship_ok = bool(result.get("success"))
-        overall_ok = overall_ok and price_ship_ok
-        parts.append(
-            f"価格/送料: {'✅' if price_ship_ok else '❌'} "
-            f"{result.get('message', '')}"
-        )
-
-    # ── SKU (form で変更された時のみ、sku-rules 準拠) ──
+        if not _r.get("success"):
+            revise_errs.append(
+                f"価格/送料 revise API 失敗: {_r.get('message', '不明')}"
+            )
     if sku_changed:
-        # 用途 2 形式以外は自動正規化せず抑止 (sku-rules.md / Q0 痕跡明示)
         if not (form_sku.startswith("stock")
                 or form_sku.startswith("ebay")):
-            sku_ok = False
-            overall_ok = False
+            # off-spec は自動正規化せず抑止 (sku-rules / Q0 痕跡)
             parts.append(
                 f"SKU: ⚠️ '{form_sku}' は規約外形式 "
                 "(stock* 有在庫 / ebay**_***** 無在庫 以外)。"
@@ -1501,48 +1525,105 @@ def _apply_to_ebay(
                 "正しい形式で再入力してください (大文字 STOCK 等は off-spec)"
             )
         else:
-            sku_res = revise_item_sku(
-                eid, form_sku,
-                app_id=app_id, dev_id=dev_id,
+            _rs = revise_item_sku(
+                eid, form_sku, app_id=app_id, dev_id=dev_id,
                 cert_id=cert_id, user_token=token,
             )
-            sku_ok = bool(sku_res.get("success"))
-            overall_ok = overall_ok and sku_ok
-            parts.append(
-                f"SKU: {'✅' if sku_ok else '❌'} "
-                f"{sku_res.get('message', '')}"
-            )
+            if _rs.get("success"):
+                sku_pushed = True
+            else:
+                revise_errs.append(
+                    f"SKU revise API 失敗: {_rs.get('message', '不明')}"
+                )
+    if revise_errs:
+        parts.append("⚠️ API: " + " / ".join(revise_errs))
+
+    # ── Phase 4: 反映後 snapshot で実値 verify (Ack でなく実値) ──
+    snap2 = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+    if not snap2.ok:
+        return {
+            **base, "sku_pushed": sku_pushed,
+            "message": "revise 送信後の verify 用 GetItem 失敗 = 実反映不明 "
+                       f"(成功と断定しない): {snap2.error}",
+        }
+
+    price_ship_ok: Optional[bool] = None
+    sku_ok: Optional[bool] = None
+    overall_ok = True
+
+    if price_changed or ship_changed:
+        pv = (not price_changed) or _money_eq(
+            snap2.start_price_usd, float(new_price))
+        sv = (not ship_changed) or _money_eq(
+            snap2.ship_cost_usd, float(new_ship))
+        price_ship_ok = pv and sv
+        overall_ok = overall_ok and price_ship_ok
+        det = []
+        if price_changed:
+            det.append(
+                f"価格 期待{float(new_price):.2f}/実{snap2.start_price_usd}"
+                f"{'✅' if pv else '❌'}")
+        if ship_changed:
+            det.append(
+                f"送料 期待{float(new_ship):.2f}/実{snap2.ship_cost_usd}"
+                f"{'✅' if sv else '❌'}")
+        parts.append(
+            f"価格/送料: {'✅' if price_ship_ok else '❌ 実値不一致'} "
+            f"({' '.join(det)})")
+
+    if sku_changed and sku_pushed:
+        sku_ok = (snap2.sku == form_sku)
+        overall_ok = overall_ok and sku_ok
+        parts.append(
+            f"SKU: {'✅' if sku_ok else '❌ 実値不一致'} "
+            f"期待'{form_sku}'/実'{snap2.sku}'")
+    elif sku_changed and not sku_pushed:
+        sku_ok = False
+        overall_ok = False
 
     return {
         "success": overall_ok,
         "message": " / ".join(parts) if parts else "変更なし",
         "new_price": new_price,
         "new_ship": new_ship,
-        "sku_pushed": sku_changed,
-        # 構造化フラグ: 呼出側が部分成功時の DB 同期を分岐 (HIGH-1).
-        # True=eBay 反映成功 / False=失敗 or 抑止 / None=未試行.
+        "sku_pushed": sku_pushed,
         "price_ship_ok": price_ship_ok,
         "sku_ok": sku_ok,
+        # 呼出側が DB を実 eBay 値へ同期するための反映後 snapshot.
+        "post_snapshot": snap2,
     }
 
 
-def _update_ebay_reflected_fields(eid: str, editing: dict) -> None:
-    """eBay 反映成功後、ebay_listings.current_price / shipping_cost を DB 同期."""
-    new_price = editing.get("new_ebay_price")
-    new_ship = editing.get("new_ship_cost")
+def _sync_db_to_actual(eid: str, snap) -> None:
+    """W137: DB の price/shipping/sku を **反映後 GetItem の実 eBay 値**へ同期.
+
+    editing の意図値でなく実 eBay 値 (post snapshot) を書くことで、
+    revise の部分成功・送料 override 無音失敗・HIGH-1 などに関わらず
+    DB は常に eBay の真実を映す (乖離を構造的に排除)。snap の各値が
+    None (GetItem に出なかった) の項目は触らない。冪等。
+    """
+    sets = []
+    params = []
+    if snap.start_price_usd is not None:
+        sets.append("current_price=?")
+        params.append(float(snap.start_price_usd))
+    if snap.ship_cost_usd is not None:
+        sets.append("shipping_cost=?")
+        params.append(float(snap.ship_cost_usd))
+    if snap.sku is not None:
+        sets.append("sku=?")
+        params.append(str(snap.sku))
+    if not sets:
+        return
+    sets.append("last_synced_at=datetime('now')")
+    params.append(eid)
     with get_conn() as conn:
-        if new_price is not None and new_price > 0:
-            conn.execute(
-                "UPDATE ebay_listings SET current_price=?, last_synced_at=datetime('now') "
-                "WHERE ebay_item_id=?",
-                (float(new_price), eid),
-            )
-        if new_ship is not None:
-            conn.execute(
-                "UPDATE ebay_listings SET shipping_cost=? WHERE ebay_item_id=?",
-                (float(new_ship), eid),
-            )
-    bump_db_version()  # W134 Step2: eBay 反映後 DB 同期 → read-cache 無効化
+        conn.execute(
+            f"UPDATE ebay_listings SET {', '.join(sets)} "
+            "WHERE ebay_item_id=?",
+            tuple(params),
+        )
+    bump_db_version()  # W134 Step2: DB 同期 → read-cache 無効化
 
 
 # =============================================================================

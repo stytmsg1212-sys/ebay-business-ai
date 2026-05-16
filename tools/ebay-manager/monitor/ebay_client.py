@@ -898,11 +898,20 @@ def _build_revise_with_shipping_xml(
     new_price_usd: Optional[float],
     ship_cost_usd: Optional[float],
     ship_additional_usd: Optional[float],
+    seller_profiles: Optional[dict] = None,
 ) -> str:
     """ReviseFixedPriceItem で price + shipping (Buyer pays + each identical item) を更新.
 
     送料は `ShippingServiceCostOverrideList` で Business Policy の cost を上書き
     (BP 自体は維持). 商品管理タブの「DB + eBay 反映」ボタンから呼ばれる.
+
+    W136 修正 (2026-05-17): BP 管理 listing では override が policy に bind する
+    ため、ShippingServiceCostOverrideList と **同一 Revise request 内に
+    SellerProfiles (SellerShippingProfile) を同梱**しないと eBay は Ack=Success
+    を返しつつ override を無音で無視する (出品 Add 経路は SellerProfiles 同梱で
+    効くが、旧 Revise 経路は欠落で無音失敗。audit-2026-05-01 8/9 不適用 +
+    eBay 一次情報 + Codex 2 段検証で真因確定). seller_profiles が与えられ
+    override がある時のみ SellerProfiles を出力.
 
     Args:
         item_id: eBay listing ID
@@ -911,6 +920,10 @@ def _build_revise_with_shipping_xml(
                        None で送料変更しない.
         ship_additional_usd: 新しい Domestic shipping additional cost (each identical item).
                              ship_cost_usd と同時に指定する想定. 単独 None なら 0 として送る.
+        seller_profiles: {'payment_id','return_id','shipping_id'} dict.
+                         None or shipping_id 不在なら SellerProfiles を出さない
+                         (= 旧挙動、後方互換 D1). 送料 override を確実に効かせる
+                         には呼出側が GetItem 由来の 3 ID を渡すこと.
 
     Reference:
         https://developer.ebay.com/devzone/xml/docs/reference/ebay/types/ShippingServiceCostOverrideListType.html
@@ -928,6 +941,32 @@ def _build_revise_with_shipping_xml(
         parts.append(
             f'    <StartPrice currencyID="USD">{new_price_usd:.2f}</StartPrice>'
         )
+    # W136: 送料 override がある時、BP 参照 (SellerProfiles) を同梱.
+    # shipping_id が無ければ出さない (旧挙動維持 = 既存テスト不変, D1).
+    _sp = seller_profiles or {}
+    if ship_cost_usd is not None and _sp.get("shipping_id"):
+        parts.append('    <SellerProfiles>')
+        if _sp.get("payment_id"):
+            parts.append('      <SellerPaymentProfile>')
+            parts.append(
+                f'        <PaymentProfileID>{escape(str(_sp["payment_id"]))}'
+                '</PaymentProfileID>'
+            )
+            parts.append('      </SellerPaymentProfile>')
+        if _sp.get("return_id"):
+            parts.append('      <SellerReturnProfile>')
+            parts.append(
+                f'        <ReturnProfileID>{escape(str(_sp["return_id"]))}'
+                '</ReturnProfileID>'
+            )
+            parts.append('      </SellerReturnProfile>')
+        parts.append('      <SellerShippingProfile>')
+        parts.append(
+            f'        <ShippingProfileID>{escape(str(_sp["shipping_id"]))}'
+            '</ShippingProfileID>'
+        )
+        parts.append('      </SellerShippingProfile>')
+        parts.append('    </SellerProfiles>')
     if ship_cost_usd is not None:
         ac = float(ship_additional_usd) if ship_additional_usd is not None else 0.0
         parts.append('    <ShippingServiceCostOverrideList>')
@@ -954,11 +993,17 @@ def revise_fixed_price_with_shipping(
     ship_cost_usd: Optional[float],
     ship_additional_usd: Optional[float],
     app_id: str, dev_id: str, cert_id: str, user_token: str,
+    seller_profiles: Optional[dict] = None,
 ) -> dict:
     """ReviseFixedPriceItem で price + shipping を同時更新.
 
     商品管理タブ「📤 DB + eBay 反映」ボタンから呼出.
     成功時 ebay_listings.current_price / shipping_cost を呼出側で更新する責務分離.
+
+    W136 (2026-05-17): 送料 override を BP 管理 listing で効かせるには
+    seller_profiles ({'payment_id','return_id','shipping_id'}) を渡すこと.
+    None なら SellerProfiles 非同梱 = 旧挙動 (後方互換 D1、ただし送料は
+    無音失敗し得る). 呼出側 (_apply_to_ebay) は反映前 GetItem の 3 ID を渡す.
 
     Returns:
         {'success': bool, 'ack': str, 'message': str | None, ...}
@@ -971,6 +1016,7 @@ def revise_fixed_price_with_shipping(
         }
     xml = _build_revise_with_shipping_xml(
         item_id, new_price_usd, ship_cost_usd, ship_additional_usd,
+        seller_profiles=seller_profiles,
     )
     result = _call_trading_api(
         "ReviseFixedPriceItem", xml,
