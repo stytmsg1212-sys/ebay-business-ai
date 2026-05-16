@@ -1201,11 +1201,11 @@
     "id": 219,
     "tag": "W135",
     "title": "W133 inventory_count バックフィル (eBay現availableから一括投入で在庫同期を実発火)",
-    "description": "W133 在庫同期は active 有在庫 110 件すべて inventory_count=NULL のため実発火しない (sync_listing_quantity が NULL を在庫数未入力で skip)。eBay GetItem の現 available (Item/Quantity - QuantitySold) を全 active 有在庫 listing の inventory_count へ一括バックフィルし、初期同期を no-op 化しつつ以降の order 減算 / 入荷 confirm で維持させる。要 /feature-dev (Q3): 新規バックフィル機構・約110 GetItem call の rate/quota・eBay現available と実手元在庫の乖離前提 (乖離時 oversell 直結) を Phase3 Clarify で確定。eBay在庫APIセマンティクスは source_ebay_inventory_api_semantics.md 参照。出典: 2026-05-16 W133 item2 実機検証で判明。",
-    "status": "未着手",
+    "description": "W133 在庫同期は active 有在庫 110 件すべて inventory_count=NULL のため実発火しない (sync_listing_quantity が NULL を在庫数未入力で skip)。eBay GetItem の現 available (Item/Quantity - QuantitySold) を全 active 有在庫 listing の inventory_count へ一括バックフィルし、初期同期を no-op 化しつつ以降の order 減算 / 入荷 confirm で維持させる。要 /feature-dev (Q3): 新規バックフィル機構・約110 GetItem call の rate/quota・eBay現available と実手元在庫の乖離前提 (乖離時 oversell 直結) を Phase3 Clarify で確定。eBay在庫APIセマンティクスは source_ebay_inventory_api_semantics.md 参照。出典: 2026-05-16 W133 item2 実機検証で判明。 [2026-05-17 完了: scripts/backfill_inventory_count_w135_2026_05_17.py (Q2準拠 one-shot、SELECT snapshot/WHERE inventory_count IS NULL 冪等ガード/dry-run/rate-limit、eBay write ゼロ=GetItem読取のみ、code-reviewer Opus HIGH=0)。dry-run 108/108/skip0/err0 → --apply 108件書込。DB検証: active有在庫110件すべて inventory_count NOT NULL (NULL=0)。分布 available 0→44/1→46/2→9/3→2/4→5/5→3/9→1。available=0 の44件は W133 OOS ゲート(OOS Control ON実機確認済)で正処理。初期同期は eBay現状=no-op で buyer 影響ゼロ。snapshot: tools/ebay-manager/data/w135_backfill/。retrospective: pre-review HIGH=0 + post DB SELECT 検証で充足]",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-16",
-    "completed": null
+    "completed": "2026-05-17"
   },
   {
     "id": 220,
