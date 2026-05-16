@@ -1181,11 +1181,11 @@
     "id": 217,
     "tag": "W133",
     "title": "有在庫管理: eBay数量同期＋在庫0自動アラート＋仕入れメール確認UI",
-    "description": "W119既存の注文連動在庫減算(ebay_item_id単位)に、物理在庫数のeBay出品数量revise同期と在庫0時の数量0化を追加。在庫0化はeBay Out-of-Stock Control ON前提で、ON未確認の間はDiscordアラートのみに留めるセーフガードを設ける(誤Endによる資産喪失防止)。仕入れメールをユーザーが確認し、タイトル類似サジェスト(閾値0.55/上位5)→1クリックで該当listingにinventory_count加算する確認サーフェス(最小取消UI付)を新設。SKUをキー/集約に使わずebay_item_id単位を徹底、DB migration v40冪等(purchase_confirmation_log新設)、Defect率最優先、Q1 DoD 11step + code-reviewer HIGH=0。前提のOut-of-Stock Control ON可否(Q1)は実装前に要確認。",
-    "status": "未着手",
+    "description": "W119既存の注文連動在庫減算(ebay_item_id単位)に、物理在庫数のeBay出品数量revise同期と在庫0時の数量0化を追加。在庫0化はeBay Out-of-Stock Control ON前提で、ON未確認の間はDiscordアラートのみに留めるセーフガードを設ける(誤Endによる資産喪失防止)。仕入れメールをユーザーが確認し、タイトル類似サジェスト(閾値0.55/上位5)→1クリックで該当listingにinventory_count加算する確認サーフェス(最小取消UI付)を新設。SKUをキー/集約に使わずebay_item_id単位を徹底、DB migration v40冪等(purchase_confirmation_log新設)、Defect率最優先、Q1 DoD 11step + code-reviewer HIGH=0。前提のOut-of-Stock Control ON可否(Q1)は実装前に要確認。 [2026-05-16 item1/2/3 実機検証完了 + creds本番ブロッカー2件修正(HIGH=0)。実運用発火の inventory_count 投入は W135 へ分離]",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-16",
-    "completed": null
+    "completed": "2026-05-16"
   },
   {
     "id": 218,
