@@ -35,6 +35,7 @@ from calculator import load_settings as _load_calc_settings
 from monitor.credentials import get_ebay_credentials
 from monitor.ebay_client import revise_fixed_price_with_shipping, revise_item_sku
 from monitor.lowest_price import (
+    compute_breakeven_price_usd,
     fetch_alert_shipping_usd,
     fetch_supplier_purchase_yen,
     get_competitors_with_pricing,
@@ -350,15 +351,90 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
 # Left column sections
 # =============================================================================
 
+def _hero_effective(p: dict) -> dict:
+    """hero metrics 用の実効値を返す (2026-05-17 W137後 fix).
+
+    編集フォームの入力 (st.session_state、st.form は submit 時に確定) があれば
+    DB 値より優先する = user の「赤枠を最新化」要求。商品価格/送料の変更、
+    仕入価格/重量/寸法の変更を breakeven にライブ反映する。
+
+    **eBay も DB も一切書かない純粋な試算プレビュー** (current_price は実 eBay
+    価格を映す列なので calc では触らない = W137 で苦労した DB↔eBay 乖離の
+    再生産防止。価格の実反映は 📤eBay反映 ボタンの責務)。
+    """
+    eid = p["ebay_item_id"]
+
+    def _ss_num(suffix: str) -> Optional[float]:
+        v = st.session_state.get(f"pm_{suffix}_{eid}")
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    f_price = _ss_num("ebay_price")
+    f_ship = _ss_num("ebay_ship")
+    f_pyen = _ss_num("pyen")
+    f_w = _ss_num("weight")
+    f_l = _ss_num("length")
+    f_wd = _ss_num("width")
+    f_h = _ss_num("height")
+
+    db_price = float(p.get("current_price") or 0)
+    db_ship = float(p.get("shipping_cost") or 0)
+    price = f_price if (f_price is not None and f_price > 0) else db_price
+    ship = f_ship if f_ship is not None else db_ship
+
+    be = p.get("lp_breakeven_usd")
+    be_preview = False
+    pyen = (f_pyen if (f_pyen is not None and f_pyen > 0)
+            else p.get("purchase_yen"))
+    wt = f_w if (f_w is not None and f_w > 0) else p.get("weight_g")
+    cost_edited = any(
+        v is not None for v in (f_pyen, f_w, f_l, f_wd, f_h)
+    )
+    if pyen and wt and cost_edited:
+        try:
+            _be = compute_breakeven_price_usd(
+                purchase_yen=float(pyen),
+                weight_g=float(wt),
+                length_cm=float(
+                    f_l if f_l is not None else (p.get("length_cm") or 0)),
+                width_cm=float(
+                    f_wd if f_wd is not None else (p.get("width_cm") or 0)),
+                height_cm=float(
+                    f_h if f_h is not None else (p.get("height_cm") or 0)),
+                settings=_calc_settings(),
+            )
+            if _be and _be > 0:
+                be = _be
+                be_preview = True
+        except (KeyError, TypeError, ValueError, RuntimeError) as e:
+            logger.debug(f"[pm hero] live breakeven 試算 skip ({eid}): {e}")
+
+    # price は f_price>0 の時のみ override する (上記 price= の guard と一致)。
+    # f_price=0/負 は DB 値表示なので preview 扱いしない (caption 不整合防止)。
+    # ship は free(0) が正当な override なので >0 guard を付けない。
+    preview = (
+        (f_price is not None and f_price > 0
+         and round(f_price, 2) != round(db_price, 2))
+        or (f_ship is not None and round(f_ship, 2) != round(db_ship, 2))
+        or be_preview
+    )
+    return {"price": price, "ship": ship, "be": be, "preview": preview}
+
+
 def _render_hero_metrics(p: dict) -> None:
     """商品 expander の最上部に表示する 4 つの主要指標.
 
     [現在総額] [損益分岐] [現在粗利] [競合最安]
 
     視覚的に最も重要な情報を一目で把握できるよう、大きな metric card で表示.
+    編集フォーム入力があれば実効値でライブ試算 (_hero_effective)。
     """
-    cp, sh, total = _total_price(p)
-    be = p.get("lp_breakeven_usd")
+    _eff = _hero_effective(p)
+    cp, sh = _eff["price"], _eff["ship"]
+    total = cp + sh
+    be = _eff["be"]
     competitor_min = p.get("competitor_min_price")
     market = p.get("primary_market") or "-"
 
@@ -422,6 +498,12 @@ def _render_hero_metrics(p: dict) -> None:
             st.metric("競合最安", "未入力",
                       help="競合登録 + 価格再取得で表示")
     st.markdown('</div>', unsafe_allow_html=True)
+
+    if _eff["preview"]:
+        st.caption(
+            "↑ 編集フォームの**入力値で試算プレビュー中**（未保存・eBay 未反映）。"
+            "実反映は 💾DB保存 / 📤eBay反映 ボタンで。"
+        )
 
     # 値下げ追従シミュレーション (1 行で目立たない位置に表示)
     if be and be > 0 and competitor_min:
