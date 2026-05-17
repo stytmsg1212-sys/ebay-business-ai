@@ -1467,9 +1467,20 @@ def _render_one_product(p: dict, config: dict) -> None:
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
 
-        # W138: 現 Shipping BP は **開いた expander のみ** 1 回 GetItem 取得
-        # (session_state cache)。全 listing 毎 render で GetItem を叩かない。
-        bp_state = _get_current_bp(eid, config) if is_open else None
+        # W138 fix (2026-05-17): st.expander にユーザ開閉 signal が無く
+        # is_open は「保存後 keep-open 限定」。通常クリック展開時に BP UI が
+        # 出ない設計バグだった → **明示ボタンで lazy 取得**。押した listing
+        # だけ 1 回 GetItem (session_state cache)、全 listing 毎 render の
+        # GetItem 爆発 (108×) を回避。ボタン自体は安価 (form 外、即 rerun)。
+        _bpshow_k = f"pm_bpshow_{eid}"
+        if st.button("🚚 Shipping Policy 表示 / 変更",
+                      key=f"pm_bpbtn_{eid}",
+                      help="現在の配送ポリシー表示 + 変更プルダウンを開く"):
+            st.session_state[_bpshow_k] = True
+        bp_state = (
+            _get_current_bp(eid, config)
+            if st.session_state.get(_bpshow_k) else None
+        )
 
         # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
         _render_hero_metrics(p, bp_state=bp_state)
