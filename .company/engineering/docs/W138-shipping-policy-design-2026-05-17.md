@@ -301,3 +301,135 @@ expander open
 > 【要再確認 / API version pin】eBay API は 2-4 週で改訂あり得る。実装時に
 > Trading API version (現行 1453 系) と Account REST 版を pin + doc 鮮度確認
 > (Codex LOW-6 / eBay 改訂規約)。
+
+---
+
+# W138-A 設計 addendum (2026-05-17、user 指示 A): BP を DB 列化し価格/送料と同一構造へ
+
+## 経緯 / Q-1 矛盾アノテーション (contradiction-annotation)
+
+**現状の見解 (2026-05-17 A 以降、内部レビュー HIGH-1 反映で訂正)**: shipping BP
+は `ebay_listings` の **DB 列** (`shipping_profile_id` + `shipping_profile_fetched_at`)
+として保持し、表示は DB 列から即時 (per-listing GetItem 不要・ボタン不要・
+価格と同じ「最初から表示」)。**ただし価格と「完全同一の鮮度」ではない** — 後述
+の鮮度非対称性 (HIGH-1) を `shipping_profile_fetched_at` の併記で正直に開示し、
+📤eBay反映 時の `_sync_db_to_actual` 自動同期 + per-listing `↻ 再取得` で補う。
+
+**過去の見解 (〜2026-05-17 A)**: Q-1 で「BP を DB 列化しない (W137 の
+DB↔eBay 乖離再生産防止)、表示は都度 snapshot」と決定。実装は is_open
+トリガ→(バグ修正で)明示ボタン lazy 取得。**さらに addendum 初稿 (〜内部
+レビュー前) は「BP DB列 = 価格/送料と完全同一構造・乖離しない」と記載した
+が、これは過大主張だった (下記)。**
+
+**矛盾点 / 変更理由**:
+- 契機: user 指摘「なぜ価格のように最初から表示しないのか」→ DB 列化 (A) 採用。
+  さらに内部レビュー HIGH-1 が初稿の「価格と完全同一鮮度」を反証。
+- 何が違うか (UX): ボタン式は劣化 UX。DB 列化で「最初から表示・per-listing
+  API ゼロ」を実現する (user の要望どおり)。
+- **何が違うか (鮮度、HIGH-1 の核心 = 初稿の誤りの訂正)**: 価格 (`current_price`)
+  の鮮度は **2 系統**で保たれる — ① 定期 `task_ebay_sync`
+  (`monitor/ebay_sync.py::sync_listings_from_ebay`、scheduler、GetMyeBaySelling)
+  ② 📤eBay反映 時 `_sync_db_to_actual`。**GetMyeBaySelling は SellerProfiles /
+  ShippingProfileID を返さない** (item_id/title/sku/quantity/price のみ。
+  price は返るが SellerProfiles/ShippingProfileID は不在 = Codex#6 訂正) ため、BP は
+  ① に相乗りできず ② のみ。よって「BP DB列 = 価格と完全同一鮮度・乖離しない」は
+  **技術的に偽**。eBay.com 側で直接 BP を変更すると、その listing は次の
+  `↻ 再取得` か 📤eBay反映 まで DB が stale。
+- 何が同じか: 「実 eBay = 真実源」原則 (W137) は不変。DB 列は実 eBay に追従する
+  **キャッシュ**であり権威ではない。stale 値を「真実」と偽らないため
+  `shipping_profile_fetched_at` (最終取得時刻) を必ず併記する (Q0 透明性)。
+
+**Q-7 (user 確定 2026-05-17)**: BP 変更運用 = 「eBay.com 直接変更も混じる」。
+→ stale リスク実在を受理し、**option 2 = DB列自動表示 + 最終取得時刻併記 +
+per-listing `↻ 再取得` + 📤反映時自動同期** を採用。「per-listing GetItem ゼロ」と
+「常に最新」の両取りは不可、を正直に開示し staleness 窓を明示する (両取り主張禁止)。
+
+## 変更内容 (価格パターン踏襲 + 鮮度非対称性の正直開示 + W135 backfill)
+
+| 区分 | 対象 | 内容 |
+|---|---|---|
+| 修正 | `monitor/database.py` | **migration v41** (現行最新 v40 の次、実コード確認済): 既存 v26-v40 慣習に整合させ **`if user_version < 41:` ガード内**で `ALTER TABLE ebay_listings ADD COLUMN shipping_profile_id TEXT` + `ALTER TABLE ebay_listings ADD COLUMN shipping_profile_fetched_at TEXT` (最終取得 UTC、HIGH-1/HIGH-2 解決の要) を実行 → 成功後 `PRAGMA user_version = 41` (Codex#4)。name は持たず Account API cached lookup=Q-4 一本化維持。**Q2 冪等**: 各 ALTER を個別 `try/except sqlite3.OperationalError`、init_db に DROP/DELETE 書かない、番号昇順 v41 |
+| 修正 | `tabs/tab_product_management.py` `_sync_db_to_actual` | post snapshot の `shipping_profile_id` + `shipping_profile_fetched_at=utcnow` を DB 同期に追加。**Codex#3 (None-skip 慣習の例外)**: 既存 `_sync_db_to_actual` は `if snap.X is not None` で None を skip するが、`shipping_profile_id` は **GetItem 成功時に限り None も明示 NULL 書込** (skip しない) + `fetched_at` と**同一 UPDATE で原子的に**書く。さもないと確定 Inline (id=None) 時に旧 BP id が残存し HIGH-2 の (b)/(c) 判定が崩れる。GetItem 失敗時は両列とも touch しない (fetched_at 据置=状態(a))。📤eBay反映 後に実 eBay BP が DB へ追従 (価格の②系統に相当、①系統は BP に無いため鮮度は価格に劣る=HIGH-1) |
+| 修正 | `_fetch_all_products` SELECT (database.py 由来の一覧クエリ) | `shipping_profile_id`, `shipping_profile_fetched_at` を SELECT に追加 → 一覧 dict に乗る (current_price と同じ流路) |
+| 修正 | `tab_product_management.py` `_render_one_product` / `_render_hero_metrics` / `_render_left_basic_and_physical` | **ボタン (`pm_bpbtn_`/`pm_bpshow_`) と per-render `_get_current_bp` を廃止**。BP id = `p["shipping_profile_id"]` (DB、無料)、name = 既存 `_cached_shipping_policies()` (Account API、ttl=300、ページ1回 cached) で解決。**hero 🚚 pill に最終取得時刻を併記** (例: `🚚 DDP_0.5-1kg (取得 5/16 21:30 JST)`。`shipping_profile_fetched_at` は UTC 保存だが UI 表示は **JST 変換** = `sqlite-timezone.md` 準拠 `DATE/strftime(col,'+9 hours')`、stale 時刻の user 誤認防止)、stale 疑い時の `↻ 再取得` ボタンを 1 個併設 (per-listing GetItem 1 回・opt-in、毎 render でない) |
+| 修正 | HIGH-2: NULL 多義性の解消 | DB 状態を `shipping_profile_fetched_at` で 3 分岐: **(a) fetched_at IS NULL** = 未取得 (backfill未/GetItem失敗) → selectbox 非表示 +「BP 未取得 — ↻ で取得」(Inline と**断定しない**)。**(b) fetched_at NOT NULL かつ shipping_profile_id NULL/''** = 取得済 SellerProfiles 不在 = **確定 Inline** →「Inline (BP なし)」。**(c) fetched_at NOT NULL かつ id あり** = BP 値表示 + selectbox。silent degradation 防止 |
+| 削除 | `_get_current_bp` (per-render GetItem) | 廃止。ただし `↻ 再取得` は単一 listing 1 回 GetItem で `shipping_profile_id`+`fetched_at` を更新する**置換関数**として残す (毎 render でない・opt-in)。**`↻` GetItem 失敗時は backfill と同一原則** = `fetched_at` を据置 (成功時刻で上書きしない) + UI に「再取得失敗」痕跡表示 (Q0 silent skip 防止、単発 UI 操作でも担保) |
+| 新規 | `scripts/backfill_shipping_profile_w138a_*.py` | W135 方式 one-shot: **全 active listing (~580、有/無在庫問わず、108 ではない)** を GetItem (読取) し `shipping_profile_id`+`fetched_at` を一括投入。HIGH-3 詳細仕様↓ |
+| 新規 | `tests/test_w138a_*` | migration 冪等 (init_db 2回データ保持) / `_sync_db_to_actual` が 2 列同期 / 3 分岐 (HIGH-2) ロジック / hero・selectbox が DB列駆動 / `↻` が単一 GetItem / backfill 冪等 |
+| 修正 | `tests/test_w68_step1_init_db_drift.py` | canonical HEAD v40→**v41** に伴う user_version 表明更新 (本テストの不変条件は「HEAD 追従」と明記済、migration 必然 cascade) |
+| 修正 (番人) | `tests/test_w134_cache_invalidation.py::test_cache_ttl_is_short` | **安全 guard の scope 是正** (要 reviewer/Codex 注視)。番人の真の目的 = 「bump 漏れで *DB-backed per-listing 金銭/在庫/ランク* が stale 表示される退行阻止」。`_cached_shipping_policies` は Account API の **BP 一覧カタログ** (非 DB-backed・bump と無関係・per-listing 金銭データでない・月単位変化) で W138 設計上 ttl=300 が正当 (5s 化 = Account API 連打で設計破壊)。全 ttl 一律 ≤5 の過大 scan を、**根拠明記必須の `_LONG_TTL_ALLOWED` allowlist** 方式へ。`_cd_fetch_all_products`(ttl=3) 等 DB-backed 金銭 reader の厳格 ≤5s は不変・退行検出能力維持 |
+| cascade | (外部対象なし) | **判定 2026-05-17 (実装確定後、R-12 再検証)**: Q-1 撤回 (BP DB 列化) の矛盾アノテーションは本設計書内に自己完結。`reference_shipping_tariff_logic.md §5` は revise XML override 機構 (W136 真因) の権威で、W138-A は `revise_shipping_profile`/`_build_revise_*` を改修せず (UI 表示/変更層のみ) → **unrelated、K2 で触らない**。`source_ebay_*` も API 挙動不変ゆえ unrelated。外部 cascade 対象なしと確定 (cascade-update「unrelated→触らない」/ Codex#7 の pending は本判定で解消) |
+
+### HIGH-3: backfill 詳細仕様 (db-migration-rules 6-step、~580 active)
+
+- 対象 = **全 active listing** (`ebay_listings` の active、有在庫+無在庫、W135 の在庫108 とは別母数 ~580)。SELECT 抽出も最終 `UPDATE` 句も両方 `WHERE ... AND shipping_profile_fetched_at IS NULL` (**write-time guard**、Codex#2): SELECT→GetItem→UPDATE の間に user が `↻`/📤反映 で同 listing を先に更新した場合、遅い backfill の上書きを防ぐ (TOCTOU 窓封鎖)。冪等ガード兼 resume (再実行で取得済 skip)
+- batch / rate-limit: 50 件/バッチ、GetItem 間 sleep (eBay API rate-limit 準拠)、バッチ毎に進捗 stdout + 中断耐性 (再実行で残のみ)
+- **GetItem 失敗 listing**: `fetched_at` を **NULL のまま据え置く** (= 状態(a)「未取得」、Inline と誤断定しない=HIGH-2 整合)。失敗 item_id を log
+- db-migration-rules 6-step: ① SELECT 全対象 dump → `data/w138a_backfill/snapshot_<ts>.json` (rollback 用) ② `--dry-run` で対象件数・GetItem 成功率を先行確認 (1 件試行含む) ③ `--apply` で残実行 ④ DB SELECT で投入率・(a)/(b)/(c) 分布を再確認 ⑤ 24h retrospective code-reviewer (本 rule + db-migration context) ⑥ HIGH 指摘あれば補正/rollback
+- eBay write **ゼロ** (GetItem 読取専用)、code-reviewer HIGH=0 後に dry-run→apply
+- **Codex#5 (scheduler 協調)**: backfill apply 中は `tasks_enabled.ebay_sync=false` で定時 `task_ebay_sync` を一時停止 (db-migration-rules kill switch 併用、apply 後 re-enable)。task_ebay_sync は `current_price/shipping_cost/quantity/title` のみ upsert し本機能の 2 列を touch しない (実コード確認済 = 値破壊リスク無) が、SQLite WAL writer ロック競合 (`database is locked`) 回避のため停止 + backfill 側に locked retry も実装
+
+### Codex#1 解決 (金銭直結 HIGH): selectbox 初期値 と bp_changed 判定の整合
+
+**問題**: selectbox 初期値を stale 可能性ありの DB 列にし、bp_changed を pre-snapshot 基準のままにすると、eBay.com 外部 BP 変更 (A→B) で DB stale A → user が **selectbox 無操作**で価格だけ変えて 📤反映 → Streamlit form は default の stale A を submit → `bp_changed=(A≠pre-snapshot B)=True` → **MonoDeck が実 eBay の B を stale A に巻き戻す** = DDP buffer 喪失 (Section 232 数百ドル/件)。本機能が防ぐべき失敗そのもの。
+
+**解決 = dirty-flag 方式 (Streamlit widget default ≠ user 意図)**:
+- `bp_changed = (user が selectbox を実際に操作した) AND (操作後の選択値 != pre-snapshot 実 eBay 値)`
+- **user 操作判定**: submit 時の selectbox 値 ≠ **render 時に selectbox を初期化した値** (= DB 列値) なら「操作あり=BP 変更意図」。等しければ「無操作=BP 意図なし」。
+- **無操作時**: `bp_changed=False`。BP は一切 touch しない (stale DB 値を eBay へ送らない)。DB は post-snapshot から `_sync_db_to_actual` で実 eBay 値へ resync されるので結果整合。
+- **操作時**: 選択値を pre-snapshot 実 eBay と比較し、異なれば revise (W137 真実源・pre-snapshot 基準を維持)。
+- DB 列 `p["shipping_profile_id"]` の用途は **selectbox 初期 index + hero 表示 + 上記「操作判定の基準値」** に限定。bp_changed の**比較相手は依然 pre-snapshot 実 eBay** (DB 基準にしない=LOW 維持)。
+- **残留 (安全方向のみ、正直開示)**: DB stale 表示中に user がその stale 表示値を**明示的に再選択**し、かつ実 eBay が異なる場合 → 無操作扱いで適用されない。ただし失敗方向は「stale を eBay に書かない」= **安全側 no-op** であり、危険な「stale を実 eBay へ巻き戻す」経路は消滅。UX ガイド = 「BP を確実に変えたい時は先に `↻ 再取得` で最新化してから選択」+ hero の最終取得時刻併記で stale を明示済。
+
+## 不変 (W138 既存実装、副作用ゼロ)
+- `revise_shipping_profile` / `_build_revise_bp_only_xml` (W136 非改修・3ID必須・Warning-fatal降格)
+- `_apply_to_ebay` の **bp_changed 比較相手は pre-snapshot 実 eBay を維持** (LOW 反映、W137 真実源)。ただし上記 Codex#1 解決により **「user が selectbox を操作したか」(dirty-flag) を前段ガードに追加** — 無操作なら pre-snapshot と無関係に bp_changed=False (stale 巻き戻し経路を遮断)
+- Q-3 同時拒否・Phase4 post snapshot 実値 verify (bp_ok)・fake success 排除
+- selectbox の form 内配置・index/format_func 重複名安全・DDP buffer 喪失警告
+
+## ビルドシーケンス
+1. `database.py` migration v41 (2 列・各冪等 ALTER) + 冪等性 pytest (init_db 2回データ保持)
+2. `_sync_db_to_actual` に 2 列 (id+fetched_at) 同期追加 + pytest
+3. `_fetch_all_products` SELECT 追加 → hero/selectbox を DB列駆動化 (HIGH-2 3分岐)、最終取得時刻併記、`↻ 再取得` 併設、ボタン(表示用)/`_get_current_bp`(per-render) 廃止 + pytest
+4. `scripts/backfill_shipping_profile_w138a_*.py` (HIGH-3 仕様、6-step) + code-reviewer HIGH=0 → dry-run→apply
+5. code-reviewer HIGH=0 ループ + Codex 2段 (W136 非回帰・migration 冪等・bp_changed が pre-snapshot 基準・GetItem ゼロ(表示時)・鮮度非対称の正直開示)
+6. Streamlit 再起動 (user MonoDeck 停止調整) + Playwright (expander 通常クリックで 🚚 pill+最終取得時刻+selectbox が**ボタン無し即表示**・`↻` 動作確認) + 実 BP 変更 (user 監視下、原状回復) + **eBay.com 直接変更→`↻`で DB 追従** を 1 回実証
+
+## リスク表
+| # | リスク | 緩和 |
+|---|---|---|
+| RA1 | migration で既存データ破壊 | Q2: ADD COLUMN ×2 のみ (DROP/DELETE/RENAME なし)、各 try/except OperationalError、init_db 2回冪等 pytest、v41 番号昇順 |
+| RA1' | **Codex MED-3 残存リスク (要判断→現状維持)**: v41 の broad `except sqlite3.OperationalError` は ALTER 中の transient lock 等も握り潰し user_version=41 を立て得る (列欠落で SELECT が no such column)。**判断**: `ebay_listings` は v41 前に無条件 CREATE 済で no such table 不発生 + 本 except 形は Q2/db-migration-rules/quality-gate hook が **明示規定する標準** で v26-v40 と byte 一致 (v41 のみ厳格化 = K2 一貫性違反)。init_db は起動時・並行 writer 前で lock 発生確率低。`test_w138a_migration` 冪等テスト (init_db 2回・version 強制巻戻し再突入で 2 列存在 verify) が実質ガード。→ **現状維持 + 本残存リスク明記で受容** |
+| RA2 | **DB↔eBay BP 乖離 (HIGH-1、Q-1 懸念の実在化)** | 両取り不可を正直開示: ①`shipping_profile_fetched_at` を hero に**常時併記** (stale を真実と偽らない=Q0) ②📤eBay反映 で `_sync_db_to_actual` 自動同期 (価格②系統相当) ③per-listing `↻ 再取得` で能動更新 ④初回 backfill。**残留 staleness 窓**: eBay.com 直接変更〜次の ↻/📤反映 (user 受理済 Q-7) |
+| RA3 | backfill 中の誤値/中断 | HIGH-3 仕様: GetItem 読取のみ・`WHERE fetched_at IS NULL` 冪等(resume)・batch/rate-limit・SELECT snapshot・dry-run 先行・失敗は fetched_at NULL 据置 (Inline 誤断定回避)・eBay write ゼロ |
+| RA4 | HIGH-2 NULL 多義 silent degradation | fetched_at で (a)未取得/(b)確定Inline/(c)BPあり を厳密 3 分岐。(a) を Inline と断定しない |
+| RA5 | Account API 取得失敗時に name 解決不可 | `_cached_shipping_policies` ok=False → name は profile_id 生表示 + selectbox「BP 一覧取得失敗」明示 (Q0、現 W138 挙動踏襲) |
+| RA6 | W136 override 経路への副作用 | W138-A は表示/同期/backfill のみ。revise_shipping_profile/_build_revise_* 不改修 (Codex 再確認) |
+| RA7 | quality-gate hook | ALTER は try/except OperationalError ラップ、init_db に DROP/DELETE 書かない |
+| RA8 | **stale DB 初期値が実 eBay BP を巻き戻す (Codex#1、金銭直結)** | dirty-flag: selectbox 無操作 (submit値==render初期値=DB列) なら bp_changed=False で BP 一切 touch しない。stale 値が eBay へ送られる経路を構造的に遮断。残留は安全側 no-op のみ (上記「Codex#1 解決」節) |
+
+## DoD (Q1 11 ステップ準拠、pytest 単独完了宣言禁止=K3)
+- pytest: migration v41 冪等 (init_db 2回データ保持・user_version gate) / _sync_db_to_actual が id+fetched_at 同期・id=None も明示NULL書込 (Codex#3) / HIGH-2 3分岐 / **Codex#1 dirty-flag: stale DB初期値で selectbox 無操作時 bp_changed=False (実 eBay 巻き戻し無)・操作時のみ pre-snapshot 比較で revise** / backfill UPDATE write-time guard (Codex#2) / `↻` 単一 GetItem / hero・selectbox DB列駆動 / 既存 W136/W137/W138 回帰全 PASS
+- 実機 read-only: backfill dry-run で対象 ~580 件・GetItem 成功率
+- backfill apply 後 DB SELECT: (a)/(b)/(c) 分布・投入率、W135 同様 snapshot/冪等/24h retrospective
+- Streamlit 再起動 (run_monodeck.py) + Playwright: expander 通常クリックで **ボタン無し**に 🚚 pill + **最終取得時刻** + selectbox 即表示、`↻ 再取得` クリックで該当 listing のみ更新
+- 実 BP 変更 (user 監視下): ① MonoDeck 経由 別BP→📤反映→GetItem 実値一致→`_sync_db_to_actual` で DB 2列追従を SELECT 確認→原状回復 ② **eBay.com 直接変更→MonoDeck `↻`→DB 追従** を 1 回実証 (HIGH-1 緩和の実機確認) ③ **Codex#1 巻き戻し防止実証**: eBay.com で BP を外部変更 (DB stale 化) → MonoDeck で selectbox 無操作のまま価格のみ変更→📤反映 → GetItem で **実 eBay BP が巻き戻っていない** (外部変更値のまま) ことを確認 (金銭直結の最重要 verify)
+- code-reviewer HIGH=0 + Codex 2段 (W136 非回帰・bp_changed pre-snapshot 基準必須)
+- Q5 4 行報告
+
+## クローズ記録 (2026-05-17、Q0 透明性 = DoD ステップを黙って落とさない)
+
+**W138 (id=222) = 完了 / completed 2026-05-17。** 実施・検証エビデンス:
+
+| DoD ステップ | 状態 | エビデンス |
+|---|---|---|
+| pytest (全項目) | ✅ | full **1196 passed / 2 skipped**。新規 `test_w138a_migration`(3)・`test_w138a_bp_db_driven`(13: HIGH-2 3分岐/Codex#1 dirty-flag/Codex#3 None明示NULL/Codex#2 guard/JST/source-contract 番人) + W136/W137/W68/W134 回帰 |
+| 実機 read-only dry-run | ✅ | 対象 **421** (設計概算 ~580 の実母数)・GetItem 成功率 **100%** (BP420/Inline1/err0) |
+| backfill apply + DB SELECT | ✅ | apply 421件 (BP418/Inline3/err0)。DB 3-way: fetched 421/421・未取得残0・(c)418・(b)3。snapshot 取得・冪等 guard・kill-switch 運用 |
+| Streamlit 再起動 + Playwright | ✅ | run_monodeck.py 経由 PID45264 健全。実 listing で 🚚 BP名+取得時刻(JST) **ボタン無し自動表示**・selectbox 即表示・旧ボタン廃止・**↻ E2E (14:59→15:24 JST 更新)**・console 0 errors |
+| code-reviewer HIGH=0 + Codex 2段 | ✅ | 設計: 内部HIGH=0→Codex#1→解決→再HIGH=0。実装: 内部HIGH=0→Codex Finding1(金銭直結)→修正→再HIGH=0。計 内部review×3 + Codex 2段×2 |
+| 24h retrospective (db-migration) | ✅ | backfill apply 遡及 review **HIGH=0・補正不要・rollback 不要・6-step 充足** |
+| **実 BP 変更 (live eBay 書込、③含む)** | **⚠️ user 判断で意図的に省略** | **2026-05-17 user 決定**: write 経路 (`revise_shipping_profile`/dirty-flag) は pytest (`test_codex1_*`/`test_w137` BP系/source-contract 番人) + 内部HIGH=0 + Codex 2段 で論理担保済 → live eBay mutation を**省略してクローズ**。設計上は「user 監視下」必須としていたが、上記カバレッジを以て user が waive (Q0: 黙って落とさず本記録に明示)。残リスク = live revise 経路の実機未踏 (pytest+2段review で代替担保、契機: W133 item2 無監視 real-eBay 書込事故回避とのトレードオフを user が判断) |
+| Q5 4 行報告 | ✅ | 実施済 |
+
+cascade: 外部対象なし確定 (上表 cascade 行)。MonoDeck は W138-A コードで稼働継続 (PID 45264)。

@@ -118,29 +118,75 @@ def test_at_least_one_writer_checked():
     assert n >= 10, f"writer 呼出検出数が想定より少ない (n={n})"
 
 
+# W138-A (2026-05-17): ttl<=5 ルールの **明示 allowlist**。
+# 番人の真の目的は「bump 漏れで *DB-backed per-listing 金銭/在庫/ランク*
+# が最大 N 秒 stale 表示される退行」の阻止。下記は性質が異なるため除外:
+#   _cached_shipping_policies = eBay Account API の **BP 一覧カタログ**
+#     (アカウントの利用可能 shipping policy 集合)。DB-backed でなく
+#     bump_db_version と無関係 (W134 の bump 漏れ失敗モードが原理的に
+#     発生しない)。per-listing 現 BP は p["shipping_profile_id"] =
+#     短 TTL の _cd_fetch_all_products(ttl=3) 経由で別管理。一覧は
+#     user が eBay アカウント設定で編集した時のみ変化 (月単位)。
+#     5s 化すると Account API を 5 秒毎連打 = W138 設計 (user 承認済
+#     ttl=300 = ページ1回 cached) の破壊。よって長 TTL が正当。
+# 追加時は必ず「DB-backed per-listing 金銭データでない」根拠を明記。
+_LONG_TTL_ALLOWED = {
+    # func_name: (max_ttl, 除外根拠)
+    "_cached_shipping_policies": (
+        300, "Account API の BP 一覧カタログ。DB-backed でなく per-listing "
+             "金銭データでもないため bump 漏れ stale の対象外 (W138-A)。"),
+}
+
+
 def test_cache_ttl_is_short():
     """最重要: cache の TTL が短い (<=5s) ままであること.
 
     新設計では invalidation の正しさを bump 網羅ではなく **短い TTL** で
     担保する。誰かが ttl=60 等へ戻すと、bump 漏れ経路で最大 60s 古い在庫/
     価格が表示され金銭直結の誤判断を招く。その退行を物理的に止める番人。
+
+    例外 = `_LONG_TTL_ALLOWED` (DB-backed per-listing 金銭データでない外部
+    API カタログ cache のみ、根拠明記必須)。例外も上限 ttl を超えたら fail。
     """
     import re
 
-    pat = re.compile(r"@st\.cache_data\(\s*ttl\s*=\s*(\d+)")
+    # 各 @st.cache_data(ttl=N) の直後の def 名を紐付けて判定する
+    dec_pat = re.compile(r"@st\.cache_data\(\s*ttl\s*=\s*(\d+)")
+    def_pat = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
     targets = [
         _APP,
         _APP.parent / "tabs" / "tab_product_management.py",
     ]
     found = 0
     for path in targets:
-        for m in pat.finditer(path.read_text(encoding="utf-8")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for i, ln in enumerate(lines):
+            m = dec_pat.search(ln)
+            if not m:
+                continue
             found += 1
             ttl = int(m.group(1))
+            # デコレータ直下 (空行/他デコレータ跨ぎ) の def 名を探す
+            fname = None
+            for j in range(i + 1, min(i + 6, len(lines))):
+                dm = def_pat.match(lines[j])
+                if dm:
+                    fname = dm.group(1)
+                    break
+            allow = _LONG_TTL_ALLOWED.get(fname)
+            if allow is not None:
+                max_ttl, reason = allow
+                assert ttl <= max_ttl, (
+                    f"{path.name}:{fname} allowlist 上限超過 "
+                    f"ttl={ttl}s > {max_ttl}s。根拠: {reason}"
+                )
+                continue
             assert ttl <= 5, (
-                f"{path.name}: @st.cache_data ttl={ttl}s が長すぎる "
-                f"(<=5s 必須 = 新設計の正しさ保証)。bump 漏れ経路で "
-                f"最大 {ttl}s stale な金銭データ表示の退行リスク。"
+                f"{path.name}:{fname or '?'}: @st.cache_data ttl={ttl}s "
+                f"が長すぎる (<=5s 必須 = 新設計の正しさ保証)。bump 漏れ "
+                f"経路で最大 {ttl}s stale な金銭データ表示の退行リスク。"
+                f"正当な外部 API カタログ cache なら _LONG_TTL_ALLOWED に "
+                f"根拠付きで追加。"
             )
     assert found >= 8, (
         f"@st.cache_data(ttl=...) の検出数が想定より少ない (found={found})。"

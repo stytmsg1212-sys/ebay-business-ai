@@ -50,10 +50,10 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 def test_v29_supplier_eval_pending_idempotent_fresh(tmp_path, monkeypatch):
-    """W94 RT-1 (code-reviewer H-2): fresh DB → init_db 2 回連続 → user_version=40
+    """W94 RT-1 (code-reviewer H-2): fresh DB → init_db 2 回連続 → user_version=41
     維持 + supplier_eval_pending データ保持 + UNIQUE(custom_id, batch_id) 効く.
 
-    canonical HEAD は W133 (2026-05-16) で v40。本テストの不変条件は
+    canonical HEAD は W138-A (2026-05-17) で v41。本テストの不変条件は
     「init_db が HEAD へ収束し再実行で drift しない」であり、版数は HEAD 追従."""
     db_path = tmp_path / "v29.db"
     import monitor.database as db_mod
@@ -70,7 +70,7 @@ def test_v29_supplier_eval_pending_idempotent_fresh(tmp_path, monkeypatch):
     db_mod.init_db()  # 2 回目
     with db_mod.get_conn() as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 40  # canonical HEAD (W133 v40)
+        assert ver == 41  # canonical HEAD (W138-A v41)
         n = c.execute("SELECT COUNT(*) FROM supplier_eval_pending").fetchone()[0]
         assert n == 1, "v29 migration 再実行でデータ消失 (Q2 冪等性違反)"
 
@@ -118,9 +118,9 @@ def test_init_db_idempotent_v27_existing_db(tmp_db):
 
     with get_conn() as c:
         ver_after = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver_before == ver_after == 40, (
+        assert ver_before == ver_after == 41, (
             f"user_version drift: before={ver_before} after={ver_after} "
-            "(期待 40 維持: v40 = W133 有在庫管理 canonical HEAD)"
+            "(期待 41 維持: v41 = W138-A shipping BP DB 列化 canonical HEAD)"
         )
         assert _pk_columns(c, "pending_market_changes") == ["ebay_item_id"]
         assert _column_notnull(c, "market_strategy_decisions", "ebay_item_id") == 1, (
@@ -144,7 +144,7 @@ def test_init_db_fresh_env_creates_new_schema(tmp_path, monkeypatch):
     with sqlite3.connect(db_path) as c:
         c.row_factory = sqlite3.Row
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 40, f"user_version != 40: {ver} (期待 40 = W133 有在庫管理 canonical HEAD)"
+        assert ver == 41, f"user_version != 41: {ver} (期待 41 = W138-A shipping BP DB 列化 canonical HEAD)"
 
         # canonical 新スキーマ
         assert _pk_columns(c, "pending_market_changes") == ["ebay_item_id"]
@@ -208,7 +208,7 @@ def test_init_db_v25_to_v26_legacy_migration_path(tmp_path, monkeypatch):
     # Stage 1: v26 block 実走済 (canonical 旧 + _new 作成 + user_version=27)
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 40, f"user_version != 40: {ver} (期待 40 = W133 有在庫管理 canonical HEAD)"
+        assert ver == 41, f"user_version != 41: {ver} (期待 41 = W138-A shipping BP DB 列化 canonical HEAD)"
         # canonical はまだ旧スキーマ (RENAME は one-shot script 責務)
         assert _pk_columns(c, "pending_market_changes") == ["sku"], (
             "v26 gate が False で canonical 旧スキーマ維持 (期待動作)"
@@ -292,7 +292,7 @@ def test_init_db_v26_block_skips_when_canonical_already_new(tmp_path, monkeypatc
 
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 40, f"user_version != 40: {ver} (期待 40 = W133 有在庫管理 canonical HEAD)"
+        assert ver == 41, f"user_version != 41: {ver} (期待 41 = W138-A shipping BP DB 列化 canonical HEAD)"
         # gate True で _new 作成 skip
         assert not _table_exists(c, "pending_market_changes_new"), (
             "gate=True で _new 作成 skip 動作せず (孤児発生)"

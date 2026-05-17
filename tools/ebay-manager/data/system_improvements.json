@@ -1232,9 +1232,9 @@
     "tag": "W138",
     "title": "商品管理に shipping policy 表示 + 変更機能 (BP変更時の override リセット考慮)",
     "description": "user 要望 (2026-05-17): 商品管理タブで (1) 現在設定されている shipping policy (Business Policy) を表示、(2) 商品管理から shipping policy を変更可能に。考慮必須: eBay 画面で shipping policy を変更すると Edit shipping costs の Buyer pay(first item) / Each identical item がデフォルト値に戻る (= BP 変更は ShippingServiceCostOverride をリセットする) ため、商品管理から BP 変更する際にこの挙動を踏まえた設計が必要 (custom 送料の再適用 or 明示確認)。技術前提: W137 の ebay_listing_snapshot が shipping_profile_id/name 取得済、Account API (sell.account scope 既存) で全 BP リスト取得可 (W137 prep で 44 policy 実機確認済)、_build_revise_with_shipping_xml が seller_profiles で SellerShippingProfile 送出可 (W137)。プロセス (user 明示): 設計書作成→内部レビュー(code-reviewer)&修正→Codex レビュー→user 確認→実装&テスト(Q1 DoD)。設計書は .company/engineering/docs/。要 /feature-dev (Q3)。出典: 2026-05-17 user 第3波要望。",
-    "status": "進行中",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-17",
-    "completed": null
+    "completed": "2026-05-17"
   }
 ]

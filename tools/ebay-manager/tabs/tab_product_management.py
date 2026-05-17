@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -135,6 +135,7 @@ def _fetch_all_products() -> list[dict]:
                 el.competitor_min_price,
                 el.quantity_ebay, el.inventory_count,
                 el.last_qty_sync_at, el.last_synced_quantity, el.qty_sync_error,
+                el.shipping_profile_id, el.shipping_profile_fetched_at,
                 (SELECT COUNT(*) FROM competitor_products cp
                  WHERE cp.our_item_id = el.ebay_item_id AND cp.is_active = 1
                 ) AS competitor_count
@@ -363,21 +364,60 @@ def _cached_shipping_policies():
     return fetch_shipping_policies({})
 
 
-def _get_current_bp(eid: str, config: dict) -> dict:
-    """W138: 開いた expander の現 BP を 1 回 GetItem で取得 (session_state
-    cache)。**is_open の expander のみ呼ぶこと** (全 listing 毎 render で
-    GetItem を叩かない)。BP 変更成功時は呼出側が session_state[pm_curbp_*]
-    を削除して再取得させる。
+def _bp_state_from_db(p: dict) -> dict:
+    """W138-A: hero/selectbox 用 BP state を **DB 列から**構築。
 
-    戻り: {ok, id, name, error, policies}。
-    Q-6: shipping_profile_id=None (Inline shipping=非 BP) は ok=False+理由。
+    per-render GetItem ゼロ (価格と同じく「最初から自動表示」)。鮮度は
+    fetched_at 併記で正直開示 (HIGH-1: GetMyeBaySelling が BP を運ばない
+    ため定期同期に相乗り不可、価格より鮮度が劣る)。
+
+    HIGH-2 NULL 多義性解消 = fetched_at で 3 分岐:
+      state="unfetched" (a): fetched_at IS NULL → 未取得 (backfill 未 or
+            GetItem 失敗)。**Inline と断定しない**。↻ で取得を促す。
+      state="inline" (b): fetched_at あり & id 無し → 確定 Inline (非 BP
+            管理 listing)。BP 変更不可。
+      state="bp" (c): fetched_at あり & id あり → BP あり。selectbox 表示。
+
+    戻り: {state, ok, id, name, fetched_at, error, policies}
     """
-    sk = f"pm_curbp_{eid}"
-    cached = st.session_state.get(sk)
-    if cached is not None:
-        return cached
-    res = {"ok": False, "id": None, "name": None,
-           "error": None, "policies": None}
+    fetched_at = p.get("shipping_profile_fetched_at")
+    bp_id = (str(p.get("shipping_profile_id") or "").strip()) or None
+    res = {"state": None, "ok": False, "id": bp_id, "name": None,
+           "fetched_at": fetched_at, "error": None, "policies": None}
+    if not fetched_at:
+        res["state"] = "unfetched"
+        res["error"] = "BP 未取得 — 「↻ 再取得」で実 eBay から取得"
+        return res
+    pl = _cached_shipping_policies()
+    res["policies"] = pl
+    if bp_id is None:
+        res["state"] = "inline"
+        res["error"] = (
+            "この listing は Business Policy 管理ではありません "
+            "(Inline shipping)。BP 変更不可"
+        )
+        return res
+    res["state"] = "bp"
+    res["ok"] = True
+    res["name"] = (pl.name_for(bp_id) if pl.ok else None) or bp_id
+    if not pl.ok:
+        res["error"] = f"BP 一覧取得失敗 (名前解決不可): {pl.error}"
+    return res
+
+
+def _refresh_bp_from_ebay(eid: str, config: dict) -> None:
+    """W138-A 「↻ 再取得」: 単一 listing を 1 回 GetItem し DB の
+    shipping_profile_id + shipping_profile_fetched_at を更新 (opt-in、
+    毎 render でない)。eBay.com 直接 BP 変更で DB が stale になった時の
+    能動更新手段 (HIGH-1 緩和)。
+
+    Q0 (silent skip 防止 / Codex#3 整合): GetItem 失敗時は fetched_at を
+    **据置** (成功時刻で上書きしない = 未取得状態(a) 維持、Inline 誤断定
+    回避) + session_state に失敗痕跡を残し UI に表示する。成功時は id
+    (None=確定 Inline 含む) と fetched_at を同一 UPDATE で原子的に書く。
+    """
+    errk = f"pm_bprefresh_err_{eid}"
+    st.session_state.pop(errk, None)
     try:
         creds = get_ebay_credentials(config or {})
         app_id = creds.get("app_id", "")
@@ -385,37 +425,26 @@ def _get_current_bp(eid: str, config: dict) -> dict:
         cert_id = creds.get("cert_id", "")
         token = creds.get("user_token", "")
         if not (app_id and dev_id and cert_id and token):
-            res["error"] = "eBay credentials 不在"
-            st.session_state[sk] = res
-            return res
+            st.session_state[errk] = "eBay credentials 不在で再取得失敗"
+            return
     except (KeyError, ValueError, OSError) as e:
-        res["error"] = f"credentials 取得エラー: {e}"
-        st.session_state[sk] = res
-        return res
+        st.session_state[errk] = f"credentials 取得エラー: {e}"
+        return
     from monitor.ebay_listing_snapshot import fetch_listing_snapshot
     snap = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
     if not snap.ok:
-        res["error"] = f"GetItem 失敗: {snap.error}"
-        st.session_state[sk] = res
-        return res
-    pl = _cached_shipping_policies()
-    res["policies"] = pl
-    res["id"] = snap.shipping_profile_id
-    if not snap.shipping_profile_id:
-        # Q-6: Inline shipping (非 BP 管理) listing → BP 変更不可
-        res["error"] = (
-            "この listing は Business Policy 管理ではありません "
-            "(Inline shipping)。BP 変更不可"
+        # fetched_at 据置 (状態(a) 維持) + 痕跡 (Q0)
+        st.session_state[errk] = f"再取得失敗 (GetItem): {snap.error}"
+        return
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ebay_listings SET shipping_profile_id=?, "
+            "shipping_profile_fetched_at=datetime('now') "
+            "WHERE ebay_item_id=?",
+            (str(snap.shipping_profile_id)
+             if snap.shipping_profile_id else None, eid),
         )
-        st.session_state[sk] = res
-        return res
-    nm = pl.name_for(snap.shipping_profile_id) if pl.ok else None
-    res["ok"] = True
-    res["name"] = nm or snap.shipping_profile_id
-    if not pl.ok:
-        res["error"] = f"BP 一覧取得失敗 (名前解決不可): {pl.error}"
-    st.session_state[sk] = res
-    return res
+    bump_db_version()  # read-cache 無効化 → 次 render で新 BP 反映
 
 
 def _hero_effective(p: dict) -> dict:
@@ -490,6 +519,27 @@ def _hero_effective(p: dict) -> dict:
     return {"price": price, "ship": ship, "be": be, "preview": preview}
 
 
+def _fetched_jst_label(ts) -> str:
+    """W138-A: SQLite UTC timestamp 文字列を JST 表示ラベルへ変換.
+
+    `shipping_profile_fetched_at` は datetime('now') = UTC 保存
+    (sqlite-timezone.md)。UI は +9h して "M/D HH:MM JST" で表示し、
+    stale 時刻の user 誤認を防ぐ。parse 不能/None は "不明"。
+    """
+    if not ts:
+        return "不明"
+    s = str(ts).strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(s[:19] if len(s) >= 19 else s, fmt)
+        except ValueError:
+            continue
+        j = dt + timedelta(hours=9)
+        # Windows strftime は %-m/%-d 非対応 → 手組みで前ゼロ無し表記
+        return f"{j.month}/{j.day} {j.hour:02d}:{j.minute:02d} JST"
+    return "不明"
+
+
 def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
     """商品 expander の最上部に表示する 4 つの主要指標.
 
@@ -515,18 +565,29 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
     src_status = p.get("source_status") or "unknown"
     src_emoji = _status_emoji(src_status)
 
-    # W138: 現 Shipping BP pill (開いた expander のみ bp_state 非 None)
-    if bp_state is None:
-        bp_pill = ""
-    elif bp_state.get("ok"):
+    # W138-A: Shipping BP pill (DB 列駆動で常時表示)。fetched_at は UTC
+    # 保存だが UI は JST 変換併記 (sqlite-timezone.md 準拠、stale 時刻の
+    # user 誤認防止)。HIGH-2 3 状態を pill 文言で区別。
+    bp_state = bp_state or {}
+    _bp_st = bp_state.get("state")
+    _fa = _fetched_jst_label(bp_state.get("fetched_at"))
+    if _bp_st == "bp":
         bp_pill = (
             f'<span class="pm-pill pm-pill-info">🚚 Ship BP: '
-            f'{bp_state.get("name")}</span>'
+            f'{bp_state.get("name")} (取得 {_fa})</span>'
+        )
+    elif _bp_st == "inline":
+        bp_pill = (
+            f'<span class="pm-pill pm-pill-warn">🚚 Ship BP: '
+            f'Inline (BP なし・取得 {_fa})</span>'
+        )
+    elif _bp_st == "unfetched":
+        bp_pill = (
+            '<span class="pm-pill pm-pill-warn">🚚 Ship BP: '
+            '未取得 — ↻ で取得</span>'
         )
     else:
-        bp_pill = (
-            f'<span class="pm-pill pm-pill-warn">🚚 Ship BP: 取得不可</span>'
-        )
+        bp_pill = ""
 
     st.markdown(
         f'<div style="margin: 4px 0 12px 0;">'
@@ -712,21 +773,37 @@ def _render_left_basic_and_physical(
             help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)",
         )
 
-    # ── 🚚 Shipping Policy (W138, 開いた expander のみ bp_state 非 None) ──
+    # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
     editing["new_bp_id"] = None
+    # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
+    # 由来の現 BP id)。_apply_to_ebay は「submit 値 != この初期値」の時のみ
+    # 「user が selectbox を操作した」とみなし、無操作の stale 初期値が実
+    # eBay へ巻き戻る経路を遮断する (金銭直結)。
+    editing["bp_render_initial_id"] = None
     if bp_state is not None:
         pl = bp_state.get("policies")
         if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
             ids = [pi.policy_id for pi in pl.policies]
             opts = [pi.name for pi in pl.policies]
             cur_id = bp_state.get("id")
+            editing["bp_render_initial_id"] = cur_id
             cur_idx = ids.index(cur_id) if cur_id in ids else 0
             sel_i = st.selectbox(
                 "Shipping Policy (BP)",
                 options=list(range(len(ids))),
                 index=cur_idx,
                 format_func=lambda i: opts[i],
-                key=f"pm_bp_{eid}",
+                # Codex#1-fix2 (金銭直結): widget key に **DB 由来 cur_id を
+                # 含める**。Streamlit は key が session_state に在ると
+                # index= を無視し保存値を返す仕様。固定 key だと ↻/同期で
+                # DB BP が A→B に変わっても widget は旧 A を保持 →
+                # bp_render_initial(=fresh B) と new_bp_id(=stale A) が
+                # 食い違い「無操作なのに touched」誤判定 → 実 eBay の B を
+                # stale A へ巻き戻す (DDP buffer 喪失)。key に cur_id を
+                # 織り込むと DB BP 変化時に **別 widget = fresh 初期化**
+                # され dirty-flag 前提 (無操作⟹widget値==render初期値) を
+                # 回復。同一 DB 状態内は key 安定で user の途中選択を保持。
+                key=f"pm_bp_{eid}_{cur_id}",
                 help="変更すると 📤 eBay 反映 で listing の BP を差し替えます",
             )
             editing["new_bp_id"] = ids[sel_i]
@@ -1467,20 +1544,20 @@ def _render_one_product(p: dict, config: dict) -> None:
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
 
-        # W138 fix (2026-05-17): st.expander にユーザ開閉 signal が無く
-        # is_open は「保存後 keep-open 限定」。通常クリック展開時に BP UI が
-        # 出ない設計バグだった → **明示ボタンで lazy 取得**。押した listing
-        # だけ 1 回 GetItem (session_state cache)、全 listing 毎 render の
-        # GetItem 爆発 (108×) を回避。ボタン自体は安価 (form 外、即 rerun)。
-        _bpshow_k = f"pm_bpshow_{eid}"
-        if st.button("🚚 Shipping Policy 表示 / 変更",
-                      key=f"pm_bpbtn_{eid}",
-                      help="現在の配送ポリシー表示 + 変更プルダウンを開く"):
-            st.session_state[_bpshow_k] = True
-        bp_state = (
-            _get_current_bp(eid, config)
-            if st.session_state.get(_bpshow_k) else None
-        )
+        # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
+        # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は
+        # fetched_at 併記で正直開示 (HIGH-1)。eBay.com 直接変更で stale に
+        # なった時のための「↻ 再取得」は単一 listing 1 回 GetItem (opt-in)。
+        bp_state = _bp_state_from_db(p)
+        if st.button("↻ Shipping BP 再取得",
+                     key=f"pm_bprefresh_{eid}",
+                     help="この listing の BP を実 eBay から 1 回取得し DB を"
+                          "最新化 (eBay 側で直接 BP を変えた後に使用)"):
+            _refresh_bp_from_ebay(eid, config)
+            st.rerun()
+        _bprefresh_err = st.session_state.get(f"pm_bprefresh_err_{eid}")
+        if _bprefresh_err:
+            st.warning(f"↻ {_bprefresh_err}")
 
         # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
         _render_hero_metrics(p, bp_state=bp_state)
@@ -1692,10 +1769,30 @@ def _apply_to_ebay(
         new_ship is not None
         and not _money_eq(float(new_ship), snap.ship_cost_usd)
     )
-    bp_changed = bool(new_bp_id) and new_bp_id != (snap.shipping_profile_id or None)
+    # Codex#1 dirty-flag (金銭直結): user が selectbox を**実際に操作**した
+    # 時のみ BP 変更とみなす。無操作 = submit 値が render 時 DB 初期値と
+    # 同一 → eBay.com 外部変更で DB が stale でも、その stale 値が実 eBay
+    # へ送られて B→A に巻き戻る経路を構造的に遮断 (DDP buffer 喪失 =
+    # Section 232 数百ドル/件 防止)。変更検出の比較相手は依然 pre-snapshot
+    # 実 eBay (W137 真実源、DB 基準にしない)。無操作時は BP を一切 touch
+    # せず、DB は post-snapshot 経由 _sync_db_to_actual で実 eBay へ resync。
+    bp_render_initial = editing.get("bp_render_initial_id")
+    bp_user_touched = bool(new_bp_id) and new_bp_id != bp_render_initial
+    bp_changed = (
+        bp_user_touched
+        and new_bp_id != (snap.shipping_profile_id or None)
+    )
     if not (sku_changed or price_changed or ship_changed or bp_changed):
+        # MED-2-fix: 差分なしでも pre-snapshot (= 実 eBay 値、ここに来る
+        # 時点で snap.ok=True) を post_snapshot として返す。呼出側の
+        # _sync_db_to_actual が DB を実 eBay へ resync = stale DB BP/価格/
+        # SKU を自己治癒 (W137「DB:=真実」、冪等)。dirty-flag が無操作を
+        # 正しく抑止しても DB が古いままだと次 render で stale 表示が残り
+        # HIGH を助長するため、no-diff でも heal させる (Codex#1 補完)。
         return {**base,
-                "message": "実 eBay と差分なし (反映不要)。"
+                "post_snapshot": snap,
+                "message": "実 eBay と差分なし (反映不要、DB は実 eBay へ"
+                "同期)。"
                 f"eBay 実値: SKU={snap.sku} 価格={snap.start_price_usd} "
                 f"送料={snap.ship_cost_usd} BP={snap.shipping_profile_id}"}
     # Q-3 (user 承認): BP 変更と価格/送料変更の同一 submit は不可。BP 変更は
@@ -1785,8 +1882,9 @@ def _apply_to_ebay(
             revise_errs.append(
                 f"BP 変更 revise API 失敗: {_rb.get('message', '不明')}"
             )
-        # 現 BP の session_state cache を破棄 (次 render で新 BP 再取得)
-        st.session_state.pop(f"pm_curbp_{eid}", None)
+        # W138-A: 旧 pm_curbp session cache は廃止。BP の DB 反映は呼出側
+        # の _sync_db_to_actual (post-snapshot 実値 + bump_db_version) が
+        # 担う = 価格/送料と同一機構。ここでの cache 破棄は不要。
     if revise_errs:
         parts.append("⚠️ API: " + " / ".join(revise_errs))
 
@@ -1864,8 +1962,16 @@ def _sync_db_to_actual(eid: str, snap) -> None:
 
     editing の意図値でなく実 eBay 値 (post snapshot) を書くことで、
     revise の部分成功・送料 override 無音失敗・HIGH-1 などに関わらず
-    DB は常に eBay の真実を映す (乖離を構造的に排除)。snap の各値が
-    None (GetItem に出なかった) の項目は触らない。冪等。
+    DB は常に eBay の真実を映す (乖離を構造的に排除)。price/ship/sku は
+    snap の値が None (GetItem に出なかった) の項目は触らない。冪等。
+
+    W138-A (Codex#3): GetItem 成立時 (snap.ok) は shipping_profile_id +
+    shipping_profile_fetched_at も同期。snap.shipping_profile_id が None
+    (= 確定 Inline) でも **明示 NULL 書込** (既存 None-skip 慣習の例外。
+    旧 BP id が残存すると HIGH-2 の 3 分岐 (b 確定Inline)/(c BPあり) が
+    崩れるため)。id と fetched_at は同一 UPDATE で原子的に書く。
+    GetItem 失敗 (not snap.ok) 時は BP 2 列を触らない (fetched_at 据置
+    = 未取得状態(a) 維持、Inline と誤断定しない)。
     """
     sets = []
     params = []
@@ -1878,6 +1984,13 @@ def _sync_db_to_actual(eid: str, snap) -> None:
     if snap.sku is not None:
         sets.append("sku=?")
         params.append(str(snap.sku))
+    if getattr(snap, "ok", False):
+        sets.append("shipping_profile_id=?")
+        params.append(
+            str(snap.shipping_profile_id)
+            if snap.shipping_profile_id else None
+        )
+        sets.append("shipping_profile_fetched_at=datetime('now')")
     if not sets:
         return
     sets.append("last_synced_at=datetime('now')")

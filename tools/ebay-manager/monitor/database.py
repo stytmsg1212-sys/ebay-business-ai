@@ -2032,6 +2032,30 @@ def init_db():
                 pass
             conn.execute("PRAGMA user_version = 40")
 
+        # v41 (W138-A / 2026-05-17): shipping policy (BP) を DB 列化し
+        # 商品管理 hero に価格同様「最初から自動表示」。
+        #    shipping_profile_id        : eBay Business Policy (fulfillment) ID。
+        #                                 NULL/'' は文脈依存 (下記 fetched_at と併せ 3 分岐):
+        #    shipping_profile_fetched_at : 当該 BP を実 eBay GetItem から最後に取得した
+        #                                 時刻 (UTC、sqlite-timezone.md 準拠)。
+        #    判定 (HIGH-2 NULL 多義性解消): fetched_at IS NULL=未取得 (Inline と断定不可) /
+        #      fetched_at NOT NULL & id NULL/''=確定 Inline (BP なし) /
+        #      fetched_at NOT NULL & id あり=BP あり.
+        #    鮮度: GetMyeBaySelling は BP を返さないため定期 task_ebay_sync に
+        #      相乗り不可。📤eBay反映時 _sync_db_to_actual / 単発 ↻ 再取得 /
+        #      初回 backfill でのみ更新 (= 価格に劣る鮮度を fetched_at 併記で正直開示).
+        if schema_ver < 41:
+            for _col_sql in (
+                "ALTER TABLE ebay_listings ADD COLUMN shipping_profile_id TEXT",
+                "ALTER TABLE ebay_listings "
+                "ADD COLUMN shipping_profile_fetched_at TIMESTAMP",
+            ):
+                try:
+                    conn.execute(_col_sql)
+                except sqlite3.OperationalError:
+                    pass
+            conn.execute("PRAGMA user_version = 41")
+
 
 # ---- サイト設定 ----
 
