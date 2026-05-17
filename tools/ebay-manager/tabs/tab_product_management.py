@@ -33,7 +33,11 @@ from monitor.database import (
 )
 from calculator import load_settings as _load_calc_settings
 from monitor.credentials import get_ebay_credentials
-from monitor.ebay_client import revise_fixed_price_with_shipping, revise_item_sku
+from monitor.ebay_client import (
+    revise_fixed_price_with_shipping,
+    revise_item_sku,
+    revise_shipping_profile,
+)
 from monitor.lowest_price import (
     compute_breakeven_price_usd,
     fetch_alert_shipping_usd,
@@ -351,6 +355,69 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
 # Left column sections
 # =============================================================================
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_shipping_policies():
+    """全 active shipping BP (Account API)。UI 層 @st.cache_data ttl=300
+    (W134 流儀、client 自体は純関数)。戻りは ShippingPolicyList (frozen)."""
+    from monitor.ebay_account_policy import fetch_shipping_policies
+    return fetch_shipping_policies({})
+
+
+def _get_current_bp(eid: str, config: dict) -> dict:
+    """W138: 開いた expander の現 BP を 1 回 GetItem で取得 (session_state
+    cache)。**is_open の expander のみ呼ぶこと** (全 listing 毎 render で
+    GetItem を叩かない)。BP 変更成功時は呼出側が session_state[pm_curbp_*]
+    を削除して再取得させる。
+
+    戻り: {ok, id, name, error, policies}。
+    Q-6: shipping_profile_id=None (Inline shipping=非 BP) は ok=False+理由。
+    """
+    sk = f"pm_curbp_{eid}"
+    cached = st.session_state.get(sk)
+    if cached is not None:
+        return cached
+    res = {"ok": False, "id": None, "name": None,
+           "error": None, "policies": None}
+    try:
+        creds = get_ebay_credentials(config or {})
+        app_id = creds.get("app_id", "")
+        dev_id = creds.get("dev_id", "")
+        cert_id = creds.get("cert_id", "")
+        token = creds.get("user_token", "")
+        if not (app_id and dev_id and cert_id and token):
+            res["error"] = "eBay credentials 不在"
+            st.session_state[sk] = res
+            return res
+    except (KeyError, ValueError, OSError) as e:
+        res["error"] = f"credentials 取得エラー: {e}"
+        st.session_state[sk] = res
+        return res
+    from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+    snap = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+    if not snap.ok:
+        res["error"] = f"GetItem 失敗: {snap.error}"
+        st.session_state[sk] = res
+        return res
+    pl = _cached_shipping_policies()
+    res["policies"] = pl
+    res["id"] = snap.shipping_profile_id
+    if not snap.shipping_profile_id:
+        # Q-6: Inline shipping (非 BP 管理) listing → BP 変更不可
+        res["error"] = (
+            "この listing は Business Policy 管理ではありません "
+            "(Inline shipping)。BP 変更不可"
+        )
+        st.session_state[sk] = res
+        return res
+    nm = pl.name_for(snap.shipping_profile_id) if pl.ok else None
+    res["ok"] = True
+    res["name"] = nm or snap.shipping_profile_id
+    if not pl.ok:
+        res["error"] = f"BP 一覧取得失敗 (名前解決不可): {pl.error}"
+    st.session_state[sk] = res
+    return res
+
+
 def _hero_effective(p: dict) -> dict:
     """hero metrics 用の実効値を返す (2026-05-17 W137後 fix).
 
@@ -423,13 +490,14 @@ def _hero_effective(p: dict) -> dict:
     return {"price": price, "ship": ship, "be": be, "preview": preview}
 
 
-def _render_hero_metrics(p: dict) -> None:
+def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
     """商品 expander の最上部に表示する 4 つの主要指標.
 
     [現在総額] [損益分岐] [現在粗利] [競合最安]
 
     視覚的に最も重要な情報を一目で把握できるよう、大きな metric card で表示.
     編集フォーム入力があれば実効値でライブ試算 (_hero_effective)。
+    bp_state (W138, 開いた expander のみ非 None): 現 Shipping BP を pill 表示。
     """
     _eff = _hero_effective(p)
     cp, sh = _eff["price"], _eff["ship"]
@@ -447,6 +515,19 @@ def _render_hero_metrics(p: dict) -> None:
     src_status = p.get("source_status") or "unknown"
     src_emoji = _status_emoji(src_status)
 
+    # W138: 現 Shipping BP pill (開いた expander のみ bp_state 非 None)
+    if bp_state is None:
+        bp_pill = ""
+    elif bp_state.get("ok"):
+        bp_pill = (
+            f'<span class="pm-pill pm-pill-info">🚚 Ship BP: '
+            f'{bp_state.get("name")}</span>'
+        )
+    else:
+        bp_pill = (
+            f'<span class="pm-pill pm-pill-warn">🚚 Ship BP: 取得不可</span>'
+        )
+
     st.markdown(
         f'<div style="margin: 4px 0 12px 0;">'
         f'<span class="pm-pill pm-pill-info">ID: {p["ebay_item_id"]}</span>'
@@ -454,6 +535,7 @@ def _render_hero_metrics(p: dict) -> None:
         f'<span class="pm-pill pm-pill-info">区分: {market}</span>'
         f'<span class="pm-pill pm-pill-info">Rank: {rank}</span>'
         f'<span class="pm-pill {"pm-pill-bad" if src_status == "out_of_stock" else "pm-pill-ok" if src_status == "in_stock" else "pm-pill-warn"}">仕入先: {src_emoji} {src_status}</span>'
+        f'{bp_pill}'
         f'<span class="pm-pill pm-pill-info">📊 sold {sold} / watch {watch} / view {view}</span>'
         f'</div>',
         unsafe_allow_html=True,
@@ -517,7 +599,9 @@ def _render_hero_metrics(p: dict) -> None:
         )
 
 
-def _render_left_basic_and_physical(p: dict, config: dict) -> dict:
+def _render_left_basic_and_physical(
+    p: dict, config: dict, bp_state: Optional[dict] = None,
+) -> dict:
     """左列: SKU / 在庫数 / 物理属性 / eBay 出品 / 仕入価格 編集 form (form 内呼出前提)."""
     eid = p["ebay_item_id"]
     editing: dict = {}
@@ -627,6 +711,48 @@ def _render_left_basic_and_physical(p: dict, config: dict) -> dict:
             key=f"pm_ebay_ship_add_{eid}",
             help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)",
         )
+
+    # ── 🚚 Shipping Policy (W138, 開いた expander のみ bp_state 非 None) ──
+    editing["new_bp_id"] = None
+    if bp_state is not None:
+        pl = bp_state.get("policies")
+        if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
+            ids = [pi.policy_id for pi in pl.policies]
+            opts = [pi.name for pi in pl.policies]
+            cur_id = bp_state.get("id")
+            cur_idx = ids.index(cur_id) if cur_id in ids else 0
+            sel_i = st.selectbox(
+                "Shipping Policy (BP)",
+                options=list(range(len(ids))),
+                index=cur_idx,
+                format_func=lambda i: opts[i],
+                key=f"pm_bp_{eid}",
+                help="変更すると 📤 eBay 反映 で listing の BP を差し替えます",
+            )
+            editing["new_bp_id"] = ids[sel_i]
+            if ids[sel_i] != cur_id:
+                _ov_c = editing.get("new_ship_cost")
+                _ov_a = editing.get("new_ship_additional")
+                _cur = (f"現在 Buyer pays ${float(_ov_c):.2f}"
+                        if _ov_c is not None else "現在 Buyer pays 未設定")
+                if _ov_a is not None:
+                    _cur += f" / +each ${float(_ov_a):.2f}"
+                st.warning(
+                    "⚠️ BP を変更すると送料が**新 BP の default に戻ります**。"
+                    f"({_cur})"
+                )
+                st.caption(
+                    "現在の custom 送料に **DDP 関税 buffer** が含まれる場合、"
+                    "buffer が消え **売主の関税負担 (赤字方向、Section 232 "
+                    "該当品は数百ドル/件)** が発生し得ます。新 BP default 額は "
+                    "BP 適用後 GetItem で判明 (変更前取得不可、eBay 仕様)。"
+                    "変更後に送料を再設定してください。"
+                )
+        else:
+            st.caption(
+                "🚚 Shipping Policy 変更不可: "
+                f"{bp_state.get('error') or '現在 BP / BP 一覧の取得に失敗'}"
+            )
 
     # ── 💰 仕入価格 + 下限価格 ──
     st.markdown(
@@ -1341,8 +1467,12 @@ def _render_one_product(p: dict, config: dict) -> None:
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
 
+        # W138: 現 Shipping BP は **開いた expander のみ** 1 回 GetItem 取得
+        # (session_state cache)。全 listing 毎 render で GetItem を叩かない。
+        bp_state = _get_current_bp(eid, config) if is_open else None
+
         # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
-        _render_hero_metrics(p)
+        _render_hero_metrics(p, bp_state=bp_state)
 
         # ── 2 列 layout: 左 (form 内) / 右 (form 外) ──
         left, right = st.columns([1, 1], gap="medium")
@@ -1350,7 +1480,8 @@ def _render_one_product(p: dict, config: dict) -> None:
         with left:
             # 左列: 編集 inputs + submit buttons (rerun 抑制)
             with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
-                editing = _render_left_basic_and_physical(p, config)
+                editing = _render_left_basic_and_physical(
+                    p, config, bp_state=bp_state)
                 # ── Action button 群 (3 列) ──
                 st.markdown('<div class="pm-section-label">アクション</div>',
                             unsafe_allow_html=True)
@@ -1514,10 +1645,12 @@ def _apply_to_ebay(
     new_add = editing.get("new_ship_additional")
     form_sku = (editing.get("sku") or "").strip()
 
+    new_bp_id = editing.get("new_bp_id")  # W138: selectbox 選択 BP id
     base = {
         "success": False, "message": "", "new_price": new_price,
         "new_ship": new_ship, "sku_pushed": False,
-        "price_ship_ok": None, "sku_ok": None, "post_snapshot": None,
+        "price_ship_ok": None, "sku_ok": None, "bp_ok": None,
+        "post_snapshot": None,
     }
 
     try:
@@ -1548,11 +1681,19 @@ def _apply_to_ebay(
         new_ship is not None
         and not _money_eq(float(new_ship), snap.ship_cost_usd)
     )
-    if not (sku_changed or price_changed or ship_changed):
+    bp_changed = bool(new_bp_id) and new_bp_id != (snap.shipping_profile_id or None)
+    if not (sku_changed or price_changed or ship_changed or bp_changed):
         return {**base,
                 "message": "実 eBay と差分なし (反映不要)。"
                 f"eBay 実値: SKU={snap.sku} 価格={snap.start_price_usd} "
-                f"送料={snap.ship_cost_usd}"}
+                f"送料={snap.ship_cost_usd} BP={snap.shipping_profile_id}"}
+    # Q-3 (user 承認): BP 変更と価格/送料変更の同一 submit は不可。BP 変更は
+    # 送料を BP default にリセットするため同時指定は意図矛盾 → 明示拒否 (Q0)。
+    if bp_changed and (price_changed or ship_changed):
+        return {**base,
+                "message": "BP 変更と価格/送料変更は同時にできません (Q-3)。"
+                "先に BP のみを 📤eBay反映 で変更 (送料は新 BP default に"
+                "戻ります) → その後あらためて価格/送料を調整してください。"}
 
     parts: list[str] = []
     sku_pushed = False
@@ -1617,6 +1758,24 @@ def _apply_to_ebay(
                 revise_errs.append(
                     f"SKU revise API 失敗: {_rs.get('message', '不明')}"
                 )
+    if bp_changed:
+        # W138: BP のみ専用経路 (W136 override gate 非経由、SellerProfiles
+        # 3 ID 同梱)。BP 変更で eBay 側 override は BP default にリセット。
+        _rb = revise_shipping_profile(
+            eid,
+            {
+                "payment_id": snap.payment_profile_id,
+                "return_id": snap.return_profile_id,
+                "shipping_id": new_bp_id,
+            },
+            app_id, dev_id, cert_id, token,
+        )
+        if not _rb.get("success"):
+            revise_errs.append(
+                f"BP 変更 revise API 失敗: {_rb.get('message', '不明')}"
+            )
+        # 現 BP の session_state cache を破棄 (次 render で新 BP 再取得)
+        st.session_state.pop(f"pm_curbp_{eid}", None)
     if revise_errs:
         parts.append("⚠️ API: " + " / ".join(revise_errs))
 
@@ -1663,6 +1822,18 @@ def _apply_to_ebay(
         sku_ok = False
         overall_ok = False
 
+    bp_ok: Optional[bool] = None
+    if bp_changed:
+        # 実値 verify (Ack でなく snap2 の shipping_profile_id 一致)。
+        # BP 変更で送料は新 BP default に変化 → snap2.ship_cost_usd を
+        # caller の _sync_db_to_actual が DB へ同期 (HIGH-3、DB:=真実)。
+        bp_ok = (snap2.shipping_profile_id == new_bp_id)
+        overall_ok = overall_ok and bp_ok
+        parts.append(
+            f"BP: {'✅' if bp_ok else '❌ 実値不一致'} "
+            f"期待'{new_bp_id}'/実'{snap2.shipping_profile_id}' "
+            f"(送料は新 BP default ${snap2.ship_cost_usd} に変化)")
+
     return {
         "success": overall_ok,
         "message": " / ".join(parts) if parts else "変更なし",
@@ -1671,6 +1842,7 @@ def _apply_to_ebay(
         "sku_pushed": sku_pushed,
         "price_ship_ok": price_ship_ok,
         "sku_ok": sku_ok,
+        "bp_ok": bp_ok,
         # 呼出側が DB を実 eBay 値へ同期するための反映後 snapshot.
         "post_snapshot": snap2,
     }

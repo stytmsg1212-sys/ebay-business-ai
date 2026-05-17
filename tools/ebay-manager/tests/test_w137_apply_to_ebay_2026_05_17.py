@@ -214,6 +214,69 @@ def test_ship_change_without_shipping_id_leaves_trace(tpm):
     assert "shipping profile ID" in res["message"]
 
 
+# ── W138: BP 変更 (revise_shipping_profile 経路 / Q-3 / bp_ok verify) ──
+
+def test_bp_change_calls_revise_shipping_profile_and_verifies(tpm):
+    """new_bp_id≠現BP → revise_shipping_profile 呼出、post snap 一致で bp_ok True."""
+    pre = _snap(shipping_profile_id="BP_OLD")
+    post = _snap(shipping_profile_id="BP_NEW", ship_cost_usd=30.0)
+    s_patch, c_patch = _patch(tpm, pre, post)
+    with s_patch, c_patch, \
+         patch.object(tpm, "revise_shipping_profile",
+                      return_value={"success": True}) as m:
+        res = tpm._apply_to_ebay(
+            "ITEM1", {"new_bp_id": "BP_NEW"}, {}, current_sku="x")
+    m.assert_called_once()
+    assert m.call_args[0][1]["shipping_id"] == "BP_NEW"
+    assert res["success"] is True and res["bp_ok"] is True
+    assert "新 BP default" in res["message"]
+
+
+def test_bp_change_post_mismatch_is_fake_success_killed(tpm):
+    """revise success でも post snap の BP が一致しなければ bp_ok False."""
+    pre = _snap(shipping_profile_id="BP_OLD")
+    post = _snap(shipping_profile_id="BP_OLD")   # eBay 側変わらず
+    s_patch, c_patch = _patch(tpm, pre, post)
+    with s_patch, c_patch, \
+         patch.object(tpm, "revise_shipping_profile",
+                      return_value={"success": True}):
+        res = tpm._apply_to_ebay(
+            "ITEM1", {"new_bp_id": "BP_NEW"}, {}, current_sku="x")
+    assert res["success"] is False
+    assert res["bp_ok"] is False and "実値不一致" in res["message"]
+
+
+def test_bp_and_price_simultaneous_rejected_q3(tpm):
+    """Q-3: BP 変更と価格変更の同一 submit は明示拒否 (revise しない)."""
+    pre = _snap(shipping_profile_id="BP_OLD", start_price_usd=148.0)
+    post = _snap()
+    s_patch, c_patch = _patch(tpm, pre, post)
+    with s_patch, c_patch, \
+         patch.object(tpm, "revise_shipping_profile") as m_bp, \
+         patch.object(tpm, "revise_fixed_price_with_shipping") as m_ps:
+        res = tpm._apply_to_ebay(
+            "ITEM1", {"new_bp_id": "BP_NEW", "new_ebay_price": 160.0},
+            {}, current_sku="x")
+    m_bp.assert_not_called()
+    m_ps.assert_not_called()
+    assert res["success"] is False
+    assert "同時にできません" in res["message"]
+
+
+def test_bp_unchanged_no_revise(tpm):
+    """new_bp_id == 現BP → BP revise 呼ばない (差分なし)."""
+    pre = _snap(shipping_profile_id="BP_SAME")
+    post = _snap(shipping_profile_id="BP_SAME")
+    s_patch, c_patch = _patch(tpm, pre, post)
+    with s_patch, c_patch, \
+         patch.object(tpm, "revise_shipping_profile") as m:
+        res = tpm._apply_to_ebay(
+            "ITEM1", {"new_bp_id": "BP_SAME"}, {}, current_sku="x")
+    m.assert_not_called()
+    assert res["success"] is False
+    assert "差分なし" in res["message"]
+
+
 def test_offspec_sku_suppressed(tpm):
     pre = _snap(sku="stock:01")
     post = _snap(sku="stock:01")

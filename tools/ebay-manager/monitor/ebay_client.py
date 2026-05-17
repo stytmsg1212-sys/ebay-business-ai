@@ -1050,6 +1050,129 @@ def revise_fixed_price_with_shipping(
     return result
 
 
+def _build_revise_bp_only_xml(item_id: str, seller_profiles: dict) -> str:
+    """W138 (2026-05-17): shipping Business Policy のみ変更する Revise XML.
+
+    `<Item><ItemID>` + `<SellerProfiles>` (Payment/Return/Shipping 3 ID) のみ。
+    `<StartPrice>` / `<ShippingServiceCostOverrideList>` は **出力しない**
+    (= BP を別 policy に差し替えるだけ。override は eBay 仕様で BP default に
+    リセットされる前提、W138 案2)。
+
+    重要 (Codex HIGH-2): SellerProfiles は **Payment/Return/Shipping の 3 ID**
+    を同梱する (shipping のみは不可。不完全だと Ack=Fail or 意図せぬ
+    payment/return policy 適用 = money/account risk)。W136
+    `_build_revise_with_shipping_xml` の SellerProfiles 構造と同形 (gate は
+    一切共有せず別関数 = W136 経路非改修, K2/D1)。
+    """
+    from xml.sax.saxutils import escape
+    parts: list[str] = []
+    parts.append('<?xml version="1.0" encoding="utf-8"?>')
+    parts.append('<ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">')
+    parts.append('  <RequesterCredentials>')
+    parts.append('    <eBayAuthToken>{USER_TOKEN}</eBayAuthToken>')
+    parts.append('  </RequesterCredentials>')
+    parts.append('  <Item>')
+    parts.append(f'    <ItemID>{escape(item_id)}</ItemID>')
+    parts.append('    <SellerProfiles>')
+    if seller_profiles.get("payment_id"):
+        parts.append('      <SellerPaymentProfile>')
+        parts.append(
+            f'        <PaymentProfileID>'
+            f'{escape(str(seller_profiles["payment_id"]))}</PaymentProfileID>'
+        )
+        parts.append('      </SellerPaymentProfile>')
+    if seller_profiles.get("return_id"):
+        parts.append('      <SellerReturnProfile>')
+        parts.append(
+            f'        <ReturnProfileID>'
+            f'{escape(str(seller_profiles["return_id"]))}</ReturnProfileID>'
+        )
+        parts.append('      </SellerReturnProfile>')
+    parts.append('      <SellerShippingProfile>')
+    parts.append(
+        f'        <ShippingProfileID>'
+        f'{escape(str(seller_profiles["shipping_id"]))}</ShippingProfileID>'
+    )
+    parts.append('      </SellerShippingProfile>')
+    parts.append('    </SellerProfiles>')
+    parts.append('  </Item>')
+    parts.append(f'  <Version>{API_VERSION}</Version>')
+    parts.append('</ReviseFixedPriceItemRequest>')
+    return '\n'.join(parts)
+
+
+def revise_shipping_profile(
+    item_id: str,
+    seller_profiles: dict,
+    app_id: str, dev_id: str, cert_id: str, user_token: str,
+) -> dict:
+    """W138: listing の shipping Business Policy のみを変更 (BP-only Revise).
+
+    商品管理タブの BP selectbox 変更から呼ばれる専用経路。W136 の
+    `revise_fixed_price_with_shipping` の早期 return gate (price/ship 両 None
+    で API 呼ばず) を**持たない** (BP のみで実行する、HIGH-1 訂正)。
+
+    Args:
+        seller_profiles: {'payment_id','return_id','shipping_id'}.
+            **3 ID 全て必須** (Codex HIGH 2026-05-17 + 設計 HIGH-2): eBay
+            ReviseFixedPriceItem の SellerProfiles は Payment/Shipping/Return
+            各 1 を揃えて指定する仕様の蓋然性が高く、不完全だと Ack=Fail or
+            意図せぬ payment/return policy 適用 (money/account risk)。pre-
+            snapshot で 1 つでも欠ければ API を呼ばず success:False
+            (Q0: 不完全 SellerProfiles を送らない。両 eBay 解釈下で安全側)。
+
+    Returns: {'success': bool, 'ack': str, 'message': str | None, 'raw': ...}
+    """
+    sp = seller_profiles or {}
+    _missing = [k for k in ("payment_id", "return_id", "shipping_id")
+                if not sp.get(k)]
+    if _missing:
+        return {
+            "success": False,
+            "message": (
+                f"SellerProfiles 不完全 ({', '.join(_missing)} 欠落) のため "
+                "BP 変更を抑止 (3 ID 全必須)。GetItem に payment/return/"
+                "shipping profile が揃わない listing は BP 変更不可"
+            ),
+            "raw": None,
+        }
+    xml = _build_revise_bp_only_xml(item_id, seller_profiles)
+    result = _call_trading_api(
+        "ReviseFixedPriceItem", xml,
+        app_id, dev_id, cert_id, user_token,
+    )
+    # Ack=Warning でも Errors 内 SeverityCode=Error は失敗扱いに降格
+    # (revise_fixed_price_with_shipping / revise_fixed_price_item と挙動統一、
+    #  失敗診断を message に出す。code-reviewer MEDIUM 2026-05-17)。
+    if result.get("success") and result.get("ack") == "Warning":
+        raw_xml = result.get("raw") or ""
+        if raw_xml:
+            try:
+                root = ET.fromstring(raw_xml)
+                ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+                fatal_msgs = []
+                for err in root.findall(".//ns:Errors", namespaces=ns):
+                    sev = err.findtext("ns:SeverityCode", namespaces=ns)
+                    if sev == "Error":
+                        long_msg = err.findtext(
+                            "ns:LongMessage", namespaces=ns) or ""
+                        code = err.findtext(
+                            "ns:ErrorCode", namespaces=ns) or "?"
+                        fatal_msgs.append(f"[{code}] {long_msg}")
+                if fatal_msgs:
+                    return {
+                        **result,
+                        "success": False,
+                        "message": (
+                            "API Warning に重大エラー混入 "
+                            "(SeverityCode=Error): " + "; ".join(fatal_msgs)
+                        ),
+                    }
+            except ET.ParseError:
+                pass
+    return result
+
+
 def revise_fixed_price_item(
     item_id: str, new_price_usd: float,
     app_id: str, dev_id: str, cert_id: str, user_token: str,
