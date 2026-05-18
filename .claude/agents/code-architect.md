@@ -113,4 +113,4 @@ model: claude-opus-4-7
 - **観測可能性 3 経路**: 全 scheduled task は (DB log / Discord 通知 / UI 表示) の 3 経路すべてを設計書に明記 (silent skip 物理排除)
 - **環境特異性チェックリスト**: pythonw / Streamlit / Windows / cp932 / OAuth token cache を設計書に明記
 - **コスト保護**: 課金 API は cache 確認 → skip 復元パスを **先に書く**。「再生成 ($X.XX)」は別 UI で隔離
-- **/feature-dev Phase 3 Clarify 省略禁止**: 不確実性のある外部 API / スクレイプ追随変更は曖昧質問を残さず PRD 化
+- **構造化設計フロー Phase 3 Clarify 省略禁止** (旧称 /feature-dev、本 repo に同 command 不在=本 agent が等価運用の設計 Phase): 不確実性のある外部 API / スクレイプ追随変更は曖昧質問を残さず PRD 化

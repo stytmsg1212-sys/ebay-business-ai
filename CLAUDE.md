@@ -16,7 +16,7 @@
 - **Q0** サイレントスキップ / 偽装成功 / 逃避修正は **絶対禁止**。詳細: `.claude/rules/silent-skip-prevention.md`
 - **Q1** UI / 定時実行バグ修正 DoD = 11 ステップ Phase 0-3 全て (pytest PASS だけ NG、Streamlit + Playwright + DB クエリ + scheduler.log 必須)。詳細: `feedback_definition_of_done_protocol.md`
 - **Q2** DB migration 冪等性必須 (try/except OperationalError、DROP/DELETE は別 one-shot script、本番直接書込時 24h retrospective review)。詳細: `.claude/rules/db-migration-rules.md`
-- **Q3** 新機能 / 外部 API / 見積不確実な変更は **`/feature-dev` 必須**、Phase 3 Clarify 省略禁止。詳細: `feedback_feature_dev_usage.md`
+- **Q3** 新機能 / 外部 API / 見積不確実な変更は **構造化設計フロー必須** (Clarify → 設計 → 2 段レビュー → 実装 → Q1 検証)、Phase 3 Clarify 省略禁止。⚠️ 本 repo に `/feature-dev` skill/command は **不在** (md-files-can-be-wrong R-1、2026-05-18 確認) = `code-architect` subagent (設計 Phase) + `code-reviewer` + Codex の 2 段レビューで **等価運用**。詳細・両論併記: `feedback_feature_dev_usage.md`
 - **Q4** コード変更後 code-reviewer agent で **HIGH=0** まで修正ループ。DB 直接書込後は retrospective review。詳細: `feedback_auto_review_after_changes.md`
 - **Q5** 完了報告: 「使用したモデル」明示、多段パイプライン部分実装時は未実施フェーズ冒頭明記、Phase 0 発見併記
 - **Q6** モデル選定: Opus 4.7 (業務判断 / 動画深掘り / Research、1 日 30 calls) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk / 短文、デフォルト) / Gemini 2.5 Flash (動画ネイティブ)。詳細: `feedback_model_selection_policy.md`

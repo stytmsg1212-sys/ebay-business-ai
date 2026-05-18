@@ -250,9 +250,11 @@ assistant が自動で session_*.md (永続記録) + MEMORY.md update + _NEXT_SE
 /add_s 在庫切れ商品の自動非表示
 ```
 
-### 5-5. /feature-dev (新機能 / 不確実な変更)
+### 5-5. 構造化設計フロー (新機能 / 不確実な変更) ※ /feature-dev は本 repo 不在
 
-新機能 / 外部 API 連携 / スクレイプ構造追随 / 見積不確実な変更は **必ず** `/feature-dev` 発動 (Q3)。Phase 3 Clarify 省略禁止。
+新機能 / 外部 API 連携 / スクレイプ構造追随 / 見積不確実な変更は **必ず** 構造化設計フロー (Clarify → 設計 → 2 段レビュー → 実装 → Q1 検証、Q3)。Phase 3 Clarify 省略禁止。
+
+⚠️ **`/feature-dev` skill/command は本 repo に存在しない** (2026-05-18 確認、md-files-can-be-wrong R-1)。user は何も特別なコマンドを打つ必要なし — 「新機能を作って」「設計から考えて」と依頼すれば Claude が等価運用 (`code-architect` subagent で Clarify+設計 → `code-reviewer`+Codex 2 段レビュー → Q1 DoD) を自動適用する。詳細: memory `feedback_feature_dev_usage.md`。
 
 ### 5-6. /fewer-permission-prompts
 
@@ -408,7 +410,7 @@ skill 系 (assistant が紹介してくれるもの含む):
 | `/mono` | MonoDeck (Streamlit UI) 起動 |
 | `/listing` | eBay 出品文生成 |
 | `/add_s <機能>` | ROADMAP に新機能登録 |
-| `/feature-dev` | 新機能設計の体系プロセス起動 (Q3 必須) |
+| ~~`/feature-dev`~~ | **本 repo 不在** (2026-05-18)。新機能は「設計から考えて」と依頼 → Claude が code-architect+2段レビュー等価運用 (Q3、5-5 参照) |
 | `/session-close` (`/close`, `/bye`) | セッション終了 + 永続化 |
 | `/session-resume` | 復帰 (manual fallback、通常不要) |
 | `/clear` | 文脈クリア (機能切替時) |
