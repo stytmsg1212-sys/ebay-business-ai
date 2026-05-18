@@ -3732,17 +3732,48 @@ if _w134_sel == "最安値チェック":
                 "保存時に Browse API で価格・送料を取得します。"
             )
             _lp_existing = _lp_grouped.get(_lp_selected_id, [])
+            # ③ データ損失ホットフィックス (2026-05-18): Streamlit は key 付き
+            # text_input の value= を「その key が session_state に既出の後」は
+            # 無視する. その結果、一括検索等で DB 登録された競合が #1-#10 欄に
+            # 出ず、空欄のまま「保存」→ upsert_listing_competitors の全置換で
+            # **登録済み競合が黙って全消滅** していた (W183 追従対象の損失).
+            # 対策: DB の競合 id 集合を signature 化し、変化時のみ session_state
+            # を DB 値で再シード (= 表示が常に DB と一致 → 全置換が安全化).
+            # plain rerun では signature 不変 = 再シードせず user 入力途中を温存.
+            # 既知トレードオフ (Q0 透明性 / 2段review MEDIUM): #1-#10 編集途中に
+            # 別経路 bulk 登録が走り DB 集合が変わると signature 変化で再シード =
+            # user 未保存編集が DB 値で上書きされる. これは「登録済み競合の silent
+            # 全消滅 (W183 追従対象の恒久損失=金銭直結)」回避を優先した許容判断.
+            # ★往復バグ修正 (2026-05-18 Q1 Playwright で検出): Streamlit は
+            # 描画されなかった keyed widget の session_state を破棄するが、本
+            # signature は plain key なので破棄されず残存する. listing を切替えて
+            # 戻ると widget state はクリア済なのに signature だけ残り「一致」判定
+            # で再シードされず #1-#10 が空欄化 → その保存で全消滅が再発する.
+            # → widget key 自体の不在 (= 前 run で未描画 = 切替で破棄された) も
+            # 再シード条件に含める (初回描画も key 不在なので自然に seed される).
+            _lp_comp_sig_key = f"_lp_comp_loaded_sig_{_lp_selected_id}"
+            _lp_db_sig = tuple(_lp_existing)
+            _lp_widget_state_present = (
+                f"lp_comp_{_lp_selected_id}_0" in st.session_state
+            )
+            if (not _lp_widget_state_present
+                    or st.session_state.get(_lp_comp_sig_key) != _lp_db_sig):
+                for _i in range(_LP_MAX_COMPETITORS):
+                    st.session_state[f"lp_comp_{_lp_selected_id}_{_i}"] = (
+                        _lp_existing[_i] if _i < len(_lp_existing) else ''
+                    )
+                st.session_state[_lp_comp_sig_key] = _lp_db_sig
             _lp_comp_cols_a = st.columns(5)
             _lp_comp_cols_b = st.columns(5)
             _lp_comp_inputs: list[str] = []
             for _i in range(_LP_MAX_COMPETITORS):
                 _col = _lp_comp_cols_a[_i] if _i < 5 else _lp_comp_cols_b[_i - 5]
                 with _col:
-                    _val = _lp_existing[_i] if _i < len(_lp_existing) else ''
+                    # value= は渡さない: session_state[key] を唯一の真実源とする
+                    # (value= と session_state 併用は Streamlit が警告を出す).
                     _lp_comp_inputs.append(
                         st.text_input(
                             f"#{_i + 1}",
-                            value=_val,
                             key=f"lp_comp_{_lp_selected_id}_{_i}",
                             placeholder="285123456789",
                             label_visibility='visible',

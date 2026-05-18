@@ -29,6 +29,7 @@ import httpx
 
 import streamlit as st
 
+from ui_cache import bump_db_version
 from monitor.database import get_conn
 from monitor.lowest_price import (
     fetch_supplier_purchase_yen,
@@ -42,6 +43,36 @@ from tasks.task_generate_search_keywords import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── 2026-05-18 不具合修正 (Bug A/B: 登録未反映 + 作業パネル collapse) ──
+# 競合登録後に登録済みライバルが反映されない真因 = 登録後に cache invalidation
+# (bump_db_version) も st.rerun も無く、_cd_competitors_grouped 等が ttl=3s 内
+# 古いまま。+ ウィザード expander が expanded=False ハードコードで再実行毎に
+# 畳まれ、チェックが消えたように見える。下記ヘルパーで:
+#  (1) 登録完了メッセージを次 run へ持ち越し (rerun で消えないように)
+#  (2) bump_db_version + st.rerun で登録済みを即時反映
+#  (3) ウィザードパネルを「作業中は開いたまま」維持 (session flag)
+_PENDING_MSG_KEY = "_w119_pending_register_msg"
+_WIZARD_OPEN_KEY = "_w119_wizard_panel_open"
+
+
+def _flush_pending_msg() -> None:
+    """前 run で登録完了した際のメッセージを (rerun を跨いで) 1 回表示."""
+    m = st.session_state.pop(_PENDING_MSG_KEY, None)
+    if m:
+        (st.success if m[0] == "ok" else st.error)(m[1])
+
+
+def _finish_register(level: str, text: str) -> None:
+    """競合登録完了の共通後処理.
+
+    メッセージを次 run へ持ち越し → cache 即時無効化 (登録済みライバルを
+    0 秒反映) → rerun。これを呼ばないと「登録したのに反映されない」(真因)。
+    """
+    st.session_state[_PENDING_MSG_KEY] = (level, text)
+    st.session_state[_WIZARD_OPEN_KEY] = True  # 作業継続: パネルを開いたまま
+    bump_db_version()
+    st.rerun()
 
 
 # =============================================================================
@@ -504,6 +535,18 @@ def _render_step3(config: dict, counts: dict) -> None:
 # =============================================================================
 
 def _render_step4(config: dict, counts: dict) -> None:
+    # Fix1/2: 前 run の登録完了メッセージを rerun を跨いで表示.
+    _flush_pending_msg()
+    # Fix2: 検索結果や前回登録など作業中状態があればパネルを開いたまま維持
+    # (再実行で expander が畳まれて「チェックが消えた」ように見える対策).
+    if (
+        "w119_step4_bulk_results" in st.session_state
+        or any(
+            k.startswith("w119_step4_search_") and st.session_state.get(k)
+            for k in list(st.session_state.keys())
+        )
+    ):
+        st.session_state[_WIZARD_OPEN_KEY] = True
     st.markdown("#### Step 4: 競合検索 + 競合 DB 登録")
     st.caption(
         "**📦 一括モード** (初回推奨): 全 listing で Browse API call → listing 別の expander で "
@@ -726,9 +769,12 @@ def _render_step4_single(config: dict, listings_with_kw: list[dict]) -> None:
                 our_item_id=ebay_item_id,
                 competitor_item_ids=selected_ids,
             )
-            st.success(
-                f"✅ {len(selected_ids)} 件を競合 DB に置き換え登録しました. "
-                f"次回 W183 値下げ scheduler (00:45/06:45/12:45/18:45 JST) で自動チェック."
+            # Fix1: bump_db_version + rerun で「登録ライバル」へ即時反映
+            _finish_register(
+                "ok",
+                f"✅ {len(selected_ids)} 件を競合 DB に置き換え登録しました "
+                f"(登録済みライバルに反映済). 次回 W183 値下げ scheduler "
+                f"(00:45/06:45/12:45/18:45 JST) で自動チェック.",
             )
         except (sqlite3.OperationalError, ValueError, TypeError) as e:
             logger.exception("[w119_step4] 競合 DB 登録エラー")
@@ -1193,14 +1239,20 @@ def _execute_bulk_register(listing_selections: dict) -> None:
     skip_msg = (f" / 選択 0 で skip {skipped_zero} listing (既存維持)"
                 if skipped_zero else "")
 
+    # Fix1: 成功/部分失敗いずれも bump_db_version + rerun で登録済みへ即時反映.
+    # (これが無く「一括登録したのに登録済みライバルに反映されない」が真因)
     if failed == 0:
-        st.success(
-            f"✅ 一括登録完了: 競合 {ok} 件 ({listing_ok} listing){skip_msg}. "
-            f"次回 W183 値下げ scheduler (00:45/06:45/12:45/18:45 JST) で全 listing 自動チェック."
+        _finish_register(
+            "ok",
+            f"✅ 一括登録完了: 競合 {ok} 件 ({listing_ok} listing){skip_msg} "
+            f"— 登録済みライバルに反映済. 次回 W183 値下げ scheduler "
+            f"(00:45/06:45/12:45/18:45 JST) で全 listing 自動チェック.",
         )
     else:
-        st.error(
-            f"⚠ 部分失敗: 成功 {ok} / 失敗 {failed} / 合計 {total}{skip_msg}. ログ確認推奨."
+        _finish_register(
+            "error",
+            f"⚠ 部分失敗: 成功 {ok} / 失敗 {failed} / 合計 {total}{skip_msg}. "
+            f"成功分は登録済みに反映済. ログ確認推奨.",
         )
 
 
@@ -1216,14 +1268,31 @@ def render_research_wizard(config: dict) -> None:
     """
     counts = _count_listings_state()
 
-    with st.expander(
+    # Codex HIGH (2026-05-18): 外側を st.expander にすると内側 _render_step4_bulk
+    # の listing 別 st.expander が「expander ネスト禁止」で StreamlitAPIException
+    # → bulk UI 自体が壊れる (Bug A bulk 経路の真因)。外側を expander でなく
+    # 「トグルボタン + st.container」にして根治。これにより内側 expander が
+    # 有効化され、かつ再実行で畳まれない (Fix2 collapse も同時解消)。
+    # _WIZARD_OPEN_KEY は _finish_register / _render_step4 で True 化され、
+    # 作業中は開いたまま維持される (rerun 跨ぎ persist)。
+    _wiz_open = bool(st.session_state.get(_WIZARD_OPEN_KEY, False))
+    _wiz_label = (
         f"📊 商品リサーチ自動化ウィザード (W119) — "
         f"重量 {counts['with_weight']}/{counts['total']} | "
         f"寸法 {counts['with_size']}/{counts['total']} | "
         f"損益分岐 {counts['with_breakeven']}/{counts['total']} | "
-        f"検索ワード {counts['with_keyword']}/{counts['total']}",
-        expanded=False,
+        f"検索ワード {counts['with_keyword']}/{counts['total']}"
+    )
+    if st.button(
+        ("▼ 閉じる ｜ " if _wiz_open else "▶ 開く ｜ ") + _wiz_label,
+        key="w119_wizard_toggle",
+        use_container_width=True,
     ):
+        st.session_state[_WIZARD_OPEN_KEY] = not _wiz_open
+        st.rerun()
+    if not _wiz_open:
+        return
+    with st.container():
         st.caption(
             "4 step を順次実行することで、最安値チェック → W183 自動値下げ pipeline が "
             "active な競合データで動作します. 各 step は独立で再実行可能 (idempotent)."

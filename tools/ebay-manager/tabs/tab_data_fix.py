@@ -23,6 +23,7 @@ from typing import Optional
 
 import streamlit as st
 
+from ui_cache import bump_db_version
 from monitor.database import get_conn
 from monitor.lowest_price import (
     fetch_supplier_purchase_yen,
@@ -32,6 +33,23 @@ from monitor.lowest_price import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── 2026-05-18 Bug B 修正 (未FIXフィルタ作業中に保存/反映でページ消失) ──
+# 真因: パネルが st.expander(expanded=False) ハードコードで再実行毎に畳まれ、
+# かつ「未FIXのみ」フィルタが保存後の新DB値で再適用 → FIX済になった編集中
+# listing が一覧から脱落して「修正中ページが消えた」ように見える。
+# 対策キー: 編集済 listing をセッション中ピン留め / パネル開維持 / 直近編集
+# listing を開いたまま / 保存メッセージを rerun 跨ぎ表示.
+_FIX_EDITED_KEY = "_w119_fix_session_edited_ids"  # set[ebay_item_id]
+_FIX_PANEL_OPEN_KEY = "_w119_fix_panel_open"
+_FIX_OPEN_EID_KEY = "_w119_fix_last_edited_eid"
+_FIX_MSG_KEY = "_w119_fix_pending_msg"
+
+
+def _fix_flush_msg() -> None:
+    m = st.session_state.pop(_FIX_MSG_KEY, None)
+    if m:
+        (st.success if m[0] == "ok" else st.error)(m[1])
 
 _PAGE_SIZE = 30
 _MAX_COMPETITORS = 10
@@ -116,6 +134,9 @@ def _render_stats(stats: dict) -> None:
 # =============================================================================
 
 def _apply_filter(listings: list[dict]) -> list[dict]:
+    # Bug B 修正: フィルタ前の全 listing を保持 (編集済行のピン留め用)
+    _all_map = {it["ebay_item_id"]: it for it in listings}
+
     # 検索ワード
     search = st.text_input(
         "🔍 商品名で検索",
@@ -171,6 +192,19 @@ def _apply_filter(listings: list[dict]) -> list[dict]:
     elif sort_key == "view_count 順":
         listings.sort(key=lambda x: -(x.get("view_count") or 0))
     # ID 順は既に order by で適用済
+
+    # Bug B 修正: 本セッションで編集した listing は、未FIXフィルタで
+    # FIX済になっても一覧から脱落させない (修正直後にページから消える対策).
+    # 全 listing から拾い直して先頭にピン留め (作業継続性を担保).
+    edited = st.session_state.get(_FIX_EDITED_KEY) or set()
+    if edited:
+        present = {it["ebay_item_id"] for it in listings}
+        pinned = [
+            _all_map[e] for e in edited
+            if e in _all_map and e not in present
+        ]
+        if pinned:
+            listings = pinned + listings
 
     return listings
 
@@ -340,7 +374,19 @@ def _render_edit_form(it: dict, config: dict) -> None:
             recalc_breakeven=save_btn,
             config=config,
         )
-        st.success("✅ 保存しました" + (" + breakeven 再計算" if save_btn else ""))
+        # Bug B 修正: 編集行をセッション中ピン留め (未FIXフィルタで脱落
+        # させない) + この listing を開いたまま + パネル開維持 + 即時反映 +
+        # メッセージを rerun 跨ぎ表示.
+        edited = st.session_state.setdefault(_FIX_EDITED_KEY, set())
+        edited.add(ebay_item_id)
+        st.session_state[_FIX_OPEN_EID_KEY] = ebay_item_id
+        st.session_state[_FIX_PANEL_OPEN_KEY] = True
+        st.session_state[_FIX_MSG_KEY] = (
+            "ok",
+            "✅ 保存しました" + (" + breakeven 再計算" if save_btn else "")
+            + " (この商品は作業継続のため一覧に残しています)",
+        )
+        bump_db_version()
         st.rerun()
 
 
@@ -432,15 +478,36 @@ def render_data_fix(config: dict) -> None:
     listings = _fetch_all_listings_for_fix()
     stats = _compute_stats(listings)
 
-    with st.expander(
+    # Codex HIGH (2026-05-18): 外側 st.expander 内に listing 別 st.expander が
+    # あり「expander ネスト禁止」例外で UI が壊れる。外側を トグルボタン +
+    # st.container 化して根治 (内側 expander 有効化 + 再実行で畳まれない).
+    # 前 run の保存メッセージを rerun 跨ぎ表示.
+    _fix_flush_msg()
+    _fix_open = bool(st.session_state.get(_FIX_PANEL_OPEN_KEY, False))
+    _fix_label = (
         f"📋 商品データ FIX — 全 {stats.get('n', 0)} listing "
         f"(仕入価格 {stats.get('pyen_done', 0)}/{stats.get('n', 0)} | "
         f"重量 {stats.get('weight_done', 0)}/{stats.get('n', 0)} | "
         f"寸法 {stats.get('dim_done', 0)}/{stats.get('n', 0)} | "
         f"breakeven {stats.get('breakeven_done', 0)}/{stats.get('n', 0)} | "
-        f"下限 {stats.get('min_price_done', 0)}/{stats.get('n', 0)})",
-        expanded=False,
+        f"下限 {stats.get('min_price_done', 0)}/{stats.get('n', 0)})"
+    )
+    if st.button(
+        ("▼ 閉じる ｜ " if _fix_open else "▶ 開く ｜ ") + _fix_label,
+        key="w119_fix_panel_toggle",
+        use_container_width=True,
     ):
+        if _fix_open:
+            # 閉じる: 作業セッション状態を解放
+            st.session_state[_FIX_PANEL_OPEN_KEY] = False
+            st.session_state.pop(_FIX_EDITED_KEY, None)
+            st.session_state.pop(_FIX_OPEN_EID_KEY, None)
+        else:
+            st.session_state[_FIX_PANEL_OPEN_KEY] = True
+        st.rerun()
+    if not _fix_open:
+        return
+    with st.container():
         if stats["n"] == 0:
             st.info("active listing がありません.")
             return
@@ -468,13 +535,19 @@ def render_data_fix(config: dict) -> None:
         st.caption(f"ページ {int(page)} / {total_pages} ({len(page_items)} 件表示)")
 
         # listing 一覧
+        # Bug B 修正: 直近に保存した listing は再実行後も開いたまま
+        # (保存→畳まれて作業中商品が見えなくなる対策).
+        _last_eid = st.session_state.get(_FIX_OPEN_EID_KEY)
         for it in page_items:
             title_preview = (it.get("title") or "")[:60]
             cp = float(it.get("current_price") or 0)
             sh = float(it.get("shipping_cost") or 0)
             chips = _render_status_chips(it)
+            _is_last = it["ebay_item_id"] == _last_eid
             with st.expander(
-                f"{title_preview} | ${cp:.2f} + ${sh:.2f} = ${cp + sh:.2f} | {chips}",
-                expanded=False,
+                ("📝 " if _is_last else "")
+                + f"{title_preview} | ${cp:.2f} + ${sh:.2f} "
+                f"= ${cp + sh:.2f} | {chips}",
+                expanded=_is_last,
             ):
                 _render_edit_form(it, config)
