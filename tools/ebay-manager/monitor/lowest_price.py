@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from typing import Optional
 
 from .database import get_conn
@@ -333,12 +334,18 @@ def fetch_alert_shipping_usd(alert_id: int, config: dict) -> Optional[float]:
 # ライバル価格・送料の自動取得 (商品ごと)
 # ────────────────────────────────────────
 
-def refresh_competitor_pricing(our_item_id: str, config: dict) -> dict:
+def refresh_competitor_pricing(
+    our_item_id: str, config: dict, *, rate_sleep_sec: float = 0.0
+) -> dict:
     """
     指定 our_item_id の active ライバル全件を Browse API で価格・送料取得 → DB 保存.
     Returns: {'fetched': N件取得成功, 'failed': N件取得失敗}
 
     H3 fix: connection 1 つで全 UPDATE (ループ毎開閉を回避).
+    rate_sleep_sec: W119②一括登録 auto-fetch の様に大量 listing を連続 fetch
+      する呼出元が Browse API quota (日次) / W183 cron との競合を緩和するため
+      の自主 rate 制限 (call 間 sleep 秒). default 0.0 = 現挙動不変
+      (W183 scheduler / 手動再取得は従来どおり sleep なし).
     """
     from datetime import datetime
     with get_conn() as conn:
@@ -359,7 +366,12 @@ def refresh_competitor_pricing(our_item_id: str, config: dict) -> dict:
     failed = 0
     now = datetime.now().isoformat()
     with get_conn() as conn:
-        for cp_id, cid in rows:
+        for _idx, (cp_id, cid) in enumerate(rows):
+            # 2 件目以降は呼出元指定の rate sleep (default 0 = 現挙動不変).
+            # 先頭で sleep しない / validation skip も含め一律 = 上限 rate を
+            # 超えない conservative 実装 (skip は稀で過剰待ちは無害).
+            if rate_sleep_sec > 0 and _idx > 0:
+                time.sleep(rate_sleep_sec)
             if not cid or not cid.isdigit() or len(cid) < 11 or len(cid) > 14:
                 failed += 1
                 continue

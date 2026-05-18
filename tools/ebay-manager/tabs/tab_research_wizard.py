@@ -33,6 +33,7 @@ from ui_cache import bump_db_version
 from monitor.database import get_conn
 from monitor.lowest_price import (
     fetch_supplier_purchase_yen,
+    refresh_competitor_pricing,
     update_listing_breakeven,
     update_listing_purchase_yen,
     upsert_listing_competitors,
@@ -73,6 +74,64 @@ def _finish_register(level: str, text: str) -> None:
     st.session_state[_WIZARD_OPEN_KEY] = True  # 作業継続: パネルを開いたまま
     bump_db_version()
     st.rerun()
+
+
+def _fetch_pricing_after_register(
+    our_item_ids: list[str],
+    config: dict,
+    *,
+    show_progress: bool,
+    rate_sleep_sec: float = 0.0,
+) -> dict:
+    """W119② (2026-05-18): 登録直後に対象 listing 群の競合 pricing を取得.
+
+    従来 upsert_listing_competitors は competitor_item_id を記録するのみで
+    価格 NULL = 手動「ライバル価格を再取得」or W183 scheduler まで価格・
+    送料・合計が空だった (user 報告②)。登録 3 経路 (単件/一括/アラート
+    追加) でこのヘルパーを登録直後に呼び即時取得する。
+    refresh_competitor_pricing は listing 単位で価格カラムのみ UPDATE =
+    競合集合 (③ signature = competitor_item_id tuple) を変えないため
+    ③ data-loss 修正 (commit 35f87d9) の signature 再シードを壊さない。
+    部分失敗 (429/404/timeout) は refresh_competitor_pricing 内で failed
+    計上され継続 (silent skip なし)。
+    Returns {'listings': N, 'fetched': X, 'failed': Y}。
+    show_progress=True: st.progress (一括用) / False: 呼出側 spinner。
+    """
+    total_fetched = 0
+    total_failed = 0
+    n = len(our_item_ids)
+    bar = st.progress(0.0, text="ライバル価格取得中...") if show_progress else None
+    for i, oid in enumerate(our_item_ids, 1):
+        # listing 境界でも rate sleep (Codex 指摘: refresh_competitor_pricing
+        # 内の sleep は同一 listing の競合 2 件目以降にしか効かず、bulk で
+        # 「1 listing = 少数競合」が連続すると listing 跨ぎで連続 Browse call
+        # = rate 保護が穴になる)。先頭 listing 以外は呼出前に 1 回 sleep し、
+        # 全 Browse call 列を通して上限 rate を担保 (user 決定: quota 保護)。
+        if rate_sleep_sec > 0 and i > 1:
+            time.sleep(rate_sleep_sec)
+        try:
+            r = refresh_competitor_pricing(
+                oid, config, rate_sleep_sec=rate_sleep_sec
+            )
+            total_fetched += r.get("fetched", 0)
+            total_failed += r.get("failed", 0)
+        except (sqlite3.OperationalError, ValueError, TypeError) as e:
+            # 1 listing の想定外失敗で全 listing の取得を止めない (可視 log)
+            logger.warning(
+                f"[w119 _fetch_pricing_after_register] listing {oid} 価格取得失敗: {e}"
+            )
+            total_failed += 1
+        if bar is not None:
+            bar.progress(
+                i / n,
+                text=(
+                    f"ライバル価格取得 [{i}/{n}] "
+                    f"成功 {total_fetched} / 失敗 {total_failed}"
+                ),
+            )
+    if bar is not None:
+        bar.empty()
+    return {"listings": n, "fetched": total_fetched, "failed": total_failed}
 
 
 # =============================================================================
@@ -769,12 +828,23 @@ def _render_step4_single(config: dict, listings_with_kw: list[dict]) -> None:
                 our_item_id=ebay_item_id,
                 competitor_item_ids=selected_ids,
             )
+            # ② (2026-05-18) 登録直後に価格・送料を Browse API で自動取得.
+            #    単件 = 件数少なので spinner (rate_sleep 不要)。
+            with st.spinner("ライバル価格を Browse API で取得中..."):
+                pr = _fetch_pricing_after_register(
+                    [ebay_item_id], config, show_progress=False
+                )
+            price_msg = (
+                f" / 価格取得: 成功 {pr['fetched']} 失敗 {pr['failed']}"
+                + (" (未取得分は『ライバル価格を再取得』で補完可)"
+                   if pr["failed"] else "")
+            )
             # Fix1: bump_db_version + rerun で「登録ライバル」へ即時反映
             _finish_register(
                 "ok",
                 f"✅ {len(selected_ids)} 件を競合 DB に置き換え登録しました "
-                f"(登録済みライバルに反映済). 次回 W183 値下げ scheduler "
-                f"(00:45/06:45/12:45/18:45 JST) で自動チェック.",
+                f"(登録済みライバルに反映済){price_msg}. 次回 W183 値下げ "
+                f"scheduler (00:45/06:45/12:45/18:45 JST) で自動チェック.",
             )
         except (sqlite3.OperationalError, ValueError, TypeError) as e:
             logger.exception("[w119_step4] 競合 DB 登録エラー")
@@ -863,7 +933,7 @@ def _render_step4_bulk(config: dict, listings_with_kw: list[dict]) -> None:
     if not results:
         return
 
-    _render_bulk_results_and_register(results, listings_with_kw)
+    _render_bulk_results_and_register(results, listings_with_kw, config)
 
 
 def _load_bulk_results_from_json(bulk_key: str) -> None:
@@ -1039,9 +1109,17 @@ def _process_browse_items(items: list[dict], my_ebay_item_id: str) -> list[dict]
 
 
 def _render_bulk_results_and_register(
-    results: dict, listings_with_kw: list[dict]
+    results: dict, listings_with_kw: list[dict], config: dict
 ) -> None:
-    """Step B/C: listing 別 expander 表示 + 「一括登録」ボタン."""
+    """Step B/C: listing 別 expander 表示 + 「一括登録」ボタン.
+
+    W119① (2026-05-18): listing 別 checkbox 群 + 登録ボタンを st.form で
+    囲み、チェック ON/OFF ごとの full rerun (最安値チェックタブ全体 =
+    商品 421件 dataframe + データFIX + ウィザード Step1-4 + 新規発見
+    ライバル 20件 の再描画) を排除。submit で 1 回だけ登録処理。
+    select_all は form の外に維持 (key 名前空間切替 trick が rerun 前提
+    のため。form 外なら toggle で即 rerun し従来挙動を温存)。
+    """
     title_by_id = {it["ebay_item_id"]: it for it in listings_with_kw}
 
     # 既存 competitor_products を一括取得
@@ -1078,146 +1156,154 @@ def _render_bulk_results_and_register(
     # key suffix で名前空間切替
     sa_suffix = "all" if select_all else "ind"
 
-    # ── listing 別 expander ──
-    total_selected = 0
+    # ── ① st.form: チェックは何個でも rerun 無し → submit で 1 回だけ登録 ──
+    # (W119① 重さ対策。select_all は form 外なので toggle で即 rerun し
+    #  従来の key 名前空間切替挙動を温存。form 内 checkbox は submit まで
+    #  rerun を起こさない = タブ全体の再描画が消える)
     listing_selections: dict = {}  # ebay_item_id → list[legacy_iid]
 
-    for ebay_item_id, top_items in listings_with_results:
-        meta = title_by_id[ebay_item_id]
-        title_preview = (meta["title"] or "")[:60]
-        n_existing = len(existing_map.get(ebay_item_id, set()))
-        breakeven = meta.get("lp_breakeven_usd")
-        current_price = meta.get("current_price")
-        shipping_cost = meta.get("shipping_cost")
-        primary_market = meta.get("primary_market") or "-"
+    with st.form("w119_step4_bulk_form"):
+        for ebay_item_id, top_items in listings_with_results:
+            meta = title_by_id[ebay_item_id]
+            title_preview = (meta["title"] or "")[:60]
+            n_existing = len(existing_map.get(ebay_item_id, set()))
+            breakeven = meta.get("lp_breakeven_usd")
+            current_price = meta.get("current_price")
+            shipping_cost = meta.get("shipping_cost")
+            primary_market = meta.get("primary_market") or "-"
 
-        # 現在価格 + 送料 + 合計 を組み立て
-        my_total = None
-        if current_price is not None and current_price > 0:
-            cp = float(current_price)
-            sh = float(shipping_cost) if shipping_cost is not None else 0.0
-            my_total = cp + sh
-            my_price_str = (
-                f"現在価格: ${cp:.2f} + 送料 ${sh:.2f} = **合計 ${my_total:.2f}**"
-            )
-        else:
-            my_price_str = "現在価格: -"
-
-        with st.expander(
-            f"{title_preview} ({len(top_items)} 候補 / 既存登録 {n_existing} 件) "
-            f"[{primary_market}]",
-            expanded=False,
-        ):
-            # 自分の listing 情報: 現在価格 + 損益分岐 + 市場区分
-            breakeven_str = (
-                f"**breakeven (損益分岐): ${breakeven:.2f}**"
-                if breakeven is not None and breakeven > 0
-                else "breakeven: 未計算 (仕入価格 + 重量 + 寸法が揃ったら Step 2 で計算可)"
-            )
-            st.caption(
-                f"検索ワード: `{meta['search_keyword']}` | "
-                f"ID: {ebay_item_id} | "
-                f"市場区分: **{primary_market}** | "
-                f"{my_price_str} | "
-                f"{breakeven_str} | "
-                f"[🔗 eBay で開く]({build_ebay_search_url(meta['search_keyword'])})"
-            )
-
-            selected_for_listing: list = []
-            existing_for_listing = existing_map.get(ebay_item_id, set())
-
-            for it in top_items:
-                legacy = it["legacy_item_id"]
-                already = legacy in existing_for_listing
-                # default 値: 既存登録 OR select_all モード
-                default_checked = already or select_all
-                # 競合の合計が自分の breakeven を下回る = 値下げ追従すると赤字
-                total = it.get("total_cost_usd")
-                below_breakeven = (
-                    breakeven is not None and breakeven > 0
-                    and total is not None and total < breakeven
+            # 現在価格 + 送料 + 合計 を組み立て
+            my_total = None
+            if current_price is not None and current_price > 0:
+                cp = float(current_price)
+                sh = float(shipping_cost) if shipping_cost is not None else 0.0
+                my_total = cp + sh
+                my_price_str = (
+                    f"現在価格: ${cp:.2f} + 送料 ${sh:.2f} = **合計 ${my_total:.2f}**"
                 )
-                cols = st.columns([0.5, 4, 1.5, 1.5, 1])
-                with cols[0]:
-                    checked = st.checkbox(
-                        " ",
-                        value=default_checked,
-                        # H-2 fix: select_all state を key に含めて名前空間切替
-                        key=f"w119_step4_bulk_chk_{sa_suffix}_{ebay_item_id}_{legacy}",
-                        label_visibility="collapsed",
-                        help="登録済" if already else "未登録",
+            else:
+                my_price_str = "現在価格: -"
+
+            with st.expander(
+                f"{title_preview} ({len(top_items)} 候補 / 既存登録 {n_existing} 件) "
+                f"[{primary_market}]",
+                expanded=False,
+            ):
+                # 自分の listing 情報: 現在価格 + 損益分岐 + 市場区分
+                breakeven_str = (
+                    f"**breakeven (損益分岐): ${breakeven:.2f}**"
+                    if breakeven is not None and breakeven > 0
+                    else "breakeven: 未計算 (仕入価格 + 重量 + 寸法が揃ったら Step 2 で計算可)"
+                )
+                st.caption(
+                    f"検索ワード: `{meta['search_keyword']}` | "
+                    f"ID: {ebay_item_id} | "
+                    f"市場区分: **{primary_market}** | "
+                    f"{my_price_str} | "
+                    f"{breakeven_str} | "
+                    f"[🔗 eBay で開く]({build_ebay_search_url(meta['search_keyword'])})"
+                )
+
+                selected_for_listing: list = []
+                existing_for_listing = existing_map.get(ebay_item_id, set())
+
+                for it in top_items:
+                    legacy = it["legacy_item_id"]
+                    already = legacy in existing_for_listing
+                    # default 値: 既存登録 OR select_all モード
+                    default_checked = already or select_all
+                    # 競合の合計が自分の breakeven を下回る = 値下げ追従すると赤字
+                    total = it.get("total_cost_usd")
+                    below_breakeven = (
+                        breakeven is not None and breakeven > 0
+                        and total is not None and total < breakeven
                     )
-                    if checked and legacy:
-                        selected_for_listing.append(legacy)
-                with cols[1]:
-                    title_short = (it.get("title") or "")[:80]
-                    st.markdown(
-                        f"<small>{title_short}</small><br>"
-                        f"<small>id: <code>{legacy}</code> | "
-                        f"seller: <code>{it.get('seller', '')}</code> "
-                        f"({it.get('feedback_score', 0)} / {it.get('feedback_percentage', '')}%)"
-                        f" cond: {it.get('condition', '')}</small>",
-                        unsafe_allow_html=True,
-                    )
-                with cols[2]:
-                    price = it.get("price_usd") or 0.0
-                    ship = it.get("shipping_cost_usd")
-                    ship_str = f"+${ship:.2f}" if ship is not None else "+?"
-                    st.markdown(f"**${price:.2f}** {ship_str}")
-                with cols[3]:
-                    total_str = f"${total:.2f}" if total is not None else "?"
-                    # breakeven 下回る場合は警告色
-                    if below_breakeven:
+                    cols = st.columns([0.5, 4, 1.5, 1.5, 1])
+                    with cols[0]:
+                        checked = st.checkbox(
+                            " ",
+                            value=default_checked,
+                            # H-2 fix: select_all state を key に含めて名前空間切替
+                            key=f"w119_step4_bulk_chk_{sa_suffix}_{ebay_item_id}_{legacy}",
+                            label_visibility="collapsed",
+                            help="登録済" if already else "未登録",
+                        )
+                        if checked and legacy:
+                            selected_for_listing.append(legacy)
+                    with cols[1]:
+                        title_short = (it.get("title") or "")[:80]
                         st.markdown(
-                            f"⚠️ **合計 {total_str}**<br>"
-                            f"<small style='color:#ff6b6b'>(breakeven 以下、追従赤字)</small>",
+                            f"<small>{title_short}</small><br>"
+                            f"<small>id: <code>{legacy}</code> | "
+                            f"seller: <code>{it.get('seller', '')}</code> "
+                            f"({it.get('feedback_score', 0)} / {it.get('feedback_percentage', '')}%)"
+                            f" cond: {it.get('condition', '')}</small>",
                             unsafe_allow_html=True,
                         )
-                    else:
-                        st.markdown(f"**合計 {total_str}**")
-                with cols[4]:
-                    if it.get("item_url"):
-                        st.link_button("🔗", it["item_url"])
+                    with cols[2]:
+                        price = it.get("price_usd") or 0.0
+                        ship = it.get("shipping_cost_usd")
+                        ship_str = f"+${ship:.2f}" if ship is not None else "+?"
+                        st.markdown(f"**${price:.2f}** {ship_str}")
+                    with cols[3]:
+                        total_str = f"${total:.2f}" if total is not None else "?"
+                        # breakeven 下回る場合は警告色
+                        if below_breakeven:
+                            st.markdown(
+                                f"⚠️ **合計 {total_str}**<br>"
+                                f"<small style='color:#ff6b6b'>(breakeven 以下、追従赤字)</small>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(f"**合計 {total_str}**")
+                    with cols[4]:
+                        if it.get("item_url"):
+                            st.link_button("🔗", it["item_url"])
 
-            listing_selections[ebay_item_id] = selected_for_listing
-            total_selected += len(selected_for_listing)
+                listing_selections[ebay_item_id] = selected_for_listing
 
-    # ── Step C: 一括登録ボタン ──
-    st.markdown("---")
-
-    # 警告: 置換セマンティクスにより既存外件数を表示
-    will_remove_total = 0
-    for ebay_item_id, selected in listing_selections.items():
-        existing = existing_map.get(ebay_item_id, set())
-        will_remove = existing - set(selected)
-        will_remove_total += len(will_remove)
-    if will_remove_total > 0:
-        st.warning(
-            f"⚠️ upsert_listing_competitors は **置換セマンティクス**. "
-            f"現在の選択で **{will_remove_total} 件の既存 active 競合が inactive 化** されます. "
-            f"既存維持したい場合は対応 expander で checkbox を ON にしてください."
+        # ── Step C: 一括登録 (form submit) ──
+        st.markdown("---")
+        # 置換セマンティクス静的注意 (form 内は submit 前に動的件数を算出
+        # できないため、従来の動的「N 件 inactive 化」警告を静的注意に変更)
+        st.caption(
+            "⚠️ 登録は **置換セマンティクス**: 各 listing で『今チェック中の集合』に"
+            "置き換わり、チェック外の既存 active 競合は inactive 化されます。"
+            "既存を残す場合はその件も ON のまま登録してください。"
+        )
+        submitted = st.form_submit_button(
+            "✅ チェックした競合を全 listing 一括登録 → 価格も自動取得",
+            type="primary",
+            help="押下で 1 回だけ再描画 (チェック中は再描画なし = W119① 重さ対策)。"
+                 "登録後 Browse API で価格・送料を自動取得 (W119②)。",
         )
 
-    register_btn = st.button(
-        f"✅ 全 listing で選択した合計 {total_selected} 件を競合 DB に一括登録",
-        key="w119_step4_bulk_register",
-        disabled=(total_selected == 0),
-        type="primary",
-        help="各 listing で「現在選択中の competitor 集合」で置き換え upsert.",
-    )
-    if register_btn:
-        _execute_bulk_register(listing_selections)
+    if submitted:
+        _execute_bulk_register(listing_selections, config)
 
 
-def _execute_bulk_register(listing_selections: dict) -> None:
+def _execute_bulk_register(listing_selections: dict, config: dict) -> None:
     """Step C 本体: listing 別に upsert_listing_competitors を順次実行.
 
     M-3 fix: 「選択 0 listing は skip」を結果メッセージで明示.
+    W119① (2026-05-18): form submit から呼ばれる。全 listing 選択 0 件は
+      可視 warning で明示し return (silent skip 防止 / 旧 disabled 代替)。
+    W119② (2026-05-18): 登録成功 listing 群に対し登録直後 Browse API で
+      価格・送料を自動取得 (rate_sleep で W183 cron / quota 競合を緩和)。
     """
+    if sum(len(v) for v in listing_selections.values()) == 0:
+        # 旧 disabled=(total_selected==0) の form 代替。silent skip にせず明示。
+        st.warning(
+            "競合が 1 件もチェックされていません。expander を開いて "
+            "チェックしてから「一括登録」を押してください。"
+        )
+        return
+
     ok = 0
     failed = 0
     skipped_zero = 0  # 選択 0 listing 数 (silent skip 化させない、UI に明示)
     listing_ok = 0
+    registered_ids: list[str] = []  # ② 価格自動取得対象 (登録成功 listing)
     total = sum(len(v) for v in listing_selections.values())
     for ebay_item_id, selected_ids in listing_selections.items():
         if not selected_ids:
@@ -1232,6 +1318,7 @@ def _execute_bulk_register(listing_selections: dict) -> None:
             )
             ok += len(selected_ids)
             listing_ok += 1
+            registered_ids.append(ebay_item_id)
         except (sqlite3.OperationalError, ValueError, TypeError) as e:
             logger.exception(f"[w119_bulk_register] 競合 DB 登録エラー {ebay_item_id}: {e}")
             failed += len(selected_ids)
@@ -1239,20 +1326,35 @@ def _execute_bulk_register(listing_selections: dict) -> None:
     skip_msg = (f" / 選択 0 で skip {skipped_zero} listing (既存維持)"
                 if skipped_zero else "")
 
+    # ② 登録直後に価格・送料を Browse API で自動取得 (一括 = progress bar、
+    #    quota / W183 cron 競合緩和のため rate_sleep_sec を付与)。
+    price_msg = ""
+    if registered_ids:
+        pr = _fetch_pricing_after_register(
+            registered_ids, config,
+            show_progress=True,
+            rate_sleep_sec=_BULK_BROWSE_SLEEP_SEC,
+        )
+        unfetched = pr["failed"]
+        price_msg = (
+            f" / 価格取得: 成功 {pr['fetched']} 失敗 {unfetched}"
+            + (f" (未取得分は『ライバル価格を再取得』で補完可)" if unfetched else "")
+        )
+
     # Fix1: 成功/部分失敗いずれも bump_db_version + rerun で登録済みへ即時反映.
     # (これが無く「一括登録したのに登録済みライバルに反映されない」が真因)
     if failed == 0:
         _finish_register(
             "ok",
-            f"✅ 一括登録完了: 競合 {ok} 件 ({listing_ok} listing){skip_msg} "
-            f"— 登録済みライバルに反映済. 次回 W183 値下げ scheduler "
-            f"(00:45/06:45/12:45/18:45 JST) で全 listing 自動チェック.",
+            f"✅ 一括登録完了: 競合 {ok} 件 ({listing_ok} listing){skip_msg}"
+            f"{price_msg} — 登録済みライバルに反映済. 次回 W183 値下げ "
+            f"scheduler (00:45/06:45/12:45/18:45 JST) で全 listing 自動チェック.",
         )
     else:
         _finish_register(
             "error",
-            f"⚠ 部分失敗: 成功 {ok} / 失敗 {failed} / 合計 {total}{skip_msg}. "
-            f"成功分は登録済みに反映済. ログ確認推奨.",
+            f"⚠ 部分失敗: 成功 {ok} / 失敗 {failed} / 合計 {total}{skip_msg}"
+            f"{price_msg}. 成功分は登録済みに反映済. ログ確認推奨.",
         )
 
 

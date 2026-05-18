@@ -268,7 +268,9 @@ def test_execute_bulk_register_skips_empty_selection_keeps_existing_active(tmp_d
         )
 
     # 選択 0 で _execute_bulk_register を呼ぶ
-    _execute_bulk_register({"test_listing_x": []})
+    # (W119① 2026-05-18: form 化で config 引数追加。全選択 0 件は warning+return
+    #  = upsert 未呼出で既存 active 温存、の挙動契約は不変)
+    _execute_bulk_register({"test_listing_x": []}, {})
 
     # 既存 active 競合は維持される
     with get_conn() as c:
@@ -293,7 +295,9 @@ def test_execute_bulk_register_processes_selected_listings(tmp_db):
         )
 
     # 選択 c2, c3 で置換 upsert (c1 は inactive 化される, c3 が新規追加)
-    _execute_bulk_register({"listing_a": ["c2", "c3"]})
+    # (W119① 2026-05-18: form 化で config 引数追加。config={} は Browse client
+    #  None = 価格 fetch は no-op、competitor 集合の置換挙動契約は不変)
+    _execute_bulk_register({"listing_a": ["c2", "c3"]}, {})
 
     with get_conn() as c:
         rows = c.execute(

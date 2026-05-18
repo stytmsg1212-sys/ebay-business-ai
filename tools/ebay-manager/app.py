@@ -3729,7 +3729,8 @@ if _w134_sel == "最安値チェック":
             st.markdown("**ライバル (item id)**")
             st.caption(
                 "eBay item id (12 桁前後の数字) を入力。空にすると登録解除。"
-                "保存時に Browse API で価格・送料を取得します。"
+                "保存後、下の「ライバル価格を再取得」で価格・送料を取得します"
+                "(ウィザード経由の登録は登録時に自動取得)。"
             )
             _lp_existing = _lp_grouped.get(_lp_selected_id, [])
             # ③ データ損失ホットフィックス (2026-05-18): Streamlit は key 付き
@@ -4063,8 +4064,19 @@ if _w134_sel == "最安値チェック":
                                         _tgt, _existing + [_iid]
                                     )
                                     update_alert_action(_aid, "registered")
-                                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
-                                    st.success("追加")
+                                    # ② (2026-05-18) 登録直後に価格・送料を
+                                    #    Browse API で自動取得 (単件 1 listing)。
+                                    #    bump_db_version は fetch 後 = 競合集合
+                                    #    確定後に cache 無効化 (③signature 整合)。
+                                    with st.spinner("ライバル価格を取得中..."):
+                                        _pr = refresh_competitor_pricing(
+                                            _tgt, _lp_cfg
+                                        )
+                                    bump_db_version()  # W134: 書込後 read-cache 無効化
+                                    st.success(
+                                        f"追加 (価格取得 成功{_pr['fetched']}"
+                                        f"/失敗{_pr['failed']})"
+                                    )
                                     st.rerun()
                             except Exception as e:
                                 st.error(f"err: {e}")
