@@ -23,7 +23,7 @@ from typing import Optional
 
 import streamlit as st
 
-from ui_cache import bump_db_version
+from ui_cache import bump_db_version, seed_keyed_list_from_db
 from monitor.database import get_conn
 from monitor.lowest_price import (
     fetch_supplier_purchase_yen,
@@ -327,7 +327,17 @@ def _render_edit_form(it: dict, config: dict) -> None:
     # ── 競合 item id 編集 (最大 10 件) ──
     st.markdown("##### 🎯 ライバル登録 (最大 10 件、eBay 12-13 桁数字)")
     existing_competitors = _fetch_competitors_for_listing(ebay_item_id)
-    # 埋め込み or 空 を 10 件 slot で表示
+    # ③同型 データ損失修正 (2026-05-18 Codex 監査で第3インスタンス確定):
+    # value=cur + key= の③型。DB 登録済競合が編集欄に出ず空欄 → 保存で
+    # upsert_listing_competitors 全置換により登録済 active 競合 silent
+    # 全消滅していた。共通ヘルパーで signature 再シード (詳細は
+    # ui_cache.seed_keyed_list_from_db)。value= は撤去し session_state を
+    # 唯一真実源に。
+    seed_keyed_list_from_db(
+        st.session_state, f"w119_fix_comp_{ebay_item_id}_",
+        f"_w119_fix_comp_sig_{ebay_item_id}",
+        existing_competitors, _MAX_COMPETITORS,
+    )
     comp_inputs: list[str] = []
     rows = (_MAX_COMPETITORS + 4) // 5  # 5 件/row
     for r in range(rows):
@@ -337,10 +347,10 @@ def _render_edit_form(it: dict, config: dict) -> None:
             if idx >= _MAX_COMPETITORS:
                 break
             with comp_cols[c]:
-                cur = existing_competitors[idx] if idx < len(existing_competitors) else ""
+                # value= は渡さない: session_state[key] を唯一の真実源に
+                # (value= と session_state 併用は Streamlit 警告)。③同型。
                 val = st.text_input(
                     f"#{idx + 1}",
-                    value=cur,
                     key=f"w119_fix_comp_{ebay_item_id}_{idx}",
                     placeholder="(空欄で登録なし)",
                 )

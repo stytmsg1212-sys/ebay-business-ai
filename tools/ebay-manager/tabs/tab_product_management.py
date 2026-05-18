@@ -24,7 +24,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from ui_cache import bump_db_version, get_db_version
+from ui_cache import bump_db_version, get_db_version, seed_keyed_list_from_db
 
 from monitor.database import (
     get_conn,
@@ -132,7 +132,17 @@ def _fetch_all_products() -> list[dict]:
                 el.total_sold_count, el.watch_count, el.view_count,
                 el.source, el.source_url, el.source_status, el.source_last_checked,
                 el.source_out_of_stock_since,
-                el.competitor_min_price,
+                -- ③/BC2 修正 (2026-05-18): ebay_listings.competitor_min_price は
+                -- writer (update_ebay_listing_competitor_info) が全コード未呼出の
+                -- dead column = hero「競合最安」が永久に未入力だった。W183
+                -- (task_rival_pricing) と同じく competitor_products から都度
+                -- MIN(価格+送料) を算出 (新規 DB 書込不要・算出源を一本化)。
+                (SELECT MIN(cp.competitor_price_usd
+                            + COALESCE(cp.competitor_shipping_usd, 0))
+                 FROM competitor_products cp
+                 WHERE cp.our_item_id = el.ebay_item_id AND cp.is_active = 1
+                   AND cp.competitor_price_usd IS NOT NULL
+                ) AS competitor_min_price,
                 el.quantity_ebay, el.inventory_count,
                 el.last_qty_sync_at, el.last_synced_quantity, el.qty_sync_error,
                 el.shipping_profile_id, el.shipping_profile_fetched_at,
@@ -955,6 +965,33 @@ def _supplier_note(c: dict) -> str:
     return " / ".join(notes)
 
 
+def _pm_seed_comp_session(
+    session_state, eid: str, existing_ids: list[str], max_competitors: int
+) -> None:
+    """③同型 データ損失修正の core (純関数、Streamlit 非依存=テスト可能).
+
+    Streamlit は key 付き text_input の value= を「その key が session_state
+    既出の後」無視する。その結果 DB 登録済み競合が編集欄に出ず空欄 →
+    💾DB保存/📤eBay反映 が upsert_listing_competitors の全置換で **登録済み
+    active 競合を全消滅** させていた (app.py commit 35f87d9 の ③ 修正と同型。
+    本ファイルは未適用だったため最安値チェックで登録しても商品管理タブ保存
+    で消えていた = user 実報告)。
+
+    対策 = ③ と同一: DB 競合 id 集合を signature 化し、(widget key 不在 =
+    listing 切替で Streamlit が未描画 widget state を破棄 / 初回) OR
+    signature 変化 の時だけ session_state を DB 値で再シード。plain rerun
+    (signature 不変) では再シードせず user 入力途中を温存。意図的 clear-all
+    (表示された id を user が空欄化) は再シードされず削除として機能 (③同様)。
+    `st.session_state` は dict 互換のため plain dict で単体検証可。
+    """
+    # K1: 3rd occurrence で共通化済。本関数は薄い wrapper (既存 6 回帰
+    # テストは _pm_seed_comp_session 経由で挙動を固定、委譲後も不変)。
+    seed_keyed_list_from_db(
+        session_state, f"pm_comp_{eid}_", f"_pm_comp_loaded_sig_{eid}",
+        existing_ids, max_competitors,
+    )
+
+
 def _render_rival_dataframe(p: dict, config: dict) -> None:
     """ライバル (active competitor_products) を dataframe で表示 + 編集 + 再取得."""
     eid = p["ebay_item_id"]
@@ -1001,6 +1038,13 @@ def _render_rival_dataframe(p: dict, config: dict) -> None:
     # ライバル item id 編集 (max 10、横一列 5×2)
     st.caption("**ライバル item id 編集** (eBay 12-13 桁、空欄で削除)")
     existing_ids = [r["competitor_item_id"] for r in pricing_rows]
+    # ③同型 データ損失修正 (2026-05-18、user 実報告): DB 登録済み競合が
+    # 編集欄に出ず空欄のまま 💾DB保存/📤eBay反映 で全消滅していた。
+    # signature 駆動再シードで根治 (詳細・機序は _pm_seed_comp_session
+    # docstring)。純関数化しテストで本物を検証 (drift 防止)。
+    _pm_seed_comp_session(
+        st.session_state, eid, existing_ids, _MAX_COMPETITORS
+    )
     comp_inputs: list[str] = []
     rows_count = (_MAX_COMPETITORS + 4) // 5
     for r in range(rows_count):
@@ -1010,10 +1054,10 @@ def _render_rival_dataframe(p: dict, config: dict) -> None:
             if idx >= _MAX_COMPETITORS:
                 break
             with cols[c]:
-                cur = existing_ids[idx] if idx < len(existing_ids) else ""
+                # value= は渡さない: session_state[key] を唯一の真実源に
+                # (value= と session_state 併用は Streamlit が警告)。③同型。
                 val = st.text_input(
                     f"#{idx + 1}",
-                    value=cur,
                     key=f"pm_comp_{eid}_{idx}",
                     placeholder="(空)",
                     label_visibility="collapsed",

@@ -98,7 +98,9 @@ from tasks.task_seed_description_template import seed_v4_template_if_needed
 # db_version は **先頭 _ を付けない** (st.cache_data は _ 始まり引数を hash 対象外に
 # するため。token を key に含めるには通常引数である必要)。書込関数は cache せず、
 # SQLite 接続も st.cache_resource で共有しない (ui_cache.py の設計約束参照)。
-from ui_cache import get_db_version, bump_db_version  # noqa: E402
+from ui_cache import (  # noqa: E402
+    get_db_version, bump_db_version, seed_keyed_value_from_db,
+)
 
 
 @st.cache_data(ttl=3, show_spinner=False)
@@ -3656,10 +3658,18 @@ if _w134_sel == "最安値チェック":
                     if _lp_sel.get('purchase_yen') is not None
                     else None
                 )
+                # ③同型 scalar 修正 (Codex 監査 HIGH): keyed number_input の
+                # value= は session_state 既出後無視される。別経路 (仕入価格
+                # 自動取得ボタン/supplier sweep) で DB が変わった後、stale な
+                # 旧値のまま保存すると W183 赤字防止 floor が古値へ巻戻る。
+                # DB 値 signature で session_state を再シード (value= 撤去)。
+                seed_keyed_value_from_db(
+                    st.session_state, f"lp_pyen_{_lp_selected_id}",
+                    f"_lp_pyen_sig_{_lp_selected_id}", _lp_pyen_default,
+                )
                 _lp_pyen_input = st.number_input(
                     "仕入価格 (JPY)",
                     min_value=0,
-                    value=_lp_pyen_default,
                     step=100,
                     key=f"lp_pyen_{_lp_selected_id}",
                     help="無在庫商品は仕入先 URL から scrape 自動取得可能 (右ボタン、既存値を上書き)。"
@@ -3685,10 +3695,15 @@ if _w134_sel == "最安値チェック":
                     if _lp_sel.get('lp_min_price') is not None
                     else None
                 )
+                # ③同型 scalar 修正 (Codex 監査 HIGH): 下限価格も同様に
+                # stale 保存で W183 floor が巻戻るため DB signature 再シード。
+                seed_keyed_value_from_db(
+                    st.session_state, f"lp_minp_{_lp_selected_id}",
+                    f"_lp_minp_sig_{_lp_selected_id}", _lp_minp_default,
+                )
                 _lp_minp_input = st.number_input(
                     "最低価格 (USD、下限)",
                     min_value=0.0,
-                    value=_lp_minp_default,
                     step=1.0,
                     format="%.2f",
                     key=f"lp_minp_{_lp_selected_id}",
