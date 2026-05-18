@@ -490,6 +490,9 @@ def get_price_change_log(ebay_item_id: str, limit: int = 20) -> list[dict]:
     """W183 値下げ履歴を新しい順で返す.
 
     UI 表示用. JST 換算は呼出側で行う (DB は UTC 保存).
+
+    claim_status='pending' (H4 予約確保済・API 実行中、または process crash
+    で漏れた予約) は確定前なので監査ログから除外する.
     """
     with get_conn() as conn:
         rows = conn.execute(
@@ -498,6 +501,7 @@ def get_price_change_log(ebay_item_id: str, limit: int = 20) -> list[dict]:
             "       success, error_message, changed_at "
             "FROM price_change_log "
             "WHERE ebay_item_id=? "
+            "  AND (claim_status IS NULL OR claim_status != 'pending') "
             "ORDER BY changed_at DESC LIMIT ?",
             (ebay_item_id, limit)
         ).fetchall()

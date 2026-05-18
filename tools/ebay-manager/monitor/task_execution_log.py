@@ -26,6 +26,7 @@ from monitor.database import get_conn
 TASK_SCHEDULE: list[dict[str, Any]] = [
     # main batch (02,11,15,18,22 の execution_schedule.times)
     {"key": "ebay_sync", "display": "eBay連携同期", "hours": None, "weekdays": None, "owner": "main"},
+    {"key": "ensure_monitor_coverage", "display": "監視台帳カバレッジ自動補完 (W139)", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "inventory_check", "display": "在庫チェック", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "inventory_alert", "display": "在庫切れ通知", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "supplier_select", "display": "仕入先候補選出", "hours": None, "weekdays": None, "owner": "main"},

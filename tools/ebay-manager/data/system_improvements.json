@@ -64,10 +64,12 @@
     "tag": "W7",
     "title": "最安値保持（プライスマッチ自動調整）",
     "description": "ライバルItemID登録→1時間毎price check→自動値下げ（DDU/DDP補正必須）。最安値ポジションを機械的に保持。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "高",
     "created": "2026-04-22",
-    "completed": null
+    "completed": "2026-05-17",
+    "superseded_by": "W183",
+    "completion_notes": "W7 は詳細設計確定版 W98 → W183 として 2026-05-10 に完全実装済 (tasks/task_rival_pricing.py + revise_fixed_price_item + migration v33 price_change_log、実機 ReviseFixedPriceItem 2 往復 verify、本番 6h cron 00/06/12/18:45 JST 稼働。5/15 15:45 自動値下げ実績あり)。原文「1時間毎」は L1 設計確定で「6時間毎」に変更 (API 課金抑制、意図的)。2026-05-17 に H4 (予約パターンで cross-process race→日次 cap 超過防止、migration v42 claim_status) + H5 (stale sync 上書き検知で誤値上げ防止) を堅牢化。md-files-can-be-wrong R-3: status 「未着手」は W183 実装後の SUPERSEDED クローズ未実施による stale だった。"
   },
   {
     "id": 108,
@@ -1236,5 +1238,17 @@
     "priority": "高",
     "created": "2026-05-17",
     "completed": "2026-05-17"
+  },
+  {
+    "id": 223,
+    "tag": "W139",
+    "title": "無在庫出品 監視台帳 自動カバレッジ (ensure_monitor_coverage) + 21件盲点バックフィル",
+    "description": "本番事故 (item 358487417178 ebayyh_m1227590760 が monitored_items 未登録で仕入先OOS検知不能→履行不能US注文07-14655-19832発生) の恒久対策。根本原因=inventory_check の真実源は monitored_items のみ、ebay_sync は ebay_listings しか更新せず monitored_items 自動登録経路が存在しない (登録は app.py UI 2経路+supplier_apply のみ)。現在 active 無在庫302件中21件が監視台帳未登録=構造的盲点。Codex独立診断も同一根本原因・同一方針に収束 (2026-05-18)。対策: (1)即時21件を source_url単位で monitored_items バックフィル+直後に在庫チェック実行しOOS/unknownを処理 (2)恒久=ensure_monitor_coverage 定時タスク新設 (ebay_sync後→inventory_check前、is_ended=0∧qty>=1∧無在庫SKUのみ、source_url canonical生成、生成不能はDLQ/alert可視化Q0、ebay_item_id主導identify+source_url集約厳守でSKU規約遵守) (3)coverage gap件数を定時ヘルスチェック化(>=1で警告 W56系統)。Q3で/feature-dev必須、Phase3 Clarify=OOS時に自動販売停止 or 確認キューかは user 判断。関連 W101/W56。",
+    "status": "実装完了 (2段レビューHIGH=0、緊急21件backfill済、本番scheduler再起動デプロイ待ち)",
+    "priority": "高",
+    "created": "2026-05-18",
+    "completed": null,
+    "origin": "本番事故 2026-05-18 (358487417178 / order 07-14655-19832) + Codex独立診断収束",
+    "progress_note": "2026-05-18: policy B (OOS時自動停止しない=確認キュー方式、既存inventory_check無停止挙動で充足) 確定。Codex 設計相談で同根本原因・同方針(ensure_monitor_coverage+backfill)に独立収束。緊急: 検出のみ backfill 完了 (monitored_items 373→388、15 INSERT+5 UPDATE via sanctioned upsert_item、snapshot data/backups/w139_unmonitored_snapshot_*.json)。履行不能リスク11件 (Toshiba qty5/Nikon等) は policy B によりキューUI未実装のため user 手動対応に報告済。DLQ=ebayYF_u1182819686 (site_config未登録, 1件残存)。恒久: Component A=tasks/task_ensure_monitor_coverage.py (find_coverage_gaps+run_ensure_monitor_coverage、NULL防御COALESCE/IS NULL) + daily_scheduler Step1.5配線(ebay_sync後→inventory_check前) + TASK_SCHEDULE + config。Component B=task_scheduler_health_check に _check_coverage/_send_coverage_alert/_send_coverage_error_alert 統合 (coverable>0非dedupe緊急/dlq>0日次dedupe/算出失敗もDiscord通知=Codex HIGH修正)。pytest tests/test_w139_monitor_coverage.py 14件+回帰、全体1235 passed。code-reviewer HIGH=0/100点(複数周)+Codex 2段(HIGH1→修正→none)。残: 本番scheduler(PID23272は00:17起動でW139未反映)再起動デプロイ→次main batch(11:00 JST)で[coverage]ログ実機DoD検証(Q1 carryover)。別sub候補: site_config に ebayYF 等未登録prefix追加 (DLQ恒久解消)。Codex MEDIUM(upsert_item source_url上書き)=無在庫SKU↔URL 1:1設計前提で非HIGH(両reviewer合意)。"
   }
 ]

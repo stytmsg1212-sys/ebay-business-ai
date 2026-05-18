@@ -7,10 +7,20 @@
   batch_hour=3 not in [2] と誤判定して silent skip。
   本 test は _run_isolated_task が _batch_ctx を save/restore することを保証し、
   外側の daily batch context が hijack されないことを確認する。
+
+2026-05-18 追記 (silent skip 再発の根治):
+  上記 save/restore は **同一 thread** でしか正しくない。APScheduler は各 job を
+  別 worker thread で並行実行するため、03:00 daily_codex_lint (別 thread・最大
+  300s) が hour=3 を set して滞留する間、まだ走行中の 02:30 batch thread が
+  clobbered hour=3 を読み daily_relist 等 execution_times=[2] task を毎日
+  silent skip していた (5/16〜)。根治 = `_batch_ctx` の thread-local 化。
+  既存 4 test (単一 thread) は thread-local 下でも save/restore がそのまま
+  機能するため不変。下記 Concurrent 系が並行 thread 分離の regression。
 """
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -123,3 +133,86 @@ def test_isolated_task_scheduled_hour_none_uses_wallclock():
 
     # 完了後 outer の hour=2 に restore される
     assert daily_scheduler._batch_ctx["hour"] == 2
+
+
+# ════════════════════════════════════════════════════════════════════
+# Concurrent (別 worker thread) regression — 2026-05-18 silent skip 根治
+# 旧 shared-global save/restore では下記が FAIL (thread B の hour=3 が
+# thread A から見えて daily_relist が毎日 silent skip)。thread-local で PASS。
+# ════════════════════════════════════════════════════════════════════
+
+def test_concurrent_isolated_task_does_not_clobber_main_batch_hour():
+    """別 thread の長時間 isolated task (03:00 codex_lint 相当) が hour=3 を
+    set して滞留中でも、02:30 batch thread の should_task_run('daily_relist')
+    が hour=2 のまま True を返すこと (2026-04-25/05-05/05-18 事故の核心)."""
+    cfg = {"tasks_enabled": {"daily_relist": {"enabled": True,
+                                              "execution_times": [2]}}}
+    # main (= 02:30 batch) thread context
+    daily_scheduler._batch_ctx["id"] = "20260518_02sched"
+    daily_scheduler._batch_ctx["hour"] = 2
+    daily_scheduler._batch_ctx["started_at"] = "MOCK"
+
+    other_set = threading.Event()
+    main_done = threading.Event()
+    seen: dict = {}
+
+    def _isolated_thread():
+        # 別 worker thread (codex_lint 相当): hour=3 を set して滞留
+        daily_scheduler._batch_ctx["hour"] = 3
+        daily_scheduler._batch_ctx["id"] = "codexlint"
+        seen["other_hour"] = daily_scheduler._batch_ctx["hour"]
+        other_set.set()
+        assert main_done.wait(timeout=5), "main thread timeout"
+
+    t = threading.Thread(target=_isolated_thread)
+    t.start()
+    assert other_set.wait(timeout=5), "isolated thread start timeout"
+    # ★核心: 別 thread が hour=3 set 滞留中でも main は hour=2 不可侵
+    assert daily_scheduler._batch_ctx["hour"] == 2, (
+        "thread-local 破れ: 別 thread の hour=3 が main batch を clobber "
+        "(2026-05-18 silent skip 再発)"
+    )
+    assert daily_scheduler.should_task_run("daily_relist", cfg) is True, (
+        "daily_relist が誤 skip (W1 SEO 中核の毎日機会損失 = 事故再発)"
+    )
+    main_done.set()
+    t.join(timeout=5)
+    assert not t.is_alive()
+    assert seen["other_hour"] == 3  # 別 thread 側は自分の 3 を見る
+
+
+def test_new_thread_gets_isolated_default_ctx():
+    """main で hour=2 set 後に生成した別 thread は既定 (None) を見る
+    = thread-local の独立性。main 側は維持される."""
+    daily_scheduler._batch_ctx["hour"] = 2
+    daily_scheduler._batch_ctx["id"] = "main_only"
+    got: dict = {}
+
+    def _w():
+        got["hour"] = daily_scheduler._batch_ctx.get("hour")
+        got["id"] = daily_scheduler._batch_ctx.get("id")
+
+    t = threading.Thread(target=_w)
+    t.start()
+    t.join(timeout=5)
+    assert got["hour"] is None and got["id"] is None, (
+        f"thread 分離破れ: 別 thread が main の値を観測 {got}"
+    )
+    # main thread 側は維持
+    assert daily_scheduler._batch_ctx["hour"] == 2
+    assert daily_scheduler._batch_ctx["id"] == "main_only"
+
+
+def test_dict_conversion_and_clear_update_still_work():
+    """_run_isolated_task が依存する dict(_batch_ctx)/clear/update が
+    thread-local proxy でも動作すること (後方互換)."""
+    daily_scheduler._batch_ctx["id"] = "x"
+    daily_scheduler._batch_ctx["hour"] = 9
+    daily_scheduler._batch_ctx["started_at"] = "t"
+    snap = dict(daily_scheduler._batch_ctx)
+    assert snap == {"id": "x", "hour": 9, "started_at": "t"}
+    daily_scheduler._batch_ctx.clear()
+    assert daily_scheduler._batch_ctx.get("hour") is None
+    daily_scheduler._batch_ctx.update(snap)
+    assert daily_scheduler._batch_ctx["hour"] == 9
+    assert "hour" in daily_scheduler._batch_ctx

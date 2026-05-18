@@ -2056,6 +2056,24 @@ def init_db():
                     pass
             conn.execute("PRAGMA user_version = 41")
 
+        # v42 (W7/W183 H4 race 堅牢化 / 2026-05-17): price_change_log に
+        # claim_status を追加。値下げ 1 回分の「予約 (reservation)」を eBay API
+        # 呼出の前に確保し、scheduler プロセスと Streamlit プロセスが同じ
+        # listing を同時処理して 1 日 4 回上限を超える race (H4) を防ぐ。
+        #   claim_status: NULL      = legacy / 直接記録行 (success で結果判定)
+        #                 'pending' = 予約確保済・API 実行中 (枠を一時消費)
+        #                 'final'   = 確定 (success=1 で枠消費継続 /
+        #                             success=0 で枠解放 = 失敗は本日 4 回に
+        #                             カウントしない / user 確定 2026-05-17)
+        if schema_ver < 42:
+            try:
+                conn.execute(
+                    "ALTER TABLE price_change_log ADD COLUMN claim_status TEXT"
+                )
+            except sqlite3.OperationalError:
+                pass
+            conn.execute("PRAGMA user_version = 42")
+
 
 # ---- サイト設定 ----
 

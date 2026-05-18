@@ -50,7 +50,33 @@ type: rule
 2. **`health_alert_log` v20** + `claim_alert_dedupe` — 期待タスクが本日未完了なら Discord 即通知 (04/12/16/19/23 時)
 3. **MonoDeck「定時実行」タブ** — 欠落 / 失敗 / 実行中を可視化
 4. **`should_task_run` を try/except でラップ** — 例外時も `skip_other` で必ず記録
-5. **`_batch_ctx["hour"] = scheduled_hour`** — hour ドリフト時もタスクが正しく実行される構造的予防
+5. **`_batch_ctx` thread-local 化** — hour ドリフト + thread 跨ぎ clobber の構造的予防
+
+### ⚠️ 5 の改訂 (2026-05-18 silent skip 再発の根治、md-files-can-be-wrong 自規約適用)
+
+**過去の見解 (〜2026-05-18)**: `_batch_ctx["hour"] = scheduled_hour` を batch 開始時に
+1 回 set し、`_run_isolated_task` が save/restore すれば hour ドリフトを構造的に防げる。
+
+**現状の見解 (2026-05-18〜)**: 上記は **同一 thread でしか正しくない**。APScheduler は
+各 job を別 worker thread で並行実行する。`_batch_ctx` が **module 共有 global dict**
+だと、長時間 02:30 batch (ebay_sync+inventory_check+supplier_sweep で ~03:21) の
+最中に 03:00 `daily_codex_lint` 等 isolated task が**別 thread**で hour を 3 に上書きし、
+まだ走行中の 02:30 batch が daily_relist 評価時に clobbered hour=3 を読み
+`batch_hour=3 not in execution_times=[2]` で silent skip する。save/restore は
+thread 跨ぎで非 composable のため無効。
+
+**契機**: 2026-05-15 `daily_codex_lint` (03:00 cron) 追加 → 5/16 から daily_relist /
+enrich_listings_physical / estimate_weights_claude / cleanup_old_relisted /
+research_morning_brief が**毎日 silent skip** (DB task_execution_log で実証: 5/15
+まで `batch_hour=2 completed`、5/16-17 全て `skip_time batch_hour=3`)。2026-04-25 /
+05-05 事故の第 3 次再発。
+
+**根治**: `daily_scheduler._ThreadLocalBatchCtx` (内部 `threading.local()`、dict 互換)
+で各 job の batch context を完全分離。`should_task_run` は `execute_daily_tasks`
+内からのみ呼ばれ、同 thread 冒頭で hour set 済 = 並行 isolated task の影響を受けない。
+**教訓**: 「単一プロセス・単一 batch 直列実行が前提」というコメントを書いた共有 mutable
+global は、並行 scheduler 下で必ず thread 安全性を検証する (max_instances=1 は同一
+job の再入のみ防ぎ、別 job 間の global 共有は防がない)。
 
 ## 新規 scheduled task の必須要件
 

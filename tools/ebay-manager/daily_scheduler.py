@@ -12,6 +12,7 @@ import os
 import sys
 import json
 import time
+import threading
 import logging
 import traceback
 from pathlib import Path
@@ -26,12 +27,69 @@ from apscheduler.triggers.cron import CronTrigger
 import msvcrt
 
 # ──────────────────────────────────────────────────────────────────────
-# バッチ実行コンテキスト (2026-04-25 hour ドリフト事故対応).
+# バッチ実行コンテキスト (2026-04-25 hour ドリフト事故対応 /
+#                          2026-05-18 thread-local 化で silent skip 根治).
 # execute_daily_tasks 開始時に batch_hour/batch_id を捕獲し、
 # should_task_run / run_task はこれを参照する. datetime.now() 都度参照を廃止.
-# 単一プロセス・単一 batch 直列実行が前提.
+#
+# 【thread-local 必須の理由 / 2026-05-18 事故根治】
+# APScheduler は各 job を別 worker thread で並行実行する。_batch_ctx を素の
+# module global dict にすると、長時間 02:30 batch 実行中 (ebay_sync +
+# inventory_check + supplier_sweep で ~03:21 まで) に別 thread の isolated
+# task (03:00 daily_codex_lint / order_alert 等) が hour を 3 に上書きし、
+# まだ走行中の 02:30 batch が daily_relist 評価時 (03:21) に clobbered
+# hour=3 を読んで `batch_hour=3 not in execution_times=[2]` で silent skip。
+# 2026-04-25/05-05 事故の再発 (daily_codex_lint cron 追加 2026-05-15 →
+# 5/16 から daily_relist/enrich/estimate_weights/cleanup/research_morning
+# が毎日 silent skip)。_run_isolated_task の save/restore は thread 跨ぎで
+# 非 composable のため無効。thread-local 化で各 job の batch context を
+# 完全分離する。should_task_run は execute_daily_tasks 内からのみ呼ばれ、
+# 同 thread の冒頭で hour を set 済 = 並行 isolated task の影響を受けない。
 # ──────────────────────────────────────────────────────────────────────
-_batch_ctx: dict = {"id": None, "hour": None, "started_at": None}
+class _ThreadLocalBatchCtx:
+    """thread ごとに独立した batch context を提供する dict 互換 proxy.
+
+    APScheduler worker thread は再利用されるが、execute_daily_tasks は自身の
+    冒頭で必ず hour/id を set し直すため stale 読みは起きない (gating consumer
+    は execute_daily_tasks のみ)。
+    """
+
+    def __init__(self):
+        self._local = threading.local()
+
+    def _d(self) -> dict:
+        d = getattr(self._local, "d", None)
+        if d is None:
+            d = {"id": None, "hour": None, "started_at": None}
+            self._local.d = d
+        return d
+
+    def __getitem__(self, k):
+        return self._d()[k]
+
+    def __setitem__(self, k, v):
+        self._d()[k] = v
+
+    def get(self, k, default=None):
+        return self._d().get(k, default)
+
+    def clear(self):
+        self._d().clear()
+
+    def update(self, other):
+        self._d().update(other)
+
+    def keys(self):
+        return self._d().keys()
+
+    def __iter__(self):
+        return iter(self._d())
+
+    def __contains__(self, k):
+        return k in self._d()
+
+
+_batch_ctx = _ThreadLocalBatchCtx()
 
 # Windows cp932 対応: stdout/stderrをUTF-8化し、子プロセス環境にも伝播
 sys.path.insert(0, str(Path(__file__).parent))
@@ -329,7 +387,9 @@ def execute_daily_tasks(config, scheduled_hour=None):
             None の場合は datetime.now().hour にフォールバック (テスト用途のみ).
 
     実行順序（ビジネスロジック最適化済み）:
-      1. eBay同期     → ランク・メトリクスを最新化（他タスクが参照）
+      1.  eBay同期      → ランク・メトリクスを最新化（他タスクが参照）
+      1.5 監視台帳補完  → 新規無在庫出品を monitored_items 自動登録
+                          (W139, ebay_sync 後・在庫チェック前で当batch反映)
       2. 在庫チェック  → 仕入先の在庫状態を取得
       3. 在庫アラート  → 在庫変動を検出（↑の結果に依存）
       4. 仕入先候補    → 長期在庫切れの代替候補（↑と在庫データに依存）
@@ -400,6 +460,21 @@ def execute_daily_tasks(config, scheduled_hour=None):
             lambda: run_ebay_sync(config),
             max_retries=max_retries, retry_delay=retry_delay,
             task_key='ebay_sync')
+
+    # ──────────────────────────────────────
+    # Step 1.5: 監視台帳カバレッジ自動補完 (W139 / 2026-05-18)
+    # ebay_sync 後・inventory_check 前に実行: 新規同期された無在庫出品で
+    # monitored_items 未登録のものを自動登録し、当 batch の inventory_check
+    # から監視対象に入れる。本番事故 (358487417178 が未登録で仕入先OOS
+    # 検知不能 → 履行不能注文) の恒久対策。Codex 独立診断収束。
+    # ──────────────────────────────────────
+    if should_task_run('ensure_monitor_coverage', config):
+        from tasks.task_ensure_monitor_coverage import run_ensure_monitor_coverage
+        results['ensure_monitor_coverage'] = run_task(
+            '監視台帳カバレッジ自動補完',
+            lambda: run_ensure_monitor_coverage(config),
+            max_retries=max_retries, retry_delay=retry_delay,
+            task_key='ensure_monitor_coverage')
 
     # ──────────────────────────────────────
     # Step 2: 在庫チェック
@@ -1034,8 +1109,12 @@ def _run_isolated_task(task_key: str, display_name: str, runner,
         並行実行中の daily batch の `should_task_run` 判定 (= `_batch_ctx["hour"]`
         参照) を破壊していた (例: 03:00 order_alert_check 発火で hour=3 に上書き
         → 03:13 daily_relist が `batch_hour=3 not in [2]` で skip).
-        本実装は entry で _batch_ctx を save、exit (try/finally) で restore する.
-        これにより並行 daily batch の context が isolated task の存在に影響されない.
+        【2026-05-18 訂正】save/restore は thread 跨ぎで非 composable のため
+        単独では不十分だった (03:00 codex_lint 等が長時間 run 中に 02:30 batch
+        が clobbered hour=3 を読み daily_relist 等が毎日 silent skip)。根治は
+        `_batch_ctx` の thread-local 化 (module 冒頭 _ThreadLocalBatchCtx)。
+        本 save/restore は thread-local 下では同一 thread 内の後始末として
+        無害に機能する (異 thread の daily batch には元々到達しない)。
     """
     started_dt = datetime.now()
     if scheduled_hour is None:

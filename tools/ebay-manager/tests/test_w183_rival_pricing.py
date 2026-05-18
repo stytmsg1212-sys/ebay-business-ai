@@ -417,3 +417,396 @@ class TestCountTodayChangesJst:
             )
         # 本日 JST 1 件のみ count される
         assert _count_today_changes_jst('JST_BD') == 1
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-05-17 W7/W183 race 堅牢化: H4 (予約) / H5 (stale sync) / migration v42
+# ════════════════════════════════════════════════════════════════
+
+def _seed_price_log(ebay_item_id, *, success=1, claim_status=None,
+                    changed_at_sql="datetime('now')",
+                    triggered_by='auto_6h_batch', new_price=99.0):
+    """price_change_log に test 用 row を 1 件 INSERT.
+
+    changed_at_sql は test 専用の SQL 式 (定数のみ、injection 安全).
+    UTC 保存なので 'datetime('now','-1 hour')' 等で相対指定する.
+    """
+    from monitor.database import get_conn
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO price_change_log "
+            "(ebay_item_id, old_price_usd, new_price_usd, competitor_item_id, "
+            " competitor_total_usd, rule_applied, triggered_by, success, "
+            f" claim_status, changed_at) "
+            f"VALUES (?, 100, ?, 'C', 99, 'competitor - 0.01', ?, ?, ?, "
+            f"{changed_at_sql})",
+            (ebay_item_id, new_price, triggered_by, success, claim_status)
+        )
+
+
+class TestMigrationV42Idempotent:
+    """Q2: v42 (claim_status 列追加) の冪等性 + データ保持."""
+
+    def test_claim_status_column_exists(self, tmp_db):
+        from monitor.database import get_conn
+        with get_conn() as c:
+            cols = [r[1] for r in c.execute(
+                "PRAGMA table_info(price_change_log)").fetchall()]
+        assert 'claim_status' in cols
+
+    def test_init_db_twice_retains_data_and_version(self, tmp_db):
+        from monitor.database import init_db, get_conn
+        with get_conn() as c:
+            c.execute(
+                "INSERT INTO price_change_log "
+                "(ebay_item_id, triggered_by, success) "
+                "VALUES ('MIGV42', 'auto_6h_batch', 1)"
+            )
+        init_db()
+        init_db()  # 2 回連続再実行でデータ消失しないこと
+        with get_conn() as c:
+            cnt = c.execute(
+                "SELECT COUNT(*) FROM price_change_log "
+                "WHERE ebay_item_id='MIGV42'"
+            ).fetchone()[0]
+            ver = c.execute("PRAGMA user_version").fetchone()[0]
+        assert cnt == 1, "v42 migration が冪等でない (データ消失 = Q2 違反)"
+        assert ver >= 42
+
+
+class TestH4Reservation:
+    """H4: 予約パターンで cross-process race による cap 超過を防ぐ."""
+
+    def test_claim_succeeds_under_cap_inserts_pending(self, tmp_db):
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(3):
+            _seed_price_log('H4A', success=1, claim_status='final')
+        cid = _claim_price_change_slot(
+            'H4A', 120.0, 110.0, 'C', 99.0, 'competitor - 0.01', 'auto_6h_batch')
+        assert cid is not None
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT success, claim_status FROM price_change_log WHERE id=?",
+                (cid,)).fetchone()
+        assert row[0] == 0 and row[1] == 'pending'
+
+    def test_claim_blocked_at_cap_with_success_rows(self, tmp_db):
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(4):
+            _seed_price_log('H4B', success=1, claim_status='final')
+        assert _claim_price_change_slot(
+            'H4B', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch') is None
+
+    def test_recent_pending_blocks_racer(self, tmp_db):
+        """H4 核心: 3 success + 1 件目予約(pending) = 4 → 2 人目は弾かれる.
+
+        scheduler が予約した直後に Streamlit ボタンが来ても cap=4 を
+        超えない (旧実装は COUNT→API→INSERT の隙間で 5 になり得た).
+        """
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(3):
+            _seed_price_log('H4C', success=1, claim_status='final')
+        cid1 = _claim_price_change_slot(
+            'H4C', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch')
+        assert cid1 is not None  # consumed 3 < 4 → 1 人目予約成功
+        cid2 = _claim_price_change_slot(
+            'H4C', 120.0, 109.0, 'C', 99.0,
+            'competitor - 0.01', 'manual_button')
+        assert cid2 is None  # 3 success + 1 pending(recent) = 4 → 2 人目 None
+
+    def test_stale_pending_ages_out(self, tmp_db):
+        """crash で漏れた >15 分前 pending は枠を恒久 block しない."""
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(3):
+            _seed_price_log('H4D', success=1, claim_status='final')
+        _seed_price_log('H4D', success=0, claim_status='pending',
+                        changed_at_sql="datetime('now','-30 minutes')")
+        assert _claim_price_change_slot(
+            'H4D', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch') is not None
+
+    def test_failed_finalize_releases_slot(self, tmp_db):
+        """失敗確定 (success=0, final) は本日 4 回にカウントしない (user 確定)."""
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import (
+            _claim_price_change_slot, _finalize_price_change)
+        for _ in range(3):
+            _seed_price_log('H4E', success=1, claim_status='final')
+        cid = _claim_price_change_slot(
+            'H4E', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch')
+        assert cid is not None
+        _finalize_price_change(cid, success=False, error_message='eBay 500')
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT success, claim_status, error_message "
+                "FROM price_change_log WHERE id=?", (cid,)).fetchone()
+        assert row[0] == 0 and row[1] == 'final' and row[2] == 'eBay 500'
+        # 失敗は枠解放 → 3 success のみ消費 → 次 claim 成功
+        assert _claim_price_change_slot(
+            'H4E', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch') is not None
+
+    def test_success_finalize_consumes_slot(self, tmp_db):
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import (
+            _claim_price_change_slot, _finalize_price_change,
+            _count_today_changes_jst)
+        cid = _claim_price_change_slot(
+            'H4F', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch')
+        _finalize_price_change(cid, success=True, new_price_usd=110.0)
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT success, claim_status, new_price_usd "
+                "FROM price_change_log WHERE id=?", (cid,)).fetchone()
+        assert row[0] == 1 and row[1] == 'final' and row[2] == 110.0
+        assert _count_today_changes_jst('H4F') == 1
+
+    def test_pending_excluded_from_audit_log(self, tmp_db):
+        """get_price_change_log は確定前 pending を監査ログから除外."""
+        from monitor.lowest_price import get_price_change_log
+        _seed_price_log('H4G', success=1, claim_status='final')
+        _seed_price_log('H4G', success=0, claim_status='pending')
+        rows = get_price_change_log('H4G')
+        assert len(rows) == 1 and rows[0]['success'] is True
+
+
+class TestH5StaleSuspect:
+    """H5: 値下げ直後の stale sync 上書きを検知してその回 skip."""
+
+    def _state(self, **kw):
+        base = {'current_price': 145.0, 'shipping_cost': 10.0,
+                'lp_min_price': 50.0, 'lp_breakeven_usd': 40.0,
+                'is_ended': False, 'last_synced_at': None}
+        base.update(kw)
+        return base
+
+    def _lsa(self, expr):
+        from monitor.database import get_conn
+        with get_conn() as c:
+            return c.execute(f"SELECT {expr}").fetchone()[0]
+
+    def test_no_history_not_suspect(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        assert _is_price_stale_suspect(self._state(), 'H5A') is None
+
+    def test_suspect_when_sync_after_recent_reduction_mismatch(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        _seed_price_log('H5B', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        lsa = self._lsa("datetime('now','-1 hour','+9 hours','+10 minutes')")
+        st = self._state(current_price=145.0, last_synced_at=lsa)
+        assert _is_price_stale_suspect(st, 'H5B') is not None
+
+    def test_not_suspect_when_db_matches_applied(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        _seed_price_log('H5C', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        lsa = self._lsa("datetime('now','-1 hour','+9 hours','+10 minutes')")
+        st = self._state(current_price=124.0, last_synced_at=lsa)
+        assert _is_price_stale_suspect(st, 'H5C') is None
+
+    def test_not_suspect_when_sync_before_reduction(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        _seed_price_log('H5D', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        lsa = self._lsa("datetime('now','-3 hours','+9 hours')")
+        st = self._state(current_price=145.0, last_synced_at=lsa)
+        assert _is_price_stale_suspect(st, 'H5D') is None
+
+    def test_not_suspect_when_reduction_older_than_guard(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        _seed_price_log('H5E', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-7 hours')")
+        lsa = self._lsa("datetime('now','-1 hour','+9 hours')")
+        st = self._state(current_price=145.0, last_synced_at=lsa)
+        assert _is_price_stale_suspect(st, 'H5E') is None
+
+    def test_not_suspect_when_no_last_synced(self, tmp_db):
+        from tasks.task_rival_pricing import _is_price_stale_suspect
+        _seed_price_log('H5F', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        st = self._state(current_price=145.0, last_synced_at=None)
+        assert _is_price_stale_suspect(st, 'H5F') is None
+
+    def test_pending_reduction_not_treated_as_applied(self, tmp_db):
+        """claim_status='pending' の行は『最後に設定した値』に含めない."""
+        from tasks.task_rival_pricing import _latest_successful_change
+        _seed_price_log('H5H', success=0, claim_status='pending',
+                        new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        assert _latest_successful_change('H5H') is None
+
+    def test_evaluate_returns_skip_stale_price_end_to_end(self, tmp_db):
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        _seed_listing('H5G', current_price=145.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('H5G', 'C1', price_usd=80.0, shipping_usd=10.0)
+        _seed_price_log('H5G', success=1, claim_status='final', new_price=124.0,
+                        changed_at_sql="datetime('now','-1 hour')")
+        with get_conn() as c:
+            lsa = c.execute(
+                "SELECT datetime('now','-1 hour','+9 hours','+10 minutes')"
+            ).fetchone()[0]
+            c.execute(
+                "UPDATE ebay_listings SET last_synced_at=? "
+                "WHERE ebay_item_id='H5G'", (lsa,))
+        r = _evaluate_and_apply_one('H5G', {})
+        assert r['action'] == 'skip_stale_price'
+
+
+class TestH4LockContention:
+    """code-reviewer HIGH-1 回帰: BEGIN IMMEDIATE が lock timeout した時に
+    silent 取りこぼし / skip_daily_cap 誤分類 / ROLLBACK 漏れ をしない."""
+
+    class _LockOnBegin:
+        """get_conn() proxy: BEGIN IMMEDIATE だけ指定 OperationalError を投げ、
+        他は inner に委譲する (with 文 context manager 対応)."""
+        def __init__(self, inner, exc):
+            self._inner = inner
+            self._exc = exc
+        def execute(self, sql, *a, **kw):
+            if sql.strip().upper().startswith("BEGIN IMMEDIATE"):
+                raise self._exc
+            return self._inner.execute(sql, *a, **kw)
+        def __enter__(self):
+            self._inner.__enter__()
+            return self
+        def __exit__(self, *exc):
+            return self._inner.__exit__(*exc)
+
+    def test_claim_lock_timeout_returns_sentinel_and_logs(
+            self, tmp_db, monkeypatch, caplog):
+        from monitor import database
+        from tasks.task_rival_pricing import (
+            _claim_price_change_slot, _SLOT_LOCKED)
+        real = database.get_conn
+        exc = sqlite3.OperationalError("database is locked")
+        monkeypatch.setattr(
+            database, "get_conn",
+            lambda: self._LockOnBegin(real(), exc))
+        with caplog.at_level("WARNING"):
+            r = _claim_price_change_slot(
+                'LOCK1', 120.0, 110.0, 'C', 99.0,
+                'competitor - 0.01', 'auto_6h_batch')
+        assert r is _SLOT_LOCKED
+        assert any('lock' in rec.message.lower() for rec in caplog.records), \
+            "Q0: lock 競合の痕跡が log に残っていない"
+
+    def test_claim_non_lock_operational_error_reraises(
+            self, tmp_db, monkeypatch):
+        """lock 以外の OperationalError (schema 不整合等) は隠さず送出."""
+        from monitor import database
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        real = database.get_conn
+        exc = sqlite3.OperationalError("no such table: price_change_log")
+        monkeypatch.setattr(
+            database, "get_conn",
+            lambda: self._LockOnBegin(real(), exc))
+        with pytest.raises(sqlite3.OperationalError, match="no such table"):
+            _claim_price_change_slot(
+                'LOCK2', 120.0, 110.0, 'C', 99.0,
+                'competitor - 0.01', 'auto_6h_batch')
+
+    def test_evaluate_returns_skip_lock_contention_not_daily_cap(
+            self, tmp_db, monkeypatch):
+        """lock 競合は skip_daily_cap と別 action で返る (user 誤誘導防止)."""
+        import tasks.task_rival_pricing as trp
+        from tasks.task_rival_pricing import (
+            _evaluate_and_apply_one, _SLOT_LOCKED)
+        _seed_listing('LOCK3', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('LOCK3', 'C1', price_usd=80.0, shipping_usd=10.0)
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D',
+                            'cert_id': 'C', 'user_token': 'T'})
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True)
+        monkeypatch.setattr(
+            trp, "_claim_price_change_slot",
+            lambda *a, **kw: _SLOT_LOCKED)
+        r = _evaluate_and_apply_one('LOCK3', {'ebay': {}})
+        assert r['action'] == 'skip_lock_contention'
+        assert r['action'] != 'skip_daily_cap'
+
+
+class TestH4InflightCrashSafety:
+    """Codex 2 段レビュー HIGH (2026-05-17) 回帰: eBay API 成功直後〜finalize
+    前の crash で実値下げ済の枠が 15 分時効で消え、同日 4 回上限を超過
+    (過剰値下げ = margin 浸食) するのを防ぐ (api_inflight 時効なし)."""
+
+    def test_inflight_does_not_age_out_blocks_cap(self, tmp_db):
+        """3 success + 1 古い api_inflight = 4 → claim None (時効なしで消費継続).
+
+        旧実装 (pending 15 分時効) は crash 後 api_inflight 相当が消え、
+        4 回上限を超えて追加予約できてしまった (Codex HIGH)."""
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(3):
+            _seed_price_log('INF1', success=1, claim_status='final')
+        # crash 残骸を模擬: 本日 JST 0:00 の api_inflight (= API 成功したかも)。
+        # api_inflight は 15 分時効を持たないので「古くても本日 JST なら
+        # cap を消費し続ける」ことを検証。changed_at は JST 当日固定
+        # (datetime('now','-2 hours') は JST 日跨ぎ時間帯で前日判定になり
+        # flaky だったため start-of-JST-day 固定に修正、sqlite-timezone.md)。
+        _seed_price_log(
+            'INF1', success=0, claim_status='api_inflight',
+            changed_at_sql="datetime('now','+9 hours','start of day','-9 hours')")
+        assert _claim_price_change_slot(
+            'INF1', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch') is None
+
+    def test_old_pending_still_ages_out(self, tmp_db):
+        """対照: API 未呼出の古い pending は従来通り 15 分で時効解放
+        (実 eBay 変更なし確実なので枠を塞がない)."""
+        from tasks.task_rival_pricing import _claim_price_change_slot
+        for _ in range(3):
+            _seed_price_log('INF2', success=1, claim_status='final')
+        _seed_price_log('INF2', success=0, claim_status='pending',
+                        changed_at_sql="datetime('now','-30 minutes')")
+        assert _claim_price_change_slot(
+            'INF2', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch') is not None
+
+    def test_mark_claim_inflight_transition(self, tmp_db):
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import (
+            _claim_price_change_slot, _mark_claim_inflight,
+            _finalize_price_change)
+        cid = _claim_price_change_slot(
+            'INF3', 120.0, 110.0, 'C', 99.0,
+            'competitor - 0.01', 'auto_6h_batch')
+        with get_conn() as c:
+            assert c.execute(
+                "SELECT claim_status FROM price_change_log WHERE id=?",
+                (cid,)).fetchone()[0] == 'pending'
+        _mark_claim_inflight(cid)
+        with get_conn() as c:
+            assert c.execute(
+                "SELECT claim_status FROM price_change_log WHERE id=?",
+                (cid,)).fetchone()[0] == 'api_inflight'
+        # 二重呼出は no-op (pending 限定 guard)、finalize で final へ
+        _mark_claim_inflight(cid)
+        _finalize_price_change(cid, success=True, new_price_usd=110.0)
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT claim_status, success FROM price_change_log WHERE id=?",
+                (cid,)).fetchone()
+        assert row[0] == 'final' and row[1] == 1
+
+    def test_inflight_visible_in_audit_log(self, tmp_db):
+        """Codex MEDIUM 回帰: crash 残骸 (api_inflight = 実値下げの可能性) は
+        監査ログに見える (pending のみ除外、api_inflight は調査のため可視)."""
+        from monitor.lowest_price import get_price_change_log
+        _seed_price_log('INF4', success=1, claim_status='final')
+        _seed_price_log('INF4', success=0, claim_status='api_inflight')
+        _seed_price_log('INF4', success=0, claim_status='pending')
+        rows = get_price_change_log('INF4')
+        statuses = {(r['success']) for r in rows}
+        # final(success=1) + api_inflight(success=0) = 2 行、pending は除外
+        assert len(rows) == 2
