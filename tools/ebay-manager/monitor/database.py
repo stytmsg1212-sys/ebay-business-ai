@@ -2074,6 +2074,35 @@ def init_db():
                 pass
             conn.execute("PRAGMA user_version = 42")
 
+        # v43 (W142 / 2026-05-19): 送料 +each (ShippingServiceAdditionalCost)
+        # を DB 列化。根本原因#5(b): ebay_listings に +each 保存列が無いため
+        # 商品管理タブの「送料 +each」入力が常時 value=None (表示 source 皆無)。
+        # shipping_cost (v1) と対称だが DEFAULT を付けない (= NULL)。理由:
+        #   shipping_cost は v1 で全 listing 0.0 初期化済の既存事実があり今は
+        #   変えない (K2) が、+each は新規列なので「未取得 NULL」と「明示
+        #   $0.00」を最初から区別でき、_sync_db_to_actual の None-skip 慣習
+        #   (snap の値が None の項目は触らない) と整合する (HIGH-2 NULL
+        #   多義性の踏襲)。
+        #   shipping_additional_cost        : Domestic ShippingServiceAdditional
+        #                                     Cost (2 個目以降の追加送料 USD)。
+        #   shipping_additional_fetched_at  : 実 eBay GetItem から最後に取得
+        #                                     した時刻 (UTC、sqlite-timezone.md)。
+        #     更新元は shipping_profile 同様 📤eBay反映時 _sync_db_to_actual /
+        #     単発 ↻ 再取得のみ (定期 sync は GetMyeBaySelling が返さず相乗り
+        #     不可、fetched_at 併記で鮮度を正直開示)。
+        if schema_ver < 43:
+            for _col_sql in (
+                "ALTER TABLE ebay_listings "
+                "ADD COLUMN shipping_additional_cost REAL",
+                "ALTER TABLE ebay_listings "
+                "ADD COLUMN shipping_additional_fetched_at TIMESTAMP",
+            ):
+                try:
+                    conn.execute(_col_sql)
+                except sqlite3.OperationalError:
+                    pass
+            conn.execute("PRAGMA user_version = 43")
+
 
 # ---- サイト設定 ----
 

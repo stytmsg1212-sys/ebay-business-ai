@@ -146,6 +146,11 @@ def _fetch_all_products() -> list[dict]:
                 el.quantity_ebay, el.inventory_count,
                 el.last_qty_sync_at, el.last_synced_quantity, el.qty_sync_error,
                 el.shipping_profile_id, el.shipping_profile_fetched_at,
+                -- W142: +each 表示 source (根本原因#5b)。migration v43 +
+                -- _sync_db_to_actual の書込を UI が read back する経路。
+                -- last_synced_at は乖離 caption の鮮度 fallback に使う。
+                el.shipping_additional_cost, el.shipping_additional_fetched_at,
+                el.last_synced_at,
                 (SELECT COUNT(*) FROM competitor_products cp
                  WHERE cp.our_item_id = el.ebay_item_id AND cp.is_active = 1
                 ) AS competitor_count
@@ -446,13 +451,26 @@ def _refresh_bp_from_ebay(eid: str, config: dict) -> None:
         # fetched_at 据置 (状態(a) 維持) + 痕跡 (Q0)
         st.session_state[errk] = f"再取得失敗 (GetItem): {snap.error}"
         return
+    # BP は W138-A 通り常に書く (None=確定 Inline の明示 NULL も含む)。
+    # W142: +each も同一 ↻ で取得済 (snap.ship_additional_usd)。None-skip
+    # 慣習 (_sync_db_to_actual と同型、database.py v43 設計コメント
+    # 「更新元は ... 単発 ↻ 再取得のみ」と整合): snap に出た時のみ
+    # shipping_additional_cost/fetched_at を書き、None は据置 (既知 DB 値を
+    # NULL 上書きして未取得に劣化させない = R4)。
+    _sets = ["shipping_profile_id=?",
+             "shipping_profile_fetched_at=datetime('now')"]
+    _params: list = [str(snap.shipping_profile_id)
+                     if snap.shipping_profile_id else None]
+    if getattr(snap, "ship_additional_usd", None) is not None:
+        _sets.append("shipping_additional_cost=?")
+        _params.append(float(snap.ship_additional_usd))
+        _sets.append("shipping_additional_fetched_at=datetime('now')")
+    _params.append(eid)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE ebay_listings SET shipping_profile_id=?, "
-            "shipping_profile_fetched_at=datetime('now') "
+            f"UPDATE ebay_listings SET {', '.join(_sets)} "
             "WHERE ebay_item_id=?",
-            (str(snap.shipping_profile_id)
-             if snap.shipping_profile_id else None, eid),
+            tuple(_params),
         )
     bump_db_version()  # read-cache 無効化 → 次 render で新 BP 反映
 
@@ -774,14 +792,38 @@ def _render_left_basic_and_physical(
             help="1 個目の送料 (ShippingServiceCost)",
         )
     with eb3:
+        # W142 根本原因#5(b): 旧実装は value=None ハードコードで +each が
+        # 常時空欄 (ebay_listings に保存列が無かった)。migration v43 の
+        # shipping_additional_cost を表示 source に (Buyer pays L771 と対称)。
+        # W142 Codex-R3 HIGH-2: +each dirty-flag 用 render 初期値 (= DB 列値)。
+        # _apply_to_ebay は「submit 値 != この初期値」の時のみ user が
+        # +each を実操作したとみなす。BP の Codex#1 bp_render_initial_id と
+        # 同型 = 表示中 DB 値を「変更」と誤認し stale を実 eBay に上書き
+        # する経路を遮断 (金銭直結、Phase2 実 eBay 真実原則を守る)。
+        _add_init = (float(p.get("shipping_additional_cost"))
+                     if p.get("shipping_additional_cost") is not None
+                     else None)
+        editing["add_render_initial"] = _add_init
         editing["new_ship_additional"] = st.number_input(
             "送料 +each (USD)",
             min_value=0.0,
-            value=None,
+            value=_add_init,
             step=0.5, format="%.2f",
             key=f"pm_ebay_ship_add_{eid}",
-            help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)",
+            help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)。"
+                 "DB保存値表示。実 eBay との一致は 📤eBay反映 で verify。",
         )
+    # W142 (B): 送料は DB保存値表示 + 乖離マーカー (expander 展開で
+    # GetItem を呼ばない = 速度/quota 優先、真値は 📤eBay反映 で verify /
+    # BP ↻ で取得)。鮮度を fetched_at で正直開示 (R-11/HIGH-1 の精神)。
+    _ship_fa = _fetched_jst_label(
+        p.get("shipping_additional_fetched_at") or p.get("last_synced_at")
+    )
+    st.caption(
+        f"💡 送料 (Buyer pays / +each) は **DB保存値**表示 "
+        f"(実 eBay 最終同期: {_ship_fa})。eBay.com で直接変更していると"
+        f"乖離し得ます。真値は 📤eBay反映 時に verify されます。"
+    )
 
     # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
     editing["new_bp_id"] = None
@@ -1803,6 +1845,7 @@ def _apply_to_ebay(
         "success": False, "message": "", "new_price": new_price,
         "new_ship": new_ship, "sku_pushed": False,
         "price_ship_ok": None, "sku_ok": None, "bp_ok": None,
+        "add_ok": None,  # W142: +each verify 結果
         "post_snapshot": None,
     }
 
@@ -1834,6 +1877,32 @@ def _apply_to_ebay(
         new_ship is not None
         and not _money_eq(float(new_ship), snap.ship_cost_usd)
     )
+    # W142 根本原因#5(a): 旧実装の ship_changed は new_ship (Buyer pays)
+    # のみ判定し new_add (+each) を一切含めなかった → +each のみ変更が
+    # 永久に「差分なし」扱い (no-diff branch) → 外側で紛らわしい
+    # 「⚠️一部未反映」warning。add_changed を独立追加。
+    # W142 Codex-R3 HIGH-2 (金銭直結): +each dirty-flag。user が +each
+    # widget を**実際に操作**した時のみ変更とみなす。snap.ship_additional
+    # _usd が None (GetItem が +each を返さない) でも、表示中の DB 初期値
+    # (add_render_initial) を「変更」と誤認すると stale DB 値を実 eBay へ
+    # 上書きし真の DDP buffer を喪失する (Phase2「実 eBay 真実・DB 非権威」
+    # 違反)。BP の Codex#1 bp_user_touched と完全同型。比較相手は依然
+    # pre-snapshot 実 eBay (W137)。
+    # ⚠️ 呼出契約 (Codex-R3 再確認 MEDIUM): `editing` は商品管理タブの
+    # render 経由で構築すること。render (L~806) が `add_render_initial`
+    # (= +each widget の DB 初期値) を `bp_render_initial_id` と同様に
+    # **無条件 set** する。本番 caller は `_apply_to_ebay` 呼出 1 箇所
+    # (UI submit、render 由来 editing) のみ = 契約は本番で常に充足。
+    # render を経ない直接/プログラム呼出は add_render_initial を明示
+    # 供給すること (省略すると None 比較で stale 値を誤って user 編集
+    # 扱いし得る = money-direct)。BP dirty-flag と同じ既存契約構造。
+    add_render_initial = editing.get("add_render_initial")
+    add_user_touched = new_add != add_render_initial
+    add_changed = (
+        add_user_touched
+        and new_add is not None
+        and not _money_eq(float(new_add), snap.ship_additional_usd)
+    )
     # Codex#1 dirty-flag (金銭直結): user が selectbox を**実際に操作**した
     # 時のみ BP 変更とみなす。無操作 = submit 値が render 時 DB 初期値と
     # 同一 → eBay.com 外部変更で DB が stale でも、その stale 値が実 eBay
@@ -1847,7 +1916,8 @@ def _apply_to_ebay(
         bp_user_touched
         and new_bp_id != (snap.shipping_profile_id or None)
     )
-    if not (sku_changed or price_changed or ship_changed or bp_changed):
+    if not (sku_changed or price_changed or ship_changed
+            or add_changed or bp_changed):
         # MED-2-fix: 差分なしでも pre-snapshot (= 実 eBay 値、ここに来る
         # 時点で snap.ok=True) を post_snapshot として返す。呼出側の
         # _sync_db_to_actual が DB を実 eBay へ resync = stale DB BP/価格/
@@ -1859,17 +1929,121 @@ def _apply_to_ebay(
                 "message": "実 eBay と差分なし (反映不要、DB は実 eBay へ"
                 "同期)。"
                 f"eBay 実値: SKU={snap.sku} 価格={snap.start_price_usd} "
-                f"送料={snap.ship_cost_usd} BP={snap.shipping_profile_id}"}
-    # Q-3 (user 承認): BP 変更と価格/送料変更の同一 submit は不可。BP 変更は
-    # 送料を BP default にリセットするため同時指定は意図矛盾 → 明示拒否 (Q0)。
-    if bp_changed and (price_changed or ship_changed):
-        return {**base,
-                "message": "BP 変更と価格/送料変更は同時にできません (Q-3)。"
-                "先に BP のみを 📤eBay反映 で変更 (送料は新 BP default に"
-                "戻ります) → その後あらためて価格/送料を調整してください。"}
+                f"送料={snap.ship_cost_usd} +each={snap.ship_additional_usd} "
+                f"BP={snap.shipping_profile_id}"}
+    # ── W142: Q-3 撤廃 + combined-新BP 判定/preflight ──
+    # 旧 Q-3 は「BP変更 ∧ 価格/送料変更」を明示拒否していた (W138-A 過剰
+    # 保守)。eBay は ShippingServiceCostOverrideList と SellerProfiles を
+    # 同一 ReviseFixedPriceItem に同梱可 (W136 実証、Add 経路と同機構)。
+    # combined で新BP を SellerProfiles に入れ override を同梱すれば
+    # custom 送料 (DDP buffer) を新BP に維持できる (user 確定方針 A)。
+    bp_combined = bp_changed and (
+        price_changed or ship_changed or add_changed)
+    combined_prio = 1  # combined-新BP の <ShippingServicePriority>
+    if bp_combined:
+        # R2 (Codex/W136): combined は SellerProfiles を 新BP shipping_id +
+        # 現 payment/return で同梱する。payment/return が pre-snapshot から
+        # 取れないと不完全 SellerProfiles = Ack=Fail or 意図せぬ
+        # payment/return policy 適用 (money/account risk) → revise せず
+        # 痕跡 (Q0、revise_shipping_profile の 3ID 必須ガードと同型)。
+        if not (snap.payment_profile_id and snap.return_profile_id):
+            logger.warning(
+                f"[pm] {eid} combined-新BP 中止: pre-snapshot に "
+                f"payment/return profile ID 不足 "
+                f"(pay={snap.payment_profile_id} "
+                f"ret={snap.return_profile_id})"
+            )
+            return {**base,
+                    "post_snapshot": snap,
+                    "message": "BP+価格/送料の同時反映を中止 (実 eBay から "
+                    "payment/return policy ID が取得できず、不完全な "
+                    "SellerProfiles 送信は account リスク)。BP のみ先に "
+                    "📤eBay反映 で変更してから価格/送料を調整してください。"}
+        # preflight: 新BP の domestic service sortOrder から
+        # ShippingServicePriority を解決。eBay 公式 (Sell Account API):
+        # priority は BP の matching service の sortOrder と一致させる。
+        # 1 ハードコードは W136 無音失敗の根 (Ack=Success だが override
+        # 黙殺 = DDP buffer 喪失 = Section 232 数百ドル/件)。
+        from monitor.ebay_account_policy import resolve_domestic_priority
+        _pol_list = _cached_shipping_policies()
+        _pol = None
+        if _pol_list.ok:
+            for _p in _pol_list.policies:
+                if _p.policy_id == new_bp_id:
+                    _pol = _p
+                    break
+        if _pol is None:
+            logger.warning(
+                f"[pm] {eid} combined-新BP 中止: 新BP {new_bp_id} の "
+                f"shipping policy 取得不能 "
+                f"(list ok={_pol_list.ok} err={_pol_list.error})"
+            )
+            return {**base,
+                    "post_snapshot": snap,
+                    "message": "BP+価格/送料の同時反映を中止 (新BP の "
+                    "shipping policy 情報を取得できず、送料 override の "
+                    "priority を解決不能)。BP のみ先に変更してから価格/"
+                    "送料を調整してください。"}
+        _prio, _reason = resolve_domestic_priority(_pol)
+        if _prio is None:
+            logger.warning(
+                f"[pm] {eid} combined-新BP 中止: priority 解決不能 "
+                f"reason={_reason} bp={new_bp_id} "
+                f"dom_count={_pol.domestic_service_count}"
+            )
+            return {**base,
+                    "post_snapshot": snap,
+                    "message": "BP+価格/送料の同時反映を中止 (新BP の "
+                    f"domestic 送料 priority を解決できません: {_reason})。"
+                    "送料 override が無音失敗し DDP buffer を喪失する恐れ"
+                    "があるため、BP のみ先に 📤eBay反映 で変更してから"
+                    "価格/送料を調整してください。"}
+        combined_prio = _prio
 
     parts: list[str] = []
     sku_pushed = False
+    # W142: combined で実際に override を送ったか / 送った ship/+each
+    # (Phase4 verify が新BP bind と無音失敗を判定するのに使う)。
+    sent_override = False
+    sent_ship_cost: Optional[float] = None
+    sent_ship_add: Optional[float] = None
+
+    # ── W142 Codex-R3 統一安全ガード (HIGH-1/HIGH-3 一括根治) ──
+    # override を出す/保持する経路 (bp_combined ∨ ship_changed ∨
+    # add_changed) で base(Buyer pays) か +each が **不確定** = pre-snapshot
+    # 実 eBay が None ∧ user 未入力、の時、None を 0.00 / BP-default に
+    # 捏造して見えない DDP buffer (Section 232 数百ドル/件) を黙って喪失
+    # する経路を物理排除し **明示 abort** する (Q0 / silent-skip-
+    # prevention)。snap.ship_cost/ship_additional が None = GetItem が
+    # その送料を返さなかった = 不確定。本 system が出す override は常に
+    # 明示 0.00 を持つため正常 listing は非None。None は anomaly /
+    # 未 revise / calculated shipping 等の少数 = 安全側で degrade。
+    # 旧 add_no_base 特殊機構 (+each 単独 base 無) は本ガードに統合。
+    _emits_override = bp_combined or ship_changed or add_changed
+    if _emits_override:
+        _base_src = new_ship if ship_changed else snap.ship_cost_usd
+        _add_src = new_add if add_changed else snap.ship_additional_usd
+        _indet = []
+        if _base_src is None:
+            _indet.append("Buyer pays (基本送料)")
+        if _add_src is None:
+            _indet.append("+each (追加送料)")
+        if _indet:
+            logger.warning(
+                f"[pm] {eid} 送料状態不確定で変更 abort: "
+                f"{'/'.join(_indet)} が pre-snapshot に無く user 未入力 "
+                f"(bp_combined={bp_combined} ship_changed={ship_changed} "
+                f"add_changed={add_changed})"
+            )
+            return {**base, "post_snapshot": snap,
+                    "message": (
+                        "実 eBay の送料 (" + " / ".join(_indet) + ") が "
+                        "GetItem で取得できず不確定です。BP/送料の変更は "
+                        "見えない DDP buffer (Section 232 で数百ドル/件) を "
+                        "黙って喪失する恐れがあるため中止しました。"
+                        "↻ Shipping BP 再取得 で実 eBay を取り込むか、"
+                        "Buyer pays / +each を明示入力してから再反映して "
+                        "ください。")}
 
     # ── Phase 3: revise (差分項目のみ) ──
     # revise API の失敗原因 (eBay ErrorCode / token 失効等) は最も価値ある
@@ -1877,12 +2051,58 @@ def _apply_to_ebay(
     # 「W136 無音失敗」と「送信拒否(token失効等)」を user が区別できない
     # → 必ず message に合流させる (HIGH-1 2026-05-17 / silent-skip 精神)。
     revise_errs: list[str] = []
-    if price_changed or ship_changed:
-        # HIGH-2: 送料変更だが BP shipping profile ID 不在 = SellerProfiles
-        # 非同梱 = W136 無音失敗の確定条件。silent fallback せず痕跡を残す。
-        if ship_changed and not snap.shipping_profile_id:
+    if bp_combined:
+        # W142: combined ReviseFixedPriceItem = 新BP + override + 価格 を
+        # 1 回で送信。user 確定方針 A: ship 未変更でも現 override を再送し
+        # 新BP に custom 送料 (DDP buffer) を維持 (combined ケース i)。
+        # R4 (状態リセット副作用防止): +each も未変更なら現 +each を再送。
+        # ⚠️ Codex-R3 HIGH-3 訂正: 「snap.ship_cost_usd None = 元々 custom
+        # 送料なし = BP default で正しい」は **誤り** (None は GetItem が
+        # 送料を返さなかった = 不確定であり、見えない override を喪失し得る)。
+        # 上流の統一安全ガードが indeterminate (base/+each いずれか None)
+        # を既に明示 abort 済 = ここに来る時点で base/+each は確定 (実 eBay
+        # 値 or user 入力)。combined では常に override を再送し新BP に DDP
+        # buffer を維持する (この前提でガードを弱めないこと)。
+        _c_ship = float(new_ship) if ship_changed else snap.ship_cost_usd
+        _c_add = (float(new_add) if add_changed
+                  else snap.ship_additional_usd)
+        sent_ship_cost = (float(_c_ship) if _c_ship is not None else None)
+        sent_ship_add = (float(_c_add) if _c_add is not None else None)
+        sent_override = sent_ship_cost is not None
+        _r = revise_fixed_price_with_shipping(
+            item_id=eid,
+            new_price_usd=float(new_price) if price_changed else None,
+            ship_cost_usd=sent_ship_cost,
+            ship_additional_usd=sent_ship_add,
+            app_id=app_id, dev_id=dev_id, cert_id=cert_id,
+            user_token=token,
+            # W142: 新BP を SellerProfiles に入れる (combined の核心)。
+            # payment/return は preflight で非None確認済 (R2)。
+            seller_profiles={
+                "payment_id": snap.payment_profile_id,
+                "return_id": snap.return_profile_id,
+                "shipping_id": new_bp_id,
+            },
+            ship_priority=combined_prio,
+            # W142 HIGH-1 fix: override 無し (custom 送料を持たない) listing
+            # でも新BPを SellerProfiles で必ず送る (combined ケース i で
+            # BP 変更が無音欠落するのを防ぐ)。
+            force_seller_profiles=True,
+        )
+        if not _r.get("success"):
+            revise_errs.append(
+                "combined(BP+価格/送料) revise API 失敗: "
+                f"{_r.get('message', '不明')}"
+            )
+    elif price_changed or ship_changed or add_changed:
+        # 非 combined (BP 据置)。W142 根本原因#5: +each のみ変更でも
+        # override block を出すため現 ship_cost を再送。R4: ship のみ
+        # 変更で +each 未操作なら現 +each を再送 (0 に潰さない)。
+        # HIGH-2: 送料/+each 変更だが BP shipping profile ID 不在 =
+        # SellerProfiles 非同梱 = W136 無音失敗の確定条件 → 痕跡。
+        if (ship_changed or add_changed) and not snap.shipping_profile_id:
             logger.warning(
-                f"[pm] {eid} 送料変更だが pre-snapshot に "
+                f"[pm] {eid} 送料/+each変更だが pre-snapshot に "
                 "shipping_profile_id 無し → SellerProfiles 非同梱で "
                 "override 無音失敗の恐れ (W136 条件)"
             )
@@ -1890,16 +2110,26 @@ def _apply_to_ebay(
                 "⚠️ BP shipping profile ID が GetItem から取得できず、"
                 "送料 override が無音失敗する可能性 (要 eBay 手動確認)"
             )
+        # 統一ガード通過後: ship/+each 変更時は base が確定 (実 eBay or
+        # user 入力)。price のみ変更 (_emits_override=False でガード非該当)
+        # は ship_cost None で override 非出力 = 旧 W137 price-only 挙動。
+        _nc_ship = (float(new_ship) if ship_changed
+                    else (snap.ship_cost_usd if add_changed else None))
+        _nc_add = (float(new_add) if add_changed
+                   else (snap.ship_additional_usd if ship_changed
+                         else None))
+        sent_ship_cost = (float(_nc_ship) if _nc_ship is not None
+                          else None)
+        sent_ship_add = (float(_nc_add) if _nc_add is not None else None)
+        sent_override = sent_ship_cost is not None
         _r = revise_fixed_price_with_shipping(
             item_id=eid,
             new_price_usd=float(new_price) if price_changed else None,
-            ship_cost_usd=float(new_ship) if ship_changed else None,
-            ship_additional_usd=(
-                float(new_add) if (ship_changed and new_add is not None)
-                else None
-            ),
-            app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=token,
-            # W136: BP 参照を同梱 (反映前 snapshot 由来の実 3 ID)
+            ship_cost_usd=sent_ship_cost,
+            ship_additional_usd=sent_ship_add,
+            app_id=app_id, dev_id=dev_id, cert_id=cert_id,
+            user_token=token,
+            # W136: BP 参照を同梱 (反映前 snapshot 由来の実 3 ID、現BP維持)
             seller_profiles={
                 "payment_id": snap.payment_profile_id,
                 "return_id": snap.return_profile_id,
@@ -1931,9 +2161,12 @@ def _apply_to_ebay(
                 revise_errs.append(
                     f"SKU revise API 失敗: {_rs.get('message', '不明')}"
                 )
-    if bp_changed:
-        # W138: BP のみ専用経路 (W136 override gate 非経由、SellerProfiles
-        # 3 ID 同梱)。BP 変更で eBay 側 override は BP default にリセット。
+    if bp_changed and not bp_combined:
+        # W138: BP 単独変更 専用経路 (price/ship/+each 全未変更時のみ。
+        # W136 override gate 非経由、SellerProfiles 3 ID 同梱)。override
+        # 非同梱 = eBay 仕様で送料は新 BP default にリセット (custom 送料
+        # を持たない listing の純粋な BP 差し替え)。combined 時はこの経路
+        # を通らず上の combined revise が新BP+override を 1 回で送る。
         _rb = revise_shipping_profile(
             eid,
             {
@@ -1964,13 +2197,23 @@ def _apply_to_ebay(
 
     price_ship_ok: Optional[bool] = None
     sku_ok: Optional[bool] = None
+    add_ok: Optional[bool] = None
     overall_ok = True
 
-    if price_changed or ship_changed:
+    # 送料 verify の期待値: ship_changed なら新値、combined で override を
+    # 再送した時は ship 未変更でも「送った ship_cost が新BPに乗ったか」を
+    # verify (W136 無音失敗 = Ack=Success だが override 黙殺 を post-state
+    # で検出)。
+    _ship_expect: Optional[float] = None
+    if ship_changed:
+        _ship_expect = float(new_ship)
+    elif bp_combined and sent_ship_cost is not None:
+        _ship_expect = float(sent_ship_cost)
+    if price_changed or _ship_expect is not None:
         pv = (not price_changed) or _money_eq(
             snap2.start_price_usd, float(new_price))
-        sv = (not ship_changed) or _money_eq(
-            snap2.ship_cost_usd, float(new_ship))
+        sv = (_ship_expect is None) or _money_eq(
+            snap2.ship_cost_usd, _ship_expect)
         price_ship_ok = pv and sv
         overall_ok = overall_ok and price_ship_ok
         det = []
@@ -1978,13 +2221,37 @@ def _apply_to_ebay(
             det.append(
                 f"価格 期待{float(new_price):.2f}/実{snap2.start_price_usd}"
                 f"{'✅' if pv else '❌'}")
-        if ship_changed:
+        if _ship_expect is not None:
             det.append(
-                f"送料 期待{float(new_ship):.2f}/実{snap2.ship_cost_usd}"
+                f"送料 期待{_ship_expect:.2f}/実{snap2.ship_cost_usd}"
                 f"{'✅' if sv else '❌'}")
         parts.append(
             f"価格/送料: {'✅' if price_ship_ok else '❌ 実値不一致'} "
             f"({' '.join(det)})")
+
+    # W142 +each verify (R7: 送ったのに snap2 に出ない = 不明 = fail。
+    # Ack を success に偽装しない / silent-skip-prevention)。統一ガード
+    # 通過後なので indeterminate base/+each は既に abort 済 = ここは
+    # 確定値を送った後の post-state 照合のみ。
+    _add_expect: Optional[float] = None
+    if add_changed:
+        _add_expect = float(new_add)
+    elif bp_combined and sent_override and sent_ship_add is not None:
+        _add_expect = float(sent_ship_add)
+    if _add_expect is not None:
+        if snap2.ship_additional_usd is None:
+            add_ok = False
+            overall_ok = False
+            parts.append(
+                f"+each: ❌ 実 eBay GetItem に +each が出ず verify 不能 "
+                f"(期待{_add_expect:.2f}、override 無音失敗の疑い→"
+                f"要 eBay 手動確認)")
+        else:
+            add_ok = _money_eq(snap2.ship_additional_usd, _add_expect)
+            overall_ok = overall_ok and add_ok
+            parts.append(
+                f"+each: {'✅' if add_ok else '❌ 実値不一致'} "
+                f"期待{_add_expect:.2f}/実{snap2.ship_additional_usd}")
 
     if sku_changed and sku_pushed:
         sku_ok = (snap2.sku == form_sku)
@@ -1999,14 +2266,40 @@ def _apply_to_ebay(
     bp_ok: Optional[bool] = None
     if bp_changed:
         # 実値 verify (Ack でなく snap2 の shipping_profile_id 一致)。
-        # BP 変更で送料は新 BP default に変化 → snap2.ship_cost_usd を
-        # caller の _sync_db_to_actual が DB へ同期 (HIGH-3、DB:=真実)。
         bp_ok = (snap2.shipping_profile_id == new_bp_id)
         overall_ok = overall_ok and bp_ok
-        parts.append(
-            f"BP: {'✅' if bp_ok else '❌ 実値不一致'} "
-            f"期待'{new_bp_id}'/実'{snap2.shipping_profile_id}' "
-            f"(送料は新 BP default ${snap2.ship_cost_usd} に変化)")
+        if bp_combined and sent_override:
+            # W142/R1/R3: combined で override を送った → 新BP に override
+            # が bind したか (存在 + priority 一致) を実値照合。Ack=Success
+            # でも priority 不一致等で override が黙殺される W136 無音失敗
+            # (= DDP buffer 喪失 = Section 232 数百ドル/件) を post-state
+            # で検出 (Ack を success に偽装しない / silent-skip-prevention)。
+            if not snap2.ship_override_present:
+                overall_ok = False
+                ov_msg = (" / ⚠️ override 不在 = custom 送料が新BPに "
+                          "bind せず無音失敗の疑い (DDP buffer 喪失、"
+                          "要 eBay 手動確認)")
+            elif snap2.ship_override_priority != combined_prio:
+                overall_ok = False
+                ov_msg = (f" / ⚠️ override priority 不一致 (期待"
+                          f"{combined_prio}/実"
+                          f"{snap2.ship_override_priority}) = 無音失敗の疑い")
+            else:
+                ov_msg = (f" / override ✅ priority="
+                          f"{snap2.ship_override_priority}")
+            parts.append(
+                f"BP: {'✅' if bp_ok else '❌ 実値不一致'} "
+                f"期待'{new_bp_id}'/実'{snap2.shipping_profile_id}' "
+                f"(combined: 送料 ${snap2.ship_cost_usd} を新BPに維持)"
+                f"{ov_msg}")
+        else:
+            # BP 単独変更: 送料は新 BP default に変化 → snap2.ship_cost_usd
+            # を caller の _sync_db_to_actual が DB へ同期 (HIGH-3、
+            # DB:=真実)。
+            parts.append(
+                f"BP: {'✅' if bp_ok else '❌ 実値不一致'} "
+                f"期待'{new_bp_id}'/実'{snap2.shipping_profile_id}' "
+                f"(送料は新 BP default ${snap2.ship_cost_usd} に変化)")
 
     return {
         "success": overall_ok,
@@ -2017,6 +2310,7 @@ def _apply_to_ebay(
         "price_ship_ok": price_ship_ok,
         "sku_ok": sku_ok,
         "bp_ok": bp_ok,
+        "add_ok": add_ok,  # W142: +each verify 結果
         # 呼出側が DB を実 eBay 値へ同期するための反映後 snapshot.
         "post_snapshot": snap2,
     }
@@ -2046,6 +2340,15 @@ def _sync_db_to_actual(eid: str, snap) -> None:
     if snap.ship_cost_usd is not None:
         sets.append("shipping_cost=?")
         params.append(float(snap.ship_cost_usd))
+    # W142: +each (ShippingServiceAdditionalCost) を DB 同期。None-skip
+    # 慣習 (shipping_cost と同型): snap に出なかった (None) 時は触らない。
+    # R4 状態リセット防止: GetItem が +each を返さない listing で既知 DB
+    # 値を NULL 上書きして「未取得」に劣化させない (shipping_profile_id の
+    # 明示 NULL 例外とは異なり、+each の NULL は多義なので保守的に skip)。
+    if getattr(snap, "ship_additional_usd", None) is not None:
+        sets.append("shipping_additional_cost=?")
+        params.append(float(snap.ship_additional_usd))
+        sets.append("shipping_additional_fetched_at=datetime('now')")
     if snap.sku is not None:
         sets.append("sku=?")
         params.append(str(snap.sku))

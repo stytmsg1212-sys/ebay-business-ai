@@ -2,8 +2,8 @@
 shipping_profile_fetched_at) 冪等性.
 
 Q2 db-migration-rules:
-  - fresh DB → init_db で 2 列が ebay_listings に存在 + user_version=42
-    (canonical HEAD: W138-A v41 の後に W7/W183 H4 race v42 追加)
+  - fresh DB → init_db で 2 列が ebay_listings に存在 + user_version=43
+    (canonical HEAD: v41 W138-A → v42 W7/W183 H4 race → v43 W142 +each)
   - init_db を 2 回連続実行してもデータ保持・version drift なし (冪等)
   - ADD COLUMN のみ (DROP/DELETE/RENAME 不在) = 既存データ非破壊
 """
@@ -35,7 +35,7 @@ def test_v41_columns_exist_and_version(tmp_db):
         assert "shipping_profile_id" in cols
         assert "shipping_profile_fetched_at" in cols
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 42, f"user_version={ver} (期待 42 = HEAD: W138-A v41 の後 W7/W183 H4 race v42)"
+        assert ver == 43, f"user_version={ver} (期待 43 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each)"
 
 
 def test_v41_idempotent_data_preserved(tmp_db):
@@ -52,7 +52,7 @@ def test_v41_idempotent_data_preserved(tmp_db):
     init_db()  # 2 回目
     with get_conn() as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 42, f"version drift: {ver}"
+        assert ver == 43, f"version drift: {ver}"
         row = c.execute(
             "SELECT shipping_profile_id, shipping_profile_fetched_at "
             "FROM ebay_listings WHERE ebay_item_id='ITEM_W138A'"
@@ -74,7 +74,7 @@ def test_v41_alter_idempotent_no_crash_on_repeat(tmp_path, monkeypatch):
     db_mod.init_db()  # v41 block 再突入 (ALTER 重複) → 落ちないこと
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 42  # v41 の後 v42 まで到達 (canonical HEAD)
+        assert ver == 43  # v41→v42→v43(W142) まで到達 (canonical HEAD)
         cols = {r[1] for r in c.execute(
             "PRAGMA table_info(ebay_listings)").fetchall()}
         assert "shipping_profile_id" in cols

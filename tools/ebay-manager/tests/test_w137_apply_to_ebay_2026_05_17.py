@@ -246,21 +246,42 @@ def test_bp_change_post_mismatch_is_fake_success_killed(tpm):
     assert res["bp_ok"] is False and "実値不一致" in res["message"]
 
 
-def test_bp_and_price_simultaneous_rejected_q3(tpm):
-    """Q-3: BP 変更と価格変更の同一 submit は明示拒否 (revise しない)."""
-    pre = _snap(shipping_profile_id="BP_OLD", start_price_usd=148.0)
-    post = _snap()
+def test_bp_and_price_simultaneous_combined_w142(tpm):
+    """W142: Q-3 撤廃 (spec 反転、Q0 痕跡)。BP 変更 ∧ 価格変更 の同一
+    submit は **拒否されず** combined ReviseFixedPriceItem で 1 回送信
+    される。combined は新BP を SellerProfiles に入れ、preflight で解決
+    した ShippingServicePriority を渡す。BP-only 経路
+    (revise_shipping_profile) は呼ばれない。
+    旧: test_bp_and_price_simultaneous_rejected_q3 (明示拒否)。"""
+    from monitor.ebay_account_policy import (
+        ShippingPolicyInfo, ShippingPolicyList,
+    )
+    pre = _snap(shipping_profile_id="BP_OLD", start_price_usd=148.0,
+                ship_cost_usd=29.0, ship_additional_usd=0.0)
+    post = _snap(shipping_profile_id="BP_NEW", start_price_usd=160.0,
+                 ship_cost_usd=29.0, ship_additional_usd=0.0,
+                 ship_override_present=True, ship_override_priority=1)
+    pol = ShippingPolicyList(ok=True, error=None, policies=[
+        ShippingPolicyInfo(policy_id="BP_NEW", name="BP_NEW",
+                           domestic_service_count=1,
+                           domestic_sort_order=1)])
     s_patch, c_patch = _patch(tpm, pre, post)
     with s_patch, c_patch, \
+         patch.object(tpm, "_cached_shipping_policies",
+                      return_value=pol), \
          patch.object(tpm, "revise_shipping_profile") as m_bp, \
-         patch.object(tpm, "revise_fixed_price_with_shipping") as m_ps:
+         patch.object(tpm, "revise_fixed_price_with_shipping",
+                      return_value={"success": True}) as m_ps:
         res = tpm._apply_to_ebay(
             "ITEM1", {"new_bp_id": "BP_NEW", "new_ebay_price": 160.0},
             {}, current_sku="x")
     m_bp.assert_not_called()
-    m_ps.assert_not_called()
-    assert res["success"] is False
-    assert "同時にできません" in res["message"]
+    assert m_ps.call_count == 1
+    _kw = m_ps.call_args.kwargs
+    assert _kw["seller_profiles"]["shipping_id"] == "BP_NEW"
+    assert _kw["ship_priority"] == 1
+    assert "同時にできません" not in res["message"]
+    assert res["success"] is True
 
 
 def test_bp_unchanged_no_revise(tpm):

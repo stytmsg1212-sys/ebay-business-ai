@@ -47,6 +47,12 @@ class ListingSnapshot:
     ack: str            # "Success" / "Warning" / "Fail" / "Error"
     ok: bool            # API 成立 (HTTP/parse/Ack すべて正常) か
     error: Optional[str]
+    # --- W142 追加 (末尾、default 付き = 既存 positional/kwargs 構築不変) ---
+    # combined-新BP revise の Phase4 verify 用。Ack=Success でも override が
+    # 黙殺される W136 無音失敗 (= DDP buffer 喪失 = Section 232 数百ドル/件)
+    # を post-state で検出する核心 signal。
+    ship_override_present: bool = False        # Domestic override 要素の有無
+    ship_override_priority: Optional[int] = None  # その <ShippingServicePriority>
 
 
 def _f(text: Optional[str]) -> Optional[float]:
@@ -139,6 +145,8 @@ def fetch_listing_snapshot(
             ship_add = _f(
                 so.findtext("n:ShippingServiceAdditionalCost", namespaces=_NS)
             )
+    ov_present = False           # W142: Domestic override 要素が在るか
+    ov_priority: Optional[int] = None  # W142: その ShippingServicePriority
     ovl = item.find("n:ShippingServiceCostOverrideList", namespaces=_NS)
     if ovl is not None:
         for ov in ovl.findall(
@@ -146,6 +154,16 @@ def fetch_listing_snapshot(
         ):
             if (ov.findtext("n:ShippingServiceType", namespaces=_NS)
                     == "Domestic"):
+                # W142: cost が空でも「Domestic override が listing に
+                # bind した」事実自体が verify の核心 (Ack 偽装失敗検出)。
+                ov_present = True
+                _op = ov.findtext(
+                    "n:ShippingServicePriority", namespaces=_NS)
+                if _op is not None:
+                    try:
+                        ov_priority = int(str(_op).strip())
+                    except (ValueError, TypeError):
+                        ov_priority = None
                 _oc = _f(ov.findtext(
                     "n:ShippingServiceCost", namespaces=_NS))
                 if _oc is not None:
@@ -185,6 +203,8 @@ def fetch_listing_snapshot(
         ack=ack,
         ok=True,
         error=None,
+        ship_override_present=ov_present,
+        ship_override_priority=ov_priority,
     )
 
 

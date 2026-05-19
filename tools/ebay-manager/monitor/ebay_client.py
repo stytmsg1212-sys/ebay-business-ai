@@ -899,6 +899,8 @@ def _build_revise_with_shipping_xml(
     ship_cost_usd: Optional[float],
     ship_additional_usd: Optional[float],
     seller_profiles: Optional[dict] = None,
+    ship_priority: int = 1,
+    force_seller_profiles: bool = False,
 ) -> str:
     """ReviseFixedPriceItem で price + shipping (Buyer pays + each identical item) を更新.
 
@@ -943,8 +945,15 @@ def _build_revise_with_shipping_xml(
         )
     # W136: 送料 override がある時、BP 参照 (SellerProfiles) を同梱.
     # shipping_id が無ければ出さない (旧挙動維持 = 既存テスト不変, D1).
+    # W142 HIGH-1 fix: combined-新BP で override 無し (custom 送料を持たない
+    # listing の BP 差替) の場合、ship_cost_usd is None だと SellerProfiles
+    # も出ず **新BPが無音欠落** する。force_seller_profiles=True (combined
+    # 経路専用) で override 有無に関わらず SellerProfiles を出す。default
+    # False = 既存挙動完全不変 (price-only revise は SellerProfiles 非同梱、
+    # W136/W137 既存テスト機械的不変、D1 後方互換)。
     _sp = seller_profiles or {}
-    if ship_cost_usd is not None and _sp.get("shipping_id"):
+    if (ship_cost_usd is not None or force_seller_profiles) \
+            and _sp.get("shipping_id"):
         parts.append('    <SellerProfiles>')
         if _sp.get("payment_id"):
             parts.append('      <SellerPaymentProfile>')
@@ -972,7 +981,16 @@ def _build_revise_with_shipping_xml(
         parts.append('    <ShippingServiceCostOverrideList>')
         parts.append('      <ShippingServiceCostOverride>')
         parts.append('        <ShippingServiceType>Domestic</ShippingServiceType>')
-        parts.append('        <ShippingServicePriority>1</ShippingServicePriority>')
+        # W142: 旧実装は priority=1 ハードコード。combined-新BP で新BP の
+        # domestic service の sortOrder が 1 でないと eBay が Ack=Success を
+        # 返しつつ override を黙殺する (W136 無音失敗 = DDP buffer 喪失 =
+        # Section 232 数百ドル/件)。default=1 = 既存経路の XML 完全不変
+        # (後方互換、W136/W137 既存テスト機械的回帰)。combined-新BP 経路
+        # のみ呼出側が新BP由来の解決済 priority を渡す。
+        parts.append(
+            f'        <ShippingServicePriority>{int(ship_priority)}'
+            '</ShippingServicePriority>'
+        )
         parts.append(
             f'        <ShippingServiceCost currencyID="USD">{float(ship_cost_usd):.2f}</ShippingServiceCost>'
         )
@@ -994,6 +1012,8 @@ def revise_fixed_price_with_shipping(
     ship_additional_usd: Optional[float],
     app_id: str, dev_id: str, cert_id: str, user_token: str,
     seller_profiles: Optional[dict] = None,
+    ship_priority: int = 1,
+    force_seller_profiles: bool = False,
 ) -> dict:
     """ReviseFixedPriceItem で price + shipping を同時更新.
 
@@ -1005,18 +1025,35 @@ def revise_fixed_price_with_shipping(
     None なら SellerProfiles 非同梱 = 旧挙動 (後方互換 D1、ただし送料は
     無音失敗し得る). 呼出側 (_apply_to_ebay) は反映前 GetItem の 3 ID を渡す.
 
+    W142 (2026-05-19): combined-新BP では ship_priority に新BP の domestic
+    service sortOrder を渡す (eBay 公式: ShippingServicePriority は BP の
+    matching service の sortOrder と一致させる)。default=1 = 既存呼出
+    (W136/W137 経路) の XML 完全不変 (後方互換、機械的回帰で担保).
+
     Returns:
         {'success': bool, 'ack': str, 'message': str | None, ...}
     """
-    if (new_price_usd is None or new_price_usd <= 0) and ship_cost_usd is None:
+    # W142 HIGH-A fix: 旧ゲートは price/ship のみ判定し SellerProfiles 単独
+    # 差替 (combined-新BP で override 無 listing = ship_cost None) を
+    # 「変更対象がない」と無音棄却 → HIGH-1 で足した force_seller_profiles
+    # が XML 構築前に殺され BP 変更が黙って消える + 誤誘導 message。
+    # BP 差替意図 (force_seller_profiles ∧ shipping_id) も「変更対象」。
+    # default False = 既存 (W136/W137) 経路は判定式が原型と完全同値
+    # (price/ship のみ) = 後方互換不変。
+    _sp_g = seller_profiles or {}
+    _has_bp_swap = force_seller_profiles and bool(_sp_g.get("shipping_id"))
+    if (new_price_usd is None or new_price_usd <= 0) \
+            and ship_cost_usd is None and not _has_bp_swap:
         return {
             "success": False,
-            "message": "価格・送料 どちらも変更対象がない (両方 None or 0)",
+            "message": "価格・送料・BP どれも変更対象がない",
             "raw": None,
         }
     xml = _build_revise_with_shipping_xml(
         item_id, new_price_usd, ship_cost_usd, ship_additional_usd,
         seller_profiles=seller_profiles,
+        ship_priority=ship_priority,
+        force_seller_profiles=force_seller_profiles,
     )
     result = _call_trading_api(
         "ReviseFixedPriceItem", xml,
