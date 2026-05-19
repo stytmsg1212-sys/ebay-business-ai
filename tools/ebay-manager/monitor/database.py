@@ -2103,6 +2103,69 @@ def init_db():
                     pass
             conn.execute("PRAGMA user_version = 43")
 
+        # v44 (W140 / 2026-05-19): listing 単位メモ + 売却時警告。
+        # listing 識別は ebay_item_id (sku-rules.md 厳守、SKU をキーにしない)。
+        #   listing_notes        : 1 listing = 1 自由メモ (発送/通関の注意点)。
+        #                          eBay へは送らず MonoDeck DB のみ保持。relist
+        #                          で ebay_item_id が変わると別レコード = 旧メモ
+        #                          は残存 (データ消失なし)。自動再出品の
+        #                          inherit_listing_on_relist が旧→新へ引き継ぐ。
+        #   listing_sale_warnings: メモ付き listing が売れた時の警告。
+        #                          UNIQUE(order_id, ebay_item_id) で
+        #                          claim-then-act (二重 polling/Discord 防止、
+        #                          既存 inventory_decrement_log と同型)。
+        #                          status: open|acked|dismissed (再通知なし、
+        #                          MonoDeck バナーは open のみ)。note_snapshot
+        #                          = 売却時点のメモ (後の編集で証跡を失わない)。
+        # Q2: CREATE IF NOT EXISTS のみ・DROP/DELETE なし = init_db 2 回でも保持。
+        if schema_ver < 44:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS listing_notes (
+                        ebay_item_id TEXT PRIMARY KEY,
+                        note_text    TEXT,
+                        updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS listing_sale_warnings (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        order_id      TEXT NOT NULL,
+                        ebay_item_id  TEXT NOT NULL,
+                        note_snapshot TEXT,
+                        status        TEXT NOT NULL DEFAULT 'open',
+                        discord_sent  INTEGER NOT NULL DEFAULT 0,
+                        detected_at   TIMESTAMP NOT NULL,
+                        acked_at      TIMESTAMP,
+                        UNIQUE(order_id, ebay_item_id)
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_lsw_open "
+                    "ON listing_sale_warnings(status, detected_at DESC)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            # Codex 2段 HIGH-2 (Q2 自己修復): CREATE が万一 OperationalError
+            # (disk full / lock 等) で握り潰された場合に version だけ進むと、
+            # 次回以降 `if schema_ver < 44` を skip し W140 (Q0 安全網) が
+            # 永久欠落する。両テーブル実在を確認できた時のみ版数を進め、
+            # 失敗時は schema_ver < 44 のまま = 次回 init_db で自動再試行。
+            # (既存 v40-v43 の無条件 bump は K2 で本 PR では触らない。
+            #  新規 W140 ブロックのみ堅牢化 = db-migration-rules Q2 趣旨)
+            _w140_ok = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('listing_notes','listing_sale_warnings')"
+            ).fetchone()[0]
+            if _w140_ok == 2:
+                conn.execute("PRAGMA user_version = 44")
+
 
 # ---- サイト設定 ----
 
@@ -3390,6 +3453,103 @@ def record_relist(old_item_id: str, new_item_id: Optional[str],
              1 if success else 0, error_message),
         )
         return cur.lastrowid
+
+
+# ---- W140: listing 単位メモ + 売却時警告 ----
+# listing 識別は ebay_item_id 固定 (sku-rules.md: SKU をキーにしない)。
+
+def get_listing_note(ebay_item_id: str) -> Optional[str]:
+    """listing の自由メモを返す (無ければ None)。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT note_text FROM listing_notes WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+    return row["note_text"] if row else None
+
+
+def upsert_listing_note(ebay_item_id: str, note_text: str) -> None:
+    """listing メモを保存。空文字 = メモ削除扱い (売却検知は TRIM!='' で判定)。
+    ebay_item_id キー (sku-rules: SKU をキーにしない)。"""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO listing_notes (ebay_item_id, note_text, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(ebay_item_id) DO UPDATE SET "
+            "note_text=excluded.note_text, updated_at=datetime('now')",
+            (ebay_item_id, note_text),
+        )
+
+
+def record_sale_warning(
+    order_id: str, ebay_item_id: str, note_snapshot: Optional[str],
+) -> bool:
+    """メモ付き listing 売却の警告を claim-then-act で 1 行確保。
+
+    UNIQUE(order_id, ebay_item_id) + INSERT OR IGNORE + rowcount で、
+    同一注文の二重 polling でも 1 回だけ True を返す (Discord 二重通知防止、
+    既存 inventory_decrement_log と同型)。detected_at は datetime('now')
+    = UTC 保存 (sqlite-timezone.md、他 timestamp と整合)。
+
+    Returns: この呼出が最初に claim したら True、既存 (重複) なら False。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO listing_sale_warnings "
+            "(order_id, ebay_item_id, note_snapshot, status, detected_at) "
+            "VALUES (?, ?, ?, 'open', datetime('now'))",
+            (order_id, ebay_item_id, note_snapshot),
+        )
+        return cur.rowcount == 1
+
+
+def set_sale_warning_discord_sent(
+    order_id: str, ebay_item_id: str, sent: bool,
+) -> None:
+    """売却警告の Discord 送信可否を記録 (claim 成立後に呼ぶ痕跡列)。"""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE listing_sale_warnings SET discord_sent=? "
+            "WHERE order_id=? AND ebay_item_id=?",
+            (1 if sent else 0, order_id, ebay_item_id),
+        )
+
+
+def get_open_sale_warnings() -> list[dict]:
+    """未対応 (status='open') の売却警告。title は ebay_item_id で LEFT JOIN
+    (sku-rules: JOIN は ebay_item_id)。新しい順。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT w.id, w.order_id, w.ebay_item_id, w.note_snapshot, "
+            "w.detected_at, l.title "
+            "FROM listing_sale_warnings w "
+            "LEFT JOIN ebay_listings l ON l.ebay_item_id = w.ebay_item_id "
+            "WHERE w.status='open' "
+            "ORDER BY w.detected_at DESC, w.id DESC",
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def ack_sale_warning(warning_id: int) -> bool:
+    """売却警告を「了解」状態へ。open のみ遷移 = 冪等。Returns: 遷移したら True。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listing_sale_warnings SET status='acked', "
+            "acked_at=datetime('now') WHERE id=? AND status='open'",
+            (warning_id,),
+        )
+        return cur.rowcount == 1
+
+
+def dismiss_sale_warning(warning_id: int) -> bool:
+    """売却警告を「不要 (誤検知/対応不要)」へ。open のみ遷移 = 冪等。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listing_sale_warnings SET status='dismissed', "
+            "acked_at=datetime('now') WHERE id=? AND status='open'",
+            (warning_id,),
+        )
+        return cur.rowcount == 1
 
 
 def mark_ebay_listing_ended(ebay_item_id: str, reason: str = "not_in_active_list") -> bool:

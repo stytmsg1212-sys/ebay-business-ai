@@ -134,9 +134,13 @@ def inherit_listing_on_relist(
       - monitored_items: ebay_item_id 追従 (SKU 経由禁止、有在庫 SKU 共有時に他 listing 破壊)
       - competitor_products: is_active=1 のみ our_item_id 追従
         (relist 時に競合登録が孤立すると W183 値下げ pipeline が機能停止 = 金銭損失リスク)
+      - listing_notes: W140 メモ (発送/通関の注意点) を旧→新へ引き継ぐ
+        (End→Sell similar で ItemID が変わってもメモが残る。user 確定
+        2026-05-19 = 引き継ぎ。新側に既存メモがあれば尊重 = 上記
+        INSERT OR IGNORE と同方針)
 
     Returns: {"inherited_columns": int, "competitor_rows": int, "supplier_rows": int,
-              "monitored_rows": int}
+              "monitored_rows": int, "note_rows": int}
 
     出典: 2026-05-11 W119 ふりかえりで silent skip 発見 (lp_min_price 消失 / 競合孤立).
     """
@@ -144,6 +148,7 @@ def inherit_listing_on_relist(
     competitor_rows = 0
     supplier_rows = 0
     monitored_rows = 0
+    note_rows = 0
     with get_conn() as conn:
         # OLD 行から永続データ取得 (継承列をフラットに SELECT)
         old_row = conn.execute(
@@ -243,6 +248,21 @@ def inherit_listing_on_relist(
         )
         competitor_rows = cur_cp.rowcount
 
+        # - listing_notes: W140 メモを旧→新 ebay_item_id へ引き継ぐ.
+        #   End→Sell similar で ItemID が変わってもメモ (発送/通関の注意点)
+        #   が残るように (user 確定 2026-05-19 = 引き継ぎ). 空メモ
+        #   (TRIM='') はコピーしない. 新側に既存メモがあれば DO NOTHING
+        #   (= 上記 ebay_listings INSERT OR IGNORE と同じ「既存は尊重」方針).
+        cur_ln = conn.execute(
+            """INSERT INTO listing_notes (ebay_item_id, note_text, updated_at)
+               SELECT ?, note_text, datetime('now') FROM listing_notes
+               WHERE ebay_item_id=? AND note_text IS NOT NULL
+                 AND TRIM(note_text) != ''
+               ON CONFLICT(ebay_item_id) DO NOTHING""",
+            (new_item_id, old_item_id),
+        )
+        note_rows = cur_ln.rowcount
+
         # 履歴記録. success は呼出側責任で渡されること (default True、precondition 参照).
         conn.execute(
             """INSERT INTO relist_history
@@ -256,6 +276,7 @@ def inherit_listing_on_relist(
         "competitor_rows": competitor_rows,
         "supplier_rows": supplier_rows,
         "monitored_rows": monitored_rows,
+        "note_rows": note_rows,
     }
 
 

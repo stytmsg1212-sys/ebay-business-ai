@@ -27,9 +27,14 @@ import streamlit as st
 from ui_cache import bump_db_version, get_db_version, seed_keyed_list_from_db
 
 from monitor.database import (
+    ack_sale_warning,
+    dismiss_sale_warning,
     get_conn,
     get_japan_competitor_alerts,
+    get_listing_note,
+    get_open_sale_warnings,
     update_alert_action,
+    upsert_listing_note,
 )
 from calculator import (
     load_settings as _load_calc_settings,
@@ -156,7 +161,14 @@ def _fetch_all_products() -> list[dict]:
                 el.last_synced_at,
                 (SELECT COUNT(*) FROM competitor_products cp
                  WHERE cp.our_item_id = el.ebay_item_id AND cp.is_active = 1
-                ) AS competitor_count
+                ) AS competitor_count,
+                -- W140: メモ有無 (📎 表示用)。listing 識別は ebay_item_id
+                -- (sku-rules: SKU をキーにしない)。空文字 = メモ無し。
+                (SELECT 1 FROM listing_notes ln
+                 WHERE ln.ebay_item_id = el.ebay_item_id
+                   AND ln.note_text IS NOT NULL
+                   AND TRIM(ln.note_text) != ''
+                ) AS has_note
             FROM ebay_listings el
             WHERE (el.is_ended IS NULL OR el.is_ended = 0)
               AND el.title IS NOT NULL AND el.title != ''
@@ -1096,6 +1108,28 @@ def _render_left_basic_and_physical(
             help="W183 自動値下げの絶対下限. 未入力なら breakeven が下限.",
         )
 
+    # ── 📎 listing メモ (W140) ──
+    # eBay へは送信せず MonoDeck DB のみ保持。この listing が売れたら発送前に
+    # MonoDeck バナー + Discord で警告 (発送/通関の注意点の見落とし防止)。
+    # メモは ebay_item_id 紐付 (sku-rules: SKU をキーにしない)。自動再出品
+    # (End→Sell similar) では inherit_listing_on_relist が旧→新へ引き継ぐ。
+    st.markdown(
+        '<div class="pm-section-label">📎 listing メモ '
+        '(発送/通関の注意点・売れたら警告)</div>',
+        unsafe_allow_html=True,
+    )
+    editing["note_text"] = st.text_area(
+        "listing メモ",
+        value=get_listing_note(eid) or "",
+        key=f"pm_note_{eid}",
+        max_chars=2000,
+        height=80,
+        help="例: 電池を抜いて発送 / 通関書類に型番XXX明記。eBay には送信"
+             "されません。保存後この listing が売れると MonoDeck と Discord "
+             "に通知。空にして保存でメモ削除。",
+        label_visibility="collapsed",
+    )
+
     return editing
 
 
@@ -1790,6 +1824,16 @@ def _save_product_data(
         except (sqlite3.OperationalError, TypeError, ValueError, KeyError) as e:
             logger.warning(f"[pm_save] breakeven recalc error: {e}")
 
+    # W140: listing メモを change-guard 保存 (実変更時のみ書込 = W139-fix 流儀。
+    # 未変更で upsert すると updated_at だけ動く無害書込だが、無駄を避け
+    # 変更時のみ)。eBay 非送信・MonoDeck DB のみ・ebay_item_id 紐付。
+    _note = editing.get("note_text")
+    if _note is not None:
+        _new_note = _note.strip()
+        _cur_note = (get_listing_note(ebay_item_id) or "").strip()
+        if _new_note != _cur_note:
+            upsert_listing_note(ebay_item_id, _new_note)
+
     # W134 Step2: 全書込完了後に read-cache 無効化 (商品管理一覧へ即時反映)
     bump_db_version()
 
@@ -1815,7 +1859,10 @@ def _build_expander_header(p: dict) -> str:
         # 「\$」escape で KaTeX 数式化を回避.
         profit_str = f" | 粗利 {sign}\\${profit:.0f}"
 
-    return f"{src} {title} | \\${total:.2f}{profit_str}"
+    # W140: メモ付き listing は 📎 (発送/通関の注意点あり = 売れたら警告対象)。
+    note_mk = "📎" if p.get("has_note") else ""
+
+    return f"{src}{note_mk} {title} | \\${total:.2f}{profit_str}"
 
 
 # =============================================================================
@@ -2566,6 +2613,47 @@ def _sync_db_to_actual(eid: str, snap) -> None:
 # Public API
 # =============================================================================
 
+def _render_sale_warning_banner() -> None:
+    """W140: メモ付き listing が売れた未対応 (status='open') 警告を商品管理
+    タブ最上部にバナー表示。[了解]=acked / [不要]=dismissed (誤検知)。
+
+    Discord は初回 1 回のみ (再送なし)。本バナーが open の限り出続けるのが
+    発送見落とし防止の主経路 (= Discord 送信失敗でも user は MonoDeck で
+    気付ける)。detected_at は UTC 保存 → _fetched_jst_label で JST 表示
+    (sqlite-timezone.md)。
+    """
+    warns = get_open_sale_warnings()
+    if not warns:
+        return
+    st.warning(
+        f"📎 メモ付き listing が {len(warns)} 件 売れました — "
+        f"発送前にメモを必ず確認してください"
+    )
+    for w in warns:
+        title = (w.get("title") or "").strip()
+        eid = str(w.get("ebay_item_id") or "")
+        label = f"{title[:60]} ({eid[-4:]})" if title else eid
+        detected = _fetched_jst_label(w.get("detected_at"))
+        st.markdown(
+            f"- **{label}** | Order #{w.get('order_id')} | 売却 {detected}  \n"
+            f"  📝 {w.get('note_snapshot') or '(メモ空)'}"
+        )
+        c1, c2, _sp = st.columns([1, 1, 8])
+        with c1:
+            if st.button("了解", key=f"pm_wack_{w['id']}",
+                         help="確認済。バナーから消す (履歴は残る)"):
+                ack_sale_warning(w["id"])
+                bump_db_version()
+                st.rerun()
+        with c2:
+            if st.button("不要", key=f"pm_wdis_{w['id']}",
+                         help="誤検知/対応不要として消す"):
+                dismiss_sale_warning(w["id"])
+                bump_db_version()
+                st.rerun()
+    st.markdown("---")
+
+
 def render_product_management(config: dict) -> None:
     """商品管理 main tab エントリーポイント."""
     # ========================================================================
@@ -2803,6 +2891,9 @@ def render_product_management(config: dict) -> None:
         "基本情報 / 物理属性 / 仕入先候補 / 在庫監視 / 利益計算 / ライバル を 2 列 layout で表示. "
         "編集 + 保存で DB 反映 + breakeven 自動再計算."
     )
+
+    # W140: メモ付き listing 売却の未対応警告を最上部に表示 (発送見落とし防止)
+    _render_sale_warning_banner()
 
     products = _cd_fetch_all_products(get_db_version())
     if not products:

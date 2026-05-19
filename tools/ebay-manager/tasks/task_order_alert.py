@@ -395,6 +395,67 @@ def _decrement_inventory_for_stock_sku(order: dict) -> Optional[dict]:
     }
 
 
+def _process_memo_sale_warning(order: dict, webhook: str) -> bool:
+    """W140 (2026-05-19): メモ付き listing が売れたら発送前警告を確保 + 通知.
+
+    listing 識別は ebay_item_id (sku-rules: SKU 不使用)。claim-then-act
+    (record_sale_warning = UNIQUE(order_id, ebay_item_id) + rowcount) で、
+    同一注文の二重 polling でも警告 1 行・Discord 1 通に限定 (二重通知防止、
+    既存 inventory_decrement_log と同型)。MonoDeck バナーは
+    listing_sale_warnings.status='open' を表示し続ける = Discord 送信失敗
+    でも user は MonoDeck で気付ける (発送見落とし防止の主経路)。
+
+    Returns: 新規 claim して通知対象化したら True、対象外/重複なら False。
+    """
+    from monitor.database import (
+        get_listing_note,
+        record_sale_warning,
+        set_sale_warning_discord_sent,
+    )
+    ebay_item_id = order.get("ebay_item_id") or ""
+    order_id = order.get("order_id") or ""
+    if not ebay_item_id or not order_id:
+        # Codex 2段 HIGH-1 (Q0): SKU fallback 禁止のため ItemID 欠落注文は
+        # メモ有無を評価できない。silent return せず痕跡を残す
+        # (_process_ddpb_dispatch の ItemID 欠落 Q0 パターンと同様)。
+        logger.warning(
+            f"memo_sale_warning: order_id={order_id or '?'} に ebay_item_id "
+            f"無し → メモ警告を評価不能 (SKU fallback 禁止)。手動確認推奨"
+        )
+        return False
+    note = (get_listing_note(ebay_item_id) or "").strip()
+    if not note:
+        return False  # メモ無し listing は対象外 (正当な非該当、silent skip 不該当)
+    # claim-then-act: 最初の polling のみ True (= Discord も 1 回のみ)
+    if not record_sale_warning(order_id, ebay_item_id, note):
+        return False  # 既処理 (二重 polling) → 何もしない
+    title = ""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT title FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+        if row:
+            title = row["title"] or ""
+    label = (f"{title[:50]} ({str(ebay_item_id)[-4:]})"
+             if title else str(ebay_item_id))
+    embed = {
+        "title": "📎 メモ付き listing が売れました (発送前にメモ確認)",
+        "description": (
+            f"**{label}**\nOrder #{order_id}\n\n"
+            f"**メモ:**\n{note[:1500]}"
+        ),
+        "color": 0xE8A33D,
+        "timestamp": datetime.now().isoformat(),
+    }
+    sent = _send_discord(webhook, embed)
+    set_sale_warning_discord_sent(order_id, ebay_item_id, sent)
+    logger.info(
+        f"memo_sale_warning: order={order_id} eid={ebay_item_id} sent={sent}"
+    )
+    return True
+
+
 def run_order_alert_check(config: Optional[dict] = None,
                           num_days: int = 1) -> dict:
     """30 分 cron で呼ばれる本体.
@@ -423,6 +484,7 @@ def run_order_alert_check(config: Optional[dict] = None,
     high_value_alerts = 0
     ddpb_alerts = 0
     inventory_decrements = 0
+    memo_warnings = 0  # W140: メモ付き listing 売却の発送前警告 (新規 claim 数)
     order_processing_errors = 0  # H3 (Wave A): order 単位失敗を transparency 確保
     inventory_zero_listings: list[dict] = []  # 在庫 0 になった listing (DASHBOARD で表示)
 
@@ -453,6 +515,10 @@ def run_order_alert_check(config: Optional[dict] = None,
                     or not dec["sync_success"]
                 ):
                     inventory_zero_listings.append(dec)
+            # W140 (2026-05-19): メモ付き listing が売れたら発送前警告
+            # (claim-then-act + Discord 1 回。失敗でも MonoDeck バナーで残る)。
+            if _process_memo_sale_warning(order, webhook):
+                memo_warnings += 1
         except (sqlite3.Error, KeyError, TypeError) as e:
             order_processing_errors += 1
             logger.warning(f"order {order.get('order_id')} 処理失敗: {e}")
@@ -491,6 +557,7 @@ def run_order_alert_check(config: Optional[dict] = None,
     logger.info(
         f"order_alert_check: orders={len(orders)} hv_eu={high_value_alerts} "
         f"ddpb={ddpb_alerts} inv_dec={inventory_decrements} "
+        f"memo_warn={memo_warnings} "
         f"inv_zero={len(inventory_zero_listings)} errors={order_processing_errors} "
         f"duration={duration:.1f}s"
     )
@@ -500,12 +567,14 @@ def run_order_alert_check(config: Optional[dict] = None,
         "high_value_eu_alerts": high_value_alerts,
         "ddpb_alerts": ddpb_alerts,
         "inventory_decrements": inventory_decrements,
+        "memo_warnings": memo_warnings,
         "inventory_zero_listings": inventory_zero_listings,
         "order_processing_errors": order_processing_errors,
         "duration_sec": duration,
         "message": (
             f"orders={len(orders)} hv_eu={high_value_alerts} ddpb={ddpb_alerts} "
-            f"inv_dec={inventory_decrements} errors={order_processing_errors}"
+            f"inv_dec={inventory_decrements} memo_warn={memo_warnings} "
+            f"errors={order_processing_errors}"
         ),
     }
 
