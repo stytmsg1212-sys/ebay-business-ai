@@ -51,6 +51,12 @@
       "priority": 1,
       "note": "最初に実行。他タスクが最新ランクデータを参照するため"
     },
+    "ensure_monitor_coverage": {
+      "enabled": true,
+      "description": "W139 監視台帳カバレッジ自動補完: ebay_sync後・inventory_check前に、active無在庫出品でmonitored_items未登録のものを自動登録 (本番事故358487417178の恒久対策、Codex収束)",
+      "priority": 2,
+      "note": "毎main batch。冪等。source_url生成不能(prefix未登録)はDLQで健全性チェックがDiscord可視化。policy B=自動停止しない(検知のみ、停止はinventory_check既存経路の人手対応)"
+    },
     "inventory_check": {
       "enabled": true,
       "description": "348件の仕入先在庫チェック（Selenium）",

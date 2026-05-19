@@ -2147,16 +2147,26 @@ def upsert_item(sku: str, ebay_item_id: str = "", title: str = "") -> int:
     """ebay_item_id 優先 / source_url fallback で識別、既存行は UPDATE / 新規は INSERT.
 
     SKU rule (.claude/rules/sku-rules.md) 準拠: SKU 経由 lookup は禁止.
-    source_url は build_source_url(sku) で sku から派生計算 = 許容用途.
+    source_url は sku から派生計算 = 許容用途.
     同 source_url 多 listing は 1 行に集約 (在庫切れ監視は URL 単位で十分).
+
+    W139-fix HIGH-3 (Codex 2026-05-19): source_url は
+    `_build_source_url_from_sku(sku) or build_source_url(sku)` で生成する。
+    build_source_url (site_configs) は mercari で .../item/123 を返すが、
+    本番 ebay_listings.source_url と実際の scrape 対象は
+    _build_source_url_from_sku 形 (.../item/m123)。build_source_url 単独だと
+    coverage 登録時に誤 URL の monitored 行を作り inventory_check が別 URL を
+    scrape → 仕入先 OOS 見逃し → 履行不能。yahoo 等は両者一致 / 未知 prefix は
+    後者が None で従来通り build_source_url に fallback (挙動不変)。
     """
     cfg = find_site_config_by_sku(sku)
-    source_url = build_source_url(sku)
+    source_url = _build_source_url_from_sku(sku) or build_source_url(sku)
     site_config_id = cfg["id"] if cfg else None
 
     with get_conn() as conn:
         # ebay_item_id 優先 → source_url fallback で identify (W72: SKU rule 準拠).
-        # source_url は build_source_url(sku) で sku から派生計算 (許容用途).
+        # source_url は _build_source_url_from_sku→build_source_url で sku から
+        # 派生計算 (許容用途、W139-fix HIGH-3 = ebay_listings と同形)。
         existing = None
         if ebay_item_id:
             existing = conn.execute(
@@ -2296,6 +2306,9 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                     (sku, title, current_price, quantity_ebay, shipping_cost, now,
                      new_source_url, ebay_item_id),
                 )
+                # W139-fix (2026-05-18): eBay 側 SKU 変更検知時も monitored_items
+                # を追従 (同一 conn 原子的)。汚染源 2 経路目 (user 承認済)。
+                _sync_monitored_items_sku(conn, ebay_item_id, sku)
             else:
                 conn.execute(
                     """UPDATE ebay_listings SET title=?, current_price=?, quantity_ebay=?,
@@ -3234,6 +3247,64 @@ def get_supplier_candidate_by_id(candidate_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def _sync_monitored_items_sku(conn, ebay_item_id: str, new_sku: str) -> None:
+    """W139-fix (2026-05-18): listing の SKU 変更時、その ebay_item_id に
+    紐づく monitored_items 行を追従させる (sku/source_url/site_config_id)。
+
+    sku-rules.md 準拠: 識別キーは ebay_item_id (WHERE sku=? は使わない)。
+    呼び出し元の open conn を共有し ebay_listings 更新と同一トランザクション
+    で原子的に更新する (片方だけ反映の窓を作らない)。
+
+    source_url は **更新直後の ebay_listings.source_url を同一 conn で読み
+    mirror** する (生成器非依存)。理由 (W139-fix HIGH-1, 2026-05-18 実証):
+    build_source_url (site_configs) と _build_source_url_from_sku
+    (sku_mapping) は mercari 等で出力が食い違う (前者 .../item/123、後者
+    .../item/m123) 2 生成器並存負債があり、本番 ebay_listings.source_url は
+    後者形。ヘルパが前者で書くと monitored が listing と不一致になり
+    inventory_check が誤 URL を scrape → 仕入先 OOS 検知不能 → 履行不能
+    (= W139 原事故再現)。listing 値を mirror すれば必ず一致する。
+    listing 側が NULL の時のみ ebay_listings と同じ生成器
+    (_build_source_url_from_sku) で fallback。site_config_id は prefix 派生
+    (find_site_config_by_sku、生成器非依存) で算出。
+    生成器 2 系統の統一は本修正 scope 外 = 別 W ROADMAP (K2)。
+
+    対象 0 件 = no-op。まだ監視台帳未登録なだけで、次 main batch の
+    ensure_monitor_coverage が新 sku/source_url で正しく登録する自己修復
+    (Q0 silent skip ではない: 次タスクで必ず拾われ DB log/Discord に出る)。
+    ここで例外を投げると ReviseItem 成功後の正常フローを壊す (K1)。
+
+    根本原因: 旧実装は ebay_listings.sku だけ更新し monitored_items を
+    放置 → find_coverage_gaps の旧 m.sku=l.sku 結合が外れ phantom gap 化。
+    汚染源は 2 経路 (update_ebay_listing_sku = MonoDeck 手動編集 /
+    upsert_ebay_listing sku_changed = ebay_sync が eBay 側変更検知)。
+    本ヘルパを両経路から呼び汚染源を断つ。
+    """
+    if not ebay_item_id or not new_sku:
+        return
+    # 更新直後の ebay_listings.source_url を mirror (生成器非依存で必ず
+    # listing と一致 = HIGH-1 根治)。listing 側 NULL 時のみ ebay_listings
+    # と同じ生成器 (_build_source_url_from_sku) で fallback。
+    lr = conn.execute(
+        "SELECT source_url FROM ebay_listings WHERE ebay_item_id=?",
+        (ebay_item_id,),
+    ).fetchone()
+    listing_url = lr[0] if lr else None
+    new_source_url = (listing_url
+                      or _build_source_url_from_sku(new_sku)
+                      or build_source_url(new_sku))
+    cfg = find_site_config_by_sku(new_sku)
+    site_config_id = cfg["id"] if cfg else None
+    conn.execute(
+        """UPDATE monitored_items
+              SET sku=?,
+                  source_url=COALESCE(?, source_url),
+                  site_config_id=?
+            WHERE ebay_item_id=? AND ebay_item_id IS NOT NULL
+              AND ebay_item_id <> ''""",
+        (new_sku, new_source_url, site_config_id, ebay_item_id),
+    )
+
+
 def update_ebay_listing_sku(ebay_item_id: str, new_sku: str):
     """ReviseItem 成功後、ローカルDBの ebay_listings.sku を新SKUに追従させる。
     source_url も SKU から再構築して同時更新。
@@ -3259,6 +3330,9 @@ def update_ebay_listing_sku(ebay_item_id: str, new_sku: str):
                WHERE ebay_item_id=?""",
             (new_sku, new_source_url, now, ebay_item_id),
         )
+        # W139-fix (2026-05-18): 同一 conn で monitored_items も ebay_item_id
+        # キーで追従 (原子的)。これがないと find_coverage_gaps が phantom gap 化。
+        _sync_monitored_items_sku(conn, ebay_item_id, new_sku)
 
 
 def update_ebay_listing_timing(ebay_item_id: str, time_left_seconds: Optional[int],

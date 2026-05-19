@@ -1455,14 +1455,35 @@ def _save_product_data(
     config: dict,
 ) -> None:
     """編集内容を DB に保存. breakeven 自動再計算 (optional)."""
+    # SKU 編集 (空文字は許可しない、変更時のみ)。
+    # W139-fix HIGH-1 (Codex 2026-05-19): 直接 `UPDATE ebay_listings SET sku=?`
+    # は source_url 再構築 + monitored_items 追従 (_sync_monitored_items_sku)
+    # を bypass する。商品管理から SKU を編集すると監視台帳が旧 sku/source_url
+    # に取り残され、新 find_coverage_gaps が ebay_item_id 一致で「監視あり」と
+    # 誤判定 → silent gap (仕入先OOS見逃し→履行不能)。update_ebay_listing_sku
+    # に統一 (自前 conn で commit。後続 with ブロックと逐次実行 = WAL 単一
+    # writer のロック競合を回避)。
+    # W139-fix HIGH (Codex round-2 2026-05-19): editing["sku"] は SKU 入力欄の
+    # 値で **未変更でも常に現在 sku が渡る** (L686 value=current_sku)。無条件で
+    # update_ebay_listing_sku を呼ぶと weight/寸法だけの保存でも
+    # source_status='unknown'/source_out_of_stock_since=NULL/risk_confirmed=0 が
+    # リセットされ、既知の仕入先 OOS リスクが supplier_sweep/UI から消失 →
+    # 履行不能。**実際に SKU が変わった時のみ** update_ebay_listing_sku を
+    # 呼ぶ (現行 ebay_listings.sku と比較)。未変更なら no-op = 原 raw UPDATE
+    # (同値書込で無害) と同じ作用 + OOS リスク state を保全。
+    new_sku = editing.get("sku")
+    if new_sku and new_sku.strip():
+        new_sku = new_sku.strip()
+        with get_conn() as conn:
+            _cur = conn.execute(
+                "SELECT sku FROM ebay_listings WHERE ebay_item_id=?",
+                (ebay_item_id,),
+            ).fetchone()
+        _cur_sku = (_cur[0] if _cur else None) or ""
+        if new_sku != _cur_sku:
+            from monitor.database import update_ebay_listing_sku
+            update_ebay_listing_sku(ebay_item_id, new_sku)
     with get_conn() as conn:
-        # SKU 編集 (空文字は許可しない、変更時のみ)
-        new_sku = editing.get("sku")
-        if new_sku and new_sku.strip():
-            conn.execute(
-                "UPDATE ebay_listings SET sku=? WHERE ebay_item_id=?",
-                (new_sku.strip(), ebay_item_id),
-            )
         # inventory_count (None 渡しでも触らない、明示的に値があれば UPDATE)
         inv = editing.get("inventory_count")
         if inv is not None:

@@ -100,14 +100,21 @@ def _compute_stats(listings: list[dict]) -> dict:
         return {"n": 0}
     return {
         "n": n,
-        "pyen_done": sum(1 for it in listings if it.get("purchase_yen")),
-        "weight_done": sum(1 for it in listings if it.get("weight_g")),
+        # 0 は設定済み (2026-05-19 user 指示、_render_status_chips と整合)
+        "pyen_done": sum(
+            1 for it in listings if it.get("purchase_yen") is not None),
+        "weight_done": sum(
+            1 for it in listings if it.get("weight_g") is not None),
         "dim_done": sum(
             1 for it in listings
-            if it.get("length_cm") and it.get("width_cm") and it.get("height_cm")
+            if it.get("length_cm") is not None
+            and it.get("width_cm") is not None
+            and it.get("height_cm") is not None
         ),
-        "breakeven_done": sum(1 for it in listings if it.get("lp_breakeven_usd")),
-        "min_price_done": sum(1 for it in listings if it.get("lp_min_price")),
+        "breakeven_done": sum(
+            1 for it in listings if it.get("lp_breakeven_usd") is not None),
+        "min_price_done": sum(
+            1 for it in listings if it.get("lp_min_price") is not None),
     }
 
 
@@ -160,19 +167,22 @@ def _apply_filter(listings: list[dict]) -> list[dict]:
     with miss_cols[4]:
         miss_min = st.checkbox("下限価格 未 FIX のみ", key="w119_fix_miss_min")
 
+    # 0 は設定済み扱い = 未FIX フィルタに残さない (2026-05-19 user 指示、
+    # _render_status_chips / _compute_stats と整合)。
     if miss_pyen:
-        listings = [it for it in listings if not it.get("purchase_yen")]
+        listings = [it for it in listings if it.get("purchase_yen") is None]
     if miss_weight:
-        listings = [it for it in listings if not it.get("weight_g")]
+        listings = [it for it in listings if it.get("weight_g") is None]
     if miss_dim:
         listings = [
             it for it in listings
-            if not (it.get("length_cm") and it.get("width_cm") and it.get("height_cm"))
+            if (it.get("length_cm") is None or it.get("width_cm") is None
+                or it.get("height_cm") is None)
         ]
     if miss_be:
-        listings = [it for it in listings if not it.get("lp_breakeven_usd")]
+        listings = [it for it in listings if it.get("lp_breakeven_usd") is None]
     if miss_min:
-        listings = [it for it in listings if not it.get("lp_min_price")]
+        listings = [it for it in listings if it.get("lp_min_price") is None]
 
     # 並び順
     sort_key = st.selectbox(
@@ -216,13 +226,17 @@ def _apply_filter(listings: list[dict]) -> list[dict]:
 def _render_status_chips(it: dict) -> str:
     """listing の FIX 状況を chip 文字列で返す (expander タイトル用)."""
     chips: list[str] = []
-    if not it.get("purchase_yen"):
+    # 0 と空白(None)を区別 (2026-05-19 user 指示): US_only 送料等を **あえて
+    # 0** に設定する運用があるため、0 は「設定済み」。未設定 (DB NULL→None)
+    # のみ未FIX扱いとする (falsy `not x` は 0 も未設定扱いになり誤判定)。
+    if it.get("purchase_yen") is None:
         chips.append("⚠️ 仕入¥")
-    if not it.get("weight_g"):
+    if it.get("weight_g") is None:
         chips.append("⚠️ 重量")
-    if not (it.get("length_cm") and it.get("width_cm") and it.get("height_cm")):
+    if (it.get("length_cm") is None or it.get("width_cm") is None
+            or it.get("height_cm") is None):
         chips.append("⚠️ 寸法")
-    if not it.get("lp_breakeven_usd"):
+    if it.get("lp_breakeven_usd") is None:
         chips.append("⚠️ breakeven")
     return " ".join(chips) if chips else "✅ 全 FIX 済"
 

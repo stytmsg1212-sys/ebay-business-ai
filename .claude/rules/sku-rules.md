@@ -85,6 +85,7 @@ assistant が将来このルールに違反したら:
 |---|---|---|
 | 2026-04-29 | W7-A SKU 主キー崩壊 (設計時に SKU を listing 主キー扱い) | Phase 3 / migration v26 で `ebay_item_id` 単位化 |
 | 2026-04-30 | SKU 一意性誤推論 (CLAUDE.md `(一意キー)` 記述を無批判参照) | CLAUDE.md / rules / memory 5 か所鏡像更新 + 本 rule 制定 |
+| 2026-05-19 | W139-fix: `find_coverage_gaps` が監視カバレッジを `NOT EXISTS m.sku=l.sku` (JOIN ON sku) で判定 → user の SKU 編集で monitored が旧 sku に取り残され phantom gap 誤検知 (非dedupe Discord 爆発 + 履行不能リスク)。upsert_item は ebay_item_id 識別なのに検知側だけ SKU 結合の内部矛盾 | `m.ebay_item_id=l.ebay_item_id AND COALESCE(is_active,1)=1` キー化 + SKU編集の monitored 追従 (_sync_monitored_items_sku、2汚染源結線) + ebay_item_id backfill(183)/孤立cleanup(17) + 商品管理 raw UPDATE→update_ebay_listing_sku 統一。code-reviewer 3周 HIGH=0 + Codex 2段で計4 HIGH 捕捉。pytest 1295 |
 
 ## 関連 rule
 
