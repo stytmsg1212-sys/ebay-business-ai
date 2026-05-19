@@ -1261,7 +1261,7 @@
     "created": "2026-05-19",
     "completed": null,
     "origin": "user 口頭依頼 (2026-05-19、W139-fix セッション中)",
-    "progress_note": null
+    "progress_note": " || [Clarify 2026-05-19] scope確定=メモ+売却警告 W140フル: listing(ebay_item_id)単位 free-text メモ + メモ付きが売れたら MonoDeck/Discord 警告。設計要点: メモキー=ebay_item_id(relist id変化追従, sku-rules で sku キー化禁止)・売却検知トリガ(order_alert_check W7-A or ebay_sync)・warning lifecycle(ack/dismiss/再通知)・Discord二重通知回避・W147と同 hero/expander 改修=設計併合検討。"
   },
   {
     "id": 225,
@@ -1280,12 +1280,12 @@
     "tag": "W142",
     "title": "商品管理 BP×送料override 同時変更 (Q-3 撤廃) + 設定状態の可視化 (user 最大ストレス)",
     "description": "user 報告 (2026-05-19): 商品管理で Shipping Policy(BP) を変更すると毎回『送料 Buyer pays/+each との競合』でエラー、何が設定/未設定か不明＝最大のストレス。根本原因: (1) tab_product_management.py:1865 の Q-3 ハードブロック (BP変更 ∧ 価格/送料変更 を明示拒否、W138-A 時の過剰保守判断。eBay API は ShippingServiceCostOverrideList と SellerProfiles 同一 ReviseFixedPriceItem 同梱可=W136実証済で Add 経路は実際に同時設定済=API制約ではない) (2) :780 『送料 +each』が常に value=None で実値非表示 (3) :771/:1833 Buyer pays が DB 値表示で実 eBay と乖離→無意識に ship_changed→Q-3発火。user 確定方針: (A) Q-3撤廃し『新BP + ShippingServiceCostOverride を combined ReviseFixedPriceItem で1回送信』(Add経路と同機構、buffer喪失なし、W136 SellerProfiles同梱安全策・Codex#1 dirty-flag 維持) (B) Buyer pays/+each/BP は DB値表示+『実eBayと未verify/乖離』マーカー併記 (GetItem を expander展開で呼ばない=速度/quota優先、真値は↻で取得)。money-direct (送料=DDP関税buffer、Section 232 数百ドル/件)。Q3 構造化フロー必須: 設計→Codex相談(user明示)+code-reviewer 2段→実装→Q1 DoD。W139-fix クローズ後着手 (両 money-direct 深掘りの混在回避、Boris Tip18)。出典: 2026-05-19 user 口頭依頼 (W139-fix セッション中、Clarify 2問回答済)。",
-    "status": "実装完了・Q1実機保留",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-19",
-    "completed": null,
+    "completed": "2026-05-19",
     "origin": "user 口頭依頼 (2026-05-19、最大ストレスとして優先要望)",
-    "progress_note": "2026-05-19 Clarify 完了: 方向性=同時変更可(Q-3撤廃) / 表示=DB値+乖離マーカー。根本原因 4 点を実コードで特定済 (tab_product_management.py:1865 Q-3 / :780 +each非表示 / :771,:1833 DB乖離 / _build_revise_with_shipping_xml ebay_client.py:896 が combined 可を docstring 明記)。次: code-architect 設計→Codex技術相談(combined revise の新BP適用順・無音失敗条件)→code-reviewer 2段→実装→Q1。 [追加根本原因#5 2026-05-19 item356700630309実証] 『送料+each(USD)』(new_ship_additional)は (a) _apply_to_ebay の変更検出 ship_changed が new_ship(Buyer pays)しか見ず new_add を一切判定に含めない (tab_product_management.py:1833-1836)、(b) ebay_listings に +each 保存列が無い (ship系列=shipping_cost/shipping_profile_id のみ) ため :780 value=None で常時空欄=表示source皆無。結果 +each のみ変更は永久に『差分なし』(L1850)→success=False→外側で『⚠️一部未反映 実eBayと差分なし』の紛らわしい warning。W142設計はこれを必須包含: +each を change-detection に追加 + 表示source確保 (DB列追加 or GetItem)。『DB値+乖離マーカー』方針は +each に DB列が無い前提を要再設計。 || [2026-05-19 実装+2段レビュー完了] 5ファイル実装 (database.py v43 +each列 / ebay_account_policy resolve_domestic_priority+sortOrder抽出 / ebay_listing_snapshot override存在+priority parse / ebay_client ship_priority+force_seller_profiles default後方互換 / tab_product_management Q-3撤廃+combined+統一安全ガード+ +each dirty-flag+乖離marker+sync)。内部code-reviewer Opus 4周→HIGH=0、Codex(gpt-5.5)2段=技術相談1+レビュー2周で計 3HIGH+1MED 検出→統一安全ガード(snapshot None=不確定→明示abort、0/default捏造を物理排除)で一括根治→Codex再確認 全resolved・誤abort無・偽装success無。pytest 1333 passed/2 skipped。Streamlit再起動(MonoDeck PID96540 W142コード)+Playwright UI検証 0 errors (eBay出品section/送料+each DB駆動/乖離caption/BP selectbox/↻ 全描画)。本番DB monitor.db は v43+ +each2列 適用済(additive nullable・冪等検証済、Q2 24h retrospective対象=非破壊最低リスク型)。**残: Q1実機 A1検証 保留** (combined revise を生eBay listingで実行→GetItemで override が新BPにbind+priority一致を実証、user指示待ち。設計上 A1偽でも Phase4 GetItem実値照合+abort degrade で無音損失は物理排除済)。**未commit→本commitで記録、未push(規約: user明示時のみ)**。学び: feedback_no_long_silent_autonomous_runs 制定(2h無言自走をuser2回指摘→重い多段工程は前後で短報告)。"
+    "progress_note": "2026-05-19 Clarify 完了: 方向性=同時変更可(Q-3撤廃) / 表示=DB値+乖離マーカー。根本原因 4 点を実コードで特定済 (tab_product_management.py:1865 Q-3 / :780 +each非表示 / :771,:1833 DB乖離 / _build_revise_with_shipping_xml ebay_client.py:896 が combined 可を docstring 明記)。次: code-architect 設計→Codex技術相談(combined revise の新BP適用順・無音失敗条件)→code-reviewer 2段→実装→Q1。 [追加根本原因#5 2026-05-19 item356700630309実証] 『送料+each(USD)』(new_ship_additional)は (a) _apply_to_ebay の変更検出 ship_changed が new_ship(Buyer pays)しか見ず new_add を一切判定に含めない (tab_product_management.py:1833-1836)、(b) ebay_listings に +each 保存列が無い (ship系列=shipping_cost/shipping_profile_id のみ) ため :780 value=None で常時空欄=表示source皆無。結果 +each のみ変更は永久に『差分なし』(L1850)→success=False→外側で『⚠️一部未反映 実eBayと差分なし』の紛らわしい warning。W142設計はこれを必須包含: +each を change-detection に追加 + 表示source確保 (DB列追加 or GetItem)。『DB値+乖離マーカー』方針は +each に DB列が無い前提を要再設計。 || [2026-05-19 実装+2段レビュー完了] 5ファイル実装 (database.py v43 +each列 / ebay_account_policy resolve_domestic_priority+sortOrder抽出 / ebay_listing_snapshot override存在+priority parse / ebay_client ship_priority+force_seller_profiles default後方互換 / tab_product_management Q-3撤廃+combined+統一安全ガード+ +each dirty-flag+乖離marker+sync)。内部code-reviewer Opus 4周→HIGH=0、Codex(gpt-5.5)2段=技術相談1+レビュー2周で計 3HIGH+1MED 検出→統一安全ガード(snapshot None=不確定→明示abort、0/default捏造を物理排除)で一括根治→Codex再確認 全resolved・誤abort無・偽装success無。pytest 1333 passed/2 skipped。Streamlit再起動(MonoDeck PID96540 W142コード)+Playwright UI検証 0 errors (eBay出品section/送料+each DB駆動/乖離caption/BP selectbox/↻ 全描画)。本番DB monitor.db は v43+ +each2列 適用済(additive nullable・冪等検証済、Q2 24h retrospective対象=非破壊最低リスク型)。**残: Q1実機 A1検証 保留** (combined revise を生eBay listingで実行→GetItemで override が新BPにbind+priority一致を実証、user指示待ち。設計上 A1偽でも Phase4 GetItem実値照合+abort degrade で無音損失は物理排除済)。**未commit→本commitで記録、未push(規約: user明示時のみ)**。学び: feedback_no_long_silent_autonomous_runs 制定(2h無言自走をuser2回指摘→重い多段工程は前後で短報告)。 || [2026-05-19 完了] Q1 A1 read-only 実証 CONFIRMED (既存override listing 6/6 実priority==BP derived sortOrder、生mutation不要=money-safe)。pytest1333/UI 0 errors/内部4周HIGH=0/Codex2段。commit faa8bb9 + 946bb25(W139-fix) を origin/main へ push 済 (user承認2026-05-19)。未実施=live mutating E2E のみ(money-safetyで意図的回避、A1核心リスク確定済+W136実証機構+多段review担保)。"
   },
   {
     "id": 227,
@@ -1334,5 +1334,17 @@
     "completed": null,
     "origin": "2026-05-19 W139-fix Q1 DoD ライブ検証中に assistant が発見 (Q0 透明性で報告・user 承認で ROADMAP 化)",
     "progress_note": "2026-05-19 登録のみ。W142 (本命) 着手のため後回し。着手時は _run_w139_coverage_check / find_coverage_gaps() / task_ensure_monitor_coverage.py の reconciliation lag モデルを read-first。"
+  },
+  {
+    "id": 231,
+    "tag": "W147",
+    "title": "商品管理 利益表示の明確化 (還付あり/なし × USA向け/US以外 の4区分可視化)",
+    "description": "user 要望 (2026-05-19): 商品管理タブの利益金額が、消費税還付あり/なし・仕向地 USA向け(DDP=Section232関税 売主負担で利益減)/US以外(DDU=関税なし) のどの前提の数字か分からず判断しづらい。現状 hero は単一『現在粗利』のみ表示。calculator.py は既に profit(還付なし)/tax_refund/profit_with_refund(還付あり)/DDP(is_ddu=False)・DDU(is_ddu=True) を計算済 = 計算ロジック欠落でなく表示/UX問題 (低リスクだが利益判断直結=money-direct)。Phase 3 Clarify 要: 表示方式 (4セル table / primary値+toggle / 既存値にラベル / 主要2区分=還付あり×USA(現実的最悪)と還付あり×US以外 のみ 等)・どの区分を default 強調するか・値下げシミュレーション/競合最安との整合・breakeven/下限価格との関係・per-listing primary_market(US_only/mixed/global/unknown)との連動。Q3 構造化フロー (Clarify→設計→2段review→実装→Q1)。出典 2026-05-19 user 口頭要望 (W142 commit 後)。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-19",
+    "completed": null,
+    "origin": "user 口頭要望 2026-05-19 (利益表示の還付×仕向地 4区分わかりづらい)",
+    "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。"
   }
 ]
