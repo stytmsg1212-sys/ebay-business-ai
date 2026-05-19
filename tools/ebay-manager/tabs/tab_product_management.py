@@ -31,7 +31,10 @@ from monitor.database import (
     get_japan_competitor_alerts,
     update_alert_action,
 )
-from calculator import load_settings as _load_calc_settings
+from calculator import (
+    load_settings as _load_calc_settings,
+    SETTINGS_FILE as _SETTINGS_FILE,
+)
 from monitor.credentials import get_ebay_credentials
 from monitor.ebay_client import (
     revise_fixed_price_with_shipping,
@@ -568,6 +571,142 @@ def _fetched_jst_label(ts) -> str:
     return "不明"
 
 
+def _render_profit_value(label: str, yen: float, dim: bool) -> None:
+    """W147: 利益 1 値を表示。dim=True (= この listing の primary_market では
+    非該当 = 参考にしかならない区分) は淡色 + 「参考値」、それ以外は
+    st.metric (黒字 normal / 赤字 inverse) で強調表示する。"""
+    if dim:
+        st.markdown(
+            f'<div style="opacity:0.42;padding:2px 0;">'
+            f'<div style="font-size:0.8rem;">{label}</div>'
+            f'<div style="font-size:1.5rem;font-weight:600;">'
+            f'¥{yen:+,.0f}</div>'
+            f'<div style="font-size:0.72rem;">参考値</div></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.metric(
+            label, f"¥{yen:+,.0f}",
+            delta=("黒字" if yen > 0 else "赤字" if yen < 0 else "ゼロ"),
+            delta_color=("normal" if yen > 0 else "inverse"),
+        )
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_profit_breakdown(
+    price: float, pyen: float, weight_g: float,
+    length_cm: float, width_cm: float, height_cm: float,
+    category_id: int, settings_mtime: float, db_version: int,
+) -> Optional[dict]:
+    """W147: 現在価格での「還付あり/なし × USA向け(DDP)/US以外(DDU)」利益
+    (円) を返す表示専用 純関数。
+
+    calculator.calculate を is_ddu=False (DDP=米国向け、関税 売主負担) と
+    is_ddu=True (DDU=米国以外、関税なし) の 2 回呼び、最良送料サービスの
+    profit / profit_with_refund を取る。**計算式は一切変えない (W147 は
+    表示のみ)。eBay も DB も書かない**。
+
+    country_code は両呼出とも "US" 固定 (意図的)。calculator の is_ddu は
+    関税 add-on のみを増減し、配送ゾーン/手数料は country_code 依存。本
+    システムの送料モデルは「US 軸差分式」(reference_shipping_tariff_logic
+    .md) で "US以外" という単一国は存在しないため、2 値は US 送料基準を
+    共通の物差しとし、その差 = 米国輸入関税(Section 232)分 を可視化する
+    設計 (既存 compute_breakeven_price_usd も country_code="US" 固定で
+    整合)。UI 側で「差 = 関税分・送料 US 基準」を caption 明示する。
+
+    商品管理タブは Streamlit が collapsed expander の body も毎 rerun 実行
+    する = 「開いた時だけ」にならないため、W134 流儀で
+    @st.cache_data(ttl=3) + db_version key 化し再 rerun コストを抑える
+    (既存 _cd_fetch_all_products と同じ idiom)。settings.json 変更時の
+    breakeven との一時的非対称を消すため settings_mtime も cache key に
+    含める (mtime 変化 = 為替/手数料改定 → 即 cache miss)。
+    """
+    try:
+        from calculator import CalcInput, calculate
+        settings = _calc_settings()
+
+        def _calc(is_ddu: bool):
+            res = calculate(CalcInput(
+                purchase_yen=int(pyen), item_price_usd=float(price),
+                weight_g=int(weight_g), length_cm=float(length_cm or 0),
+                width_cm=float(width_cm or 0), height_cm=float(height_cm or 0),
+                category_id=int(category_id), is_ddu=is_ddu,
+                country_code="US",
+            ), settings)
+            if not res.service_results:
+                return None
+            return (
+                max(s.profit for s in res.service_results),
+                max(s.profit_with_refund for s in res.service_results),
+                max(s.tax_refund for s in res.service_results),
+                res.shipping_usd * settings["exchange_rate"],
+            )
+
+        us = _calc(False)    # USA向け = DDP (関税 売主負担)
+        nonus = _calc(True)  # US以外  = DDU (関税なし)
+        if us is None or nonus is None:
+            return None
+    except (KeyError, TypeError, ValueError, ZeroDivisionError,
+            RuntimeError, AttributeError) as e:
+        # AttributeError: calculate() が万一 None を返した時の res.* 防御
+        # (現契約は CalcResult 常時返却だが hero 全体クラッシュ回避)。
+        logger.debug(f"[pm hero] W147 利益試算 skip: {e}")
+        return None
+    return {
+        "refund_us": us[1], "refund_nonus": nonus[1],
+        "noref_us": us[0], "noref_nonus": nonus[0],
+        "tax_refund": us[2], "ddp_cost_jpy": round(us[3]),
+    }
+
+
+def _profit_breakdown(p: dict) -> Optional[dict]:
+    """W147: hero 用に有効入力 (編集フォーム入力を優先、_hero_effective と
+    同方針) を解決し _cd_profit_breakdown に渡す。purchase_yen / weight が
+    欠ければ None (hero は「未入力」表示を維持)。primary_market を付与
+    (区分連動の参考値表示用)。"""
+    eid = p["ebay_item_id"]
+
+    def _ss_num(suffix: str) -> Optional[float]:
+        v = st.session_state.get(f"pm_{suffix}_{eid}")
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    f_price = _ss_num("ebay_price")
+    f_pyen = _ss_num("pyen")
+    f_w = _ss_num("weight")
+    f_l = _ss_num("length")
+    f_wd = _ss_num("width")
+    f_h = _ss_num("height")
+
+    price = (f_price if (f_price is not None and f_price > 0)
+             else float(p.get("current_price") or 0))
+    pyen = (f_pyen if (f_pyen is not None and f_pyen > 0)
+            else p.get("purchase_yen"))
+    wt = f_w if (f_w is not None and f_w > 0) else p.get("weight_g")
+    if not price or price <= 0 or not pyen or not wt:
+        return None
+
+    try:
+        _smt = _SETTINGS_FILE.stat().st_mtime
+    except OSError:
+        _smt = 0.0  # stat 不能でも算出は継続 (cache 無効化のみ機能低下)
+    bd = _cd_profit_breakdown(
+        float(price), float(pyen), float(wt),
+        float(f_l if f_l is not None else (p.get("length_cm") or 0)),
+        float(f_wd if f_wd is not None else (p.get("width_cm") or 0)),
+        float(f_h if f_h is not None else (p.get("height_cm") or 0)),
+        int(p.get("category_id") or 58248),
+        _smt,
+        get_db_version(),
+    )
+    if bd is None:
+        return None
+    return {**bd,
+            "primary_market": (p.get("primary_market") or "").strip().lower()}
+
+
 def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
     """商品 expander の最上部に表示する 4 つの主要指標.
 
@@ -669,6 +808,57 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
             st.metric("競合最安", "未入力",
                       help="競合登録 + 価格再取得で表示")
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── W147: 利益サマリ (還付あり/なし × USA向け(DDP)/US以外(DDU)) ──
+    # calculator が算出済の区分を hero に可視化 (計算式は不変 = 表示のみ)。
+    # 主 2 値 = 還付あり (= user の実入金に最も近い前提)。primary_market 連動で
+    # 非該当 (US_only→「US以外」/ global_only→「USA向け」) は淡色 + 参考値注記。
+    # mixed_global / unknown / NULL は両方そのまま強調 (安全側)。
+    # 区分定義の出典: reference_shipping_tariff_logic.md。
+    bd = _profit_breakdown(p)
+    if bd is not None:
+        mk = bd["primary_market"]
+        us_dim = (mk == "global_only")   # この listing は USA で売れない
+        nonus_dim = (mk == "us_only")    # この listing は US 以外で売れない
+        st.markdown('<div class="pm-hero-row">', unsafe_allow_html=True)
+        pc = st.columns(2)
+        with pc[0]:
+            _render_profit_value(
+                "還付あり × USA向け(DDP・関税自社負担)",
+                bd["refund_us"], us_dim)
+        with pc[1]:
+            _render_profit_value(
+                "還付あり × US以外(DDU・関税なし)",
+                bd["refund_nonus"], nonus_dim)
+        st.markdown('</div>', unsafe_allow_html=True)
+        # Codex 2段 HIGH 対応: "US以外" を非US送料 lane と誤読させない。
+        # 2 値の差 = 米国輸入関税分 (送料は両値とも US 基準)。
+        st.caption(
+            "2 値の差 = 米国輸入関税(Section 232)分。送料は US 基準"
+            "（本システムは US 軸差分式）・US以外は関税なし(DDU)前提。"
+        )
+        if us_dim or nonus_dim:
+            _w = "USA向け" if us_dim else "US以外"
+            # 区分名は pill (区分: {market}) と同じ生値で表示 (大小文字不一致防止)
+            st.caption(
+                f"※ この listing は区分 **{market}** のため"
+                f"「{_w}」は参考値（薄字）です。"
+            )
+        with st.expander("利益内訳（還付なし・税還付・関税）",
+                         expanded=False):
+            st.markdown(
+                f"- 還付なし × USA向け (DDP): "
+                f"**¥{bd['noref_us']:+,.0f}**\n"
+                f"- 還付なし × US以外 (DDU): "
+                f"**¥{bd['noref_nonus']:+,.0f}**\n"
+                f"- 消費税還付額（目安）: ¥{bd['tax_refund']:,.0f}\n"
+                f"- 米国向け関税コスト（DDP・売主負担）: "
+                f"¥{bd['ddp_cost_jpy']:,.0f}"
+            )
+            st.caption(
+                "利益は現在の eBay 表示価格・最良送料サービス基準。"
+                "calculator と同じ計算式（W147 は表示のみ）。"
+            )
 
     if _eff["preview"]:
         st.caption(
