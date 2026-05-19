@@ -1256,12 +1256,12 @@
     "tag": "W140",
     "title": "商品管理 listing 単位メモ + 売却時 dashboard 警告 (発送/通関 注意点)",
     "description": "商品管理 (tab_product_management) に listing 単位 (ebay_item_id) の free-text メモ欄を追加し、発送時の注意点 (例: HTS コードを XX にすると関税 0% にできる) を記録できるようにする。メモ有り listing が売れた際に MonoDeck dashboard へ警告として表示し、通関/関税の取りこぼしによる利益損失を防ぐ。要 Phase 3 Clarify: メモのキー設計 (relist で ebay_item_id 変化時の引継ぎ要否)・売却検知トリガ (order_alert_check W7-A / ebay_sync 等のどれを真実源にするか)・警告 lifecycle (ack/dismiss/自動解消)・free-text か HTS 構造化フィールドか・Discord 二重通知要否。W139-fix クローズ後着手。出典: 2026-05-19 user 口頭依頼 (W139-fix セッション中)。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-19",
-    "completed": null,
+    "completed": "2026-05-19",
     "origin": "user 口頭依頼 (2026-05-19、W139-fix セッション中)",
-    "progress_note": " || [Clarify 2026-05-19] scope確定=メモ+売却警告 W140フル: listing(ebay_item_id)単位 free-text メモ + メモ付きが売れたら MonoDeck/Discord 警告。設計要点: メモキー=ebay_item_id(relist id変化追従, sku-rules で sku キー化禁止)・売却検知トリガ(order_alert_check W7-A or ebay_sync)・warning lifecycle(ack/dismiss/再通知)・Discord二重通知回避・W147と同 hero/expander 改修=設計併合検討。"
+    "progress_note": " || [Clarify 2026-05-19] scope確定=メモ+売却警告 W140フル: listing(ebay_item_id)単位 free-text メモ + メモ付きが売れたら MonoDeck/Discord 警告。設計要点: メモキー=ebay_item_id(relist id変化追従, sku-rules で sku キー化禁止)・売却検知トリガ(order_alert_check W7-A or ebay_sync)・warning lifecycle(ack/dismiss/再通知)・Discord二重通知回避・W147と同 hero/expander 改修=設計併合検討。 || [完了 2026-05-19] migration v44(listing_notes/listing_sale_warnings, claim-then-act二重通知防止, 自己修復版数bump)+メモUI/change-guard保存/📎/再出品引継(inherit_listing_on_relist)/売却検知hook(task_order_alert)/MonoDeckバナー。2段review=内部HIGH=0→Codex HIGH2(ItemID欠落Q0痕跡/v44版数自己修復)修正→再HIGH=0。Q1=pytest12+回帰312、Streamlit+Playwrightでメモ保存→DB往復・売却警告バナー→[了解]→acked を0 console errors実証。commit 09d8fe7 origin/main push済。scheduler PID83596再起動デプロイ済(W7-A注文アラート30分cron稼働)。"
   },
   {
     "id": 225,
@@ -1340,11 +1340,11 @@
     "tag": "W147",
     "title": "商品管理 利益表示の明確化 (還付あり/なし × USA向け/US以外 の4区分可視化)",
     "description": "user 要望 (2026-05-19): 商品管理タブの利益金額が、消費税還付あり/なし・仕向地 USA向け(DDP=Section232関税 売主負担で利益減)/US以外(DDU=関税なし) のどの前提の数字か分からず判断しづらい。現状 hero は単一『現在粗利』のみ表示。calculator.py は既に profit(還付なし)/tax_refund/profit_with_refund(還付あり)/DDP(is_ddu=False)・DDU(is_ddu=True) を計算済 = 計算ロジック欠落でなく表示/UX問題 (低リスクだが利益判断直結=money-direct)。Phase 3 Clarify 要: 表示方式 (4セル table / primary値+toggle / 既存値にラベル / 主要2区分=還付あり×USA(現実的最悪)と還付あり×US以外 のみ 等)・どの区分を default 強調するか・値下げシミュレーション/競合最安との整合・breakeven/下限価格との関係・per-listing primary_market(US_only/mixed/global/unknown)との連動。Q3 構造化フロー (Clarify→設計→2段review→実装→Q1)。出典 2026-05-19 user 口頭要望 (W142 commit 後)。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-19",
-    "completed": null,
+    "completed": "2026-05-19",
     "origin": "user 口頭要望 2026-05-19 (利益表示の還付×仕向地 4区分わかりづらい)",
-    "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。"
+    "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。 || [完了 2026-05-19] hero に 還付あり×USA向け(DDP)/US以外(DDU) 2値強調+還付なし/税還付/関税 折りたたみ。calculator を is_ddu 切替2回呼ぶ表示専用(計算式不変)、W134 cache(ttl=3+db_version+settings_mtime)。primary_market 連動=非該当グレーアウト+参考値。2段review=内部HIGH=0→Codex HIGH1(country_code US固定で'US以外'誤読リスク)→ラベル明確化+caption+docstring+test恒久固定→再HIGH=0。Q1=pytest9+回帰、Streamlit+Playwrightで全6値がcalculator直値一致・lp_breakeven不変=表示専用実証。commit 15c833c origin/main push済。"
   }
 ]
