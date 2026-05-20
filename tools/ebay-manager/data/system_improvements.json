@@ -1346,5 +1346,17 @@
     "completed": "2026-05-19",
     "origin": "user 口頭要望 2026-05-19 (利益表示の還付×仕向地 4区分わかりづらい)",
     "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。 || [完了 2026-05-19] hero に 還付あり×USA向け(DDP)/US以外(DDU) 2値強調+還付なし/税還付/関税 折りたたみ。calculator を is_ddu 切替2回呼ぶ表示専用(計算式不変)、W134 cache(ttl=3+db_version+settings_mtime)。primary_market 連動=非該当グレーアウト+参考値。2段review=内部HIGH=0→Codex HIGH1(country_code US固定で'US以外'誤読リスク)→ラベル明確化+caption+docstring+test恒久固定→再HIGH=0。Q1=pytest9+回帰、Streamlit+Playwrightで全6値がcalculator直値一致・lp_breakeven不変=表示専用実証。commit 15c833c origin/main push済。"
+  },
+  {
+    "id": 232,
+    "tag": "W148",
+    "title": "AlertCrawler 移植: メルカリ/ヤフオク キーワード新着監視 (Discord 通知 + 移行 UI)",
+    "description": "C# AlertCrawler v1.2.2 (450件) を MonoDeck に移植。メルカリ + ヤフオクのみ対象、2時間 cron + subprocess (Playwright を APScheduler worker thread から分離)、価格レンジ filter、claim-then-act dedupe (UNIQUE(watch_id, found_item_url)+INSERT OR IGNORE+rowcount)、Discord 通知 (eBay Manager webhook 流用)。既存 monitor/mercari_search.py + yahoo_search.py 流用。新規 tab tab_keyword_watch.py + tasks/task_keyword_watch_crawl.py + DB v45 (keyword_watches + keyword_watch_hits)。DOM 健康検知 = センチネル方式 (各サイトに iPhone 等の「常にヒットが出る」watch を is_sentinel=1 で 1 件登録、全 sentinel 0 件で site-wide 警告)。移行は scripts/import_alertcrawler_legacy.py + UI で user 選別。supplier_sweep (守り) と別系統の発掘 (攻め) タスク。設計書: .company/engineering/docs/2026-05-20-W148-alertcrawler-keyword-watch-design.md v2.1 (Codex 3周 HIGH=0)。",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-20",
+    "completed": null,
+    "origin": "user 口頭依頼 2026-05-20 (AlertCrawler 同等機能を MonoDeck 搭載)",
+    "progress_note": "2026-05-20 登録。設計書 v2.1 完成・origin/main push 済 (commit 699bd50)。Q3 構造化フロー Phase 4 (設計) 完結、Phase 5 (実装) は user 指示待ち。Clarify 全 5 問解答済 (#1メルカリ+ヤフオク, #2新タブ独立 2h cron, #3Discord統一, #4Playwright既存資産流用, #5UI選別移行)。Codex 3周指摘反映 (round1=Playwright thread 分離 subprocess化, round2=センチネル方式 + 戻り値dict + 価格レンジ両NULL, round3=orphan_sites 検知)。"
   }
 ]
