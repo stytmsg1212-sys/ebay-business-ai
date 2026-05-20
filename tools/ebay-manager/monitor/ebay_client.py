@@ -676,6 +676,123 @@ def revise_item_pictures(
     }
 
 
+def _build_revise_item_description_xml(item_id: str, description_html: str) -> str:
+    """ReviseItem の Description (HTML body) を更新する XML を組立.
+
+    Description は CDATA で wrap (HTML 内 `<`, `>`, `&` が entity escape されると
+    eBay 表示崩れ)。HTML 内に `]]>` が含まれる場合は CDATA premature close
+    防止のため `]]]]><![CDATA[>` に置換 (XML 仕様準拠の安全策)。
+    """
+    from xml.sax.saxutils import escape
+    # CDATA premature close 防止 (HTML 本文に `]]>` リテラルがあると section が
+    # 閉じてしまい後続が parse 不能になる)。
+    safe_html = (description_html or "").replace("]]>", "]]]]><![CDATA[>")
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    <eBayAuthToken>{{USER_TOKEN}}</eBayAuthToken>
+  </RequesterCredentials>
+  <Item>
+    <ItemID>{escape(item_id)}</ItemID>
+    <Description><![CDATA[{safe_html}]]></Description>
+  </Item>
+</ReviseItemRequest>"""
+
+
+def revise_item_description(
+    item_id: str,
+    description_html: str,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> dict:
+    """W148-X (2026-05-20 user 緊急要望): eBay Trading API ReviseItem で
+    active listing の Description (HTML body) を更新する。
+
+    用途: 仕入先候補「採用」後、新仕入先 URL から description を再生成して
+    既存 listing に反映する supplier_candidates 経路 (= 個別出品の
+    description 生成相当を Revise 経路で動かす)。
+
+    Args:
+        item_id: eBay ItemID (12 桁)
+        description_html: 新規 description HTML body (CDATA で wrap される)
+
+    Returns:
+        {'success': bool, 'message': str, 'description_len': int}
+
+    eBay 制約 (caller 側で事前検証推奨):
+      - Description は最大約 500,000 文字 (caller では generate_listing 由来の
+        通常サイズなので超えない想定、超えた場合は API 側 error 返却)
+      - 空 Description は reject (caller 側で空チェック)
+      - HTML 内に `]]>` リテラルがあった場合は本関数内で safe 化 (CDATA escape)
+    """
+    if not (description_html or "").strip():
+        return {
+            'success': False,
+            'message': 'description_html is empty',
+            'description_len': 0,
+        }
+
+    # OAuth access token auto-refresh (revise_item_pictures と同パターン)
+    user_token = _resolve_active_token(user_token)
+    xml_body = _build_revise_item_description_xml(
+        item_id, description_html,
+    ).replace("{USER_TOKEN}", user_token)
+
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "ReviseItem",
+        "X-EBAY-API-APP-NAME": app_id,
+        "X-EBAY-API-DEV-NAME": dev_id,
+        "X-EBAY-API-CERT-NAME": cert_id,
+        "Content-Type": "text/xml",
+    }
+
+    try:
+        resp = httpx.post(
+            TRADING_API_URL, content=xml_body.encode("utf-8"),
+            headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        return {
+            'success': False, 'message': f"通信エラー: {e}",
+            'description_len': len(description_html or ""),
+        }
+
+    # Codex 2026-05-20 HIGH 対応: eBay が HTTP 200 で invalid XML (HTML エラー
+    # ページ等) を返す場合に ET.ParseError で crash → UI が apply_result を
+    # set できず無音失敗化するのを防ぐ。revise_item_sku L555-558 と同 guard。
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {
+            'success': False,
+            'message': f"XML parse error: {e}",
+            'description_len': len(description_html or ""),
+        }
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+
+    ack = root.findtext("ns:Ack", namespaces=ns)
+    if ack in ("Success", "Warning"):
+        return {
+            'success': True,
+            'message': (
+                f"ItemID {item_id} の description を更新しました "
+                f"({len(description_html)} 文字)"
+            ),
+            'description_len': len(description_html),
+        }
+    errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+    msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+    return {
+        'success': False, 'message': f"API エラー: {msg}",
+        'description_len': len(description_html or ""),
+    }
+
+
 def filter_items_with_sku(items: list[dict]) -> list[dict]:
     """SKUが設定されているアイテムのみ返す"""
     return [i for i in items if i.get("sku", "").strip()]

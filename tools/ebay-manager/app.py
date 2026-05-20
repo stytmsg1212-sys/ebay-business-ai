@@ -5148,6 +5148,10 @@ if _w134_sel == "仕入先候補":
                                 # して、次 rerun でその情報を使って prompt + photo
                                 # apply section を描画する。
                                 st.session_state[f"_sup_photo_prompt_{cid}"] = True
+                                # W148-X (2026-05-20 user 緊急要望): description
+                                # 反映ボタンを追加 (個別出品同等 Claude 生成 pipeline)。
+                                # 写真 prompt と同 cid で並行設置、user が独立に決定可。
+                                st.session_state[f"_sup_desc_prompt_{cid}"] = True
                                 st.session_state[f"_sup_photo_meta_{cid}"] = {
                                     "url": url,
                                     "eid": _eid,
@@ -5318,6 +5322,82 @@ if _w134_sel == "仕入先候補":
                     key=f"_sup_photo_close_{_ocid}",
                 ):
                     st.session_state[f"_sup_photo_open_inline_{_ocid}"] = False
+                    st.rerun()
+        st.markdown("---")
+
+    # ── W148-X (2026-05-20 user 緊急要望): description 反映 prompt + section ──
+    # 個別出品同等の Claude description 生成 pipeline を採用直後の inline で
+    # 走らせる。写真 prompt と独立 (user は両方/片方/どちらでもなしを選べる)。
+    _desc_prompts = [
+        (int(k.replace("_sup_desc_prompt_", "")),
+         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_desc_prompt_', '')}") or {})
+        for k in list(st.session_state.keys())
+        if k.startswith("_sup_desc_prompt_") and st.session_state.get(k)
+    ]
+    _desc_opens = [
+        (int(k.replace("_sup_desc_open_inline_", "")),
+         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_desc_open_inline_', '')}") or {})
+        for k in list(st.session_state.keys())
+        if k.startswith("_sup_desc_open_inline_") and st.session_state.get(k)
+    ]
+    if _desc_prompts or _desc_opens:
+        with st.container(border=True):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(180,255,200,0.85);'
+                'letter-spacing:2px;margin:0 0 8px;">'
+                'description 反 映 　 — 　 採 用 直 後 確 認</div>',
+                unsafe_allow_html=True,
+            )
+            for _dpcid, _dpmeta in _desc_prompts:
+                _ttl_d = (_dpmeta.get("title") or "")[:60]
+                _eid_d = _dpmeta.get("eid") or ""
+                st.warning(
+                    f"📝 採用しました ({_ttl_d} / item {_eid_d})。"
+                    f"仕入先 URL から description (HTML 本文) も生成して反映しますか？ "
+                    f"(個別出品と同じ Claude パイプライン、~30-60 秒)"
+                )
+                _dpc = st.columns([1.6, 1.4, 5])
+                with _dpc[0]:
+                    if st.button(
+                        "📝 はい、description も生成",
+                        key=f"_sup_desc_yes_{_dpcid}", type="primary",
+                    ):
+                        st.session_state[f"_sup_desc_open_inline_{_dpcid}"] = True
+                        st.session_state[f"_sup_desc_prompt_{_dpcid}"] = False
+                        st.rerun()
+                with _dpc[1]:
+                    if st.button(
+                        "いいえ、後でやる",
+                        key=f"_sup_desc_no_{_dpcid}",
+                    ):
+                        st.session_state[f"_sup_desc_prompt_{_dpcid}"] = False
+                        st.rerun()
+            for _docid, _dometa in _desc_opens:
+                _ttl_do = _dometa.get("title") or ""
+                _eid_do = _dometa.get("eid") or ""
+                _url_do = _dometa.get("url") or ""
+                if not _url_do:
+                    st.error(
+                        f"cid={_docid}: URL 情報不足 → 採用やり直しで再 prompt 発生"
+                    )
+                    continue
+                st.markdown(
+                    f"**▼ description 反映: {_ttl_do[:60]} (item {_eid_do})**"
+                )
+                from tabs._supplier_description_pipeline import (
+                    render_supplier_description_section,
+                )
+                render_supplier_description_section(
+                    candidate_id=_docid,
+                    candidate_url=_url_do,
+                    ebay_item_id=_eid_do,
+                    candidate_title=_ttl_do,
+                )
+                if st.button(
+                    "✖ この description 反映を閉じる",
+                    key=f"_sup_desc_close_{_docid}",
+                ):
+                    st.session_state[f"_sup_desc_open_inline_{_docid}"] = False
                     st.rerun()
         st.markdown("---")
 
