@@ -5053,15 +5053,26 @@ if _w134_sel == "仕入先候補":
                         not st.session_state.get(_photo_key, False)
                     )
                 if st.session_state.get(_photo_key, False):
-                    from tabs._supplier_photo_pipeline import (
-                        render_supplier_photo_apply_section,
-                    )
-                    render_supplier_photo_apply_section(
-                        candidate_id=cid,
-                        candidate_url=url,
-                        ebay_item_id=row.get("ebay_item_id") or "",
-                        candidate_title=title,
-                    )
+                    # 2026-05-20 Codex HIGH: 採用直後 prompt 経由の inline section
+                    # (画面上部) で同 cid が既に開いている場合、ここで再 render すると
+                    # `render_supplier_photo_apply_section` 内の widget key
+                    # (sup_*_{cid}) が重複し Streamlit duplicate-key エラーで
+                    # 画面破綻。inline が開いている時は history 側を skip + 注意表示。
+                    if st.session_state.get(f"_sup_photo_open_inline_{cid}"):
+                        st.caption(
+                            "⚠️ この候補は採用直後の写真反映 section (画面上部) で"
+                            "既に開いています。そちらで操作してください。"
+                        )
+                    else:
+                        from tabs._supplier_photo_pipeline import (
+                            render_supplier_photo_apply_section,
+                        )
+                        render_supplier_photo_apply_section(
+                            candidate_id=cid,
+                            candidate_url=url,
+                            ebay_item_id=row.get("ebay_item_id") or "",
+                            candidate_title=title,
+                        )
             return
 
         # 2026-05-08 W112 (UX 1-click 化) + 2026-05-09 W112 retrospective fix (H-1〜H-5):
@@ -5129,11 +5140,19 @@ if _w134_sel == "仕入先候補":
                                     res_b.get("message") or "採用→eBay 反映 成功",
                                 ))
                                 # W115 整合性 fix (2026-05-20 user 緊急要望):
-                                # SKU 反映成功後、「写真も反映する？」確認 → yes なら
+                                # SKU 反映成功後、写真も反映する？」確認 → yes なら
                                 # 個別出品と同じプレート選択フロー (3 候補から user 選択)。
-                                # session_state flag をセット → 同 rerun 後に
-                                # candidate 行下部で確認 UI + 写真反映セクション展開。
+                                # 採用後 candidate は status='applied' になり履歴タブに
+                                # 移動するため、セクション最上部 (タブ非依存) に prompt
+                                # を出す必要あり。url/eid/title を session_state に保持
+                                # して、次 rerun でその情報を使って prompt + photo
+                                # apply section を描画する。
                                 st.session_state[f"_sup_photo_prompt_{cid}"] = True
+                                st.session_state[f"_sup_photo_meta_{cid}"] = {
+                                    "url": url,
+                                    "eid": _eid,
+                                    "title": title,
+                                }
                                 # 3) 復活候補のみ qty 0→1 自動復元
                                 if context == "revive":
                                     if not _eid:
@@ -5217,6 +5236,90 @@ if _w134_sel == "仕入先候補":
                     ]
                 st.rerun()
                 return  # H-2
+
+    # ── 2026-05-20 user 緊急要望: 採用後の写真反映 prompt (タブ非依存) ──
+    # 採用 button (W112 1-click) が status='applied' に遷移させると候補は
+    # 履歴タブに移動するため、user は元のタブを見ていて写真反映ボタンに
+    # 気付かない (= 「採用して終わり」になる)。セクション最上部に prompt
+    # を出してから、はい押下で個別出品同様のプレート選択フローを inline
+    # 展開する (履歴タブへ移動不要)。
+    _photo_prompts = [
+        (int(k.replace("_sup_photo_prompt_", "")),
+         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_photo_prompt_', '')}") or {})
+        for k in list(st.session_state.keys())
+        if k.startswith("_sup_photo_prompt_") and st.session_state.get(k)
+    ]
+    _photo_opens = [
+        (int(k.replace("_sup_photo_open_inline_", "")),
+         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_photo_open_inline_', '')}") or {})
+        for k in list(st.session_state.keys())
+        if k.startswith("_sup_photo_open_inline_") and st.session_state.get(k)
+    ]
+    if _photo_prompts or _photo_opens:
+        with st.container(border=True):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(255,180,80,0.85);'
+                'letter-spacing:2px;margin:0 0 8px;">'
+                '写 真 反 映 　 — 　 採 用 直 後 確 認</div>',
+                unsafe_allow_html=True,
+            )
+            # Step 1: prompt (採用押下直後、まだ「はい/いいえ」未選択)
+            for _pcid, _pmeta in _photo_prompts:
+                _ttl = (_pmeta.get("title") or "")[:60]
+                _eid_p = _pmeta.get("eid") or ""
+                st.warning(
+                    f"📷 採用しました ({_ttl} / item {_eid_p})。"
+                    f"仕入先の画像で写真も反映しますか？ "
+                    f"(個別出品と同じ Photoroom + Gemini 3 候補プレートから選択)"
+                )
+                _pc = st.columns([1, 1, 5])
+                with _pc[0]:
+                    if st.button(
+                        "📷 はい、写真も選ぶ",
+                        key=f"_sup_photo_yes_{_pcid}", type="primary",
+                    ):
+                        st.session_state[f"_sup_photo_open_inline_{_pcid}"] = True
+                        st.session_state[f"_sup_photo_prompt_{_pcid}"] = False
+                        st.rerun()
+                with _pc[1]:
+                    if st.button(
+                        "いいえ、後でやる",
+                        key=f"_sup_photo_no_{_pcid}",
+                    ):
+                        st.session_state[f"_sup_photo_prompt_{_pcid}"] = False
+                        # meta は履歴タブ「📷 写真反映」ボタン再操作用に残す
+                        st.rerun()
+            # Step 2: opened (はい押下後 → photo apply section を inline 展開)
+            for _ocid, _ometa in _photo_opens:
+                _ttl_o = _ometa.get("title") or ""
+                _eid_o = _ometa.get("eid") or ""
+                _url_o = _ometa.get("url") or ""
+                if not _url_o:
+                    st.error(
+                        f"cid={_ocid}: URL 情報不足 → 履歴タブの「📷 写真反映」"
+                        f"から操作してください"
+                    )
+                    continue
+                st.markdown(
+                    f"**▼ 写真反映: {_ttl_o[:60]} (item {_eid_o})**"
+                )
+                from tabs._supplier_photo_pipeline import (
+                    render_supplier_photo_apply_section,
+                )
+                render_supplier_photo_apply_section(
+                    candidate_id=_ocid,
+                    candidate_url=_url_o,
+                    ebay_item_id=_eid_o,
+                    candidate_title=_ttl_o,
+                )
+                # 完了/中断時の「✖ 閉じる」ボタン
+                if st.button(
+                    "✖ この写真反映を閉じる",
+                    key=f"_sup_photo_close_{_ocid}",
+                ):
+                    st.session_state[f"_sup_photo_open_inline_{_ocid}"] = False
+                    st.rerun()
+        st.markdown("---")
 
     # ── サブタブ 4 分割 (2026-04-24 rev2) ──
     # 復活候補 = 最優先: eBay 在庫0 商品に仕入先が見つかった → 採用で qty 自動復元
