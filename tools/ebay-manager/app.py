@@ -3432,7 +3432,14 @@ if _w134_sel == "eBay連携":
                     )
 
                 if selected_sku:
-                    selected_item = next((item for item in ebay_items if selected_sku.startswith(item['sku'])), None)
+                    # 2026-05-20: item['sku']='' (eBay 側で SKU 空) でも誤マッチしない
+                    # よう空文字ガード追加 (空文字は全 string に startswith True で
+                    # 最初の item を誤選択する footgun、Codex 指摘)。
+                    selected_item = next(
+                        (item for item in ebay_items
+                         if item['sku'] and selected_sku.startswith(item['sku'])),
+                        None,
+                    )
                     if selected_item:
                         current_rank = selected_item.get('rank', 'C')
 
@@ -5121,12 +5128,12 @@ if _w134_sel == "仕入先候補":
                                     "success",
                                     res_b.get("message") or "採用→eBay 反映 成功",
                                 ))
-                                # W115 (2026-05-10): 写真反映 path への誘導.
-                                # W112 1-click で applied 直行のため、写真反映は履歴タブで実施.
-                                _msgs.append((
-                                    "info",
-                                    "📷 仕入先画像で写真も反映する場合は[履歴]タブの「反映済」セクションから操作してください。",
-                                ))
+                                # W115 整合性 fix (2026-05-20 user 緊急要望):
+                                # SKU 反映成功後、「写真も反映する？」確認 → yes なら
+                                # 個別出品と同じプレート選択フロー (3 候補から user 選択)。
+                                # session_state flag をセット → 同 rerun 後に
+                                # candidate 行下部で確認 UI + 写真反映セクション展開。
+                                st.session_state[f"_sup_photo_prompt_{cid}"] = True
                                 # 3) 復活候補のみ qty 0→1 自動復元
                                 if context == "revive":
                                     if not _eid:

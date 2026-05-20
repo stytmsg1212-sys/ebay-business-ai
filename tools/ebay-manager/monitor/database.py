@@ -2383,9 +2383,17 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
             existing_sku = existing["sku"] or ""
             sku_changed = (sku or "") != existing_sku
 
-            if sku_changed and sku:
-                # SKU が変わった場合: source_* と risk_confirmed をリセット
-                new_source_url = _build_source_url_from_sku(sku)
+            if sku_changed:
+                # 2026-05-20 Codex 指摘 HIGH 対応: 旧 `if sku_changed and sku:`
+                # は eBay 側で SKU が空文字に変わった場合 (W139 後の filter 解除で
+                # SKU 空 listing も DB に流入するように変更) を skip して旧 SKU
+                # が DB に残留 → 仕入先マッチング誤動作。`and sku:` を外し、
+                # 空文字化も同 reset semantics で吸収する。
+                # SKU が変わった場合 (空文字化を含む): source_* と risk_confirmed
+                # をリセット。new_source_url は sku 空なら None (COALESCE で
+                # 既存維持、downstream は SKU prefix 判定で全 skip となるため
+                # 実害なし)。SKU 復帰時に再計算される。
+                new_source_url = _build_source_url_from_sku(sku) if sku else None
                 conn.execute(
                     """UPDATE ebay_listings SET
                           sku=?, title=?, current_price=?, quantity_ebay=?,
@@ -2400,6 +2408,8 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                 )
                 # W139-fix (2026-05-18): eBay 側 SKU 変更検知時も monitored_items
                 # を追従 (同一 conn 原子的)。汚染源 2 経路目 (user 承認済)。
+                # 2026-05-20: sku='' でも追従 (旧 sku の monitored_items 行が
+                # 残ると find_coverage_gaps が誤判定するため)。
                 _sync_monitored_items_sku(conn, ebay_item_id, sku)
             else:
                 conn.execute(
@@ -3371,8 +3381,13 @@ def _sync_monitored_items_sku(conn, ebay_item_id: str, new_sku: str) -> None:
     upsert_ebay_listing sku_changed = ebay_sync が eBay 側変更検知)。
     本ヘルパを両経路から呼び汚染源を断つ。
     """
-    if not ebay_item_id or not new_sku:
+    if not ebay_item_id:
         return
+    # 2026-05-20: new_sku='' (eBay 側で SKU を消した) でも monitored_items を
+    # 追従させる (sku-rules: 識別キーは ebay_item_id、旧 sku が残ると
+    # find_coverage_gaps 誤判定 = W139 phantom gap 再発の原因になる)。
+    # source_url / site_config_id は sku 空では生成器が None 返却となるが、
+    # COALESCE で既存維持 (sku 復帰時に再計算される)。
     # 更新直後の ebay_listings.source_url を mirror (生成器非依存で必ず
     # listing と一致 = HIGH-1 根治)。listing 側 NULL 時のみ ebay_listings
     # と同じ生成器 (_build_source_url_from_sku) で fallback。
@@ -3382,9 +3397,9 @@ def _sync_monitored_items_sku(conn, ebay_item_id: str, new_sku: str) -> None:
     ).fetchone()
     listing_url = lr[0] if lr else None
     new_source_url = (listing_url
-                      or _build_source_url_from_sku(new_sku)
-                      or build_source_url(new_sku))
-    cfg = find_site_config_by_sku(new_sku)
+                      or (_build_source_url_from_sku(new_sku) if new_sku else None)
+                      or (build_source_url(new_sku) if new_sku else None))
+    cfg = find_site_config_by_sku(new_sku) if new_sku else None
     site_config_id = cfg["id"] if cfg else None
     conn.execute(
         """UPDATE monitored_items

@@ -59,9 +59,24 @@ def sync_listings_from_ebay(app_id: str, dev_id: str, cert_id: str, user_token: 
     try:
         logger.info("Fetching active listings from eBay...")
         all_listings = get_active_listings(app_id, dev_id, cert_id, user_token)
-        listings_with_sku = filter_items_with_sku(all_listings)
-        logger.info(f"Got {len(all_listings)} total listings, {len(listings_with_sku)} with SKU")
-        stats["messages"].append(f"eBay API: {len(listings_with_sku)} listings with SKU")
+        # 2026-05-20 user 緊急修正: SKU 空 listing も DB に取り込む (Q0 silent gap 解消)。
+        # 旧 `filter_items_with_sku(all_listings)` は SKU 未設定 listing を一律除外し、
+        # eBay 535件 vs DB active 421件の差 114件が「商品管理に永久に見えない」silent
+        # gap を発生させていた (例: 358178581550)。filter_items_with_sku 関数自体は
+        # app.py L2948-2950 / monitor/ebay_competitor_monitoring.py で別用途に使われ
+        # ているため関数は残存、本 sync 経路でのみ filter を外す surgical 変更。
+        # downstream の sku-prefix 判定 (sku.startswith("stock") 等) は SKU 空で
+        # False となり「在庫種別なし」扱い = 既存挙動と互換 (元々 DB に無かった = 全
+        # 経路で無視されていたのが、DB 存在 + SKU 空 = 同じく全経路で無視 + 商品管理
+        # にだけは表示される、というのが本変更の目的)。
+        listings_with_sku = all_listings  # 変数名は downstream 互換のため維持
+        logger.info(
+            f"Got {len(all_listings)} total active listings from eBay "
+            f"(SKU 空含む、商品管理 silent gap 解消のため filter 解除)"
+        )
+        stats["messages"].append(
+            f"eBay API: {len(all_listings)} active listings (SKU 空含む)"
+        )
     except Exception as e:
         msg = f"eBay API error: {e}"
         logger.error(msg)
