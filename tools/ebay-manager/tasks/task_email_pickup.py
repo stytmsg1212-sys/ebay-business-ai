@@ -122,14 +122,56 @@ def _find_part(payload: dict, mime_type: str) -> str:
     return ""
 
 
+_SUPPLIER_SENDER_HINTS = (
+    # 仕入先 (user が商品を購入する側) の購入確認メール sender。
+    # 2026-05-20 user 緊急要望: tab_purchase_confirm は本来「user 仕入購入」
+    # メールから listing 在庫追加するための機能だが、旧 Gmail query が eBay
+    # のみだったため仕入購入メールが DB に入らず機能が破綻していた。
+    'mercari.jp',                # メルカリ (no-reply@mercari.jp 等)
+    'auctions.yahoo.co.jp',      # ヤフオク
+    'mail.yahoo.co.jp',          # Yahoo 系
+    'rakuten.co.jp',             # 楽天 (info@order.rakuten.co.jp 等)
+    'order.rakuten.co.jp',
+    'amazon.co.jp',              # Amazon JP (auto-confirm@/order-update@)
+    'paypay.ne.jp',              # PayPay フリマ
+    'suruga-ya.jp',              # 駿河屋
+    'mandarake.co.jp',           # まんだらけ
+)
+
+_SUPPLIER_PURCHASE_SUBJECT_HINTS = (
+    'ご注文', '注文確認', '注文受付', 'ご購入', '購入完了', 'order',
+    '発送', '出荷', 'shipped',
+    '落札', 'お買い上げ', 'お買いもの',  # ヤフオク落札 / 楽天お買い上げ
+    'your order', 'confirmation', 'receipt',  # Amazon 等 英語
+)
+
+
 def _categorize_email(subject: str, sender: str) -> str:
     """メールをカテゴリ分けする.
 
     2026-05-07: listing_notification カテゴリ追加.
     user 自身の出品時に eBay から届く通知 (subject「🏷️ ... が出品されました」/
     英語版「has been listed」) を分類し、MonoDeck DASHBOARD で除外する.
+
+    2026-05-20: supplier_purchase カテゴリ追加. user が仕入先 (メルカリ/
+    ヤフオク/楽天/Amazon/PayPay/駿河屋/まんだらけ) で購入した時の確認メールを
+    分類し、tab_purchase_confirm 「入荷確認」UI で対象絞り込み可能化する.
+    判定: sender が _SUPPLIER_SENDER_HINTS のいずれかを含む AND
+    subject が _SUPPLIER_PURCHASE_SUBJECT_HINTS のいずれかを含む (両方必須 =
+    プロモ/メルマガ等の false positive 防止)。
     """
     subject_lower = subject.lower()
+    sender_lower = (sender or '').lower()
+
+    # supplier_purchase 判定: 仕入先 sender + 購入関連 subject の AND
+    if any(h in sender_lower for h in _SUPPLIER_SENDER_HINTS):
+        if any(
+            h.lower() in subject_lower if h.isascii() else h in subject
+            for h in _SUPPLIER_PURCHASE_SUBJECT_HINTS
+        ):
+            return 'supplier_purchase'
+        # 仕入先からの非購入メール (プロモ等) は other で続行
+
     # 出品通知 (user 自身の出品時): 🏷️ 絵文字 + 「が出品されました」/「has been listed」
     if (
         'が出品されました' in subject
@@ -274,8 +316,26 @@ def extract_ebay_emails(service):
     try:
         # W66: from のみ + 14 日範囲. subject filter 撤去で全 eBay メールを Claude triage 対象にする.
         # maxResults: 200 で 14 日分を概ねカバー (cap 抜け対策は別途 ROADMAP 化).
-        query = 'newer_than:14d from:ebay.com OR from:ebay.co.jp'
-        results = service.users().messages().list(userId='me', q=query, maxResults=200).execute()
+        # 2026-05-20 user 緊急要望: 仕入先 (メルカリ/ヤフオク/楽天/Amazon/PayPay/
+        # 駿河屋/まんだらけ) の購入確認メールも取込対象に追加。tab_purchase_confirm
+        # 「入荷確認」UI の根本データ不足を解消 (旧 query では eBay 系のみで仕入購入
+        # メールが永久に DB に入らない設計バグだった)。
+        query = (
+            'newer_than:14d ('
+            'from:ebay.com OR from:ebay.co.jp'
+            ' OR from:mercari.jp'
+            ' OR from:auctions.yahoo.co.jp OR from:mail.yahoo.co.jp'
+            ' OR from:rakuten.co.jp OR from:order.rakuten.co.jp'
+            ' OR from:amazon.co.jp'
+            ' OR from:paypay.ne.jp'
+            ' OR from:suruga-ya.jp'
+            ' OR from:mandarake.co.jp'
+            ')'
+        )
+        # maxResults を 300 に増 (eBay 200 + 仕入 ~100 想定、超過は 14 日内に再収束)
+        results = service.users().messages().list(
+            userId='me', q=query, maxResults=300,
+        ).execute()
 
         messages = results.get('messages', [])
         emails = []

@@ -17,12 +17,17 @@ user が listing + 仕入個数を **手動確定** すると inventory_count �
 from __future__ import annotations
 
 import logging
+import re
 from difflib import SequenceMatcher
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SIM_THRESHOLD = 0.55
+# 2026-05-20 user 緊急要望 / Codex UX 推奨: top-1 自動推薦 threshold。
+# これ以上なら「ワンクリック確定」ボタンをハイライト (user 労力最小化)。
+# 0.72 = Codex 推奨値 (similarity の経験則: 0.70 以下は別商品候補リスク高)。
+TOP1_AUTO_RECOMMEND_THRESHOLD = 0.72
 
 
 def _similarity(a: str, b: str) -> float:
@@ -30,6 +35,41 @@ def _similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+def extract_purchase_qty(email_text: str) -> Optional[int]:
+    """2026-05-20: 購入確認メール本文から数量を自動抽出 (Codex UX 推奨 #1)。
+
+    パターン: 「個数 1」「数量: 2」「2 個」「Qty 3」 etc。
+    複数 hit 時は最初のもの (subject に近い順)。
+    1-999 の常識範囲外 (negative/0/1000+) は無効として None。
+
+    Q0: 失敗時 None (UI 側 default=1 にフォールバック)。誤抽出は user が
+    number_input で上書き可能 = 不可逆 risk なし。
+    """
+    if not email_text:
+        return None
+    # 優先度高い順 (specific → generic)
+    patterns = (
+        r'個数\s*[:：]?\s*(\d+)',
+        r'数量\s*[:：]?\s*(\d+)',
+        r'数\s*[:：]\s*(\d+)',
+        r'\bQty\.?\s*[:：]?\s*(\d+)',
+        r'\bquantity\s*[:：]?\s*(\d+)',
+        r'(\d+)\s*個',
+        r'(\d+)\s*点',
+        r'(\d+)\s*pcs',
+    )
+    for pat in patterns:
+        m = re.search(pat, email_text, flags=re.IGNORECASE)
+        if m:
+            try:
+                v = int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+            if 1 <= v <= 999:
+                return v
+    return None
 
 
 def suggest_listings(

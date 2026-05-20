@@ -3126,16 +3126,38 @@ def get_todays_api_cost(provider: str) -> float:
 # ---- メール管理 ----
 
 def get_recent_emails(limit: int = 30,
-                      exclude_categories: tuple = ('listing_notification',)) -> list[dict]:
+                      exclude_categories: tuple = ('listing_notification',),
+                      include_categories: Optional[tuple] = None) -> list[dict]:
     """最新のメール一覧を取得（Claude要約カラム含む）.
 
     2026-05-07: exclude_categories で listing_notification (user 自身の出品通知)
     をデフォルトで除外. 「重要なメールを優先表示」が DASHBOARD の業務目的のため.
+
+    2026-05-20: include_categories 追加. tab_purchase_confirm「入荷確認」UI が
+    category='supplier_purchase' のみに絞り込むため。None なら従来挙動
+    (exclude_categories のみ適用)。include_categories 指定時は exclude_
+    categories より優先 (IN フィルタ的に振る舞う)。
     """
-    excludes = exclude_categories or ()
-    placeholder = ",".join("?" * len(excludes)) if excludes else None
     with get_conn() as conn:
-        if placeholder:
+        if include_categories:
+            # category IN include_categories で絞る (NULL は除外、exclude より優先)
+            ph = ",".join("?" * len(include_categories))
+            sql = f"""SELECT gmail_id, subject, sender, date, body_text,
+                          COALESCE(body_ja, '') as body_ja, category, fetched_at,
+                          COALESCE(confirmed, 0) as confirmed,
+                          COALESCE(summary_ja, '') as summary_ja,
+                          COALESCE(action_ja, '') as action_ja,
+                          COALESCE(buyer_message_ja, '') as buyer_message_ja,
+                          COALESCE(priority_ai, '') as priority_ai,
+                          COALESCE(category_ai, '') as category_ai
+                   FROM emails
+                   WHERE category IN ({ph})
+                   ORDER BY fetched_at DESC LIMIT ?"""
+            rows = conn.execute(
+                sql, (*include_categories, limit),
+            ).fetchall()
+        elif exclude_categories:
+            placeholder = ",".join("?" * len(exclude_categories))
             sql = f"""SELECT gmail_id, subject, sender, date, body_text,
                           COALESCE(body_ja, '') as body_ja, category, fetched_at,
                           COALESCE(confirmed, 0) as confirmed,
@@ -3147,7 +3169,9 @@ def get_recent_emails(limit: int = 30,
                    FROM emails
                    WHERE COALESCE(category, '') NOT IN ({placeholder})
                    ORDER BY fetched_at DESC LIMIT ?"""
-            rows = conn.execute(sql, (*excludes, limit)).fetchall()
+            rows = conn.execute(
+                sql, (*exclude_categories, limit),
+            ).fetchall()
         else:
             rows = conn.execute(
                 """SELECT gmail_id, subject, sender, date, body_text,
