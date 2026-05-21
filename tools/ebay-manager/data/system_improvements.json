@@ -1351,12 +1351,12 @@
     "id": 232,
     "tag": "W148",
     "title": "AlertCrawler 移植: メルカリ/ヤフオク キーワード新着監視 (Discord 通知 + 移行 UI)",
-    "description": "C# AlertCrawler v1.2.2 (450件) を MonoDeck に移植。メルカリ + ヤフオクのみ対象、2時間 cron + subprocess (Playwright を APScheduler worker thread から分離)、価格レンジ filter、claim-then-act dedupe (UNIQUE(watch_id, found_item_url)+INSERT OR IGNORE+rowcount)、Discord 通知 (eBay Manager webhook 流用)。既存 monitor/mercari_search.py + yahoo_search.py 流用。新規 tab tab_keyword_watch.py + tasks/task_keyword_watch_crawl.py + DB v45 (keyword_watches + keyword_watch_hits)。DOM 健康検知 = センチネル方式 (各サイトに iPhone 等の「常にヒットが出る」watch を is_sentinel=1 で 1 件登録、全 sentinel 0 件で site-wide 警告)。移行は scripts/import_alertcrawler_legacy.py + UI で user 選別。supplier_sweep (守り) と別系統の発掘 (攻め) タスク。設計書: .company/engineering/docs/2026-05-20-W148-alertcrawler-keyword-watch-design.md v2.1 (Codex 3周 HIGH=0)。",
-    "status": "未着手",
+    "description": "C# AlertCrawler v1.2.2 (450件) を MonoDeck に移植。メルカリ + ヤフオクのみ対象、2時間 cron + subprocess (Playwright を APScheduler worker thread から分離)、価格レンジ filter、claim-then-act dedupe (UNIQUE(watch_id, found_item_url)+INSERT OR IGNORE+rowcount)、Discord 通知 (eBay Manager webhook 流用)。既存 monitor/mercari_search.py + yahoo_search.py 流用 + search_url 直渡しで URL filter 保持。新規 tab tab_keyword_watch.py + tasks/task_keyword_watch_crawl.py + DB v46 (keyword_watches + keyword_watch_hits)。DOM 健康検知 = センチネル方式 (各サイトに iPhone 等の「常にヒットが出る」watch を is_sentinel=1 で 1 件登録、全 sentinel 0/error で site-wide 警告)。移行は scripts/import_alertcrawler_legacy.py + UI で user 選別 (450→438 件 export)。supplier_sweep (守り) と別系統の発掘 (攻め) タスク。設計書: .company/engineering/docs/2026-05-20-W148-alertcrawler-keyword-watch-design.md v2.2 (cascade v45→v46)。",
+    "status": "完了",
     "priority": "中",
     "created": "2026-05-20",
-    "completed": null,
+    "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-20 (AlertCrawler 同等機能を MonoDeck 搭載)",
-    "progress_note": "2026-05-20 登録。設計書 v2.1 完成・origin/main push 済 (commit 699bd50)。Q3 構造化フロー Phase 4 (設計) 完結、Phase 5 (実装) は user 指示待ち。Clarify 全 5 問解答済 (#1メルカリ+ヤフオク, #2新タブ独立 2h cron, #3Discord統一, #4Playwright既存資産流用, #5UI選別移行)。Codex 3周指摘反映 (round1=Playwright thread 分離 subprocess化, round2=センチネル方式 + 戻り値dict + 価格レンジ両NULL, round3=orphan_sites 検知)。"
+    "progress_note": "2026-05-20 登録、設計 v2.1 完成 push 済 (commit 699bd50)、5/21 実装着手 (前セッション=ファイル群作成→pytest crash で中断)、5/22 残り DoD 完走。実装: monitor/keyword_watch_db.py / tasks/task_keyword_watch_crawl.py / tabs/tab_keyword_watch.py / scripts/import_alertcrawler_legacy.py / tests/test_w148_keyword_watch_2026_05_21.py + monitor/database.py v46 + daily_scheduler.py + task_execution_log.py + schedule_config.json + app.py 修正。code-reviewer Opus HIGH=0/100点。**Codex 3 周で HIGH 5 件突破→全修正**: 1周目 HIGH-1 (search_url 未使用 = AlertCrawler 450 件 import の URL filter 全消失) / HIGH-2 (sentinel exception path Discord 不発火) / HIGH-3 (webhook 5xx で hit 永久 lost)、2周目 HIGH-A (resend DB error 偽装成功) / HIGH-B (resend pass 二重送信レース)、3周目 HIGH=0 verify。pytest 1388 PASS。本番 DB v46 適用済 keyword_watches/keyword_watch_hits 存在確認。Streamlit + Playwright タブ表示 0 errors。scheduler 再起動 + W148 cron 登録 (2h ごと :20) ログ確認。"
   }
 ]

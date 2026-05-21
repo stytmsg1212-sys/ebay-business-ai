@@ -2189,6 +2189,86 @@ def init_db():
             if 'fulfillment_kind' in _cols:
                 conn.execute("PRAGMA user_version = 45")
 
+        # v46 (W148 / 2026-05-21): キーワード新着監視 (AlertCrawler 移植)
+        # 検索 URL : N 商品 hits 軸 (在庫監視と概念独立、SKU 不使用)。
+        # claim-then-act dedupe = UNIQUE(watch_id, found_item_url) で
+        # 二重巡回・二重 Discord を物理排除 (inventory_decrement_log v37 /
+        # listing_sale_warnings v44 と同型 idiom)。
+        # is_sentinel: サイトの DOM 変更/bot ban を検知する番人 watch (v2.1)。
+        # 全 sentinel が同時 0 件 = site-wide 異常 → Discord 警告 1 回/run。
+        if schema_ver < 46:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS keyword_watches (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        site            TEXT NOT NULL,
+                        search_url      TEXT NOT NULL,
+                        keyword         TEXT NOT NULL,
+                        price_min_jpy   INTEGER,
+                        price_max_jpy   INTEGER,
+                        memo            TEXT,
+                        is_active       INTEGER NOT NULL DEFAULT 1,
+                        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_crawled_at TIMESTAMP,
+                        last_error      TEXT,
+                        is_sentinel     INTEGER NOT NULL DEFAULT 0,
+                        source          TEXT DEFAULT 'manual',
+                        UNIQUE(site, search_url)
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS keyword_watch_hits (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        watch_id        INTEGER NOT NULL,
+                        found_item_url  TEXT NOT NULL,
+                        title           TEXT,
+                        price_jpy       INTEGER,
+                        image_url       TEXT,
+                        in_price_range  INTEGER NOT NULL,
+                        discord_sent    INTEGER NOT NULL DEFAULT 0,
+                        detected_at     TIMESTAMP NOT NULL,
+                        notified_at     TIMESTAMP,
+                        FOREIGN KEY (watch_id) REFERENCES keyword_watches(id),
+                        UNIQUE(watch_id, found_item_url)
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_kw_active "
+                    "ON keyword_watches(is_active, last_crawled_at)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_kwh_recent "
+                    "ON keyword_watch_hits(watch_id, detected_at DESC)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_kwh_unnotified "
+                    "ON keyword_watch_hits(discord_sent, detected_at DESC) "
+                    "WHERE in_price_range = 1"
+                )
+            except sqlite3.OperationalError:
+                pass
+            # 自己修復: 両テーブル実在を確認してから version bump (W140 v44 流儀)。
+            # 失敗時は schema_ver < 46 のまま = 次回 init_db で自動再試行。
+            _w148_ok = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('keyword_watches','keyword_watch_hits')"
+            ).fetchone()[0]
+            if _w148_ok == 2:
+                conn.execute("PRAGMA user_version = 46")
+
 
 # ---- サイト設定 ----
 

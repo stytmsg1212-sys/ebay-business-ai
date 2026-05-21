@@ -70,7 +70,7 @@ metadata:
 
 | パス | 修正内容 | 規模 |
 |---|---|---|
-| `tools/ebay-manager/monitor/database.py` | (a) `sales_history` に `ebay_order_id TEXT UNIQUE` 列追加 (現状 column なし、二重 INSERT 防止に必須). migration v46 ALTER + UNIQUE INDEX. **W140 v44 と同型の Q2 自己修復**: sqlite_master 確認後 user_version bump. (b) 新 table `fulfillment_order_link` 追加. (c) `add_sale()` に `ebay_order_id` 引数追加 (default None で後方互換) + `INSERT OR IGNORE ... ON CONFLICT(ebay_order_id) DO NOTHING` で dedupe | ~40 LOC |
+| `tools/ebay-manager/monitor/database.py` | (a) `sales_history` に `ebay_order_id TEXT UNIQUE` 列追加 (現状 column なし、二重 INSERT 防止に必須). migration v47 ALTER + UNIQUE INDEX. **W140 v44 と同型の Q2 自己修復**: sqlite_master 確認後 user_version bump. **v46 は W148 (キーワード新着監視) で先行消費 (2026-05-21 cascade) のため本 W149 は v47 へ繰り上げ確定**. (b) 新 table `fulfillment_order_link` 追加. (c) `add_sale()` に `ebay_order_id` 引数追加 (default None で後方互換) + `INSERT OR IGNORE ... ON CONFLICT(ebay_order_id) DO NOTHING` で dedupe | ~40 LOC |
 | `tools/ebay-manager/tasks/task_order_alert.py` | 既存 GetOrders 結果ループ末尾に **`add_sale(...)` 呼び出し追加** (DDP-B / 高額 EU alert はそのまま維持、sales_history 充填も同時に行う方が DRY). 既存 alert logic を改修しない (K2 Surgical) | ~20 LOC |
 | `tools/ebay-manager/tasks/task_purchase_confirm.py` | `confirm_purchase(kind='fulfillment')` の正常 return 直前に `fulfillment_order_matcher.link_one(ebay_item_id)` を呼ぶ. マッチ結果を return dict に `matched_order_id` キーで含める | ~15 LOC |
 
@@ -86,11 +86,12 @@ metadata:
 - 既存 `ebay_client.py` の GetOrders 実装 (流用のみ)
 - 既存 `task_order_alert.py` の DDP-B / 高額 EU alert logic
 
-## 4. DB スキーマ (migration v46)
+## 4. DB スキーマ (migration v47)
 
 ```sql
 -- ============================================================
--- v46 (W149 / 2026-05-21): eBay 売却注文取得 + 無在庫 fulfillment ひも付け
+-- v47 (W149 / 2026-05-21): eBay 売却注文取得 + 無在庫 fulfillment ひも付け
+-- 番号繰り上げ理由: v46 は W148 (キーワード新着監視) 着手時に確定 (cascade)
 -- ============================================================
 
 -- (a) sales_history に ebay_order_id 追加 (UNIQUE で二重 INSERT 防止)
@@ -114,7 +115,7 @@ CREATE TABLE IF NOT EXISTS fulfillment_order_link (
 CREATE INDEX IF NOT EXISTS idx_fulfillment_order_link_pcl ON fulfillment_order_link(purchase_confirmation_log_id);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_order_link_sh ON fulfillment_order_link(sales_history_id);
 
--- W140 v44 と同型の Q2 自己修復: migrate 後 sqlite_master で実在確認 → PRAGMA user_version=46 bump
+-- W140 v44 と同型の Q2 自己修復: migrate 後 sqlite_master で実在確認 → PRAGMA user_version=47 bump
 ```
 
 ## 5. 初回 backfill 設計
@@ -235,7 +236,7 @@ def link_one(ebay_item_id: str) -> Optional[int]:
 
 `tests/test_fulfillment_order_link.py`:
 
-1. **migration v46 冪等性**: init_db() 2 回連続実行で sales_history.ebay_order_id 列 + fulfillment_order_link table が保持
+1. **migration v47 冪等性**: init_db() 2 回連続実行で sales_history.ebay_order_id 列 + fulfillment_order_link table が保持
 2. **backfill script dedupe**: 同じ ebay_order_id を 2 回 add_sale() しても INSERT OR IGNORE で重複しない
 3. **FIFO マッチ順序**: 同 ebay_item_id で sales=[s1<s2], fulfillment=[f1<f2] (confirmed_at 順) → s1-f1, s2-f2 で 1:1 マッチ
 4. **時系列ガード**: fulfillment.confirmed_at < sales.sold_at の組はマッチさせない (売却前の仕入は別物)
@@ -246,7 +247,7 @@ def link_one(ebay_item_id: str) -> Optional[int]:
 
 1. pytest test_fulfillment_order_link.py PASS
 2. pytest 全件 (現状 ~1333+) regression なし
-3. migration v46 を **本番 DB に 1 回 + 再起動冪等性確認** (2 回連続 init_db で sales_history.ebay_order_id 列保持)
+3. migration v47 を **本番 DB に 1 回 + 再起動冪等性確認** (2 回連続 init_db で sales_history.ebay_order_id 列保持)
 4. backfill script を本番 DB で **dry-run** モード実装 (--dry-run で API 呼ぶが INSERT しない) → 期待件数 estimation
 5. backfill 本実行 → sales_history 充填件数 + fulfillment_order_link マッチ件数を DB SELECT で実測
 6. scheduler 再起動 → next 30 min polling で task_order_alert がエラーなく動く (scheduler.log 確認)

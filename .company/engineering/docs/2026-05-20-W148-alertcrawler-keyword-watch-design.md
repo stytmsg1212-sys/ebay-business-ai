@@ -2,8 +2,8 @@
 name: w148-alertcrawler-keyword-watch-design
 description: AlertCrawler 移植 — メルカリ/ヤフオク キーワード新着監視 (Discord 通知 + 選別移行) の設計書 v2 (Codex 2段指摘反映)
 layer: wiki
-updated: 2026-05-20
-revision: v2
+updated: 2026-05-21
+revision: v2.2
 sources:
   - C:/Users/gucch/Desktop/work/EBAY/EBAY/AlertCrawler/data.db
   - C:/Users/gucch/Desktop/work/EBAY/EBAY/AlertCrawler/AlertCrawler.exe.config
@@ -22,7 +22,7 @@ metadata:
 
 # キーワード新着監視 (AlertCrawler 移植) 設計書 — W148 (v2)
 
-**作成日**: 2026-05-20 (v1) / **v2 改訂**: 2026-05-20 (Codex 1回目指摘反映) / **v2.1 改訂**: 2026-05-20 (Codex 2回目指摘反映)
+**作成日**: 2026-05-20 (v1) / **v2 改訂**: 2026-05-20 (Codex 1回目指摘反映) / **v2.1 改訂**: 2026-05-20 (Codex 2回目指摘反映) / **v2.2 改訂**: 2026-05-21 (実装着手時 v45→v46 cascade 訂正、W133-FU が v45 を先行消費した結果)
 **ROADMAP id 候補**: 232 (次空き) / **tag 候補**: W148 (次空き、W147 まで使用済)
 **設計フェーズ**: Q3 構造化フロー (Phase 4 = 設計、実装は別途指示)
 
@@ -91,7 +91,7 @@ C# .NET WinForms の AlertCrawler v1.2.2 (450 件のウォッチ URL 蓄積) を
 ### 修正
 | パス | 修正内容 |
 |---|---|
-| `tools/ebay-manager/monitor/database.py` | 末尾に migration v45 追加 (`keyword_watches` / `keyword_watch_hits` / 各 index)。**W140 v44 と同型の Q2 自己修復**: `CREATE` 後に sqlite_master で 2 テーブル実在を確認してから `PRAGMA user_version = 45` を bump |
+| `tools/ebay-manager/monitor/database.py` | 末尾に migration v46 追加 (`keyword_watches` / `keyword_watch_hits` / 各 index)。**W140 v44 と同型の Q2 自己修復**: `CREATE` 後に sqlite_master で 2 テーブル実在を確認してから `PRAGMA user_version = 46` を bump。**v45 は W133-FU `fulfillment_kind` で先行消費済 (commit `383f663`、2026-05-21)、本 W148 着手時の cascade で v45 → v46 へ繰り上げ確定 (2026-05-21、user 公認)** |
 | `tools/ebay-manager/daily_scheduler.py` | (a) `setup_scheduler()` 末尾に `scheduler.add_job(_run_keyword_watch_crawl, CronTrigger(hour='*/2', minute=20), id='keyword_watch_crawl', max_instances=1, replace_existing=True)` 追加。(b) `_run_keyword_watch_crawl(config)` 関数追加: **subprocess で `python -m tasks.task_keyword_watch_crawl` を起動** (Playwright sync_playwright を APScheduler worker thread から外す = HIGH-1 根治、Codex 2段指摘)。`_run_isolated_task` ラッパで task_execution_log への started/completed/failed 記録、subprocess 終了コード非 0 で failed 記録 (Q0 痕跡) |
 | `tools/ebay-manager/monitor/task_execution_log.py` | `TASK_SCHEDULE` リストに `{"key": "keyword_watch_crawl", "display": "W148 キーワード新着監視 (2h ごと)", "hours": None, "weekdays": None, "owner": "keyword_watch", "kind": "interval", "interval_minutes": 120}` を追加 (claude_loop_healthcheck と同型) |
 | `tools/ebay-manager/config/schedule_config.json` | `tasks_enabled.keyword_watch_crawl` ブロック追加 (`enabled / description / interval_hours=2 / max_watches_per_run / sleep_between_watches_sec / browser_idle_timeout_sec`) |
@@ -105,15 +105,16 @@ C# .NET WinForms の AlertCrawler v1.2.2 (450 件のウォッチ URL 蓄積) を
 
 ---
 
-## 4. DB スキーマ (migration v45)
+## 4. DB スキーマ (migration v46)
 
 ```sql
 -- ============================================================
--- v45 (W148 / 2026-05-20): キーワード新着監視 (AlertCrawler 移植)
+-- v46 (W148 / 2026-05-20 設計 / 2026-05-21 着手時 v45→v46 cascade 訂正): キーワード新着監視 (AlertCrawler 移植)
 -- listing 識別は使わず、検索 URL : N 商品 hits 軸。
 -- claim-then-act dedupe = UNIQUE(watch_id, found_item_url) で
 -- 二重巡回・二重 Discord を物理排除 (既存 inventory_decrement_log
 -- v37 / listing_sale_warnings v44 と同型 idiom)。
+-- 番号繰り上げ理由: v45 は W133-FU `fulfillment_kind` (commit `383f663`) で先行消費済。
 -- ============================================================
 CREATE TABLE IF NOT EXISTS keyword_watches (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_kwh_unnotified
 ### 冪等性 / 自己修復 (Q2 / W140 v44 流儀踏襲)
 
 ```python
-if schema_ver < 45:
+if schema_ver < 46:
     for _ddl in (
         "CREATE TABLE IF NOT EXISTS keyword_watches (...)",
         "CREATE TABLE IF NOT EXISTS keyword_watch_hits (...)",
@@ -186,7 +187,7 @@ if schema_ver < 45:
         "AND name IN ('keyword_watches','keyword_watch_hits')"
     ).fetchone()[0]
     if _w148_ok == 2:
-        conn.execute("PRAGMA user_version = 45")
+        conn.execute("PRAGMA user_version = 46")
 ```
 
 ### sku-rules 適合
@@ -586,7 +587,7 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
 
 依存順序に沿った実装ステップ。各 step で **pytest PASS + 1 stake** 検証後に次へ進む。
 
-1. **DB migration v45** (`monitor/database.py` 末尾追加)
+1. **DB migration v46** (`monitor/database.py` 末尾追加。**v45 は W133-FU 先行消費済のため v46 へ繰り上げ確定**)
 2. **DB helpers** (`monitor/keyword_watch_db.py` 新規)
 3. **scheduled task** (`tasks/task_keyword_watch_crawl.py` 新規)
 4. **scheduler 統合** (`daily_scheduler.py` + `task_execution_log.TASK_SCHEDULE` + `schedule_config.json`)
@@ -631,7 +632,7 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
 
 | # | ステップ | 確認手段 | 期待結果 |
 |---|---|---|---|
-| 1 | DB migration 適用 | `PRAGMA user_version` | `(45,)` |
+| 1 | DB migration 適用 | `PRAGMA user_version` | `(46,)` |
 | 2 | DB migration 冪等性 | init_db 2回連続 + 行保持 | 行が消えない |
 | 3 | pytest 全体 | `pytest tests/` | 全 PASS、HIGH=0 |
 | 4 | scheduler 再起動 | `scheduler.log` grep | 「W148 キーワード新着監視 発火」 |
@@ -651,7 +652,7 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
 |---|---|
 | **Plan** | 本設計書 (W148) |
 | **Verify** | step 1-7 の pytest + Streamlit + 実機巡回 |
-| **Persist** | DB v45 migration (冪等) + `system_improvements.json` W148 entry |
+| **Persist** | DB v46 migration (冪等) + `system_improvements.json` W148 entry |
 | **Automate** | scheduler 2h cron + 健康チェック既存経路 |
 
 ---
@@ -736,7 +737,7 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
     "id": 232,
     "tag": "W148",
     "title": "AlertCrawler 移植: メルカリ/ヤフオク キーワード新着監視 (Discord 通知 + 移行 UI)",
-    "description": "C# AlertCrawler v1.2.2 (450件) を MonoDeck に移植。メルカリ + ヤフオクのみ対象、2時間cron、価格レンジ filter、claim-then-act dedupe、Discord 通知 (eBay Manager webhook 流用)。既存 monitor/mercari_search.py + yahoo_search.py 流用。新規 tab + tasks/task_keyword_watch_crawl.py + DB v45。移行は scripts/import_alertcrawler_legacy.py + UI 選別。supplier_sweep (守り) と別系統の発掘 (攻め) タスク。",
+    "description": "C# AlertCrawler v1.2.2 (450件) を MonoDeck に移植。メルカリ + ヤフオクのみ対象、2時間cron、価格レンジ filter、claim-then-act dedupe、Discord 通知 (eBay Manager webhook 流用)。既存 monitor/mercari_search.py + yahoo_search.py 流用。新規 tab + tasks/task_keyword_watch_crawl.py + DB v46。移行は scripts/import_alertcrawler_legacy.py + UI 選別。supplier_sweep (守り) と別系統の発掘 (攻め) タスク。",
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-20"

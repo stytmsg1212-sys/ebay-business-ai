@@ -85,6 +85,7 @@ from tabs.tab_scheduled_execution import render_tab as render_scheduled_executio
 from tabs.tab_research_brain import render_tab as render_research_brain_tab
 from tabs.tab_morning_discovery import render_morning_discovery_tab
 from tabs.tab_purchase_confirm import render_purchase_confirm_tab
+from tabs.tab_keyword_watch import render_keyword_watch_tab  # W148 (2026-05-21)
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
 # ── W134 Step2: 重い DB ローダの read-cache (体感改善) ──
@@ -239,6 +240,7 @@ _W134_TABS = [
     "eBay連携",
     "最安値チェック",   # W98 (2026-05-05) ライバル価格追随で SEO ブースト
     "仕入先候補",
+    "キーワード新着監視",  # W148 (2026-05-21) AlertCrawler 移植 メルカリ/ヤフオク 攻めの市場ディスカバリ
     "モデル比較",    # W86 (2026-05-01) Opus 4.7 vs Sonnet 4.6 supplier A/B test
     "個別出品",
     "通関対応",      # W14 (2026-04-24)
@@ -6858,6 +6860,10 @@ if _w134_sel == "今日の発掘":
 # ========== 入荷確認タブ (W133 2026-05-16) ==========
 if _w134_sel == "入荷確認":
     render_purchase_confirm_tab()
+
+# ========== キーワード新着監視タブ (W148 2026-05-21) ==========
+if _w134_sel == "キーワード新着監視":
+    render_keyword_watch_tab()
 
 # ========== 定時実行タブ (2026-04-25 hour ドリフト事故対応) ==========
 if _w134_sel == "定時実行":

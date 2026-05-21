@@ -83,26 +83,35 @@ def search_yahoo(
     max_results: int = 5,  # 2026-05-05 cost 最適化: 10 → 5
     headless: bool = True,
     timeout_ms: int = 15000,
+    search_url: Optional[str] = None,
 ) -> list[YahooHit]:
     """
     Yahoo!オークションで在庫ありの商品をキーワード検索して N 件返す。
 
     並び順: 新着順降順（s1=new, o1=d）。
 
+    Args:
+        search_url: 指定時はこの URL を直接使う (W148 AlertCrawler 移植: 価格範囲 /
+            category_id / 除外語など URL に焼かれた filter を保持するため). None なら
+            keyword から汎用 URL を再構築 (既存呼出元の挙動を維持).
+
     Returns:
         YahooHit のリスト。失敗時は空リスト。
     """
-    q = urllib.parse.urlencode({
-        "p": keyword,
-        "auccat": "",
-        "aq": "-1",
-        "oq": "",
-        "s1": "new",    # sort by new listings
-        "o1": "d",      # descending
-        "n": max(max_results, 20),  # Yahoo 最小20件のことが多い
-        "b": 1,
-    })
-    url = f"{YAHOO_SEARCH_URL}?{q}"
+    if search_url:
+        url = search_url
+    else:
+        q = urllib.parse.urlencode({
+            "p": keyword,
+            "auccat": "",
+            "aq": "-1",
+            "oq": "",
+            "s1": "new",    # sort by new listings
+            "o1": "d",      # descending
+            "n": max(max_results, 20),  # Yahoo 最小20件のことが多い
+            "b": 1,
+        })
+        url = f"{YAHOO_SEARCH_URL}?{q}"
 
     hits: list[YahooHit] = []
 

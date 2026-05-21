@@ -56,6 +56,8 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # hours=None は本来「全 batch slot で実行」を意味するが、本 task は 30 分毎 cron なので
     # expected slot 模型と齟齬. kind=interval マーカーで get_today_expected_tasks 側で skip.
     {"key": "claude_loop_healthcheck", "display": "W131 P5 claude-loop watcher (30分ごと)", "hours": None, "weekdays": None, "owner": "claude_loop_healthcheck", "kind": "interval", "interval_minutes": 30},
+    # W148 (2026-05-21): キーワード新着監視. 2h ごと :20 分 subprocess crawl.
+    {"key": "keyword_watch_crawl", "display": "W148 キーワード新着監視 (2h ごと :20)", "hours": None, "weekdays": None, "owner": "keyword_watch", "kind": "interval", "interval_minutes": 120},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

@@ -15,6 +15,7 @@ import time
 import threading
 import logging
 import traceback
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -966,7 +967,72 @@ def setup_scheduler():
     )
     logger.info("W131 P5 claude_loop_healthcheck 発火: 30 分ごと (*/30 :15)")
 
+    # ── W148 キーワード新着監視 (2026-05-21 追加) ──
+    # 2 時間ごと :20 分 (主 batch 02:30/11:30/15/18/22 と衝突しないオフセット).
+    # subprocess (`python -m tasks.task_keyword_watch_crawl`) で別プロセス起動し
+    # sync_playwright を APScheduler worker thread から物理分離 (mercari_search.py
+    # の main thread sequential 前提を満たす).
+    kw_cfg = (config.get('tasks_enabled', {}) or {}).get('keyword_watch_crawl', {}) or {}
+    if kw_cfg.get('enabled', True):
+        interval_hours = int(kw_cfg.get('interval_hours', 2))
+        scheduler.add_job(
+            _run_keyword_watch_crawl,
+            trigger=CronTrigger(hour=f'*/{interval_hours}', minute=20, second=0),
+            args=[config],
+            id='keyword_watch_crawl',
+            name=f'W148 キーワード新着監視 ({interval_hours}h ごと :20)',
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"W148 キーワード新着監視 発火: {interval_hours} 時間ごと :20 分 (subprocess)"
+        )
+
     return scheduler
+
+
+def _run_keyword_watch_crawl(config: dict):
+    """W148 キーワード新着監視 — subprocess で task_keyword_watch_crawl を別プロセス起動。
+
+    sync_playwright を APScheduler worker thread から物理分離 (mercari_search.py
+    の main thread sequential 前提を満たす根本対応、Codex 2 段 HIGH-1)。
+    """
+    def _launch_subprocess() -> dict:
+        cwd = Path(__file__).resolve().parent  # tools/ebay-manager
+        timeout_sec = int(
+            (config.get('tasks_enabled', {}) or {})
+            .get('keyword_watch_crawl', {})
+            .get('subprocess_timeout_sec', 600)
+        )
+        try:
+            res = subprocess.run(
+                [sys.executable, "-m", "tasks.task_keyword_watch_crawl"],
+                cwd=str(cwd),
+                stdin=subprocess.DEVNULL,  # Windows pythonw deadlock 防止
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                env={**os.environ},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"keyword_watch_crawl subprocess timeout ({timeout_sec}s)"
+            ) from e
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"keyword_watch_crawl subprocess failed (exit={res.returncode}): "
+                f"stderr={(res.stderr or '')[:500]} stdout={(res.stdout or '')[:300]}"
+            )
+        stdout_tail = (res.stdout or '').strip()[:300]
+        logger.info(f"keyword_watch_crawl OK: {stdout_tail}")
+        # Codex 2 段 HIGH-A: _run_isolated_task は dict + .get("success") 期待。
+        # string 返却は AttributeError で成功が failed 記録になるため必ず dict 化。
+        return {"success": True, "message": stdout_tail}
+
+    _run_isolated_task('keyword_watch_crawl', 'W148 キーワード新着監視',
+                       _launch_subprocess,
+                       scheduled_hour=None)
 
 
 def _run_budget_alert(config: dict, scheduled_hour: int = 12):

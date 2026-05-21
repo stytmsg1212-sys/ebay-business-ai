@@ -60,6 +60,7 @@ def search_mercari(
     max_results: int = 5,  # 2026-05-05 cost 最適化: 10 → 5 (採用率 0.6% で過剰評価のため)
     headless: bool = True,
     timeout_ms: int = 15000,
+    search_url: Optional[str] = None,
 ) -> list[MercariHit]:
     """
     メルカリで在庫ありの商品をキーワード検索して N 件返す。
@@ -69,17 +70,23 @@ def search_mercari(
         max_results: 返却最大件数
         headless: ヘッドレスモード（デバッグ時 False にすると可視化）
         timeout_ms: 全体タイムアウト
+        search_url: 指定時はこの URL を直接使う (W148 AlertCrawler 移植: 価格範囲 /
+            カテゴリ / 除外語など URL に焼かれた filter を保持するため). None なら
+            keyword から汎用 URL を再構築 (既存呼出元の挙動を維持).
 
     Returns:
         MercariHit のリスト。失敗時は空リストを返す（ログに理由）。
     """
-    q = urllib.parse.urlencode({
-        "keyword": keyword,
-        "status": "on_sale",
-        "sort": "created_time",
-        "order": "desc",
-    })
-    url = f"{MERCARI_SEARCH_URL}?{q}"
+    if search_url:
+        url = search_url
+    else:
+        q = urllib.parse.urlencode({
+            "keyword": keyword,
+            "status": "on_sale",
+            "sort": "created_time",
+            "order": "desc",
+        })
+        url = f"{MERCARI_SEARCH_URL}?{q}"
 
     hits: list[MercariHit] = []
 

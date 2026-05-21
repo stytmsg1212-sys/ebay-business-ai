@@ -229,6 +229,17 @@
       "cron_hour": 6,
       "cron_minute": 10,
       "note": "独立 CronJob 06:10 (W13 06:00 とオフセット). 送信は MONO Deck UI から明示実行."
+    },
+    "keyword_watch_crawl": {
+      "enabled": true,
+      "description": "W148 キーワード新着監視: メルカリ/ヤフオクを 2 時間毎 subprocess 巡回し希望価格レンジ合致を Discord 通知",
+      "priority": 9,
+      "interval_hours": 2,
+      "max_watches_per_run": 30,
+      "sleep_between_watches_sec": 4,
+      "subprocess_timeout_sec": 600,
+      "sentinel_health_check_enabled": true,
+      "note": "巡回件数 × sleep で総時間 ~ max*5s 以内。30 件 = 約 4-6 分 (timeout 10 分に余裕)。センチネル方式 — 各サイトに「常にヒットが出る」watch (is_sentinel=1) を 1 件登録し、全 sentinel が同時に 0 件 = site DOM 変更 or bot ban として警告 1 回/run。sentinel 初期化は UI ボタンから 1 回 (migration data write 禁止のため、db-migration-rules.md)。"
     }
   },
   "supplier_selection_criteria": {
