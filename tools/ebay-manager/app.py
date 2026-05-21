@@ -112,7 +112,35 @@ def _cd_execution_summary(db_version: int):
 @st.cache_data(ttl=3, show_spinner=False)
 def _cd_dash_emails(db_version: int, limit: int):
     from monitor.database import get_recent_emails
-    return get_recent_emails(limit)
+    # 2026-05-21 user 要望: DASHBOARD ノイズ削減。
+    # - listing_notification: 既存除外 (user 自身の出品通知)
+    # - supplier_purchase: 入荷確認タブ専用 (W133/今回 fix)
+    # - sale: 売却通知 = 自動処理 (task_order_alert) で対応、UI 露出不要
+    # - promo: eBay キャンペーン等 = REFERENCE で本当に重要なものだけ別 filter
+    #   (本 SQL では category_ai は見れないため UI 側で再 filter)
+    return get_recent_emails(
+        limit,
+        exclude_categories=(
+            'listing_notification', 'supplier_purchase', 'sale',
+        ),
+    )
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_customs_pending_count(db_version: int) -> int:
+    """2026-05-21 user 要望: DASHBOARD に通関対応待ち件数 metric を出すため、
+    customs_requests の未送信 (status IN detected/drafted/drafted_no_photo)
+    をカウントする。送信済 (sent) は除外。"""
+    from monitor.database import get_conn
+    try:
+        with get_conn() as c:
+            n = c.execute(
+                "SELECT COUNT(*) FROM customs_requests "
+                "WHERE status IN ('detected','drafted','drafted_no_photo')"
+            ).fetchone()[0]
+        return int(n or 0)
+    except Exception:
+        return 0
 
 
 @st.cache_data(ttl=3, show_spinner=False)
@@ -376,6 +404,30 @@ if _w134_sel == "DASHBOARD":
     except (sqlite3.Error, sqlite3.OperationalError) as _inv_e:
         import logging as _il
         _il.getLogger(__name__).warning(f"在庫通知 描画失敗: {_inv_e}")
+
+    # ── 2026-05-21 user 要望: 通関対応 待ち件数 metric ──
+    # W14 自動検知済の通関要求 (FedEx/UPS/DHL) のうち未送信を可視化。
+    # DASHBOARD 直結で見落とし防止 (旧来は「通関対応」タブを開かないと未認識)。
+    try:
+        _customs_pending = _cd_customs_pending_count(get_db_version())
+        if _customs_pending > 0:
+            with st.container(border=True):
+                st.markdown("### ⚖️ 通関対応 (未送信)")
+                _ccol1, _ccol2 = st.columns([1, 4])
+                with _ccol1:
+                    st.metric(
+                        "📦 待ち件数", _customs_pending,
+                        help="FedEx/UPS/DHL からの通関情報要求 (W14 自動検知)。"
+                             "「通関対応」タブで承認・送信してください。",
+                    )
+                with _ccol2:
+                    st.caption(
+                        "→ 左ナビ「通関対応」タブで内容確認・ドラフト送信。"
+                        "放置するとリードタイムが伸び返品/赤字リスク (CLAUDE.md 「DDP / Section 232」参照)。"
+                    )
+    except Exception as _ce:
+        import logging as _cel
+        _cel.getLogger(__name__).warning(f"通関対応 metric 描画失敗: {_ce}")
 
     # ── W120+W121 (2026-05-12): 仕入先 価格変動 alert ──
     # ±3% 急騰/急落 + 在庫切れ→復活 を別 metric で表示. Discord 通知なし (DASHBOARD only).
@@ -1165,11 +1217,23 @@ if _w134_sel == "DASHBOARD":
             except Exception:
                 return "", (date_str[:20] if date_str else "")
 
+        # 2026-05-21 Codex HIGH 対応: category_ai='sale' (Claude判定 売上通知) で
+        # priority_ai=high/urgent の漏れを INBOX 側でも guard。rule category と
+        # category_ai のどちらかに excluded カテゴリが入っていれば skip (sale /
+        # supplier_purchase / listing_notification は dashboard 表示不要)。
+        _inbox_excluded_categories = {
+            'supplier_purchase', 'sale', 'listing_notification',
+        }
         for _em in _dash_unconf:
             # Claude 判定（あれば優先）、なければ従来の keyword カテゴリ
             _pri_ai = _em.get('priority_ai') or ''
             _cat_ai = _em.get('category_ai') or ''
-            cat = _cat_ai or _em.get('category', 'other')
+            _cat_rule = _em.get('category', 'other')
+            cat = _cat_ai or _cat_rule
+            # excluded カテゴリは rule/AI どちらか hit で skip (Codex HIGH 漏れ穴塞ぎ)
+            if _cat_rule in _inbox_excluded_categories \
+                    or _cat_ai in _inbox_excluded_categories:
+                continue
             if (_pri_ai and _pri_ai in _urgent_priorities) or (not _pri_ai and cat in _urgent_categories):
                 _has_urgent = True
             else:
@@ -1292,15 +1356,30 @@ if _w134_sel == "DASHBOARD":
         # urgent 判定に漏れたメール (eBay promotion / feedback / payment 通知等) を
         # 参考セクションとして下に並べる。feedback memory: expander 禁止ルールに従い、
         # セクション区切り線とリスト表示で toggle 無しで表示する。
+        # 2026-05-21 user 要望: REFERENCE にも本当に重要なものだけ。
+        # promo (eBay キャンペーン等) は high/urgent priority のみ通す。
+        # supplier_purchase / sale は fetch 時に除外済だが念のため safety guard。
+        _ref_excluded_categories = {
+            'supplier_purchase', 'sale', 'listing_notification',
+        }
         _non_urgent = []
         for _em in _dash_unconf:
             _pri_ai = _em.get('priority_ai') or ''
             _cat_ai = _em.get('category_ai') or ''
-            cat = _cat_ai or _em.get('category', 'other')
+            _cat_rule = _em.get('category', 'other')
+            cat = _cat_ai or _cat_rule
             is_urgent = (_pri_ai and _pri_ai in _urgent_priorities) or \
                         (not _pri_ai and cat in _urgent_categories)
-            if not is_urgent:
-                _non_urgent.append(_em)
+            if is_urgent:
+                continue
+            # safety: 除外カテゴリ (rule または AI 判定どちらかに含まれていれば skip)
+            if _cat_rule in _ref_excluded_categories \
+                    or _cat_ai in _ref_excluded_categories:
+                continue
+            # promo は high/urgent priority のみ REFERENCE に出す
+            if _cat_ai == 'promo' and _pri_ai not in ('high', 'urgent'):
+                continue
+            _non_urgent.append(_em)
 
         if _non_urgent:
             st.markdown(
