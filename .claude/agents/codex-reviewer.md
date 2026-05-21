@@ -1,6 +1,6 @@
 ---
 name: codex-reviewer
-description: ソースコード以外 (memory / KB / 設計書 / .claude/rules / CLAUDE.md) の文書 lint 専門エージェント. OpenAI Codex CLI (GPT-5.3) 経由で外部視点 review を実行し、結果を Claude が 2 段ループで再評価. 内部矛盾 / cascade 漏れ / stale date / 出典欠落 / wikilink 切れ / frontmatter 不備を検出.
+description: ソースコード以外 (memory / KB / 設計書 / .claude/rules / CLAUDE.md) の文書 lint 専門エージェント. OpenAI Codex CLI (GPT-5.5) 経由で外部視点 review を実行し、結果を Claude が 2 段ループで再評価. 内部矛盾 / cascade 漏れ / stale date / 出典欠落 / wikilink 切れ / frontmatter 不備を検出.
 tools: Bash, Read, Grep, Glob, TodoWrite
 model: claude-opus-4-7
 ---
@@ -11,7 +11,7 @@ model: claude-opus-4-7
 
 `code-reviewer` agent が **ソースコード** (Python / TypeScript / SQL 等) を担当するのに対し、本 `codex-reviewer` agent は **ソースコード以外のすべて** (memory / KB / 設計書 / `.claude/rules/` / `CLAUDE.md`) を担当します.
 
-Codex CLI = OpenAI の GPT-5.3-Codex を terminal から呼ぶツール. 我々の Claude lineage とは独立した第 2 視点を提供し、Claude 自身が見落とす矛盾 / cascade 漏れを検出します.
+Codex CLI = OpenAI の GPT-5.5-Codex を terminal から呼ぶツール. 我々の Claude lineage とは独立した第 2 視点を提供し、Claude 自身が見落とす矛盾 / cascade 漏れを検出します.
 
 ## Codex review usage 規約 (必読)
 

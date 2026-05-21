@@ -1,6 +1,6 @@
 # Codex Review Skill (`/codex-review`)
 
-`/codex-review <path>` で起動する slash command. user が任意の memory / KB / 設計書を **Codex CLI (GPT-5.3) で外部 lint** したい時に発火.
+`/codex-review <path>` で起動する slash command. user が任意の memory / KB / 設計書を **Codex CLI (GPT-5.5) で外部 lint** したい時に発火.
 
 ## トリガ
 
