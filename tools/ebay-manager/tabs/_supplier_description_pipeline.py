@@ -30,39 +30,124 @@ logger = logging.getLogger(__name__)
 
 _SS = "sup_desc_pipeline_"
 
+# 2026-05-21 ランク手動 override UI 用 (個別出品 tab_individual_listing と同セット)。
+# 重複だが K1 (3 回出てから共通化) 範囲、tab_individual との結合を作らない方が
+# 安全 (UI モジュール間の隠れ依存防止)。
+_RANK_CHOICES: tuple[str, ...] = ('N', 'S', 'A', 'B', 'C', 'D', 'PO', 'As-Is')
+_RANK_LABEL_HINTS: dict[str, str] = {
+    "N":     "N — 新品未開封 (シュリンク付き)",
+    "S":     "S — 新品同様 (開封済・未使用)",
+    "A":     "A — 美品 (小傷、全機能動作)",
+    "B":     "B — 並品 (目立つ使用痕、全機能動作)",
+    "C":     "C — 使用感あり (強い使用痕、全機能動作)",
+    "D":     "D — 難あり (機能限定で動作)",
+    "PO":    "PO — 通電のみ (動作未確認)",
+    "As-Is": "As-Is — 未確認 / 部品取り (無保証)",
+}
+
+
+def prefetch_supplier_product_and_rank(
+    candidate_id: int, candidate_url: str,
+) -> dict:
+    """2026-05-21 user 要望: section open 時に scrape + rank classify を自動
+    実行して結果を返す。UI 層が session_state にキャッシュし rerun でも
+    再実行しない (~10-15s のコストを 1 回のみ支払う)。
+
+    Returns:
+        {'success': bool,
+         'product': ScrapedProduct or None,
+         'rank_code': str,        # Claude 推定 (失敗時 '')
+         'rank_label': str,
+         'rank_confidence': float,
+         'rank_reasoning': str,
+         'message': str}
+    """
+    from monitor.supplier_scraper import scrape_supplier_url
+    from monitor.rank_classifier import classify_rank
+
+    out = {
+        'success': False, 'product': None,
+        'rank_code': '', 'rank_label': '', 'rank_confidence': 0.0,
+        'rank_reasoning': '', 'message': '',
+    }
+    try:
+        product = scrape_supplier_url(candidate_url, timeout_sec=15)
+    except Exception as e:
+        logger.exception("prefetch scrape failed cid=%s", candidate_id)
+        out['message'] = f'スクレイプ失敗: {type(e).__name__}: {e}'
+        return out
+    if not product or not getattr(product, 'title_ja', None):
+        out['message'] = 'スクレイプ結果が空 (URL を再確認してください)'
+        return out
+
+    try:
+        rank = classify_rank(
+            supplier_condition_ja=getattr(product, 'condition_ja', '') or '',
+            supplier_description_ja=getattr(product, 'description_ja', None),
+            supplier_title_ja=getattr(product, 'title_ja', None),
+        )
+    except Exception as e:
+        logger.exception("prefetch rank failed cid=%s", candidate_id)
+        # scrape は成功しているので product だけでも返す (rank は手動入力可)
+        out['product'] = product
+        out['message'] = f'rank classify 失敗 (手動指定で続行可): {type(e).__name__}: {e}'
+        return out
+
+    out.update({
+        'success': True,
+        'product': product,
+        'rank_code': rank.rank_code,
+        'rank_label': getattr(rank, 'rank_label', '') or '',
+        'rank_confidence': float(getattr(rank, 'confidence', 0.0) or 0.0),
+        'rank_reasoning': getattr(rank, 'reasoning', '') or '',
+        'message': (
+            f'スクレイプ + 自動ランク推定 完了 (ランク={rank.rank_code}, '
+            f'confidence={float(getattr(rank, "confidence", 0.0)):.2f})'
+        ),
+    })
+    return out
+
 
 def generate_supplier_description(
     candidate_id: int,
     candidate_url: str,
     in_stock: bool = False,
     template_id: Optional[int] = None,
+    prefetched_product=None,
+    rank_override_code: Optional[str] = None,
 ) -> dict:
     """仕入先 URL から description HTML を生成 (eBay 反映はしない、純生成のみ).
+
+    2026-05-21 user 要望: prefetched_product / rank_override_code を受け取り
+    section open 時の事前取得結果を再利用 + user 手動 rank 上書き対応。
+    両方 None なら旧挙動 (内部で scrape + auto-classify)。
 
     Returns:
         {'success': bool,
          'description_html': str,    # 生成された HTML body
-         'rank_code': str,           # 推定ランク (N/S/A/B/C/D/PO/As-Is)
+         'rank_code': str,           # 使用したランク (override or 自動)
          'title_en': str,            # Claude 生成 英語タイトル (preview 用)
          'message': str}
     """
     from monitor.supplier_scraper import scrape_supplier_url
-    from monitor.rank_classifier import classify_rank
+    from monitor.rank_classifier import classify_rank, _build_result
     from monitor.listing_generator import generate_listing
     from monitor.database import (
         get_description_templates, get_description_template,
     )
 
-    # Step 1: scrape
-    try:
-        product = scrape_supplier_url(candidate_url, timeout_sec=15)
-    except Exception as e:
-        logger.exception("scrape_supplier_url failed cid=%s", candidate_id)
-        return {
-            'success': False,
-            'message': f'スクレイプ失敗: {type(e).__name__}: {e}',
-            'description_html': '', 'rank_code': '', 'title_en': '',
-        }
+    # Step 1: scrape (prefetched があれば再利用)
+    product = prefetched_product
+    if product is None:
+        try:
+            product = scrape_supplier_url(candidate_url, timeout_sec=15)
+        except Exception as e:
+            logger.exception("scrape_supplier_url failed cid=%s", candidate_id)
+            return {
+                'success': False,
+                'message': f'スクレイプ失敗: {type(e).__name__}: {e}',
+                'description_html': '', 'rank_code': '', 'title_en': '',
+            }
 
     if not product or not getattr(product, 'title_ja', None):
         return {
@@ -71,20 +156,36 @@ def generate_supplier_description(
             'description_html': '', 'rank_code': '', 'title_en': '',
         }
 
-    # Step 2: rank classify
-    try:
-        rank = classify_rank(
-            supplier_condition_ja=getattr(product, 'condition_ja', '') or '',
-            supplier_description_ja=getattr(product, 'description_ja', None),
-            supplier_title_ja=getattr(product, 'title_ja', None),
-        )
-    except Exception as e:
-        logger.exception("classify_rank failed cid=%s", candidate_id)
-        return {
-            'success': False,
-            'message': f'rank classify 失敗: {type(e).__name__}: {e}',
-            'description_html': '', 'rank_code': '', 'title_en': '',
-        }
+    # Step 2: rank (override > auto-classify)
+    if rank_override_code and rank_override_code in _RANK_CHOICES:
+        # user 手動指定 → RankClassification を組み立て (confidence=1.0, manual reasoning)
+        try:
+            rank = _build_result(
+                rank_override_code,
+                confidence=1.0,
+                reasoning='manual override (user 指定)',
+            )
+        except Exception as e:
+            logger.exception("manual rank build failed cid=%s", candidate_id)
+            return {
+                'success': False,
+                'message': f'manual rank build 失敗: {type(e).__name__}: {e}',
+                'description_html': '', 'rank_code': '', 'title_en': '',
+            }
+    else:
+        try:
+            rank = classify_rank(
+                supplier_condition_ja=getattr(product, 'condition_ja', '') or '',
+                supplier_description_ja=getattr(product, 'description_ja', None),
+                supplier_title_ja=getattr(product, 'title_ja', None),
+            )
+        except Exception as e:
+            logger.exception("classify_rank failed cid=%s", candidate_id)
+            return {
+                'success': False,
+                'message': f'rank classify 失敗: {type(e).__name__}: {e}',
+                'description_html': '', 'rank_code': '', 'title_en': '',
+            }
 
     # Step 3: template (auto-select default、無ければ先頭)
     if template_id is None:
@@ -243,6 +344,8 @@ def render_supplier_description_section(
     """
     sk_result = f"{_SS}gen_result_{candidate_id}"
     sk_apply_result = f"{_SS}apply_result_{candidate_id}"
+    sk_prefetch = f"{_SS}prefetch_{candidate_id}"          # 2026-05-21: scrape+rank キャッシュ
+    sk_rank_override = f"{_SS}rank_override_{candidate_id}"  # 2026-05-21: user 手動 rank
 
     with st.container(border=True):
         st.markdown(
@@ -254,33 +357,107 @@ def render_supplier_description_section(
         )
         st.caption(f"対象商品: {candidate_title[:60]}")
 
-        gen_result = st.session_state.get(sk_result)
+        # 2026-05-21 user 要望: section 展開時に自動 scrape + rank classify を実行
+        # → 結果を session_state にキャッシュ (rerun で再実行しない、~10-15s/回)。
+        prefetch = st.session_state.get(sk_prefetch)
+        if prefetch is None:
+            with st.spinner(
+                "仕入先 URL からスクレイプ + Claude Haiku ランク推定 中 (~10-15秒)..."
+            ):
+                prefetch = prefetch_supplier_product_and_rank(
+                    candidate_id, candidate_url,
+                )
+            st.session_state[sk_prefetch] = prefetch
+            st.rerun()  # rank UI を 1 回目 render で確実に出すため再 render
 
-        # Step 1: 未生成 → 生成ボタン (Codex 2026-05-20 MEDIUM 対応: in-flight
-        # lock で double-trigger による Claude 二重課金を物理防止。既存 採用
-        # button の _sup_lock_{cid} と同型パターン)。
+        if not prefetch.get('success') and not prefetch.get('product'):
+            # scrape 自体が失敗 (product 取れず) → 再試行のみ可
+            st.error(f"❌ {prefetch.get('message') or 'prefetch 失敗'}")
+            if st.button(
+                "🔄 prefetch 再試行", key=f"{_SS}btn_prefetch_retry_{candidate_id}",
+            ):
+                if sk_prefetch in st.session_state:
+                    del st.session_state[sk_prefetch]
+                st.rerun()
+            return
+
+        # ── ランク UI (個別出品同様: Claude 推定 default + selectbox 上書き可) ──
+        auto_rank = prefetch.get('rank_code') or ''
+        auto_conf = prefetch.get('rank_confidence') or 0.0
+        auto_reasoning = prefetch.get('rank_reasoning') or ''
+        if auto_rank:
+            st.success(
+                f"🔍 自動推定ランク: **{auto_rank}** "
+                f"({_RANK_LABEL_HINTS.get(auto_rank, auto_rank)}) / "
+                f"confidence {auto_conf:.0%}"
+            )
+            if auto_reasoning:
+                with st.expander("Claude 判定理由を見る", expanded=False):
+                    st.caption(auto_reasoning)
+        else:
+            st.warning(
+                f"⚠️ 自動ランク推定失敗: {prefetch.get('message') or '不明'}。"
+                f"下のセレクトで手動指定してください。"
+            )
+
+        # default index: Claude 自動 (index 0) or 既存 session 値
+        _rank_options = ["(Claude 自動推定を使う)"] + list(_RANK_CHOICES)
+        _cur_override = st.session_state.get(sk_rank_override) or ""
+        _default_idx = 0
+        if _cur_override in _RANK_CHOICES:
+            _default_idx = _rank_options.index(_cur_override)
+
+        def _fmt_rank(i: int) -> str:
+            opt = _rank_options[i]
+            if opt == "(Claude 自動推定を使う)":
+                return f"{opt} = {auto_rank or '推定失敗'}"
+            return _RANK_LABEL_HINTS.get(opt, opt)
+
+        _rank_sel = st.selectbox(
+            "ランク (手動上書き可能、未指定なら Claude 推定を使用)",
+            options=list(range(len(_rank_options))),
+            format_func=_fmt_rank,
+            index=_default_idx,
+            key=f"{_SS}sel_rank_{candidate_id}",
+        )
+        _rank_override_chosen = (
+            _rank_options[_rank_sel]
+            if _rank_sel > 0 else ''
+        )
+        st.session_state[sk_rank_override] = _rank_override_chosen
+        # 実際に generate で使う rank (override > auto)
+        _effective_rank = _rank_override_chosen or auto_rank
+
+        gen_result = st.session_state.get(sk_result)
         sk_gen_lock = f"{_SS}gen_lock_{candidate_id}"
         _is_generating = bool(st.session_state.get(sk_gen_lock, False))
+
+        # Step 1: 未生成 → 生成ボタン (in-flight lock で Claude 二重課金防止)
         if not gen_result:
+            if not _effective_rank:
+                st.error("❌ ランクが決まっていません (Claude 推定失敗 + 手動指定なし)")
+                return
             cols = st.columns([1.8, 4])
             with cols[0]:
                 if _is_generating:
                     st.caption("⏳ 生成処理中... (二度押し防止)")
                 elif st.button(
-                    "📝 description を生成",
+                    f"📝 description を生成 (rank={_effective_rank})",
                     key=f"{_SS}btn_gen_{candidate_id}",
                     type="primary",
                 ):
                     st.session_state[sk_gen_lock] = True
                     try:
                         with st.spinner(
-                            "仕入先 URL スクレイプ → ランク推定 → Claude 生成 "
-                            "(~30-60 秒)..."
+                            f"Claude Sonnet で description 生成中 "
+                            f"(rank={_effective_rank}, ~30-60 秒)..."
                         ):
                             res = generate_supplier_description(
                                 candidate_id=candidate_id,
                                 candidate_url=candidate_url,
-                                in_stock=False,  # supplier_candidate は無在庫前提
+                                in_stock=False,
+                                prefetched_product=prefetch.get('product'),
+                                rank_override_code=_effective_rank,
                             )
                         st.session_state[sk_result] = res
                     finally:
@@ -289,7 +466,7 @@ def render_supplier_description_section(
             with cols[1]:
                 st.caption(
                     "(個別出品と同じ Claude パイプラインで description を生成。"
-                    "テンプレは default を自動選択)"
+                    "テンプレは default を自動選択。ランクは上のセレクトで上書き可)"
                 )
             return
 
