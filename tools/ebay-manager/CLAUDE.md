@@ -260,9 +260,12 @@ The shipper is a retailer and is not the manufacturer.
 
 ---
 
-## 関連 rule (横断、`.claude/rules/` 配下)
+## 関連 rule (横断)
 
+always-load (`.claude/rules/` 配下):
 - `karpathy-principles.md` — Karpathy 4 原則 (K0-K3 常時適用)
 - `db-migration-rules.md` — DB 冪等性 (try/except OperationalError、DROP one-shot 化、24h retrospective review)
 - `silent-skip-prevention.md` — Q0 サイレントスキップ / 偽装成功 / 逃避修正 絶対禁止
+
+on-demand snippet (`.claude/rule-snippets/` 配下、2026-05-21 hybrid 化):
 - `supplier-matching-rules.md` — 仕入先候補判定 (match_score < 60 除外、別 SKU 機会、ジャンク表記判別)

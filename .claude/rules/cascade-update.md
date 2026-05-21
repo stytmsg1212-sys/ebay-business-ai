@@ -83,6 +83,6 @@ Codex non-source reviewer が以下を flag:
 ## 関連 rule
 
 - `md-files-can-be-wrong.md` R-4 (3 か所鏡像更新) — 本 rule の原型
-- `contradiction-annotation.md` — 値変更時の書式
+- `.claude/rule-snippets/contradiction-annotation.md` — 値変更時の書式 (on-demand snippet、2026-05-21 移動)
 - `karpathy-principles.md` — K2 Surgical / K3 Goal-Driven
 - `silent-skip-prevention.md` — 取りこぼし防止

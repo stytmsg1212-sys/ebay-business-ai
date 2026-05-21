@@ -20,7 +20,7 @@
 - **Q4** コード変更後 code-reviewer agent で **HIGH=0** まで修正ループ。DB 直接書込後は retrospective review。詳細: `feedback_auto_review_after_changes.md`
 - **Q5** 完了報告: 「使用したモデル」明示、多段パイプライン部分実装時は未実施フェーズ冒頭明記、Phase 0 発見併記
 - **Q6** モデル選定: Opus 4.7 (業務判断 / 動画深掘り / Research、1 日 30 calls) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk / 短文、デフォルト) / Gemini 2.5 Flash (動画ネイティブ)。詳細: `feedback_model_selection_policy.md`
-- **Q7** 知識利用順序 (LLM Wiki Compilation): 調べ物・再導出・外部調査の前に **compiled wiki を read-first** (MEMORY.md tier-1 → 関連 tier-2 → reference_*)。compiled 済みのゼロ再導出は禁止。query 新知見は §3 基準で wiki に戻す。詳細: `.claude/rules/llm-wiki-compilation.md`
+- **Q7** 知識利用順序 (LLM Wiki Compilation): 調べ物・再導出・外部調査の前に **compiled wiki を read-first** (MEMORY.md tier-1 → 関連 tier-2 → reference_*)。compiled 済みのゼロ再導出は禁止。query 新知見は §3 基準で wiki に戻す。詳細: `.claude/rule-snippets/llm-wiki-compilation.md` (2026-05-21 hybrid 化で snippet 側へ移動、router で JIT 注入)
 
 ### Q5 完了報告 4 行テンプレ
 
@@ -45,7 +45,8 @@
 |----------|------|
 | 本 CLAUDE.md (project root) | プロジェクト構造・絶対ルール・規約 |
 | `~/.claude/rules/*.md` (user global) | 全プロジェクト共通 coding / security |
-| `.claude/rules/*.md` (project 横断) | Karpathy / DB migration / silent-skip / supplier-matching / **sku-rules** / **md-files-can-be-wrong** / **discord-notification** / **contradiction-annotation** / **cascade-update** / **wiki-frontmatter** (W123) / **llm-wiki-compilation** (Q7、2026-05-16) |
+| `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** |
+| `.claude/rule-snippets/*.md` (on-demand snippet、2026-05-21 hybrid 化) | **wiki-frontmatter** / **contradiction-annotation** / **discord-notification** / **supplier-matching-rules** / **llm-wiki-compilation** (Q7) — UserPromptSubmit router で keyword 一致時 JIT 注入、または assistant が Read on-demand |
 | `tools/ebay-manager/CLAUDE.md` (subdir) | eBay 規制 4 セクション (出品 / 通関 / DDP / ランク) |
 | `USER_MANUAL.md` (project root) | **user (人間) が手で実行する手順** 集約 (scheduler 操作 / Phase 7 監視・緊急停止 / kill switch / メンテ / トラブル対処 / slash command 早見表) |
 | `~/.claude/projects/.../memory/feedback_*.md` | 個別事故 / 学び |
