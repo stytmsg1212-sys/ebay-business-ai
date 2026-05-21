@@ -2166,6 +2166,29 @@ def init_db():
             if _w140_ok == 2:
                 conn.execute("PRAGMA user_version = 44")
 
+        # v45 (W133-FU / 2026-05-21): 無在庫が売れた仕入 (fulfillment) と
+        # 有在庫補充 (restock) を区別するため purchase_confirmation_log に
+        # fulfillment_kind 列追加 (additive nullable、Q2 冪等)。
+        # 'restock' = 有在庫 SKU の在庫補充 (inventory_count 加算する従来動作)
+        # 'fulfillment' = 無在庫 SKU が売れて発注した仕入 (inventory 加算しない、
+        #                 purchase_confirmation_log で「仕入完了」マーキングのみ)
+        if schema_ver < 45:
+            try:
+                conn.execute(
+                    "ALTER TABLE purchase_confirmation_log "
+                    "ADD COLUMN fulfillment_kind TEXT DEFAULT 'restock'"
+                )
+            except sqlite3.OperationalError:
+                pass  # 既存列ありで OK (冪等)
+            # 自己修復: 列存在確認後にのみ version bump (W140 v44 と同流儀)。
+            _cols = [
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(purchase_confirmation_log)"
+                ).fetchall()
+            ]
+            if 'fulfillment_kind' in _cols:
+                conn.execute("PRAGMA user_version = 45")
+
 
 # ---- サイト設定 ----
 

@@ -164,9 +164,14 @@ def render_purchase_confirm_tab() -> None:
             f"(誤っていれば上で調整)"
         )
 
-    def _do_confirm(target_eid: str, source_label: str) -> None:
-        """共通: confirm_purchase 実行 + session_state 更新 + next email focus."""
-        res = confirm_purchase(gmail_id, target_eid, int(qty))
+    def _do_confirm(
+        target_eid: str, source_label: str, kind: str = 'restock',
+    ) -> None:
+        """共通: confirm_purchase 実行 + session_state 更新 + next email focus.
+
+        2026-05-21 W133-FU: kind 引数追加 ('restock' = 有在庫補充 / 'fulfillment'
+        = 無在庫が売れた仕入)。kind は候補の SKU prefix から自動判定済。"""
+        res = confirm_purchase(gmail_id, target_eid, int(qty), kind=kind)
         bump_db_version()
         st.session_state["pc_last_confirm"] = {
             "gmail_id": gmail_id,
@@ -206,18 +211,27 @@ def render_purchase_confirm_tab() -> None:
         _ttl = top1["title"] or "(no title)"
         _inv = top1["inventory_count"]
         _inv_str = "未設定" if _inv is None else str(_inv)
+        _kind = top1.get("kind") or "restock"
+        # 2026-05-21 W133-FU: kind 区別表示
+        _kind_badge = "🏪 有在庫補充" if _kind == "restock" else "📤 無在庫 fulfillment (在庫加算なし)"
+        _btn_label = (
+            f"✅ 推奨候補で確定 (qty {int(qty)})"
+            if _kind == "restock"
+            else f"📤 推奨候補で fulfillment 記録 (在庫加算なし)"
+        )
         st.success(
-            f"🎯 **推奨候補** (類似 {top1['score']:.2f}、次点との差 {score_gap:+.2f}): "
+            f"🎯 **推奨候補** [{_kind_badge}] (類似 {top1['score']:.2f}、"
+            f"次点との差 {score_gap:+.2f}): "
             f"**{_ttl[:60]}** ({str(top1['ebay_item_id'])[-4:]}) | "
             f"現在庫 {_inv_str}"
         )
         if st.button(
-            f"✅ 推奨候補で確定 (qty {int(qty)})",
+            _btn_label,
             key=f"pc_confirm_top1_{gmail_id}",
             type="primary",
             use_container_width=True,
         ):
-            _do_confirm(top1["ebay_item_id"], "top1_auto")
+            _do_confirm(top1["ebay_item_id"], "top1_auto", kind=_kind)
         st.markdown("---")
         st.caption("または下のリストから手動選択:")
 
@@ -227,15 +241,26 @@ def render_purchase_confirm_tab() -> None:
         inv = cand["inventory_count"]
         inv_str = "未設定" if inv is None else str(inv)
         score = cand["score"]
-        label = f"{title[:55]} ({str(eid)[-4:]}) | 現在庫 {inv_str} | 類似 {score:.2f}"
+        kind = cand.get("kind") or "restock"
+        # 2026-05-21 W133-FU: kind badge + ボタン text 区別
+        kind_badge = "🏪 補充" if kind == "restock" else "📤 fulfillment"
+        label = (
+            f"[{kind_badge}] {title[:50]} ({str(eid)[-4:]}) | "
+            f"現在庫 {inv_str} | 類似 {score:.2f}"
+        )
+        btn_text = (
+            f"この listing に確定 → {label}"
+            if kind == "restock"
+            else f"この listing に fulfillment 記録 → {label}"
+        )
         col_btn, col_warn = st.columns([3, 1])
         with col_btn:
             if st.button(
-                f"この listing に確定 → {label}",
+                btn_text,
                 key=f"pc_confirm_{gmail_id}_{eid}",
                 use_container_width=True,
             ):
-                _do_confirm(eid, "manual_pick")
+                _do_confirm(eid, "manual_pick", kind=kind)
         with col_warn:
             if cand["low_confidence"]:
                 st.caption("⚠️ 類似度低 (要確認)")

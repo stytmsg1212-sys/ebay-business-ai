@@ -1179,7 +1179,11 @@ if _w134_sel == "DASHBOARD":
 
         # 優先度ベース判定 (Claude judgments prioritized, keyword fallback)
         _urgent_priorities = {'urgent', 'high'}
-        _urgent_categories = {'buyer_message', 'sale', 'offer', 'return'}
+        # 2026-05-21 Phase A: customs_request (FedEx/UPS/DHL 通関情報要求) も urgent。
+        # 期限内 (deadline) に提出しないとリードタイム延伸 / 返品リスク = money-direct。
+        _urgent_categories = {
+            'buyer_message', 'sale', 'offer', 'return', 'customs_request',
+        }
 
         def _format_email_date(date_str: str) -> tuple[str, str]:
             """Gmail の date ヘッダ (RFC2822) を「N日前」と「MM/DD HH:MM」の2形式で返す。"""

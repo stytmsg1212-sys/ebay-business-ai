@@ -145,6 +145,22 @@ _SUPPLIER_PURCHASE_SUBJECT_HINTS = (
     'your order', 'confirmation', 'receipt',  # Amazon 等 英語
 )
 
+# 2026-05-21 user 要望 Phase A: 関税系 sender。FedEx/UPS/DHL から user の
+# 通関情報要求メールを emails テーブルにも取込 → DASHBOARD で個別件名閲覧可。
+# 既存 task_customs_check は customs_requests テーブル独立管理だが、
+# DASHBOARD で件名/本文を user が直接読みたい要望に応える。
+_CUSTOMS_SENDER_HINTS = (
+    'fedex.com',
+    'ups.com',
+    'dhl.com',
+    'aramex.com',
+)
+
+_CUSTOMS_SUBJECT_HINTS = (
+    'customs', 'clearance', '通関', '関税', 'duty', 'tariff',
+    'awb', 'trk', 'tracking', '輸入', '税関', '情報提出', '情報のご提供',
+)
+
 
 def _categorize_email(subject: str, sender: str) -> str:
     """メールをカテゴリ分けする.
@@ -162,6 +178,17 @@ def _categorize_email(subject: str, sender: str) -> str:
     """
     subject_lower = subject.lower()
     sender_lower = (sender or '').lower()
+
+    # 2026-05-21 Phase A: customs_request 判定 (FedEx/UPS/DHL の通関情報要求)。
+    # supplier_purchase より先に判定 (両者で sender 重複しないが、関税系を
+    # 明確優先したいため)。sender AND subject の AND で false positive 防止。
+    if any(h in sender_lower for h in _CUSTOMS_SENDER_HINTS):
+        if any(
+            h.lower() in subject_lower if h.isascii() else h in subject
+            for h in _CUSTOMS_SUBJECT_HINTS
+        ):
+            return 'customs_request'
+        # 配送通知 (Tracking number only) 等は other で続行
 
     # supplier_purchase 判定: 仕入先 sender + 購入関連 subject の AND
     if any(h in sender_lower for h in _SUPPLIER_SENDER_HINTS):
@@ -330,6 +357,10 @@ def extract_ebay_emails(service):
             ' OR from:paypay.ne.jp'
             ' OR from:suruga-ya.jp'
             ' OR from:mandarake.co.jp'
+            # 2026-05-21 Phase A: 関税系 (FedEx/UPS/DHL/Aramex) 追加。
+            # task_customs_check pipeline と並行取込 (Gmail API 読取は副作用なし)。
+            ' OR from:fedex.com OR from:ups.com OR from:dhl.com'
+            ' OR from:aramex.com'
             ')'
         )
         # maxResults を 300 に増 (eBay 200 + 仕入 ~100 想定、超過は 14 日内に再収束)

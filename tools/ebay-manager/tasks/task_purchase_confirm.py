@@ -76,48 +76,65 @@ def suggest_listings(
     email_text: str,
     top: int = 5,
     threshold: float = DEFAULT_SIM_THRESHOLD,
+    include_no_stock: bool = True,
 ) -> list[dict]:
-    """メール本文に近い有在庫 listing 候補を score 降順で返す.
+    """メール本文に近い listing 候補 (有在庫 + 無在庫) を score 降順で返す.
+
+    2026-05-21 W133-FU 拡張: 無在庫 (ebay** prefix) も候補に含め、kind で
+    'restock' (有在庫補充) / 'fulfillment' (無在庫が売れた仕入) を区別。
+    UI 側で動作分岐 (fulfillment は inventory 加算しない)。
 
     Args:
         email_text: 入荷メール本文 (件名 + 本文を連結して渡す想定).
         top: 返す候補数上限.
         threshold: これ未満の score は low_confidence:True フラグを付ける
             (除外はしない — user が最終判断する).
+        include_no_stock: True (default) なら無在庫 (ebay** prefix) も候補に。
+            False は 旧挙動 (有在庫のみ) で後方互換。
 
     Returns:
-        [{ebay_item_id, sku, title, inventory_count, score, low_confidence}, ...]
-        score 降順. ebay_item_id 単位 (SKU で束ねない).
+        [{ebay_item_id, sku, title, inventory_count, score, low_confidence,
+          kind: 'restock'|'fulfillment'}, ...]
+        score 降順. ebay_item_id 単位 (SKU で束ねない、sku-rules 厳守).
     """
     from monitor.database import get_conn
 
     text = (email_text or "").strip()
-    with get_conn() as c:
-        # 集合フィルタ: 有在庫 (stock prefix) listing のみ対象.
-        # listing 識別は ebay_item_id (SKU は種別フラグとしてのみ使用).
-        rows = c.execute(
-            """SELECT ebay_item_id, sku, title, inventory_count
-               FROM ebay_listings
-               WHERE sku LIKE 'stock%'
-                 AND (is_ended IS NULL OR is_ended = 0)
-                 AND title IS NOT NULL AND title != ''"""
-        ).fetchall()
-
     if not text:
         return []
+
+    # 集合フィルタ: 有在庫 (stock prefix) + 無在庫 (ebay prefix) listing。
+    # 在庫種別判定に SKU prefix を使うのは sku-rules.md で公認された 2 用途の
+    # 1 つ (在庫種別フラグ)。listing 識別は ebay_item_id 単位。
+    where = "(sku LIKE 'stock%'"
+    if include_no_stock:
+        where += " OR sku LIKE 'ebay%'"
+    where += ")"
+    sql = (
+        f"SELECT ebay_item_id, sku, title, inventory_count "
+        f"FROM ebay_listings "
+        f"WHERE {where} "
+        f"  AND (is_ended IS NULL OR is_ended = 0) "
+        f"  AND title IS NOT NULL AND title != ''"
+    )
+    with get_conn() as c:
+        rows = c.execute(sql).fetchall()
 
     scored = []
     for r in rows:
         title = r["title"] or ""
         score = _similarity(text, title)
+        sku = r["sku"] or ""
+        kind = 'fulfillment' if sku.startswith('ebay') else 'restock'
         scored.append(
             {
                 "ebay_item_id": r["ebay_item_id"],
-                "sku": r["sku"],
+                "sku": sku,
                 "title": title,
                 "inventory_count": r["inventory_count"],
                 "score": round(score, 4),
                 "low_confidence": score < threshold,
+                "kind": kind,
             }
         )
 
@@ -125,28 +142,49 @@ def suggest_listings(
     return scored[: max(0, int(top))]
 
 
-def confirm_purchase(gmail_id: str, ebay_item_id: str, qty: int) -> dict:
-    """user が確定した仕入個数を inventory_count に加算する.
+def confirm_purchase(
+    gmail_id: str, ebay_item_id: str, qty: int,
+    kind: str = 'restock',
+) -> dict:
+    """user が確定した仕入個数を処理する.
+
+    2026-05-21 W133-FU: kind 引数追加。
+      - 'restock' (default、後方互換): 有在庫 listing への補充。inventory_count
+        加算 + eBay ReviseInventoryStatus 反映 (従来動作)。
+      - 'fulfillment': 無在庫 (ebay** prefix) が売れた仕入。inventory 加算
+        しない・eBay 数量反映もしない。purchase_confirmation_log に
+        fulfillment_kind='fulfillment' で記録のみ (= 「仕入完了」マーキング)。
 
     二重加算ガード: purchase_confirmation_log の UNIQUE(gmail_id, ebay_item_id)
-    に INSERT OR IGNORE → rowcount==0 なら既処理として何もしない.
+    に INSERT OR IGNORE → rowcount==0 なら既処理として何もしない (両 kind 共通).
 
     Returns dict:
         success      : bool
         already      : bool        (既に同 gmail×listing で確定済 = 二重加算回避)
         ebay_item_id  : str
+        kind         : str         ('restock' | 'fulfillment')
         quantity_added: int
         old_count     : int | None
         new_count     : int | None
-        sync_success  : bool        (eBay 数量反映の結果)
+        sync_success  : bool        (eBay 数量反映の結果、fulfillment 時は True 固定)
         message       : str
     """
     from monitor.database import get_conn
+
+    if kind not in ('restock', 'fulfillment'):
+        return {
+            "success": False, "already": False,
+            "ebay_item_id": ebay_item_id, "kind": kind,
+            "quantity_added": 0, "old_count": None, "new_count": None,
+            "sync_success": False,
+            "message": f"invalid kind={kind!r} (restock|fulfillment のみ可)",
+        }
 
     result = {
         "success": False,
         "already": False,
         "ebay_item_id": ebay_item_id,
+        "kind": kind,
         "quantity_added": 0,
         "old_count": None,
         "new_count": None,
@@ -163,7 +201,7 @@ def confirm_purchase(gmail_id: str, ebay_item_id: str, qty: int) -> dict:
         return result
 
     with get_conn() as c:
-        # 在庫種別フラグ確認 (有在庫 listing のみ加算対象).
+        # 在庫種別フラグ確認 (kind と SKU prefix の整合チェック).
         row = c.execute(
             "SELECT sku, inventory_count FROM ebay_listings WHERE ebay_item_id=?",
             (ebay_item_id,),
@@ -174,24 +212,50 @@ def confirm_purchase(gmail_id: str, ebay_item_id: str, qty: int) -> dict:
             )
             return result
         sku = row["sku"] or ""
-        if not sku.startswith("stock"):
+        # 2026-05-21 W133-FU: kind と SKU prefix の整合チェック。
+        # kind='restock' は stock prefix 必須、kind='fulfillment' は ebay prefix
+        # 想定 (が他 prefix も許容: 将来の SKU 形式変化に備え warning のみ)。
+        if kind == 'restock' and not sku.startswith("stock"):
             result["message"] = (
-                "無在庫 SKU (stock prefix でない) は仕入確認対象外です"
+                f"kind='restock' は有在庫 (stock prefix) のみ対象です "
+                f"(現 sku={sku!r})。無在庫の場合は kind='fulfillment' を指定してください。"
+            )
+            return result
+        if kind == 'fulfillment' and sku.startswith("stock"):
+            result["message"] = (
+                f"kind='fulfillment' は有在庫 (stock prefix) には不適切です "
+                f"(現 sku={sku!r})。kind='restock' を指定してください。"
             )
             return result
 
         # 二重加算ガード: claim を先に取る (check-then-act race 排除).
+        # 2026-05-21 W133-FU: fulfillment_kind 列に kind を保存。
         cur = c.execute(
             """INSERT OR IGNORE INTO purchase_confirmation_log
                (gmail_id, ebay_item_id, sku, quantity_added,
-                old_inventory_count, new_inventory_count, ebay_qty_sync_ok)
-               VALUES (?, ?, ?, ?, ?, ?, 0)""",
-            (gmail_id, ebay_item_id, sku, qty, None, None),
+                old_inventory_count, new_inventory_count, ebay_qty_sync_ok,
+                fulfillment_kind)
+               VALUES (?, ?, ?, ?, ?, ?, 0, ?)""",
+            (gmail_id, ebay_item_id, sku, qty, None, None, kind),
         )
         if cur.rowcount == 0:
             result["already"] = True
             result["message"] = (
                 "この入荷メール×listing は既に確定済 (二重加算を防止しました)"
+            )
+            return result
+
+        # 2026-05-21 W133-FU: fulfillment は inventory 加算しない / eBay 同期もしない。
+        # 「無在庫が売れた仕入」は eBay 在庫数量を変化させない (元から 1 が売れて 0、
+        # 仕入完了したが再出品はまだ＝在庫 0 のまま)。purchase_confirmation_log に
+        # 痕跡だけ残し、user が後で適切な fulfillment アクション (発送等) を取る。
+        if kind == 'fulfillment':
+            result["quantity_added"] = qty
+            result["sync_success"] = True  # 同期不要を「成功扱い」(message で明示)
+            result["success"] = True
+            result["message"] = (
+                f"無在庫 fulfillment 仕入を記録しました (sku={sku}, qty={qty})。"
+                f"在庫加算/eBay 数量反映はしません (元の無在庫の挙動を維持)。"
             )
             return result
 
@@ -271,8 +335,13 @@ def undo_purchase(gmail_id: str, ebay_item_id: str) -> dict:
         return result
 
     with get_conn() as c:
+        # 2026-05-21 W133-FU Codex HIGH 対応: fulfillment_kind も SELECT。
+        # fulfillment confirm 時は inventory 加算してないので undo でも引かない。
+        # COALESCE で旧データ (列追加前の行) は 'restock' とみなす (後方互換)。
         log = c.execute(
-            """SELECT quantity_added FROM purchase_confirmation_log
+            """SELECT quantity_added,
+                      COALESCE(fulfillment_kind, 'restock') AS fulfillment_kind
+               FROM purchase_confirmation_log
                WHERE gmail_id=? AND ebay_item_id=?""",
             (gmail_id, ebay_item_id),
         ).fetchone()
@@ -285,6 +354,8 @@ def undo_purchase(gmail_id: str, ebay_item_id: str) -> dict:
             )
             return result
         qty = int(log["quantity_added"] or 0)
+        confirmed_kind = log["fulfillment_kind"] or 'restock'
+        result["kind"] = confirmed_kind
 
         # 原子的 claim (F3, Codex 2026-05-16): DELETE を先に実行し rowcount で
         # 所有権を確定 → 二重 undo (UI 二度押し/並行) の二重減算を物理排除.
@@ -297,6 +368,19 @@ def undo_purchase(gmail_id: str, ebay_item_id: str) -> dict:
         if delc.rowcount == 0:
             result["already"] = True
             result["message"] = "既に取消済みです (二重取消を防止しました)"
+            return result
+
+        # 2026-05-21 W133-FU: fulfillment は confirm 時に inventory も eBay も触って
+        # いないので、undo でも在庫操作/eBay sync は一切しない。log 行削除のみで完結
+        # (= 「fulfillment 仕入完了」マークを取り消す)。
+        if confirmed_kind == 'fulfillment':
+            result["restored_count"] = None
+            result["sync_success"] = True  # 同期不要を「成功扱い」
+            result["success"] = True
+            result["message"] = (
+                "fulfillment 仕入完了マークを取消しました "
+                "(在庫/eBay 数量は元から触っていないため変更なし)"
+            )
             return result
 
         # claim 成立 → SQL atomic 減算 (lost-update 防止 + 負値ガード MAX(0,...)).
