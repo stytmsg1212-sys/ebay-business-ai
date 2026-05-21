@@ -1358,5 +1358,65 @@
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-20 (AlertCrawler 同等機能を MonoDeck 搭載)",
     "progress_note": "2026-05-20 登録、設計 v2.1 完成 push 済 (commit 699bd50)、5/21 実装着手 (前セッション=ファイル群作成→pytest crash で中断)、5/22 残り DoD 完走。実装: monitor/keyword_watch_db.py / tasks/task_keyword_watch_crawl.py / tabs/tab_keyword_watch.py / scripts/import_alertcrawler_legacy.py / tests/test_w148_keyword_watch_2026_05_21.py + monitor/database.py v46 + daily_scheduler.py + task_execution_log.py + schedule_config.json + app.py 修正。code-reviewer Opus HIGH=0/100点。**Codex 3 周で HIGH 5 件突破→全修正**: 1周目 HIGH-1 (search_url 未使用 = AlertCrawler 450 件 import の URL filter 全消失) / HIGH-2 (sentinel exception path Discord 不発火) / HIGH-3 (webhook 5xx で hit 永久 lost)、2周目 HIGH-A (resend DB error 偽装成功) / HIGH-B (resend pass 二重送信レース)、3周目 HIGH=0 verify。pytest 1388 PASS。本番 DB v46 適用済 keyword_watches/keyword_watch_hits 存在確認。Streamlit + Playwright タブ表示 0 errors。scheduler 再起動 + W148 cron 登録 (2h ごと :20) ログ確認。"
+  },
+  {
+    "id": 233,
+    "tag": "W150",
+    "title": "商品管理バグ修正: sold 全件 0 + CLI 一括検索チェック時の編集消失",
+    "description": "user 報告 (2026-05-22 朝): (1) 商品管理タブの各商品 sold が全て 0 件 → 「並び順=売れ筋(sold)」が適正に働いていない (取得欠落 or 集計バグ要切り分け、eBay GetItem QuantitySold or sales_history 由来不明)。(2) 「CLI一括検索からの候補追加」のライバルにチェックを入れると勝手に更新走りフィルタ適用 → 編集中ページが消える (rerun + state 喪失問題)。Q3 構造化フロー必須 (Phase 3 Clarify → 原因切り分け → 設計 → 2 段 review → 実装 → Q1 検証)。両件とも user 業務 (初期登録作業) の blocking。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-22",
+    "completed": null,
+    "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ①③)",
+    "progress_note": null
+  },
+  {
+    "id": 234,
+    "tag": "W151",
+    "title": "商品管理 初期登録支援: フィルタ + 商品毎チェックボックス",
+    "description": "user 業務支援 (2026-05-22 朝): user が現在「初期登録」作業 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等の base 設定) を進めている。完了商品にチェックを入れて未完了/完了をフィルタで切り替えたい。DB 新規列 (initial_registered BOOLEAN + initial_registered_at TIMESTAMP) + 商品管理フィルタ「初期登録」追加 + per-listing チェックボックス。W153 新規ライバル発見の「初期登録以降の rival」base point と連動 (initial_registered_at が新規 rival 検知の起点)。",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-22",
+    "completed": null,
+    "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ②)",
+    "progress_note": null
+  },
+  {
+    "id": 235,
+    "tag": "W152",
+    "title": "商品管理から画像/Description 更新 (個別出品同等パイプライン統合)",
+    "description": "user 要望 (2026-05-22 朝): 商品管理画面の「仕入先候補」に URL を直接投入 → 「個別出品」と同様の画像生成 → Description 生成パイプラインを実行できるようにする。既出品 listing に新仕入先 URL から画像/Desc を更新する経路。既存 prefetch_supplier_product_and_rank + revise_item_description + CDATA escape + rank UI を流用 (W148 セッションで完成済の pipeline)。Q3 構造化フロー (Phase 3 Clarify → 設計 → 2 段 review → 実装 → Q1)。",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-22",
+    "completed": null,
+    "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ④)",
+    "progress_note": null
+  },
+  {
+    "id": 236,
+    "tag": "W153",
+    "title": "新規ライバル発見の根本作り直し: 商品毎 rival 検出 + 検索ワード助言 + UI 編集",
+    "description": "user 報告 + 業務要望 (2026-05-22 朝): (5) 商品毎の「新規発見ライバル」が商品関係ない rival 混在 → 商品毎の検索結果からの新規 rival 検知に作り直し。(6) 商品毎の「検索ワード助言」: 例 ID 356960075902 「Ohuhu PEN」だけでなく「320 本セット」「ペン先 FINE」追加 → 「Ohuhu PEN 320 FINE」。(7) 「ライバル検索ワード」を商品毎に DB 保存 + UI 編集可能化 (assistant 生成 + user 上書き可)。業務目的 = 初期登録時の rival 登録だけでは「初期登録以降に発生した新規 rival」を検知できず最安値追従不能 → 定期巡回で発見 → 自動値下げ (W183) との連動で売上直結。W151 (初期登録チェック) の initial_registered_at と連動 (検知の起点)。Q3 構造化フロー必須 (Phase 3 Clarify → 設計 → 2 段 review → 実装 → Q1)。**最優先 business critical** (user 明示: 最安値が取れず売上機会損失中)。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-22",
+    "completed": null,
+    "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ⑤⑥⑦)",
+    "progress_note": null
+  },
+  {
+    "id": 237,
+    "tag": "W149",
+    "title": "eBay 売却注文取得 (GetOrders) + fulfillment 自動ひも付け (sales_history populate 基盤)",
+    "description": "user 業務基盤実装 (2026-05-22 朝 W150 着手時に判明): 現状 sales_history テーブル 0 件 = add_sale が一度も呼ばれていない = sold 並び順 / 売上集計 / 利益計算 / fulfillment 消し込み 全部が dead 状態。eBay Trading API GetOrders で 2026/1/1 以降の売却注文を取得し、add_sale で sales_history に populate。fulfillment (買い手注文発生 → 仕入先で取り寄せ → 配送) との自動ひも付け = task_purchase_confirm を kind='fulfillment' で extend。W150 ① (sold 0 件) の根本解決、W153 (新規ライバル発見) の最安値追従の前提でもある。前 session で B 案選定済 (5/21 commit 5535715、設計書 v1 push 済)。次ステップ: Codex review → v2 → 実装 → 過去注文 backfill。既存 task_order_alert::GetOrders + add_sale + task_purchase_confirm(kind='restock'/'fulfillment') 流用で新規 3 file + 軽微修正 3 file 数時間。Q3 構造化フロー必須。",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-05-21",
+    "completed": "2026-05-22",
+    "origin": "user 口頭判断 2026-05-22 朝 (W150 ①sold 0件 = sales_history populate 未実装 = W149 が根本基盤と判明、先行着手)",
+    "progress_note": "**2026-05-22 完走 (本日 1 セッション)**: 設計書 v1 (5/21 commit 5535715) を Phase A self-review で v2 改訂 (4 件根治: shipping/fee qty 比按分 / メール経由 task_sales_tracking OFF / 30min polling 失敗 retry queue / eBay GetOrders API 構造誤読修正). Phase B = DB migration v47 (sales_history.ebay_order_id + fulfillment_order_link + sales_history_fetch_failures) + fulfillment_order_matcher.py (link_unmatched/link_one_by_sale/link_one + FIFO 時系列ガード) + test 10 件. Phase C = task_order_alert.py 30min polling に W149 sales 充填 (order_id group+qty 比按分) + リアルタイムマッチ + retry queue (5 回連続失敗 Discord) + task_purchase_confirm.py kind='fulfillment' で link_one + schedule_config.json で sales_tracking OFF + backfill script. Phase D = pytest 1397 PASS + 本番 DB v48 適用 + backfill 完了 (101 件 sales_history、sold>0 listings 0→66). **self-discover で v48 silent gap 修正** (v47 UNIQUE(ebay_order_id) 単独 → 1 注文 N 商品で line item silent 消失 → v48 複合キー (ebay_order_id, ebay_item_id) で根治、backfill 101 transaction → 100 件 INSERT で 1 件 dup skip 実測で発見). **内部 code-reviewer Opus HIGH 2 件**: HIGH-1 paid_time 空 silent skip (sold_at='' で並び順破壊 + matcher 文字列比較で時系列ガード崩壊) / HIGH-2 INSERT OR IGNORE rowcount 欠落 (race で attempt_count 止まる) を修正 + 回帰 test 2 件追加. **Codex GPT-5.5 review = 0 件追加指摘** (HIGH=0 達成). cascade pin: test_w138a / test_w68 / test_w148 を v46→v48 更新. ebay_client.py に get_orders range 引数 (CreateTimeFrom/To) 追加 (90 日上限). 検証: top 5 sold = maxell カセット 7 売 / Razer 4 売 / Pixel Tablet 4 売. scheduler+MonoDeck 再起動済 + Playwright 商品管理タブ Console 0 errors."
   }
 ]

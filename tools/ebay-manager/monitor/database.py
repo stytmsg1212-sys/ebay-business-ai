@@ -2269,6 +2269,113 @@ def init_db():
             if _w148_ok == 2:
                 conn.execute("PRAGMA user_version = 46")
 
+        # v47 (W149 / 2026-05-22): eBay 売却注文 API 直接取得 + fulfillment 自動ひも付け
+        # (a) sales_history.ebay_order_id 追加 (UNIQUE で再実行冪等、INSERT OR IGNORE で衝突 skip).
+        # (b) fulfillment_order_link 新規 (purchase_confirmation_log と sales_history の 1:1 対応).
+        # (c) sales_history_fetch_failures 新規 (30 min polling 失敗 retry queue、5 回失敗で Discord).
+        # 自己修復 (W148 v46 / W140 v44 流儀): 必須 column/table 全実在を sqlite_master で確認後に user_version bump.
+        if schema_ver < 47:
+            try:
+                conn.execute("ALTER TABLE sales_history ADD COLUMN ebay_order_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # 既存
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_history_ebay_order_id "
+                    "ON sales_history(ebay_order_id) WHERE ebay_order_id IS NOT NULL"
+                )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS fulfillment_order_link (
+                        id                           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        purchase_confirmation_log_id INTEGER NOT NULL,
+                        sales_history_id             INTEGER NOT NULL,
+                        matched_at                   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        match_method                 TEXT NOT NULL,
+                        FOREIGN KEY (purchase_confirmation_log_id) REFERENCES purchase_confirmation_log(id),
+                        FOREIGN KEY (sales_history_id) REFERENCES sales_history(id),
+                        UNIQUE(purchase_confirmation_log_id),
+                        UNIQUE(sales_history_id)
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_fol_pcl "
+                    "ON fulfillment_order_link(purchase_confirmation_log_id)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_fol_sh "
+                    "ON fulfillment_order_link(sales_history_id)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sales_history_fetch_failures (
+                        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ebay_order_id     TEXT NOT NULL UNIQUE,
+                        first_attempt_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_attempt_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        attempt_count     INTEGER NOT NULL DEFAULT 1,
+                        last_error        TEXT,
+                        discord_notified  INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_shff_last_attempt "
+                    "ON sales_history_fetch_failures(last_attempt_at)"
+                )
+            except sqlite3.OperationalError:
+                pass
+            # 自己修復: 必須 column + 必須 table 全実在を確認してから version bump.
+            _cols_sh = [
+                r[1] for r in conn.execute("PRAGMA table_info(sales_history)").fetchall()
+            ]
+            _w149_tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('fulfillment_order_link','sales_history_fetch_failures')"
+            ).fetchone()[0]
+            if 'ebay_order_id' in _cols_sh and _w149_tables == 2:
+                conn.execute("PRAGMA user_version = 47")
+
+        # v48 (W149 / 2026-05-22 Phase D self-discover): UNIQUE INDEX 入れ替え.
+        # v47 の idx_sales_history_ebay_order_id (ebay_order_id 単独) は 1 注文 N 商品の場合
+        # 同 order_id を 2 度 INSERT で 2 回目 UNIQUE 衝突 skip = silent line item 消失
+        # (buyer まとめ買い時に sales_history が 1 行欠ける、利益計算が部分欠落する).
+        # 設計書 v2 §5「line_item 単位で 1 行ずつ」の意図に合わせ、複合キー
+        # (ebay_order_id, ebay_item_id) に変更. backfill dry-run で 101 transaction →
+        # 100 件 INSERT で 1 件 silent skip した実測で発見.
+        if schema_ver < 48:
+            try:
+                conn.execute("DROP INDEX IF EXISTS idx_sales_history_ebay_order_id")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_history_order_item "
+                    "ON sales_history(ebay_order_id, ebay_item_id) "
+                    "WHERE ebay_order_id IS NOT NULL"
+                )
+            except sqlite3.OperationalError:
+                pass
+            # 自己修復: 新 INDEX 実在確認後に version bump
+            _v48_ok = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
+                "AND name = 'idx_sales_history_order_item'"
+            ).fetchone()[0]
+            if _v48_ok == 1:
+                conn.execute("PRAGMA user_version = 48")
+
 
 # ---- サイト設定 ----
 
@@ -3023,25 +3130,34 @@ def update_ebay_listing_price_suggestion(ebay_item_id: str, suggestion: float, r
 def add_sale(ebay_item_id: str, sku: str, title: str, sold_price_usd: float,
              sold_at: str = None, buyer_country: str = "",
              shipping_cost_usd: float = 0, ebay_fee_usd: float = 0,
-             source_cost_jpy: float = 0, profit_jpy: float = 0) -> int:
-    """売上を記録"""
+             source_cost_jpy: float = 0, profit_jpy: float = 0,
+             ebay_order_id: str | None = None) -> int:
+    """売上を記録. W149 (2026-05-22) で ebay_order_id 引数追加.
+    ebay_order_id 付き = UNIQUE INDEX により再実行冪等 (INSERT OR IGNORE で衝突 skip).
+    戻り値: 新規 INSERT 成立時 = sale_id (lastrowid), UNIQUE 衝突 skip 時 = 0,
+            旧 API (ebay_order_id=None) = 常に sale_id (INSERT 必ず成立).
+    total_sold_count / total_revenue_usd の累計 UPDATE は INSERT 成立時のみ実行.
+    """
     if sold_at is None:
         sold_at = datetime.now().isoformat()
 
     with get_conn() as conn:
         cursor = conn.execute(
-            """INSERT INTO sales_history
+            """INSERT OR IGNORE INTO sales_history
                (ebay_item_id, sku, title, sold_price_usd, sold_at,
                 buyer_country, shipping_cost_usd, ebay_fee_usd,
-                source_cost_jpy, profit_jpy)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                source_cost_jpy, profit_jpy, ebay_order_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (ebay_item_id, sku, title, sold_price_usd, sold_at,
              buyer_country, shipping_cost_usd, ebay_fee_usd,
-             source_cost_jpy, profit_jpy),
+             source_cost_jpy, profit_jpy, ebay_order_id),
         )
+        if cursor.rowcount == 0:
+            return 0  # UNIQUE 衝突で skip (再実行冪等)
+
         sale_id = cursor.lastrowid
 
-        # ebay_listings の累計も更新
+        # ebay_listings の累計も更新 (INSERT 成立時のみ)
         conn.execute(
             """UPDATE ebay_listings SET
                total_sold_count = total_sold_count + 1,

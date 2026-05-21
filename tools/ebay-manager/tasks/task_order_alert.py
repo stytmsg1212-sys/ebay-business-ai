@@ -76,6 +76,83 @@ def _get_credentials() -> Optional[tuple]:
         return None
 
 
+def _record_sales_history_fetch_failure(order_id: str, error: str, webhook: str) -> None:
+    """W149: order 処理失敗を retry queue に記録.
+
+    シンプル方針 (K1): retry は polling 内で発生した失敗の即時 retry のみ.
+    過去失敗の遅延 retry は実装しない (次回 polling で同 order が再 hit すれば
+    add_sale が走る、UNIQUE INDEX で重複なし). queue は監視用 + 5 回連続失敗
+    で Discord 1 回通知 (alert fatigue 防止に discord_notified flag).
+
+    HIGH-2 (code-reviewer Phase D, 2026-05-22): INSERT OR IGNORE 後の rowcount==0
+    (race で他 worker が同時 INSERT 成立) を検出して UPDATE 経路へ fall through.
+    これがないと race 時に skip 側で attempt_count が進まず 5 回失敗 Discord 通知が
+    遅延する (alert 遅延 = Q0 silent skip 親戚).
+    """
+    if not order_id:
+        return
+
+    def _update_existing(c, existing_row) -> None:
+        new_count = existing_row["attempt_count"] + 1
+        c.execute(
+            """UPDATE sales_history_fetch_failures SET
+               attempt_count = ?, last_attempt_at = CURRENT_TIMESTAMP, last_error = ?
+               WHERE id = ?""",
+            (new_count, error[:500], existing_row["id"]),
+        )
+        if new_count >= 5 and existing_row["discord_notified"] == 0:
+            _send_discord(webhook, {
+                "title": "[ALERT] W149 売却注文取得 5 回連続失敗",
+                "description": (
+                    f"order_id={order_id} の sales_history 記録が 5 回失敗.\n"
+                    f"最終エラー: {error[:200]}\n"
+                    "MonoDeck で当該 order を手動確認してください."
+                ),
+                "color": 0xD84C38,
+                "timestamp": datetime.now().isoformat(),
+            })
+            c.execute(
+                "UPDATE sales_history_fetch_failures SET discord_notified = 1 "
+                "WHERE id = ?",
+                (existing_row["id"],),
+            )
+
+    with _conn() as c:
+        existing = c.execute(
+            "SELECT id, attempt_count, discord_notified FROM sales_history_fetch_failures "
+            "WHERE ebay_order_id = ?",
+            (order_id,),
+        ).fetchone()
+        if existing:
+            _update_existing(c, existing)
+            return
+        cur = c.execute(
+            "INSERT OR IGNORE INTO sales_history_fetch_failures (ebay_order_id, last_error) "
+            "VALUES (?, ?)",
+            (order_id, error[:500]),
+        )
+        if cur.rowcount == 0:
+            # race: 同時に他 worker が INSERT 成立 → skip 側を UPDATE 経路へ fall through
+            existing2 = c.execute(
+                "SELECT id, attempt_count, discord_notified FROM sales_history_fetch_failures "
+                "WHERE ebay_order_id = ?",
+                (order_id,),
+            ).fetchone()
+            if existing2:
+                _update_existing(c, existing2)
+
+
+def _clear_sales_history_fetch_failure(order_id: str) -> None:
+    """W149: 過去失敗が今回成功した時 queue から remove (再通知防止)."""
+    if not order_id:
+        return
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM sales_history_fetch_failures WHERE ebay_order_id = ?",
+            (order_id,),
+        )
+
+
 def _send_discord(webhook: str, embed: dict) -> bool:
     if not webhook:
         return False
@@ -487,6 +564,11 @@ def run_order_alert_check(config: Optional[dict] = None,
     memo_warnings = 0  # W140: メモ付き listing 売却の発送前警告 (新規 claim 数)
     order_processing_errors = 0  # H3 (Wave A): order 単位失敗を transparency 確保
     inventory_zero_listings: list[dict] = []  # 在庫 0 になった listing (DASHBOARD で表示)
+    # W149: sales_history 充填 + fulfillment 自動ひも付け
+    sales_recorded = 0       # 新規 INSERT 成立件数
+    sales_skipped_dup = 0    # UNIQUE 衝突で skip (再 polling で同 order)
+    fulfillment_links_realtime = 0  # link_one_by_sale で realtime ひも付き
+    sales_failures = 0       # add_sale 自体が例外で失敗 (retry queue 行き)
 
     for order in orders:
         try:
@@ -522,6 +604,74 @@ def run_order_alert_check(config: Optional[dict] = None,
         except (sqlite3.Error, KeyError, TypeError) as e:
             order_processing_errors += 1
             logger.warning(f"order {order.get('order_id')} 処理失敗: {e}")
+
+    # W149 (2026-05-22): sales_history 充填 + fulfillment 自動ひも付け.
+    # get_orders() は transaction flatten 構造で shipping_usd が order レベル値を
+    # 全 txn に複製コピーするため、素朴に各 txn を add_sale すると 1 order N 商品で
+    # shipping を N 倍重複計上 → 利益計算大狂い (ebay_client.py L1481-1512 で確認).
+    # → order_id で group → qty 比按分が正解. eBay fee は GetOrders 戻り値に
+    # 含まれず別 API (GetItemTransactions/GetAccount) で別 W に取得、本 W は 0 初期化.
+    from monitor.database import add_sale
+    from monitor.fulfillment_order_matcher import link_one_by_sale
+
+    orders_by_id: dict[str, list] = {}
+    for txn in orders:
+        oid = txn.get("order_id")
+        if oid:
+            orders_by_id.setdefault(oid, []).append(txn)
+
+    for order_id, txns in orders_by_id.items():
+        try:
+            # HIGH-1 (Codex/code-reviewer Phase D, 2026-05-22): paid_time 空注文は
+            # 入れない. GetOrders は OrderStatus=Active (未払い 13 日以内) も返却し
+            # PaidTime 空. sold_at='' で INSERT すると:
+            #   (a) 商品管理 sold_at DESC 並び順で空文字列行が先頭固定 → W149 主目的破綻
+            #   (b) matcher の sold_at <= confirmed_at が文字列比較で常に True →
+            #       時系列ガード崩壊 (仕入が売却より先のケース誤マッチ)
+            # 未払い注文は次回 polling で paid_time 入った後に取込 (UNIQUE 複合キーで
+            # 衝突防止、re-polling で正しい sold_at で INSERT 成立).
+            paid_time = txns[0].get("paid_time") or ""
+            if not paid_time:
+                logger.info(
+                    f"order {order_id} paid_time 空 (未払い) → sales_history "
+                    f"取込 skip (次回 polling で paid 後に取込)"
+                )
+                continue
+            total_qty = sum(int(t.get("qty") or 1) for t in txns) or 1
+            order_shipping = float(txns[0].get("shipping_usd") or 0.0)
+            for txn in txns:
+                qty = int(txn.get("qty") or 1)
+                ship_share = (order_shipping * qty / total_qty) if total_qty > 0 else 0.0
+                sid = add_sale(
+                    ebay_item_id=txn.get("ebay_item_id") or "",
+                    sku=txn.get("sku") or "",
+                    title=txn.get("title") or "",
+                    sold_price_usd=float(txn.get("item_price_usd") or 0.0),
+                    sold_at=paid_time,
+                    buyer_country=txn.get("buyer_country") or "",
+                    shipping_cost_usd=ship_share,
+                    ebay_fee_usd=0.0,
+                    ebay_order_id=order_id,
+                )
+                if sid > 0:
+                    sales_recorded += 1
+                    # 過去失敗だった order が今回成功 → queue から remove
+                    _clear_sales_history_fetch_failure(order_id)
+                    # realtime ひも付け (この sale 対応の最古 unmatched fulfillment)
+                    try:
+                        matched_fid = link_one_by_sale(sid)
+                        if matched_fid is not None:
+                            fulfillment_links_realtime += 1
+                    except sqlite3.Error as ee:
+                        logger.warning(
+                            f"link_one_by_sale failed sale_id={sid}: {ee}"
+                        )
+                elif sid == 0:
+                    sales_skipped_dup += 1
+        except (sqlite3.Error, KeyError, TypeError, ValueError) as e:
+            sales_failures += 1
+            _record_sales_history_fetch_failure(order_id, str(e), webhook)
+            logger.warning(f"sales_history record failed order={order_id}: {e}")
 
     # W133 (2026-05-16): 在庫0 / sync 抑止 / sync 失敗 listing を 1 回まとめて
     # Discord 通知 (Q0 痕跡層の 1 つ). 商品呼称は title (ebay_item_id 末尾4桁) で、
@@ -559,6 +709,8 @@ def run_order_alert_check(config: Optional[dict] = None,
         f"ddpb={ddpb_alerts} inv_dec={inventory_decrements} "
         f"memo_warn={memo_warnings} "
         f"inv_zero={len(inventory_zero_listings)} errors={order_processing_errors} "
+        f"sales_rec={sales_recorded} sales_dup={sales_skipped_dup} "
+        f"fol_realtime={fulfillment_links_realtime} sales_fail={sales_failures} "
         f"duration={duration:.1f}s"
     )
     return {
@@ -570,10 +722,16 @@ def run_order_alert_check(config: Optional[dict] = None,
         "memo_warnings": memo_warnings,
         "inventory_zero_listings": inventory_zero_listings,
         "order_processing_errors": order_processing_errors,
+        "sales_recorded": sales_recorded,
+        "sales_skipped_dup": sales_skipped_dup,
+        "fulfillment_links_realtime": fulfillment_links_realtime,
+        "sales_failures": sales_failures,
         "duration_sec": duration,
         "message": (
             f"orders={len(orders)} hv_eu={high_value_alerts} ddpb={ddpb_alerts} "
             f"inv_dec={inventory_decrements} memo_warn={memo_warnings} "
+            f"sales_rec={sales_recorded} sales_dup={sales_skipped_dup} "
+            f"fol_realtime={fulfillment_links_realtime} sales_fail={sales_failures} "
             f"errors={order_processing_errors}"
         ),
     }

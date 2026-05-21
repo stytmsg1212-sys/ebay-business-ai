@@ -253,10 +253,33 @@ def confirm_purchase(
             result["quantity_added"] = qty
             result["sync_success"] = True  # 同期不要を「成功扱い」(message で明示)
             result["success"] = True
-            result["message"] = (
-                f"無在庫 fulfillment 仕入を記録しました (sku={sku}, qty={qty})。"
-                f"在庫加算/eBay 数量反映はしません (元の無在庫の挙動を維持)。"
-            )
+            # W149 (2026-05-22): 既に取得済の eBay 売却注文と realtime ひも付け.
+            # link_one は同 ebay_item_id の最古 unmatched fulfillment + sale を 1:1 matching.
+            # 失敗時 silent skip でなく warning + None (Q0).
+            match = None
+            try:
+                import sqlite3 as _sq3
+                from monitor.fulfillment_order_matcher import link_one
+                match = link_one(ebay_item_id)
+            except _sq3.Error as _e:
+                logger.warning(
+                    f"link_one failed eid={ebay_item_id}: {_e}"
+                )
+            if match:
+                result["matched_order_id"] = match.get("ebay_order_id")
+                result["matched_sale_id"] = match.get("sale_id")
+                result["message"] = (
+                    f"無在庫 fulfillment 仕入を記録しました (sku={sku}, qty={qty})。"
+                    f"eBay 注文 #{match.get('ebay_order_id') or '?'} に紐付けました。"
+                )
+            else:
+                result["matched_order_id"] = None
+                result["matched_sale_id"] = None
+                result["message"] = (
+                    f"無在庫 fulfillment 仕入を記録しました (sku={sku}, qty={qty})。"
+                    f"対応する eBay 売却がまだ取得されていません (30分後の自動取得で"
+                    f"自動ひも付けされます)。"
+                )
             return result
 
         # lost-update 防止 (HIGH-1, code-review 2026-05-16): stale な Python 側

@@ -1388,18 +1388,33 @@ def revise_fixed_price_item(
     return result
 
 
-def _build_get_orders_xml(num_days: int = 7, page_number: int = 1) -> str:
+def _build_get_orders_xml(
+    num_days: int = 7,
+    page_number: int = 1,
+    create_time_from: "datetime | None" = None,
+    create_time_to: "datetime | None" = None,
+) -> str:
     """GetOrders XML.
     Args:
-        num_days: 過去 N 日 (max 90, eBay API 制限)
+        num_days: 過去 N 日 (max 90, eBay API 制限). create_time_from/to 指定時は無視.
         page_number: pagination
+        create_time_from / create_time_to: W149 (2026-05-22) 範囲指定 backfill 用.
+            両方指定時 NumberOfDays でなく CreateTimeFrom/To を使う (90 日以内必須).
     """
+    if create_time_from is not None and create_time_to is not None:
+        # eBay GetOrders は ISO 8601 UTC, ms 含む形式 ('.000Z')
+        time_filter = (
+            f"  <CreateTimeFrom>{create_time_from.strftime('%Y-%m-%dT%H:%M:%S')}.000Z</CreateTimeFrom>\n"
+            f"  <CreateTimeTo>{create_time_to.strftime('%Y-%m-%dT%H:%M:%S')}.000Z</CreateTimeTo>"
+        )
+    else:
+        time_filter = f"  <NumberOfDays>{num_days}</NumberOfDays>"
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <GetOrdersRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
     <eBayAuthToken>{{USER_TOKEN}}</eBayAuthToken>
   </RequesterCredentials>
-  <NumberOfDays>{num_days}</NumberOfDays>
+{time_filter}
   <OrderRole>Seller</OrderRole>
   <OrderStatus>All</OrderStatus>
   <Pagination>
@@ -1417,6 +1432,8 @@ def get_orders(
     num_days: int = 7,
     page_number: int = 1,
     timeout: int = 60,
+    create_time_from: "datetime | None" = None,
+    create_time_to: "datetime | None" = None,
 ) -> dict:
     """Trading API GetOrders.
 
@@ -1434,9 +1451,12 @@ def get_orders(
         }
     """
     user_token = _resolve_active_token(user_token)
-    body = _build_get_orders_xml(num_days=num_days, page_number=page_number).replace(
-        "{USER_TOKEN}", user_token
-    )
+    body = _build_get_orders_xml(
+        num_days=num_days,
+        page_number=page_number,
+        create_time_from=create_time_from,
+        create_time_to=create_time_to,
+    ).replace("{USER_TOKEN}", user_token)
     headers = {
         "X-EBAY-API-SITEID": "0",
         "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
