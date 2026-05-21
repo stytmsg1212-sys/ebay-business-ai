@@ -59,7 +59,7 @@ def test_v44_self_heals_when_tables_missing(tmp_db):
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
             "AND name IN ('listing_notes','listing_sale_warnings')"
         ).fetchone()[0]
-    assert ver == 44 and n == 2          # 再作成 + 版数前進
+    assert ver >= 44 and n == 2          # 再作成 + 版数前進 (v45 以降も継続適用 OK)
     db.upsert_listing_note("X", "y")     # 機能復活
     assert db.get_listing_note("X") == "y"
 

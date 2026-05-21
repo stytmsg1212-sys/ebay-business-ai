@@ -64,14 +64,26 @@ def test_suggest_low_confidence_flag(tmp_db):
     assert res[0]["low_confidence"] is True
 
 
-def test_suggest_excludes_non_stock_sku(tmp_db):
-    """無在庫 (ebay prefix) SKU は候補に出さない (集合フィルタ)."""
+def test_suggest_includes_both_kinds_default(tmp_db):
+    """2026-05-21 W133-FU: default で 有在庫 (stock prefix) + 無在庫 (ebay
+    prefix) 両方が候補。kind ('restock'|'fulfillment') が正しく付与される。"""
     _insert_listing("C1", "ebayyh_p123", 5, "Some Supplier Sourced Item")
     _insert_listing("C2", "stock:01", 3, "Some Supplier Sourced Item")
     from tasks.task_purchase_confirm import suggest_listings
     res = suggest_listings("Some Supplier Sourced Item")
+    by_id = {r["ebay_item_id"]: r for r in res}
+    assert "C1" in by_id and by_id["C1"]["kind"] == "fulfillment"
+    assert "C2" in by_id and by_id["C2"]["kind"] == "restock"
+
+
+def test_suggest_include_no_stock_false_excludes_ebay(tmp_db):
+    """include_no_stock=False は旧挙動 (stock-only) を保持 = 後方互換確認。"""
+    _insert_listing("C1", "ebayyh_p123", 5, "Some Supplier Sourced Item")
+    _insert_listing("C2", "stock:01", 3, "Some Supplier Sourced Item")
+    from tasks.task_purchase_confirm import suggest_listings
+    res = suggest_listings("Some Supplier Sourced Item", include_no_stock=False)
     ids = {r["ebay_item_id"] for r in res}
-    assert "C1" not in ids, "無在庫 SKU が候補に混入"
+    assert "C1" not in ids, "include_no_stock=False で無在庫が混入"
     assert "C2" in ids
 
 

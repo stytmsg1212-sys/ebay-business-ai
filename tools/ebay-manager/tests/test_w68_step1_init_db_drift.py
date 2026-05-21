@@ -72,7 +72,7 @@ def test_v29_supplier_eval_pending_idempotent_fresh(tmp_path, monkeypatch):
     db_mod.init_db()  # 2 回目
     with db_mod.get_conn() as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 44  # canonical HEAD (v41 W138-A→v42 W7/W183→v43 W142 +each→v44 W140 メモ)
+        assert ver == 45  # canonical HEAD (v41 W138-A→v42 W7/W183→v43 W142 +each→v44 W140 メモ→v45 W133-FU fulfillment_kind)
         n = c.execute("SELECT COUNT(*) FROM supplier_eval_pending").fetchone()[0]
         assert n == 1, "v29 migration 再実行でデータ消失 (Q2 冪等性違反)"
 
@@ -120,7 +120,7 @@ def test_init_db_idempotent_v27_existing_db(tmp_db):
 
     with get_conn() as c:
         ver_after = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver_before == ver_after == 44, (
+        assert ver_before == ver_after == 45, (
             f"user_version drift: before={ver_before} after={ver_after} "
             "(期待 44 維持: v44 = W140 メモ/売却警告 canonical HEAD, "
             "v41 W138-A → v42 W7/W183 → v43 W142 +each の後)"
@@ -147,7 +147,7 @@ def test_init_db_fresh_env_creates_new_schema(tmp_path, monkeypatch):
     with sqlite3.connect(db_path) as c:
         c.row_factory = sqlite3.Row
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 44, f"user_version != 44: {ver} (期待 44 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ)"
+        assert ver == 45, f"user_version != 45: {ver} (期待 45 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ → v45 W133-FU fulfillment_kind)"
 
         # canonical 新スキーマ
         assert _pk_columns(c, "pending_market_changes") == ["ebay_item_id"]
@@ -211,7 +211,7 @@ def test_init_db_v25_to_v26_legacy_migration_path(tmp_path, monkeypatch):
     # Stage 1: v26 block 実走済 (canonical 旧 + _new 作成 + user_version=27)
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 44, f"user_version != 44: {ver} (期待 44 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ)"
+        assert ver == 45, f"user_version != 45: {ver} (期待 45 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ → v45 W133-FU fulfillment_kind)"
         # canonical はまだ旧スキーマ (RENAME は one-shot script 責務)
         assert _pk_columns(c, "pending_market_changes") == ["sku"], (
             "v26 gate が False で canonical 旧スキーマ維持 (期待動作)"
@@ -295,7 +295,7 @@ def test_init_db_v26_block_skips_when_canonical_already_new(tmp_path, monkeypatc
 
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 44, f"user_version != 44: {ver} (期待 44 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ)"
+        assert ver == 45, f"user_version != 45: {ver} (期待 45 = HEAD: v41 W138-A → v42 W7/W183 → v43 W142 +each → v44 W140 メモ → v45 W133-FU fulfillment_kind)"
         # gate True で _new 作成 skip
         assert not _table_exists(c, "pending_market_changes_new"), (
             "gate=True で _new 作成 skip 動作せず (孤児発生)"
