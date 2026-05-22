@@ -1502,75 +1502,92 @@ def _render_cli_bulk_candidates(p: dict, registered_ids: list[str]) -> None:
                 "title": (c.get("title") or "")[:60],
                 "seller": c.get("seller") or "-",
             })
-        df = pd.DataFrame(df_rows)
-        edited_df = st.data_editor(
-            df,
-            column_config={
-                "✅": st.column_config.CheckboxColumn("追加", default=False, width="small"),
-                "item id": st.column_config.TextColumn("item id", width="small", disabled=True),
-                "リンク": st.column_config.LinkColumn(
-                    "リンク", display_text="開く", width="small",
-                ),
-                "商品価格": st.column_config.NumberColumn("商品価格", format="$%.2f", width="small"),
-                "送料": st.column_config.NumberColumn("送料", format="$%.2f", width="small"),
-                "合計": st.column_config.NumberColumn("合計", format="$%.2f", width="small"),
-                "発送方法": st.column_config.TextColumn(
-                    "発送方法", width="medium", disabled=True,
-                    help="配送業者 (carrier) ⚠️ = SpeedPAK Economy / Surface mail 等 Economy 配送",
-                ),
-                "関税": st.column_config.TextColumn(
-                    "関税", width="small", disabled=True,
-                    help="関税ポリシー: ⚠️ DDU = buyer 負担 / DDP = seller 負担 / ? = 不明. "
-                         "配送方法とは別軸の独立判定.",
-                ),
-                "発送目安": st.column_config.TextColumn("発送目安", width="small", disabled=True),
-                "title": st.column_config.TextColumn("title", width="medium", disabled=True),
-                "seller": st.column_config.TextColumn("seller", width="small", disabled=True),
-            },
-            hide_index=True,
-            use_container_width=True,
-            key=f"pm_cli_candidates_df_{eid}",
-        )
-        # 候補内の Economy / DDU の各軸独立カウントを警告表示
-        n_economy = sum(
-            1 for c in new_candidates[:_DISPLAY_CANDIDATES]
-            if _is_economy_shipping(c.get("shipping_service_code"), c.get("shipping_type"))
-        )
-        n_ddu = sum(
-            1 for c in new_candidates[:_DISPLAY_CANDIDATES]
-            if c.get("is_ddu_policy") is True
-        )
-        if n_economy > 0:
-            st.warning(
-                f"⚠️ 配送方法 (carrier) が **Economy 配送系**: **{n_economy} 件** "
-                f"(SpeedPAK Economy / Surface mail 等). 配送窓 10-14 日想定で defect リスク高. "
-                f"判定根拠: `feedback_competitor_jp_sellers_only.md` 「Economy 配送 seller は除外」."
+        # W150 (2026-05-22): form ラップで data_editor チェック変更時の rerun 抑制.
+        # 旧実装は data_editor の "✅" 列を 1 件チェックする度に Streamlit が画面全体を
+        # rerun → 並び順 / フィルタ再評価で編集中 listing が画面から消失していた
+        # (user 報告 W150 ③). form_submit_button 押下まで rerun を抑制し編集状態維持.
+        # selected count を表示する caption は form 内では update されないため、ボタン
+        # disabled も削除 (submit 後の server-side 判定で 0 件 / 上限超過を弾く).
+        with st.form(key=f"pm_cli_form_{eid}", clear_on_submit=False):
+            df = pd.DataFrame(df_rows)
+            edited_df = st.data_editor(
+                df,
+                column_config={
+                    "✅": st.column_config.CheckboxColumn("追加", default=False, width="small"),
+                    "item id": st.column_config.TextColumn("item id", width="small", disabled=True),
+                    "リンク": st.column_config.LinkColumn(
+                        "リンク", display_text="開く", width="small",
+                    ),
+                    "商品価格": st.column_config.NumberColumn("商品価格", format="$%.2f", width="small"),
+                    "送料": st.column_config.NumberColumn("送料", format="$%.2f", width="small"),
+                    "合計": st.column_config.NumberColumn("合計", format="$%.2f", width="small"),
+                    "発送方法": st.column_config.TextColumn(
+                        "発送方法", width="medium", disabled=True,
+                        help="配送業者 (carrier) ⚠️ = SpeedPAK Economy / Surface mail 等 Economy 配送",
+                    ),
+                    "関税": st.column_config.TextColumn(
+                        "関税", width="small", disabled=True,
+                        help="関税ポリシー: ⚠️ DDU = buyer 負担 / DDP = seller 負担 / ? = 不明. "
+                             "配送方法とは別軸の独立判定.",
+                    ),
+                    "発送目安": st.column_config.TextColumn("発送目安", width="small", disabled=True),
+                    "title": st.column_config.TextColumn("title", width="medium", disabled=True),
+                    "seller": st.column_config.TextColumn("seller", width="small", disabled=True),
+                },
+                hide_index=True,
+                use_container_width=True,
+                key=f"pm_cli_candidates_df_{eid}",
             )
-        if n_ddu > 0:
-            st.warning(
-                f"⚠️ 関税ポリシーが **DDU (buyer 負担)**: **{n_ddu} 件**. "
-                f"buyer に追加関税請求が発生 → defect リスク. 配送方法軸とは独立の判定. "
-                f"判定根拠: `reference_shipping_method_vs_ddu_taxonomy.md`."
+            # 候補内の Economy / DDU の各軸独立カウントを警告表示
+            n_economy = sum(
+                1 for c in new_candidates[:_DISPLAY_CANDIDATES]
+                if _is_economy_shipping(c.get("shipping_service_code"), c.get("shipping_type"))
             )
-        if n_economy == 0 and n_ddu == 0:
-            st.caption("✅ 候補に Economy 配送 / DDU policy は検出されません.")
+            n_ddu = sum(
+                1 for c in new_candidates[:_DISPLAY_CANDIDATES]
+                if c.get("is_ddu_policy") is True
+            )
+            if n_economy > 0:
+                st.warning(
+                    f"⚠️ 配送方法 (carrier) が **Economy 配送系**: **{n_economy} 件** "
+                    f"(SpeedPAK Economy / Surface mail 等). 配送窓 10-14 日想定で defect リスク高. "
+                    f"判定根拠: `feedback_competitor_jp_sellers_only.md` 「Economy 配送 seller は除外」."
+                )
+            if n_ddu > 0:
+                st.warning(
+                    f"⚠️ 関税ポリシーが **DDU (buyer 負担)**: **{n_ddu} 件**. "
+                    f"buyer に追加関税請求が発生 → defect リスク. 配送方法軸とは独立の判定. "
+                    f"判定根拠: `reference_shipping_method_vs_ddu_taxonomy.md`."
+                )
+            if n_economy == 0 and n_ddu == 0:
+                st.caption("✅ 候補に Economy 配送 / DDU policy は検出されません.")
 
-        selected = [
-            (row["item id"]) for _, row in edited_df.iterrows()
-            if row.get("✅") and row.get("item id")
-        ]
+            st.caption(
+                f"候補をチェックして下のボタンで一括追加. "
+                f"残 slot {max(n_slots_left, 0)} / {_MAX_COMPETITORS}"
+            )
 
-        st.caption(
-            f"選択中: {len(selected)} 件 / 追加後の合計: "
-            f"{len(registered_ids) + len(selected)} / {_MAX_COMPETITORS}"
-        )
+            submitted = st.form_submit_button(
+                "✅ 選択した候補を追加登録 (既存 maintain)",
+                type="primary", use_container_width=True,
+            )
 
-        if st.button(
-            f"✅ 選択した {len(selected)} 件を追加登録 (既存 maintain)",
-            key=f"pm_cli_add_{eid}",
-            disabled=(len(selected) == 0 or len(selected) > n_slots_left),
-            type="primary", use_container_width=True,
-        ):
+        if submitted:
+            # form_submit_button 押下後のみ実行. edited_df は最新 widget state.
+            selected = [
+                (row["item id"]) for _, row in edited_df.iterrows()
+                if row.get("✅") and row.get("item id")
+            ]
+            if len(selected) == 0:
+                st.warning("候補を 1 件以上選択してください.")
+                return
+            if len(selected) > n_slots_left:
+                st.error(
+                    f"❌ 上限 {_MAX_COMPETITORS} 件超過: 選択 {len(selected)} 件 + 既存 "
+                    f"{len(registered_ids)} 件 > 残 slot {n_slots_left}. "
+                    f"既存 active 競合を先に削除してください."
+                )
+                return
             # Plan B verify: 選択候補に Economy carrier OR DDU policy が含まれていたら登録 reject
             economy_ids = [
                 c.get("legacy_item_id") for c in new_candidates[:_DISPLAY_CANDIDATES]

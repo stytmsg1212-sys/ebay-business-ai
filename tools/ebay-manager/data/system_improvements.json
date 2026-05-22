@@ -1362,14 +1362,14 @@
   {
     "id": 233,
     "tag": "W150",
-    "title": "商品管理バグ修正: sold 全件 0 + CLI 一括検索チェック時の編集消失",
-    "description": "user 報告 (2026-05-22 朝): (1) 商品管理タブの各商品 sold が全て 0 件 → 「並び順=売れ筋(sold)」が適正に働いていない (取得欠落 or 集計バグ要切り分け、eBay GetItem QuantitySold or sales_history 由来不明)。(2) 「CLI一括検索からの候補追加」のライバルにチェックを入れると勝手に更新走りフィルタ適用 → 編集中ページが消える (rerun + state 喪失問題)。Q3 構造化フロー必須 (Phase 3 Clarify → 原因切り分け → 設計 → 2 段 review → 実装 → Q1 検証)。両件とも user 業務 (初期登録作業) の blocking。",
-    "status": "未着手",
+    "title": "商品管理バグ修正: sold 全件 0 (W149 で解決) + CLI 一括検索チェック時の編集消失 (form ラップで解決)",
+    "description": "user 報告 (2026-05-22 朝): (1) 商品管理タブの各商品 sold が全て 0 件 → 「並び順=売れ筋(sold)」が適正に働いていない。(2) 「CLI一括検索からの候補追加」のライバルにチェックを入れると勝手に更新走りフィルタ適用 → 編集中ページが消える。両件とも user 業務 (初期登録作業) の blocking。",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-22",
-    "completed": null,
+    "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ①③)",
-    "progress_note": null
+    "progress_note": "**2026-05-22 完走**: ①sold 0件 = sales_history が完全に空 (add_sale 一度も呼ばれてない) と root cause 判明 → W149 (eBay 売却注文取得 + fulfillment 自動ひも付け) で根本解決 (sales_history 0→101 件 / sold>0 listings 0→66、commit 559f865)。③CLI チェック編集消失 = Streamlit data_editor の '✅' 列変更で全体 rerun → フィルタ・並び順再評価で編集中 listing 消失 → tabs/tab_product_management.py の `_render_cli_bulk_candidates` 内 data_editor + 警告 + form_submit_button を `st.form(key='pm_cli_form_{eid}')` でラップ + ボタン disabled 削除 (submit 後 server-side で 0 件/上限超過判定)。Streamlit hot reload + Playwright 商品管理タブ Console 0 errors 確認。"
   },
   {
     "id": 234,
