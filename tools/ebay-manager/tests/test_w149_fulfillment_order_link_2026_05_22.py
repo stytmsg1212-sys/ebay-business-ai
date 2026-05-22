@@ -126,7 +126,7 @@ def test_v47_v48_self_heals_when_tables_missing(tmp_db):
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
             "AND name = 'idx_sales_history_order_item'"
         ).fetchone()[0]
-    assert ver == 50  # W153 cascade: init_db で v47/v48 block 完走後 v50 まで進む
+    assert ver == 52  # W153 v2 cascade: init_db で v47/v48 block 完走後 v52 まで進む
     assert n == 2
     assert idx_v48 == 1
 

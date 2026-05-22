@@ -2504,6 +2504,59 @@ def init_db():
                 conn.execute("PRAGMA user_version = 50")
                 logger.info("[init_db v50] schema_ver bumped to 50")
 
+        # v51/v52 (W153 v2 / 2026-05-22 PM): rival shipping 情報を listing_rival_discoveries
+        # に保存. UI で送料 + 配達日数 + 発送方法名表示 + Economy 系 hide.
+        # 業務知識: Economy 系は安商品で seller が使い分けるため seller block list は誤り
+        # (reference_ebay_economy_shipping_seller_pattern.md). 検索段階 skip → UI hide に変更.
+        # v51 で 3 列 (shipping_cost/min/max_delivery_date)、v52 で shipping_service_code 追加.
+        # search response には shipping_service_code 含まれないため詳細 API enrich で取得.
+        # additive nullable、drift recovery 対応 (v50 と同型).
+        _W153_V51_LRD_COLS = {
+            'competitor_shipping_cost_usd': 'REAL',
+            'min_delivery_date': 'TEXT',
+            'max_delivery_date': 'TEXT',
+            # v52 (2026-05-22 PM): 発送方法名 (get_item_by_legacy_id 経由で取得).
+            # search response には含まれないため新規 rival のみ詳細 API で enrich.
+            'shipping_service_code': 'TEXT',
+        }
+        # listing_rival_discoveries が存在する場合のみ ALTER 試行
+        _w153v51_has_lrd = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='listing_rival_discoveries'"
+        ).fetchone()
+        if _w153v51_has_lrd:
+            _w153v51_existing = set(
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(listing_rival_discoveries)"
+                ).fetchall()
+            )
+            _w153v51_missing = {
+                c for c in _W153_V51_LRD_COLS if c not in _w153v51_existing
+            }
+            for _col in _w153v51_missing:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE listing_rival_discoveries ADD COLUMN "
+                        f"{_col} {_W153_V51_LRD_COLS[_col]}"
+                    )
+                    logger.info(
+                        f"[init_db v51] recovered missing column: "
+                        f"listing_rival_discoveries.{_col}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
+            # 完全に揃った後でのみ user_version bump
+            _w153v51_post = set(
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(listing_rival_discoveries)"
+                ).fetchall()
+            )
+            if set(_W153_V51_LRD_COLS).issubset(_w153v51_post):
+                if schema_ver < 52:
+                    conn.execute("PRAGMA user_version = 52")
+                    logger.info("[init_db v52] schema_ver bumped to 52")
+
 
 # ---- サイト設定 ----
 
@@ -2858,15 +2911,30 @@ def set_rival_search_keywords(
     *,
     mark_generated: bool = False,
 ) -> bool:
-    """W153: 検索ワード textarea 内容を保存.
+    """W153: 検索ワード text_input 内容を保存.
 
-    keywords_text: 改行区切り (各行 1 keyword、空行は無視).
+    keywords_text: 空白区切り 1 query (Browse API AND 検索用).
+    v2 (2026-05-22 PM): 改行混じり入力は runtime で空白に collapse + trim.
+    過去 data の \\n も次回保存で正規化 (自己修復).
     mark_generated: True なら rival_search_keywords_generated_at = CURRENT_TIMESTAMP
                     (🤖 生成ボタン経路). False なら timestamp 維持 (💾 保存ボタン経路).
+
+    Returns:
+        True: 保存成功.
+        False: listing 不在 or 1-word query (DB layer guard、HIGH-2 fix).
+               空文字列は OK (user が keyword を消した = 検索停止).
     """
-    normalized = "\n".join(
-        line.strip() for line in (keywords_text or "").split("\n") if line.strip()
-    )
+    import re as _re
+    normalized = _re.sub(r"\s+", " ", keywords_text or "").strip()
+    # HIGH-2 fix (2026-05-22 PM internal review): 1-word query は AND 検索成立せず
+    # noise 過多 (Black 単独 50 件 hit 事故再発防止). 空文字列は許可 (削除目的).
+    if normalized and len(normalized.split(" ")) < 2:
+        _logger = logging.getLogger(__name__)
+        _logger.warning(
+            f"[W153 set_rival_search_keywords] {ebay_item_id}: "
+            f"refuse 1-word query (would cause AND-search noise): {normalized!r}"
+        )
+        return False
     with get_conn() as conn:
         if mark_generated:
             cur = conn.execute(
@@ -2892,8 +2960,16 @@ def record_rival_discovery(
     competitor_title: str = "",
     competitor_price_usd: Optional[float] = None,
     search_keyword: str = "",
+    competitor_shipping_cost_usd: Optional[float] = None,
+    min_delivery_date: Optional[str] = None,
+    max_delivery_date: Optional[str] = None,
+    shipping_service_code: Optional[str] = None,
 ) -> Optional[int]:
     """W153: claim-then-act. INSERT OR IGNORE → rowcount==1 で新規 id、0 で既存更新.
+
+    v51 (2026-05-22 PM): shipping_cost_usd / min/max_delivery_date を保存.
+    v52 (2026-05-22 PM): shipping_service_code を保存 (詳細 API 経由 enrich).
+    UI で送料 + 配達日数 + 発送方法名表示 + Economy hide に使用.
 
     Returns: 新規 INSERT した場合 lastrowid、既存重複なら None (last_seen_at + price 更新).
     """
@@ -2902,25 +2978,63 @@ def record_rival_discovery(
             """INSERT OR IGNORE INTO listing_rival_discoveries
                (ebay_item_id, competitor_seller, competitor_item_id,
                 competitor_title, competitor_price_usd, search_keyword,
+                competitor_shipping_cost_usd, min_delivery_date, max_delivery_date,
+                shipping_service_code,
                 first_seen_at, last_seen_at, status)
-               VALUES (?, ?, ?, ?, ?, ?,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'new')""",
             (ebay_item_id, competitor_seller, competitor_item_id,
-             competitor_title, competitor_price_usd, search_keyword),
+             competitor_title, competitor_price_usd, search_keyword,
+             competitor_shipping_cost_usd, min_delivery_date, max_delivery_date,
+             shipping_service_code),
         )
         if cur.rowcount == 1:
             return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        # 既存: last_seen_at + 価格更新
+        # 既存: last_seen_at + 価格 / shipping 情報を更新 (COALESCE で NULL は維持)
         conn.execute(
             """UPDATE listing_rival_discoveries
                SET last_seen_at = CURRENT_TIMESTAMP,
-                   competitor_price_usd = COALESCE(?, competitor_price_usd)
+                   competitor_price_usd = COALESCE(?, competitor_price_usd),
+                   competitor_shipping_cost_usd = COALESCE(?, competitor_shipping_cost_usd),
+                   min_delivery_date = COALESCE(?, min_delivery_date),
+                   max_delivery_date = COALESCE(?, max_delivery_date),
+                   shipping_service_code = COALESCE(?, shipping_service_code)
                WHERE ebay_item_id = ? AND competitor_seller = ?
                  AND competitor_item_id = ?""",
-            (competitor_price_usd, ebay_item_id,
-             competitor_seller, competitor_item_id),
+            (competitor_price_usd, competitor_shipping_cost_usd,
+             min_delivery_date, max_delivery_date, shipping_service_code,
+             ebay_item_id, competitor_seller, competitor_item_id),
         )
         return None
+
+
+def enrich_rival_discovery_shipping(
+    discovery_id: int,
+    *,
+    shipping_service_code: Optional[str] = None,
+    shipping_cost_usd: Optional[float] = None,
+    min_delivery_date: Optional[str] = None,
+    max_delivery_date: Optional[str] = None,
+) -> bool:
+    """v52: 既存 discovery に詳細 API 経由で取得した shipping 情報を後から enrich.
+
+    record_rival_discovery で INSERT 直後に呼ぶ用途 (新規 rival のみ enrich).
+    NULL の field は更新しない (COALESCE).
+
+    Returns: True if rowcount==1.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE listing_rival_discoveries
+               SET shipping_service_code = COALESCE(?, shipping_service_code),
+                   competitor_shipping_cost_usd = COALESCE(?, competitor_shipping_cost_usd),
+                   min_delivery_date = COALESCE(?, min_delivery_date),
+                   max_delivery_date = COALESCE(?, max_delivery_date)
+               WHERE id = ?""",
+            (shipping_service_code, shipping_cost_usd,
+             min_delivery_date, max_delivery_date, discovery_id),
+        )
+        return cur.rowcount == 1
 
 
 def get_rival_discoveries(

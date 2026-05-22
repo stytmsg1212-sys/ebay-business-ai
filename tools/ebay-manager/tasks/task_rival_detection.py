@@ -7,10 +7,15 @@
 user が UI で「監視 ON」 した listing についてのみ、商品個別の検索ワードで
 eBay Browse API を巡回し listing_rival_discoveries に新規 rival を蓄積.
 
+【v2 2026-05-22 PM】: 当初の「3-5 candidate 改行区切り → 各々別 query で
+union」設計は user 視認で「Black 単独 50 件 noise」発覚 → 廃止.
+**空白区切り 1 query AND 検索** に統一 (UI / generator / DB すべて).
+
 設計書: .company/engineering/docs/2026-05-22-W153-rival-per-listing-detection-design.md (v2.1)
 """
 import json
 import logging
+import re
 import sys
 import time
 from typing import Optional
@@ -28,6 +33,7 @@ from monitor.credentials import get_ebay_credentials
 from monitor.database import (
     get_conn,
     record_rival_discovery,
+    enrich_rival_discovery_shipping,
 )
 from monitor.task_execution_log import claim_alert_dedupe
 
@@ -66,10 +72,15 @@ def _fetch_target_listings() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _split_keywords(text: Optional[str]) -> list[str]:
+def _normalize_query(text: Optional[str]) -> str:
+    """改行・連続空白を単一空白に collapse + trim.
+
+    v2: 当初の「\\n split → 複数 query 別検索」は廃止.
+    過去 DB data (改行混じり) も runtime で空白化して 1 query AND 検索.
+    """
     if not text:
-        return []
-    return [line.strip() for line in text.split("\n") if line.strip()]
+        return ""
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _backoff_sleep(retry_count: int) -> float:
@@ -81,11 +92,14 @@ def run_rival_per_listing_detection_one(
     eid: str,
     config: dict,
     *,
-    keywords_override: Optional[list[str]] = None,
+    query_override: Optional[str] = None,
     sleep_between: float = 2.0,  # M-internal-7: UI 経路 0.0、cron 2.0
     max_requests_remaining: Optional[int] = None,
 ) -> dict:
     """単一 listing の検索. UI/cron 双方から呼ぶ.
+
+    v2 (2026-05-22 PM): 引数 keywords_override: list[str] → query_override: str
+    (空白区切り 1 query AND 検索に統一).
 
     Returns: {success, ebay_item_id, new_discoveries, refreshed, errors,
               skipped_bad_item_id, requests_used, message}
@@ -93,7 +107,8 @@ def run_rival_per_listing_detection_one(
     summary = {
         "success": False, "ebay_item_id": eid,
         "new_discoveries": 0, "refreshed": 0, "errors": 0,
-        "skipped_bad_item_id": 0, "requests_used": 0,
+        "skipped_bad_item_id": 0,
+        "requests_used": 0,
         "message": "",
     }
     try:
@@ -105,15 +120,24 @@ def run_rival_per_listing_detection_one(
         if not row:
             summary["message"] = f"listing not found: {eid}"
             return summary
-        keywords = keywords_override or _split_keywords(row["rival_search_keywords"])
-        if not keywords:
-            # H-D: 空 keyword で errors++ + success=False
+        query = _normalize_query(query_override or row["rival_search_keywords"])
+        if not query:
+            # H-D: 空 query で errors++ + success=False
             logger.warning(
-                f"[W153] {eid}: no keywords "
+                f"[W153] {eid}: no query "
                 f"(UI で生成 or 保存してください)"
             )
             summary["errors"] += 1
-            summary["message"] = "no keywords"
+            summary["message"] = "no query"
+            return summary
+        # v2: 単 query AND 検索 = 1 word は AND が成立せず noise hit
+        words = query.split(" ")
+        if len(words) < 2:
+            logger.warning(
+                f"[W153] {eid}: query too short ({len(words)} word), refuse to search: {query!r}"
+            )
+            summary["errors"] += 1
+            summary["message"] = f"query too short ({len(words)} word)"
             return summary
 
         creds = get_ebay_credentials(config)
@@ -125,97 +149,121 @@ def run_rival_per_listing_detection_one(
         )
         my_seller = _get_my_seller_username(config)
 
-        for kw in keywords:
-            # H-H: max_requests budget check
-            if max_requests_remaining is not None and max_requests_remaining <= 0:
-                logger.warning(
-                    f"[W153] {eid}: max_requests budget exhausted, "
-                    f"early break (kw={kw!r})"
+        # v2: 1 listing = 1 Browse API call (loop 廃止)
+        # H-H: max_requests budget check
+        if max_requests_remaining is not None and max_requests_remaining <= 0:
+            logger.warning(
+                f"[W153] {eid}: max_requests budget exhausted before search "
+                f"(query={query!r})"
+            )
+            summary["message"] = "max_requests_per_run reached"
+            return summary
+
+        items = None
+        for retry in range(3):
+            # v2.1 HIGH-3 fix: 試行 *前* に counter 消費
+            # (failed retry も含めて quota cap 厳守)
+            summary["requests_used"] += 1
+            if max_requests_remaining is not None:
+                max_requests_remaining -= 1
+            try:
+                items = client.search_items(
+                    query=query, limit=50, item_location_country="JP",
                 )
-                summary["message"] = "max_requests_per_run reached"
-                # v2.1 HIGH-4 fix: early break path で末尾 sleep を skip
-                summary["_skip_final_sleep"] = True
                 break
-            items = None
-            for retry in range(3):
-                # v2.1 HIGH-3 fix: 試行 *前* に counter 消費
-                # (failed retry も含めて quota cap 厳守)
-                summary["requests_used"] += 1
-                if max_requests_remaining is not None:
-                    max_requests_remaining -= 1
-                try:
-                    items = client.search_items(
-                        query=kw, limit=50, item_location_country="JP",
-                    )
-                    break
-                except _HTTP_RETRY_ERRORS as e:
-                    # code-reviewer HIGH-1+2 fix: str(e) でなく status_code 直接判定.
-                    # httpx.HTTPStatusError は `Server error '502 ...' for url '...'`
-                    # 形式で str(e) からの先頭 3 文字判定は dead code 化。
-                    status = getattr(
-                        getattr(e, 'response', None), 'status_code', None
-                    )
-                    is_429 = (status == 429)
-                    is_5xx = (status is not None and 500 <= status < 600)
-                    # transport / decode 系も transient 扱い (eBay 一時応答異常)
-                    is_transient = (
-                        _HTTPX is not None and
-                        isinstance(e, _HTTPX.RequestError) and
-                        not isinstance(e, _HTTPX.HTTPStatusError)
-                    )
-                    is_decode = isinstance(e, json.JSONDecodeError)
-                    if is_429 or is_5xx or is_transient or is_decode:
-                        sleep_s = _backoff_sleep(retry)
-                        logger.warning(
-                            f"[W153] {eid}: '{kw[:40]}' "
-                            f"transient (status={status}, type={type(e).__name__}), "
-                            f"retry {retry+1}/3 in {sleep_s}s: {e}"
-                        )
-                        time.sleep(sleep_s)
-                        continue
-                    # 非 transient (auth / 4xx 等) = retry 無価値、即 break
-                    # errors 加算は outer block で行う (double-count 防止)
-                    logger.warning(
-                        f"[W153] {eid}: '{kw[:40]}' "
-                        f"non-transient API error (status={status}): {e}"
-                    )
-                    items = None
-                    break
-            if items is None:
-                # retry 全失敗 (3 回 backoff exhausted) or non-transient break
-                summary["errors"] += 1
-                continue
-
-            for it in items:
-                seller = (it.get("seller") or "").strip()
-                if not seller or seller == my_seller:
-                    continue
-                # Browse API itemId "v1|123456789|0" → "123456789" 抽出
-                raw_iid = it.get("item_id") or ""
-                parts = raw_iid.split("|")
-                competitor_iid = parts[1] if len(parts) >= 2 else raw_iid
-                if not competitor_iid:
-                    # H-G: silent gap 排除、WARNING + counter
-                    logger.warning(
-                        f"[W153] {eid}: Browse API returned item without "
-                        f"competitor_item_id (kw={kw!r}, raw_iid={raw_iid!r})"
-                    )
-                    summary["skipped_bad_item_id"] += 1
-                    continue
-                new_id = record_rival_discovery(
-                    ebay_item_id=eid,
-                    competitor_seller=seller,
-                    competitor_item_id=competitor_iid,
-                    competitor_title=(it.get("title") or "")[:200],
-                    competitor_price_usd=it.get("price_usd"),
-                    search_keyword=kw,
+            except _HTTP_RETRY_ERRORS as e:
+                # code-reviewer HIGH-1+2 fix: str(e) でなく status_code 直接判定.
+                status = getattr(
+                    getattr(e, 'response', None), 'status_code', None
                 )
-                if new_id is not None:
-                    summary["new_discoveries"] += 1
-                else:
-                    summary["refreshed"] += 1
+                is_429 = (status == 429)
+                is_5xx = (status is not None and 500 <= status < 600)
+                is_transient = (
+                    _HTTPX is not None and
+                    isinstance(e, _HTTPX.RequestError) and
+                    not isinstance(e, _HTTPX.HTTPStatusError)
+                )
+                is_decode = isinstance(e, json.JSONDecodeError)
+                if is_429 or is_5xx or is_transient or is_decode:
+                    sleep_s = _backoff_sleep(retry)
+                    logger.warning(
+                        f"[W153] {eid}: '{query[:40]}' "
+                        f"transient (status={status}, type={type(e).__name__}), "
+                        f"retry {retry+1}/3 in {sleep_s}s: {e}"
+                    )
+                    time.sleep(sleep_s)
+                    continue
+                # 非 transient (auth / 4xx 等) = retry 無価値、即 break
+                logger.warning(
+                    f"[W153] {eid}: '{query[:40]}' "
+                    f"non-transient API error (status={status}): {e}"
+                )
+                items = None
+                break
+        if items is None:
+            # retry 全失敗 or non-transient break
+            summary["errors"] += 1
+            summary["success"] = False
+            summary["message"] = f"search failed: query={query!r}"
+            return summary
 
-        # H-D: errors>0 で success=False
+        for it in items:
+            seller = (it.get("seller") or "").strip()
+            if not seller or seller == my_seller:
+                continue
+            # Browse API itemId "v1|123456789|0" → "123456789" 抽出
+            raw_iid = it.get("item_id") or ""
+            parts = raw_iid.split("|")
+            competitor_iid = parts[1] if len(parts) >= 2 else raw_iid
+            if not competitor_iid:
+                logger.warning(
+                    f"[W153] {eid}: Browse API returned item without "
+                    f"competitor_item_id (query={query!r}, raw_iid={raw_iid!r})"
+                )
+                summary["skipped_bad_item_id"] += 1
+                continue
+            new_id = record_rival_discovery(
+                ebay_item_id=eid,
+                competitor_seller=seller,
+                competitor_item_id=competitor_iid,
+                competitor_title=(it.get("title") or "")[:200],
+                competitor_price_usd=it.get("price_usd"),
+                search_keyword=query,
+                # v51: search response の shipping info を保存 (UI 表示 + Economy hide 用)
+                competitor_shipping_cost_usd=it.get("shipping_cost_usd"),
+                min_delivery_date=it.get("min_delivery_date"),
+                max_delivery_date=it.get("max_delivery_date"),
+            )
+            if new_id is not None:
+                summary["new_discoveries"] += 1
+                # v52: 新規 INSERT 成功時のみ詳細 API で shipping_service_code 等を
+                # enrich. search response に shipping info が含まれない (= NULL) 場合の
+                # 補完 + 「発送方法名」取得 (user 業務上「Economy」判定に必須).
+                # quota: 新規分のみ = 1 listing 平均 ~5 calls/run (= cron 30 listings
+                # × 5 = 150/day、daily cap 5000 の 3%).
+                try:
+                    summary["requests_used"] += 1
+                    if max_requests_remaining is not None:
+                        max_requests_remaining -= 1
+                    detail = client.get_item_pricing(competitor_iid)
+                    if detail:
+                        enrich_rival_discovery_shipping(
+                            new_id,
+                            shipping_service_code=detail.get("shipping_service_code"),
+                            shipping_cost_usd=detail.get("shipping_usd"),
+                            min_delivery_date=detail.get("min_delivery_date"),
+                            max_delivery_date=detail.get("max_delivery_date"),
+                        )
+                except Exception as e:
+                    # enrich 失敗は record 自体は成功なので errors++ しない
+                    # (UI 上は send info 欠落で表示するだけ、business impact 小).
+                    logger.warning(
+                        f"[W153] {eid}: enrich failed for {competitor_iid}: "
+                        f"{type(e).__name__}: {e}"
+                    )
+            else:
+                summary["refreshed"] += 1
+
         summary["success"] = (summary["errors"] == 0)
         summary["message"] = (
             f"new={summary['new_discoveries']} "
@@ -223,13 +271,17 @@ def run_rival_per_listing_detection_one(
             f"err={summary['errors']} "
             f"bad_iid={summary['skipped_bad_item_id']}"
         )
-        # M-internal-7: sleep は呼び側 (cron loop) が arg で制御 (UI 経路は 0)
-        # code-reviewer HIGH-4 fix: max_requests early break path では skip
-        # (retry 後に追加 2s = cron batch hour drift 防止)
-        if sleep_between > 0 and not summary.get("_skip_final_sleep"):
+        if sleep_between > 0:
             time.sleep(sleep_between)
     except Exception as e:
+        # Codex GPT-5.5 HIGH (2026-05-22 PM): top-level except で errors も +=1.
+        # 旧実装は success=False のみ set し errors を更新しないため、
+        # run_rival_detection の集約は res["errors"] のみ参照 → silent skip.
+        # money-direct silent gap (record_rival_discovery DB write 例外、
+        # credentials 構築失敗、unexpected item shape AttributeError 等が
+        # Discord error alert に乗らない).
         logger.exception(f"[W153] {eid} run_one failed")
+        summary["errors"] += 1
         summary["message"] = f"top-level: {type(e).__name__}: {e}"
         summary["success"] = False
     return summary
@@ -243,7 +295,8 @@ def run_rival_detection(config: dict) -> dict:
     summary: dict = {
         "success": False, "new_sellers_count": 0, "total_scanned": 0,
         "listings_processed": 0, "new_discoveries_total": 0,
-        "errors": 0, "skipped_bad_item_id": 0, "requests_used": 0,
+        "errors": 0, "skipped_bad_item_id": 0,
+        "requests_used": 0,
         "sellers": [], "message": "",
     }
     per_listing_summaries: list[dict] = []
@@ -263,10 +316,28 @@ def run_rival_detection(config: dict) -> dict:
         max_listings = int(cfg_block.get('max_listings_per_run', 30))
         max_requests = int(cfg_block.get('max_requests_per_run', 150))
         if len(listings) > max_listings:
-            logger.info(
+            logger.warning(
                 f"[W153] {len(listings)} listings > "
-                f"max_listings_per_run={max_listings}, truncating"
+                f"max_listings_per_run={max_listings}, truncating "
+                f"(deterministic ORDER BY ebay_item_id = tail listings starve)"
             )
+            # Codex MED-1 fix (2026-05-22 PM): silent skip 防止 Q0.
+            # 10 件以上 skip なら Discord warn (user が ON 数を絞る判断ができるよう).
+            skipped = len(listings) - max_listings
+            if skipped >= 10:
+                webhook = (config.get('discord') or {}).get('webhook_url') or ""
+                if webhook:
+                    try:
+                        from notifiers.discord_notifier import DiscordNotifier
+                        DiscordNotifier(webhook).send_message(
+                            f"⚠️ **W153 truncation**: 監視 ON listing が "
+                            f"{len(listings)} 件あり max_listings_per_run="
+                            f"{max_listings} を超えています。今回 {skipped} 件 skip "
+                            f"(ORDER BY ebay_item_id 末尾は永久 starve リスク)。"
+                            f"商品管理タブで ON 数を絞るか設定で cap を上げてください。"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[W153] truncate notify failed: {e}")
             listings = listings[:max_listings]
         requests_remaining = max_requests
 

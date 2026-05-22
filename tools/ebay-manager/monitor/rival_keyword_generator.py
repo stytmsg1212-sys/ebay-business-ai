@@ -1,10 +1,14 @@
-"""W153 (2026-05-22): per-listing 同期 keyword 生成 (Claude Haiku 4.5, title-only).
+"""W153 (2026-05-22 改訂 v2): per-listing 同期 keyword 生成 (Claude Haiku 4.5, title-only).
 
 UI の「🤖 Claude 生成」ボタンから同期呼び出し. cron 経路では呼ばない
 (user 編集を尊重、勝手に上書きしない).
 
 ebay_listings に Brand / MPN 列が無いため、本 W は title のみで生成
 (user 合意済 2026-05-22). Brand/MPN 列追加は別 W (M-codex-10 admit).
+
+【v2 2026-05-22 PM】: user 視認で「Black 単独で 50 件 noise hit」発覚、
+複数 candidate を別 query で union していた当初設計を **空白区切り 1 query**
+で AND 検索に変更. Haiku 出力も「ONE best query, 3-8 words space-separated」.
 
 設計書: .company/engineering/docs/2026-05-22-W153-rival-per-listing-detection-design.md
 """
@@ -18,25 +22,25 @@ import anthropic
 logger = logging.getLogger(__name__)
 
 KEYWORD_MODEL = "claude-haiku-4-5-20251001"
-_MAX_TOKENS = 200  # 3-5 候補 × 30 token 程度
+_MAX_TOKENS = 80  # v2: 1 query × ~30 token で十分
 
 _PROMPT_TEMPLATE = """You are an eBay search keyword generator for a Japan->US cross-border seller.
 
-Given an eBay listing's title, output 3-5 search keyword candidates that find direct competitor listings on eBay.
+Given an eBay listing's title, output ONE search query that finds direct competitor listings on eBay for the same product.
 
-# Rules
-- Each candidate: 3-6 words, separated by spaces (URL-friendly)
-- Include any brand/model number that you can extract from the title (narrowing is important)
-- Add differentiating attributes (color / capacity / size / variant) when extractable
-- Skip filler words: condition (NEW/Used/Mint), year, packaging, region tags ("from Japan", "F/S")
-- Output ONE candidate per line, no numbering, no quotes, no explanations, no apologies
-- If the title is in Japanese, keep brand names in English / Latin script when possible
-- Output ONLY the candidates, nothing else
+# Output rules
+- ONE query only, on a single line, 3 to 8 words separated by single spaces
+- The query will be sent to eBay Browse API as an AND search (every word must match)
+- Include brand and any model/part number from the title (these are the strongest narrowing terms)
+- Add 1-2 product-category words (e.g. "Cassette Player", "Headphones", "Mini Cocotte")
+- Skip color/size/capacity unless they are catalog-bound (e.g. always include "Rose Gold" only if the model name itself depends on it)
+- Skip filler: condition (NEW/Used/Mint), year, packaging tags, region tags ("from Japan", "F/S")
+- No quotes, no numbering, no explanation, no apologies — output ONLY the query line
 
 # Title
 {title}
 
-# Output (3-5 lines)"""
+# Output (single line, 3-8 words)"""
 
 # H-F: apology / explanation / numbering pattern reject
 _APOLOGY_PATTERN = re.compile(
@@ -63,19 +67,22 @@ def generate_keywords(
     brand: Optional[str] = None,   # 将来拡張用 signature 保持 (本 W では未使用)
     mpn: Optional[str] = None,
     specifics: Optional[dict] = None,
-) -> list[str]:
-    """eBay 競合検索用 keyword 候補 3-5 件を Claude Haiku で生成 (title-only).
+) -> str:
+    """eBay 競合検索用 query (3-8 word 空白区切り) を Claude Haiku で生成 (title-only).
+
+    【v2 2026-05-22 PM】: 返り値 list[str] → str に変更. 当初の複数 candidate union
+    設計は「Black 単独で 50 件 noise」を生み、空白区切り 1 query AND 検索に統一.
 
     Args:
         title: ebay_listings.title (必須).
         brand/mpn/specifics: 将来拡張用 (Brand/MPN 列追加 W で復活).
 
     Returns:
-        list[str]: 3-5 entries, each 3-6 words.
+        str: 1 query, 3-8 words space-separated.
 
     Raises:
         RuntimeError: API key 未設定.
-        ValueError: Haiku output が異常 (<3 valid candidates after filter).
+        ValueError: Haiku output が異常 (no valid query line after filter).
         anthropic.APIError: API 障害 (caller handles, UI で st.error).
     """
     api_key = _resolve_api_key()
@@ -90,7 +97,7 @@ def generate_keywords(
     )
     raw = msg.content[0].text if msg.content else ""
 
-    candidates: list[str] = []
+    # v2: 最初の valid line を採用 (Haiku が複数行返した場合の defensive)
     for line in raw.split("\n"):
         s = line.strip().strip('"\'.,!?;:')
         if not s:
@@ -108,19 +115,17 @@ def generate_keywords(
                 f"[W153 generator] rejected numbered line: {s[:60]!r}"
             )
             continue
-        words = s.split()
-        if not (3 <= len(words) <= 6):
+        # v2: 連続空白 collapse (Haiku が "maxell  MXCP-P100" のように 2 空白返す対策)
+        s = re.sub(r"\s+", " ", s)
+        words = s.split(" ")
+        if not (3 <= len(words) <= 8):
             logger.warning(
-                f"[W153 generator] rejected wrong-word-count line: {s[:60]!r}"
+                f"[W153 generator] rejected wrong-word-count line "
+                f"(words={len(words)}): {s[:60]!r}"
             )
             continue
-        candidates.append(s)
+        return s
 
-    # H-F: <3 valid でも raise (0 だけでなく)
-    if len(candidates) < 3:
-        raise ValueError(
-            f"Haiku returned only {len(candidates)} valid candidates "
-            f"(need >=3). raw={raw!r}"
-        )
-
-    return candidates[:5]
+    raise ValueError(
+        f"Haiku returned no valid query line (need 3-8 words). raw={raw!r}"
+    )

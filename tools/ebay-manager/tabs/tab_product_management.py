@@ -2045,6 +2045,73 @@ def _build_expander_header(p: dict) -> str:
 
 _W153_UI_COOLDOWN_SEC = 60.0  # H-H: 「今すぐ検索」連打防止
 
+# v51 (2026-05-22 PM): Economy 系発送方法 (中国大量出品 noise) を UI で hide.
+# 業務知識: reference_ebay_economy_shipping_seller_pattern.md
+# 検索段階 skip ではなく UI hide にする = 同 seller の高 value listing は別 listing として残る.
+_W153_UI_ECONOMY_THRESHOLD_DAYS = 10
+
+
+def _is_economy_for_display(d: dict) -> bool:
+    """Economy 系 shipping と判定し UI 上 hide する.
+
+    判定優先順 (OR 結合):
+      1. shipping_service_code に "Economy" 含む (v52、name 判定)
+      2. 配達日数 (max-min) > 10 日 (v51 fallback、name 不在時)
+
+    seller_id ベースの block list は誤り (同 seller が安商品では Economy、
+    高商品では別発送方法を使うため). listing 単位で発送方法名で判定.
+
+    Returns:
+        True: Economy 系 (UI hide 対象).
+        False: Express / Standard / 情報なし (表示する).
+    """
+    # (1) v52: shipping_service_code name で判定 (最も確実)
+    service_code = (d.get("shipping_service_code") or "")
+    if "Economy" in service_code:
+        return True
+    # (2) v51: 配達日数 fallback
+    min_date = d.get("min_delivery_date")
+    max_date = d.get("max_delivery_date")
+    if not (min_date and max_date):
+        return False  # 情報なし = 表示する (安全側、判断は user に委ねる)
+    try:
+        min_dt = datetime.fromisoformat(min_date.replace("Z", "+00:00"))
+        max_dt = datetime.fromisoformat(max_date.replace("Z", "+00:00"))
+        window_days = (max_dt - min_dt).total_seconds() / 86400
+        return window_days > _W153_UI_ECONOMY_THRESHOLD_DAYS
+    except Exception:
+        return False  # parse 失敗 = 表示する (安全側)
+
+
+def _format_shipping_method(d: dict) -> str:
+    """発送方法名を取得 (v52 shipping_service_code 優先).
+
+    例: "USPS Priority" / "FedEx International" / "—" (情報なし)
+    """
+    code = (d.get("shipping_service_code") or "").strip()
+    return code if code else "—"
+
+
+def _format_delivery_window(d: dict) -> str:
+    """配達日数 string 整形 (発送方法名の補足).
+
+    例: "7-12 days" / "—"
+    """
+    min_date = d.get("min_delivery_date")
+    max_date = d.get("max_delivery_date")
+    if not (min_date and max_date):
+        return "—"
+    try:
+        from datetime import datetime as _dt
+        now = _dt.now(tz=None).replace(tzinfo=None)
+        min_dt = _dt.fromisoformat(min_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        max_dt = _dt.fromisoformat(max_date.replace("Z", "+00:00")).replace(tzinfo=None)
+        min_days = max(0, int((min_dt - now).total_seconds() / 86400))
+        max_days = max(0, int((max_dt - now).total_seconds() / 86400))
+        return f"{min_days}-{max_days} days"
+    except Exception:
+        return "—"
+
 
 def _render_rival_watch_section(p: dict, config: dict) -> None:
     """W153: 商品 hero 内「🎯 ライバル監視」section. form 外で個別 button 即時反応.
@@ -2077,45 +2144,59 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
         st.markdown("---")
         return  # K1 simplicity
 
-    # ── ② textarea + ③ 生成 + ④ 保存 + ⑤ 今すぐ検索 ──
+    # ── ② text_input + ③ 生成 + ④ 保存 + ⑤ 今すぐ検索 ──
     # M-internal-1: session_state 上書きは *_pending key 経由
     pending_key = f"pm_rival_kw_{eid}_pending"
     if pending_key in st.session_state:
         initial_kw = st.session_state.pop(pending_key)
     else:
-        initial_kw = p.get("rival_search_keywords") or ""
+        # v2 (2026-05-22 PM): legacy \n 区切り data を UI 表示時に空白 normalize.
+        # Streamlit text_input は \n を value に含めると削除して結合してしまうため、
+        # 事前に空白化しないと user に「maxellMXCP-P100Black」のような連結文字列が
+        # 表示される (legacy data UX bug 修正).
+        import re as _re_ui_load
+        raw_kw = p.get("rival_search_keywords") or ""
+        initial_kw = _re_ui_load.sub(r"\s+", " ", raw_kw).strip()
 
     gen_at = p.get("rival_search_keywords_generated_at") or "未生成"
-    st.caption(f"検索ワード (改行区切り、最終生成: {gen_at} UTC)")
+    st.caption(f"検索ワード (空白区切り、Browse API に AND 検索で 1 query 投入。最終生成: {gen_at} UTC)")
 
     if not since_base:
         st.caption(
             "⚠️ W151 初期登録未完了 = since filter は rival_watch_started_at のみで動作"
         )
 
-    new_kw = st.text_area(
+    new_kw = st.text_input(
         "検索ワード",
-        value=initial_kw, height=100,
+        value=initial_kw,
         key=f"pm_rival_kw_{eid}",
         label_visibility="collapsed",
-        help="1 行 1 keyword. brand/model 相当語を含めると精度向上. 例: 'Ohuhu PEN 320 FINE'",
+        help="空白区切り 1 query (3-8 word). 例: 'maxell MXCP-P100 Cassette Player'. brand + model + 商品カテゴリ語を含めると精度向上.",
     )
 
     btn_cols = st.columns([1, 1, 1])
     with btn_cols[0]:
         if st.button(
             "🤖 Claude 生成", key=f"pm_rival_gen_{eid}",
-            help="Claude Haiku で 3-5 候補生成 (textarea を上書き)",
+            help="Claude Haiku で 1 best query (3-8 word) を生成 (text_input を上書き)",
         ):
             with st.spinner("Haiku 生成中..."):
                 try:
                     from monitor.rival_keyword_generator import generate_keywords
-                    cands = generate_keywords(title=p.get("title") or "")
-                    joined = "\n".join(cands)
-                    set_rival_search_keywords(eid, joined, mark_generated=True)
-                    st.session_state[pending_key] = joined  # M-internal-1
-                    st.success(f"生成 {len(cands)} 件 → DB 保存")
-                    st.rerun()
+                    cand = generate_keywords(title=p.get("title") or "")
+                    # Codex LOW (2026-05-22 PM): set_rival_search_keywords 戻り値を check
+                    # (現状 generator は 3-8 word 保証だが、defense in depth で
+                    # listing 不在 / 将来 stricter guard rejection も検出).
+                    ok = set_rival_search_keywords(eid, cand, mark_generated=True)
+                    if ok:
+                        st.session_state[pending_key] = cand  # M-internal-1
+                        st.success(f"生成 → DB 保存: {cand}")
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"生成 query が DB layer に拒否されました: {cand!r}. "
+                            f"(listing 不在 or 1-word). 手動入力してください."
+                        )
                 except ValueError as e:
                     st.error(f"Haiku 出力異常: {e}. 手動入力してください")
                 except RuntimeError as e:
@@ -2125,13 +2206,30 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
     with btn_cols[1]:
         if st.button(
             "💾 検索ワード保存", key=f"pm_rival_save_{eid}",
-            help="textarea 内容を DB 保存",
+            help="text_input 内容を DB 保存 (空白区切り 2 word 以上必須)",
         ):
-            ok = set_rival_search_keywords(eid, new_kw, mark_generated=False)
-            if ok:
-                st.success("保存完了")
+            # HIGH-1 fix (2026-05-22 PM internal review): 保存経路にも 1-word guard
+            # (今すぐ検索だけでなく cron も同じ DB 値を読むため、保存時点で止める).
+            import re as _re_save
+            q_save = _re_save.sub(r"\s+", " ", new_kw or "").strip()
+            if not q_save:
+                # 空文字 = 削除目的、DB layer の set_rival_search_keywords が許可する
+                ok = set_rival_search_keywords(eid, "", mark_generated=False)
+                if ok:
+                    st.success("検索ワード削除完了 (空文字保存)")
+                else:
+                    st.error("保存失敗 (listing 不在?)")
+            elif len(q_save.split(" ")) < 2:
+                st.warning(
+                    f"検索ワードが短すぎます (1 word では AND 検索が成立せず noise 過多)。"
+                    f"3-8 word 推奨。現在: {q_save!r} — 保存をキャンセルしました"
+                )
             else:
-                st.error("保存失敗 (listing 不在?)")
+                ok = set_rival_search_keywords(eid, new_kw, mark_generated=False)
+                if ok:
+                    st.success("保存完了")
+                else:
+                    st.error("保存失敗 (listing 不在 or DB 拒否)")
 
     with btn_cols[2]:
         # H-H: UI cooldown 60s (v2.1 MED-5 admit: single-process limit)
@@ -2146,9 +2244,16 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
             disabled=on_cooldown,
             help="この listing を今すぐ Browse API 巡回 (60 秒 cooldown)",
         ):
-            kws = [line.strip() for line in new_kw.split("\n") if line.strip()]
-            if not kws:
+            # v2: 改行混じり入力も normalize して 1 query AND 検索
+            import re as _re_ui
+            q = _re_ui.sub(r"\s+", " ", new_kw or "").strip()
+            if not q:
                 st.warning("検索ワードが空です")
+            elif len(q.split(" ")) < 2:
+                st.warning(
+                    f"検索ワードが短すぎます (1 word では AND 検索が成立せず noise 過多)。"
+                    f"3-8 word 推奨。現在: {q!r}"
+                )
             else:
                 st.session_state[cooldown_key] = now_s
                 with st.spinner("Browse API 巡回中..."):
@@ -2157,7 +2262,7 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
                     )
                     res = run_rival_per_listing_detection_one(
                         eid, config,
-                        keywords_override=kws,
+                        query_override=q,
                         sleep_between=0.0,  # M-internal-7: UI 経路 0
                     )
                 if res["success"]:
@@ -2175,7 +2280,14 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
             st.caption(f"cooldown {remaining}s")
 
     # ── ⑥ 検出済 expander (status 3 tab + 件数バッジ L-internal-4) ──
-    new_count_label = len(get_rival_discoveries(eid, status='new', since=since_base))
+    # v51 (2026-05-22 PM): Economy 系を UI hide + 送料/配達日数表示 + 一括却下.
+    raw_new = get_rival_discoveries(eid, status='new', since=since_base)
+    visible_new = [
+        d for d in raw_new if not _is_economy_for_display(d)
+    ]
+    hidden_eco_count = len(raw_new) - len(visible_new)
+    new_count_label = len(visible_new)
+
     with st.expander(
         f"📋 検出済 rival 一覧 ({new_count_label} 新規)", expanded=False,
     ):
@@ -2183,72 +2295,134 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
             ["🆕 新規 (未対応)", "✅ 監視追加済", "🗑️ 却下"],
         )
         with tab_new:
-            discoveries = get_rival_discoveries(
-                eid, status='new', since=since_base,
-            )
-            if not discoveries:
+            if hidden_eco_count > 0:
+                st.caption(
+                    f"⚙️ Economy 系 {hidden_eco_count} 件を hide 中 "
+                    f"(配達日数 > 10 日 = 中国大量出品 noise)"
+                )
+            if not visible_new:
                 st.caption(
                     "新規 rival なし"
                     + (f" (since {since_base} UTC)" if since_base else "")
                 )
             else:
-                for d in discoveries[:50]:
-                    cols = st.columns([3, 1, 1, 1])
-                    with cols[0]:
-                        price_str = (
-                            f" | ${d['competitor_price_usd']:.2f}"
-                            if d['competitor_price_usd'] else ""
-                        )
-                        st.markdown(
-                            f"**{d['competitor_seller']}** | "
-                            f"[{(d['competitor_title'] or '')[:60]}]"
-                            f"(https://www.ebay.com/itm/{d['competitor_item_id']})"
-                            + price_str
-                        )
-                        st.caption(
-                            f"first_seen: {d['first_seen_at']} UTC | "
-                            f"keyword: {d['search_keyword']}"
-                        )
-                    with cols[1]:
-                        if st.button(
-                            "➕ 監視追加",
-                            key=f"pm_rdisc_add_{d['id']}",
-                            type="primary",
+                # 上限 50 件 (UI 描画パフォーマンス)
+                display_list = visible_new[:50]
+
+                # ── 一括処理 form (☑ = 監視追加対象、未入力 = 却下) ──
+                # v52 (2026-05-22 PM): UI 逆転.
+                # user 業務: 50 件のうち真の rival は 1-3 件 = 登録分を ☑ で選び、
+                # submit 1 回で「☑ → W183 監視追加 / 未 ☑ → 却下」を一括処理.
+                with st.form(key=f"pm_rdisc_form_{eid}"):
+                    st.caption(
+                        "✅ **監視追加したい rival** を ☑ で選択。"
+                        "未チェックの rival は 自動で却下されます。"
+                    )
+                    for d in display_list:
+                        cols = st.columns([0.3, 5])
+                        with cols[0]:
+                            st.checkbox(
+                                " ", key=f"pm_rdisc_chk_{d['id']}",
+                                label_visibility="collapsed",
+                            )
+                        with cols[1]:
+                            # 商品価格
+                            price_val = d.get('competitor_price_usd')
+                            price_str = (
+                                f"${price_val:.2f}"
+                                if price_val is not None else "—"
+                            )
+                            # 送料
+                            ship_val = d.get('competitor_shipping_cost_usd')
+                            ship_str = (
+                                f"${ship_val:.2f}"
+                                if ship_val is not None else "—"
+                            )
+                            # 合計
+                            if price_val is not None and ship_val is not None:
+                                total_str = f"${price_val + ship_val:.2f}"
+                            elif price_val is not None:
+                                total_str = f"${price_val:.2f} (+送料不明)"
+                            else:
+                                total_str = "—"
+                            # 発送方法名 (v52)
+                            method_str = _format_shipping_method(d)
+                            delivery_str = _format_delivery_window(d)
+
+                            st.markdown(
+                                f"**{d['competitor_seller']}** | "
+                                f"[{(d['competitor_title'] or '')[:60]}]"
+                                f"(https://www.ebay.com/itm/{d['competitor_item_id']})"
+                            )
+                            st.caption(
+                                f"💰 価格 **{price_str}** + 送料 **{ship_str}** "
+                                f"= 合計 **{total_str}** | "
+                                f"📦 {method_str} ({delivery_str}) | "
+                                f"first_seen: {d['first_seen_at']} UTC | "
+                                f"keyword: {d['search_keyword']}"
+                            )
+                    submitted = st.form_submit_button(
+                        f"✅ 選択を全登録 (未チェックは全却下)",
+                        type="primary",
+                    )
+
+                if submitted:
+                    add_ids = []
+                    dismiss_ids = []
+                    for d in display_list:
+                        if st.session_state.get(
+                            f"pm_rdisc_chk_{d['id']}", False,
                         ):
-                            try:
-                                _id, action = add_or_reactivate_competitor(
-                                    our_item_id=eid,
-                                    our_sku=p.get('sku', '') or '',
-                                    competitor_seller=d['competitor_seller'],
-                                    competitor_item_id=d['competitor_item_id'],
+                            add_ids.append(d)
+                        else:
+                            dismiss_ids.append(d['id'])
+
+                    # 監視追加 (status=monitoring_added) — 1 件ずつ DB 操作
+                    added_count = 0
+                    conflict_count = 0
+                    error_count = 0
+                    for d in add_ids:
+                        try:
+                            _id, action = add_or_reactivate_competitor(
+                                our_item_id=eid,
+                                our_sku=p.get('sku', '') or '',
+                                competitor_seller=d['competitor_seller'],
+                                competitor_item_id=d['competitor_item_id'],
+                            )
+                            if action in ('added', 'reactivated'):
+                                update_rival_discovery_status(
+                                    d['id'], 'monitoring_added',
                                 )
-                                # ★ v2.1 HIGH-2 fix: conflict 時は status を遷移させない
-                                if action == 'added':
-                                    update_rival_discovery_status(
-                                        d['id'], 'monitoring_added',
-                                    )
-                                    st.success("W183 監視対象に追加")
-                                elif action == 'reactivated':
-                                    update_rival_discovery_status(
-                                        d['id'], 'monitoring_added',
-                                    )
-                                    st.success("過去解除されていた → 再アクティブ化")
-                                else:  # conflict
-                                    # status='new' 維持 = W183 流入されてない discovery を user の目に残す
-                                    st.warning(
-                                        "他 listing で監視中のため、本 listing には追加できませんでした"
-                                        " (N:1 監視は別 W で対応予定)。本 discovery は new tab に残ります"
-                                    )
-                                st.rerun()
-                            except Exception as e:
-                                st.error(
-                                    f"追加失敗: {type(e).__name__}: {e}. "
-                                    f"DB 状態確認をお願いします"
-                                )
-                    with cols[2]:
-                        if st.button("🗑️ 却下", key=f"pm_rdisc_dis_{d['id']}"):
-                            update_rival_discovery_status(d['id'], 'dismissed')
-                            st.rerun()
+                                added_count += 1
+                            else:  # conflict
+                                conflict_count += 1
+                        except Exception as e:
+                            logger.warning(
+                                f"[W153 UI bulk] add failed for "
+                                f"{d['competitor_item_id']}: {e}"
+                            )
+                            error_count += 1
+
+                    # 残り全却下
+                    for did in dismiss_ids:
+                        update_rival_discovery_status(did, 'dismissed')
+
+                    msg_parts = []
+                    if added_count > 0:
+                        msg_parts.append(f"✅ 監視追加 {added_count} 件")
+                    if conflict_count > 0:
+                        msg_parts.append(
+                            f"⚠️ conflict {conflict_count} 件 "
+                            f"(他 listing で監視中、new tab に残ります)"
+                        )
+                    if error_count > 0:
+                        msg_parts.append(f"❌ エラー {error_count} 件")
+                    if dismiss_ids:
+                        msg_parts.append(
+                            f"🗑️ 自動却下 {len(dismiss_ids)} 件"
+                        )
+                    st.success(" / ".join(msg_parts) or "処理対象なし")
+                    st.rerun()
         with tab_added:
             added = get_rival_discoveries(eid, status='monitoring_added')
             # L-internal-2: 「監視解除」button は本 W scope 外

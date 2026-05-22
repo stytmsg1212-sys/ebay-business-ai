@@ -1,0 +1,159 @@
+"""W153 v2 (2026-05-22 PM): noise 一括 DELETE (one-shot per listing).
+
+背景: 当初設計「3-5 candidate 改行区切り → 各々別 query union」が
+user の 1 単語 1 行入力で「Black 単独 50 件 noise」を生んだ. 修正に伴い、
+status='new' で 1 word search_keyword 由来の noise を含む既存 discoveries を
+物理 DELETE (user 承認済 2026-05-22).
+
+HIGH-3 fix (internal review 2026-05-22 PM): 全 listing 跨ぎ無差別 DELETE は
+将来再実行で正当な new を巻き込む risk. 以下 3 段の安全策:
+  1. --ebay-item-id 必須 (どの listing の noise を消すか明示)
+  2. --max-id 必須 (この run より後に作成された discoveries は保護)
+  3. DELETE 前に JSONL dump で rollback 用 snapshot 保存
+  4. 実行後 self-rename .executed で再実行不可
+
+実行例:
+  # dry-run (削除せず 確認)
+  python scripts/cleanup_w153_noise_2026_05_22.py --ebay-item-id 357039873158 --dry-run
+  # 本実行 (max-id 自動取得 = 現時点までの new を全削除)
+  python scripts/cleanup_w153_noise_2026_05_22.py --ebay-item-id 357039873158
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DB = Path(__file__).parent.parent / "data" / "monitor.db"
+LOG = Path(__file__).parent / ".cleanup_w153_noise_2026_05_22.log"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--ebay-item-id", required=True,
+        help="削除対象 listing (HIGH-3 fix: 全 listing 跨ぎ DELETE 禁止)",
+    )
+    parser.add_argument(
+        "--max-id", type=int, default=None,
+        help="削除対象 id 上限 fence (default: 実行時点の MAX(id) を自動取得)",
+    )
+    parser.add_argument(
+        "--status", default="new",
+        help="削除対象 status (default: new). monitoring_added/dismissed は手動指定で実行可",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="削除せず COUNT + sample のみ表示",
+    )
+    args = parser.parse_args()
+
+    if not DB.exists():
+        sys.stdout.write(f"ERROR: DB not found: {DB}\n")
+        sys.stdout.flush()
+        return 1
+
+    with sqlite3.connect(DB) as c:
+        c.row_factory = sqlite3.Row
+
+        # max_id 自動取得 (この run 以降の new を保護)
+        max_id = args.max_id
+        if max_id is None:
+            row = c.execute(
+                "SELECT MAX(id) FROM listing_rival_discoveries "
+                "WHERE status = ? AND ebay_item_id = ?",
+                (args.status, args.ebay_item_id),
+            ).fetchone()
+            max_id = (row[0] if row and row[0] is not None else 0)
+        print(f"fence: --ebay-item-id={args.ebay_item_id} --max-id={max_id} --status={args.status}")
+
+        # 削除前 COUNT
+        before = c.execute(
+            "SELECT COUNT(*) FROM listing_rival_discoveries "
+            "WHERE status = ? AND ebay_item_id = ? AND id <= ?",
+            (args.status, args.ebay_item_id, max_id),
+        ).fetchone()[0]
+        print(f"対象: {before} 件")
+
+        # sample (keyword 別)
+        samples = c.execute(
+            "SELECT id, search_keyword, competitor_seller, competitor_title "
+            "FROM listing_rival_discoveries "
+            "WHERE status = ? AND ebay_item_id = ? AND id <= ? "
+            "ORDER BY id DESC LIMIT 5",
+            (args.status, args.ebay_item_id, max_id),
+        ).fetchall()
+        print("\n[sample 5 件]")
+        for r in samples:
+            print(
+                f"  id={r['id']} kw={r['search_keyword']!r} "
+                f"seller={r['competitor_seller']} "
+                f"title={(r['competitor_title'] or '')[:50]}"
+            )
+
+        if args.dry_run:
+            print("\n[DRY RUN] 削除せず終了")
+            return 0
+
+        if before == 0:
+            print("\n削除対象 0 件、終了")
+            return 0
+
+        # HIGH-3 fix: DELETE 前に JSONL dump (rollback 用 snapshot)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dump_path = LOG.parent / f".cleanup_dump_{args.ebay_item_id}_{ts}.jsonl"
+        with dump_path.open("w", encoding="utf-8") as f:
+            rows = c.execute(
+                "SELECT * FROM listing_rival_discoveries "
+                "WHERE status = ? AND ebay_item_id = ? AND id <= ?",
+                (args.status, args.ebay_item_id, max_id),
+            ).fetchall()
+            for r in rows:
+                f.write(json.dumps(dict(r), ensure_ascii=False, default=str) + "\n")
+        print(f"rollback dump 保存: {dump_path} ({len(rows)} 件)")
+
+        # DELETE 実行
+        cur = c.execute(
+            "DELETE FROM listing_rival_discoveries "
+            "WHERE status = ? AND ebay_item_id = ? AND id <= ?",
+            (args.status, args.ebay_item_id, max_id),
+        )
+        deleted = cur.rowcount
+
+        # 削除後 COUNT
+        after = c.execute(
+            "SELECT COUNT(*) FROM listing_rival_discoveries "
+            "WHERE status = ? AND ebay_item_id = ?",
+            (args.status, args.ebay_item_id),
+        ).fetchone()[0]
+        print(f"\n削除完了: {deleted} 件 (listing={args.ebay_item_id}, status={args.status})")
+        print(f"残: 同 listing/status → {after} 件")
+
+        # 証跡保存
+        ts_log = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with LOG.open("a", encoding="utf-8") as f:
+            f.write(
+                f"[{ts_log}] listing={args.ebay_item_id} status={args.status} "
+                f"max_id={max_id} before={before} deleted={deleted} after={after} "
+                f"dump={dump_path.name}\n"
+            )
+
+    # HIGH-3 fix: 再実行不可化 (one-shot script なので script 自体を .executed に rename)
+    # ただし --dry-run / 削除 0 件の場合は rename しない (再実行可能性を残す)
+    if before > 0 and not args.dry_run:
+        executed_path = Path(__file__).with_suffix(".py.executed")
+        try:
+            os.rename(__file__, executed_path)
+            print(f"\n[one-shot lock] script を {executed_path.name} に rename (再実行不可)")
+        except OSError as e:
+            print(f"\n[警告] script self-rename 失敗 (手動で削除 or rename 推奨): {e}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

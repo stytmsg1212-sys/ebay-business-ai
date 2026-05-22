@@ -2,8 +2,8 @@
 name: w153-rival-per-listing-detection-design
 description: 商品ごとの新規ライバル発見の根本作り直し (initial_registered_at base point + rival_watch_started_at + Claude Haiku title-only keyword 助言 + DB 永続化 + UI 編集可能 + W183 監視追加への流入)
 layer: wiki
-updated: 2026-05-22 (v2 with 2-stage review fix)
-revision: v2.1
+updated: 2026-05-22 PM (v3: 1-query AND search + shipping enrich + UI 逆転)
+revision: v3
 sources:
   - tools/ebay-manager/tasks/task_rival_detection.py (354 行、現状実装、グローバル known set モデル)
   - tools/ebay-manager/tasks/task_rival_pricing.py (W183 自動値下げ、competitor_products WHERE is_active=1 巡回)
@@ -1537,7 +1537,55 @@ def test_expander_label_shows_new_count(streamlit_app_test, tmp_db): ...
 
 ---
 
-## 20. 改訂履歴 (v1 → v2 → v2.1)
+## 20. 改訂履歴 (v1 → v2 → v2.1 → v3)
+
+### v2.1 → v3 (user 実画面 E2E 視認 → 5 件の業務 user 要求対応、2026-05-22 同日 PM)
+
+**契機**: v2.1 で内部 reviewer Opus + Codex 2 周 HIGH=0 通過後、user が初の実画面視認で重大欠陥 + 5 件の業務改善要求を発見:
+
+1. **Black 単独 noise hit**: UI label「改行区切り」を user が「単語区切り」と解釈し `maxell\nMXCP-P100\nBlack` 3 行入力 → 各行が別 query で union → `Black` 単独で 50 件 noise hit (SEIKO 腕時計 / HERMES クッション 等)。money-direct silent gap (W183 自動値下げに無関係 listing 流入で売上機会損失)
+2. **却下 button rerun 重い**: 各 button に `st.rerun()` で全画面再描画
+3. **送料・発送方法不明**: 商品金額しか表示されず判断不能
+4. **Economy 系 noise 残存**: SpeedPAK Economy 等の中国大量出品が結果に混入
+5. **20 件枠の有効活用**: 50 件のうち真の rival は 1-3 件、却下を 1 つずつ押すのが煩雑
+
+**業務知識の獲得** (reference_ebay_economy_shipping_seller_pattern.md):
+- Economy 系は安商品で使われる、同 seller が高商品では別発送方法を使う
+- **seller_id block list は誤り** (高 value listing も巻き込む) → listing 単位 (発送方法名 / 配達日数) で判定
+
+**v3 修正一覧 (大規模 refactor、内部 reviewer Opus HIGH 3 + Codex 1 周 HIGH 1 全解消)**:
+
+| ID | 内容 | v3 修正 (該当 §) |
+|---|---|---|
+| **v3 FIX-1** | Haiku prompt「3-5 candidate 改行区切り union」廃止 → **空白区切り 1 query AND 検索**に統一 | `monitor/rival_keyword_generator.py` 全面書換: prompt「ONE best query 3-8 words space-separated」、return list[str]→str、filter は 1 query 化 |
+| **v3 FIX-2** | `_split_keywords()` → `_normalize_query()` (\\s+ collapse)、`keywords_override: list[str]` → `query_override: str`、L128 for-loop 除去 (**1 listing = 1 Browse API call**)、1 word query 拒否 | `tasks/task_rival_detection.py` |
+| **v3 FIX-3** | `set_rival_search_keywords` で \\s+ → space normalize (legacy \\n self-heal) + **DB layer 1-word guard** (UI 突破 silent gap 防止、Opus HIGH-2) | `monitor/database.py` |
+| **v3 FIX-4** | UI text_area → text_input、caption「改行区切り」→「空白区切り、AND 検索」、保存 button にも 1-word guard (Opus HIGH-1)、legacy DB 値の \\s+ collapse 表示 | `tabs/tab_product_management.py` |
+| **v3 FIX-5** | top-level except で **errors++** (Codex HIGH: 旧実装は success=False のみ → cron 集約は errors 合算のみで silent skip) | `tasks/task_rival_detection.py` |
+| **v3 FIX-6** | `max_listings_per_run` 超過 truncate に Discord warn (skipped >=10 件) — deterministic starvation 可視化 (Codex MED) | `tasks/task_rival_detection.py` |
+| **v3 FIX-7** | **DB v51 + v52**: listing_rival_discoveries に competitor_shipping_cost_usd / min_delivery_date / max_delivery_date / shipping_service_code 列追加 (additive nullable、drift recovery 対応) | `monitor/database.py` |
+| **v3 FIX-8** | **新規 rival のみ詳細 API enrich**: `get_item_by_legacy_id` で shipping_service_code を取得 (quota: 新規分のみ ~5 calls/run、daily cap 3%) | `tasks/task_rival_detection.py` + `monitor/database.py::enrich_rival_discovery_shipping` |
+| **v3 FIX-9** | UI に **商品価格 + 送料 + 合計 + 発送方法名 + 配達日数** 表示 | `tabs/tab_product_management.py::_format_shipping_method` 等 |
+| **v3 FIX-10** | UI hide filter: shipping_service_code に "Economy" 含む OR delivery window > 10 日 (OR 結合、v52 name 優先) | `tabs/tab_product_management.py::_is_economy_for_display` |
+| **v3 FIX-11** | **UI 一括処理逆転**: ☑ = 監視追加対象、未チェック = 自動却下、submit 1 回で「登録 + 残り却下」一括処理 (rerun 1 回のみ) | `tabs/tab_product_management.py` form 構造変更 |
+| **v3 FIX-12** | cleanup script `scripts/cleanup_w153_noise_2026_05_22.py` 強化: `--ebay-item-id` 必須、`--max-id` 自動 fence、JSONL dump、self-rename `.executed` (Opus HIGH-3 再実行リスク fix) | `scripts/cleanup_w153_noise_2026_05_22.py` |
+
+**設計判断の変更**: 「検索段階で Economy skip」(v2 SpeedPAK filter として一度実装→user 業務知識で却下) → **「検索は全件 record、UI 表示時に hide」** (同 seller の高 value listing は別 listing として残るため)。
+
+**Q1 11step DoD 検証**:
+- pytest 全 **1441 PASS** + W153 test 47/47 PASS (v52 化 + regression 5 件追加: 1-word reject / 空文字許可 / top-level exception errors++ / v51-v52 migration / enrich shipping)
+- 本番 DB user_version=52 適用済 (shipping_service_code 列追加確認)
+- Streamlit + Playwright で UI 確認 (text_input / 空白区切り表示 / Economy hide 動作 / 一括 form 逆転)
+- MonoDeck PID 入替 + scheduler PID 入替で新コード稼働
+
+**v3 学び (project memory 記録)**:
+- 内部 reviewer + Codex 2 周 HIGH=0 通過しても **user 実画面 1 分視認** で重大欠陥を露呈 = pytest + reviewer の限界
+- UI label の mental model gap (改行区切り = 単語区切り誤読) は automated test で捕捉不能、user E2E 必須
+- 業務知識 (Economy = seller 使い分け) は事前共有なしでは設計に反映不可、随時 memory 化が必須
+
+**累計**: v1 → v2 → v2.1 → v3 で HIGH 16 / MED 16 / LOW 6 = 計 38 件解消 + user 業務要求 5 件対応。
+
+---
 
 ### v2 → v2.1 (Codex GPT-5.5 2 周目 review 反映、2026-05-22 同日)
 

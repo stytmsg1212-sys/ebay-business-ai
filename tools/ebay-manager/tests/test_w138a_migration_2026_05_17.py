@@ -40,7 +40,7 @@ def test_v41_columns_exist_and_version(tmp_db):
         assert "shipping_profile_id" in cols
         assert "shipping_profile_fetched_at" in cols
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 50, f"user_version={ver} (期待 50 = HEAD: ...→ v49 W151 初期登録 → v50 W153 商品別ライバル検出)"
+        assert ver == 52, f"user_version={ver} (期待 52 = HEAD: ...→ v50 W153 → v52 W153 v2 shipping info)"
 
 
 def test_v41_idempotent_data_preserved(tmp_db):
@@ -57,7 +57,7 @@ def test_v41_idempotent_data_preserved(tmp_db):
     init_db()  # 2 回目
     with get_conn() as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 50, f"version drift: {ver}"
+        assert ver == 52, f"version drift: {ver}"
         row = c.execute(
             "SELECT shipping_profile_id, shipping_profile_fetched_at "
             "FROM ebay_listings WHERE ebay_item_id='ITEM_W138A'"
@@ -79,7 +79,7 @@ def test_v41_alter_idempotent_no_crash_on_repeat(tmp_path, monkeypatch):
     db_mod.init_db()  # v41 block 再突入 (ALTER 重複) → 落ちないこと
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 50  # v41→...→v49(W151 初期登録)→v50(W153 商品別ライバル検出) まで到達 (canonical HEAD)
+        assert ver == 52  # v41→...→v50(W153)→v52(W153 v2 shipping info) まで到達 (canonical HEAD)
         cols = {r[1] for r in c.execute(
             "PRAGMA table_info(ebay_listings)").fetchall()}
         assert "shipping_profile_id" in cols
