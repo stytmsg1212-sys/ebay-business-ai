@@ -386,7 +386,11 @@ def run_morning_discovery(
         force_model="opus",
         enable_thinking=False,
         save_history=True,
-        timeout=240,
+        # 2026-05-22 W122-fix: 240s → 480s. 5/21 は 184s で成功したが 5/22 は
+        # 240s でタイムアウト (sellers=20, decisions=4, monday=False)。day-by-day
+        # で query 規模が変動するため、$2.50 budget cap を超えない範囲で
+        # ヘッドルームを 2x 確保. CLAUDE_CLI_DEFAULT_TIMEOUT(120) の 4 倍.
+        timeout=480,
         max_budget_usd=2.50,  # 5 階層構造 + 自社売れ筋 20 件で Opus は $1-2 消費見込
     )
 

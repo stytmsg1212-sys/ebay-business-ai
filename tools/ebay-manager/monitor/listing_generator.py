@@ -307,9 +307,9 @@ eBay 出品用の英語タイトル、Item Specifics、description placeholder �
     ...
   },
   "shipping_origin": "Tokyo, Japan (固定推奨)",
-  "shipping_carrier": "DHL SpeedPAK \u00b7 tracked, insured (固定推奨)",
-  "shipping_handling": "1\u20133 business days",
-  "shipping_delivery_us": "6\u201310 business days typical",
+  "shipping_carrier": "FedEx International Priority / DHL SpeedPAK \u00b7 tracked, insured (settings.json shipping_timing.carrier_label で上書き可)",
+  "shipping_handling": "(settings.json shipping_timing で上書きされる前提。fallback 1\u20133 business days)",
+  "shipping_delivery_us": "(settings.json shipping_timing で上書きされる前提。fallback 6\u201310 business days typical)",
   "shipping_packaging": "Double-boxed \u00b7 bubble-wrapped \u00b7 waterproof liner",
   "shipping_notes": "商品個別の発送注意事項。無ければ空文字",
   "product_name": "英語タイトルと同じ"
@@ -535,10 +535,35 @@ def _resolve_shipping_timing(config: Optional[dict], in_stock: bool) -> tuple[st
     return (handling, delivery)
 
 
+def _resolve_shipping_carrier(config: Optional[dict], in_stock: bool) -> str:
+    """settings.json の shipping_timing セクションから carrier_label を解決.
+
+    W157 fix (2026-05-22 PM): 旧コードは _compose_placeholder_values 内で
+    "DHL SpeedPAK · tracked, insured" を hardcode → user 業務では FedEx も使う
+    ため誤表示. settings.json shipping_timing.{in_stock|out_of_stock}.carrier_label
+    が設定されていれば優先, 未設定なら Claude 生成値 → ("") を返し
+    _compose_placeholder_values 側 fallback が使われる.
+
+    Returns:
+        carrier_label string. 未設定なら "" (caller 側 fallback に委譲).
+    """
+    if not isinstance(config, dict):
+        return ""
+    block = config.get("shipping_timing")
+    if not isinstance(block, dict):
+        return ""
+    key = "in_stock" if in_stock else "out_of_stock"
+    tier = block.get(key)
+    if not isinstance(tier, dict):
+        return ""
+    return str(tier.get("carrier_label") or "").strip()
+
+
 def _compose_placeholder_values(
     claude_data: dict,
     rank,
     shipping_override: Optional[tuple[str, str]] = None,
+    carrier_override: str = "",
 ) -> dict[str, str]:
     """Claude が返した構造化 JSON を 14種 placeholder map に変換する。
 
@@ -582,9 +607,13 @@ def _compose_placeholder_values(
         "shipping_origin": _esc(
             claude_data.get("shipping_origin") or "Tokyo, Japan", 80,
         ),
+        # W157 fix (2026-05-22 PM): carrier_override \u3092\u6700\u512a\u5148. settings.json
+        # shipping_timing.{tier}.carrier_label \u3067\u300cFedEx / DHL\u300d\u4e21\u5bfe\u5fdc\u6587\u8a00\u3092
+        # user \u304c\u8a2d\u5b9a\u53ef\u80fd\u5316. fallback "DHL SpeedPAK" \u56fa\u5b9a\u306f\u30d0\u30b0 (user \u306f FedEx \u3082\u4f7f\u3046).
         "shipping_carrier": _esc(
-            claude_data.get("shipping_carrier")
-            or "DHL SpeedPAK \u00b7 tracked, insured",
+            (carrier_override.strip() if carrier_override and carrier_override.strip()
+             else claude_data.get("shipping_carrier")
+             or "FedEx International Priority / DHL SpeedPAK \u00b7 tracked, insured"),
             120,
         ),
         # 2026-04-22: 実 shipping_policy (in_stock/out_of_stock) に合わせた日付を
@@ -872,7 +901,12 @@ def generate_listing(
 
     # --- Placeholder values 組立 & render ---
     shipping_override = _resolve_shipping_timing(config, in_stock)
-    values = _compose_placeholder_values(data, rank, shipping_override=shipping_override)
+    carrier_override = _resolve_shipping_carrier(config, in_stock)  # W157
+    values = _compose_placeholder_values(
+        data, rank,
+        shipping_override=shipping_override,
+        carrier_override=carrier_override,
+    )
     values["mode_class"] = mode_class
 
     try:

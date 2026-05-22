@@ -235,16 +235,23 @@ def generate_supplier_description(
     template_body = tpl.get('body') or ''
 
     # Step 4: settings.json load (handling/delivery 日付反映用)
+    # W157 fix (2026-05-22 PM): 旧コードは `config/schedule_config.json` を
+    # 読んでいたが、それは scheduler 設定で shipping_timing は含まれない →
+    # _resolve_shipping_timing が ("", "") を返し fallback "1–3 business days"
+    # 固定表示バグの根因。実際の shipping_timing は repo root の settings.json
+    # に存在 (in_stock: "Ships within 1 business day", out_of_stock:
+    # "Ships within 7 business days" + delivery_label "(DHL SpeedPAK, tracked)").
+    # settings.json を正しく読むことで shipping policy 反映される.
     cfg_path = (
         Path(__file__).resolve().parent.parent
-        / 'config' / 'schedule_config.json'
+        / 'settings.json'
     )
     config: Optional[dict] = None
     if cfg_path.exists():
         try:
             config = json.loads(cfg_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as e:
-            logger.warning("schedule_config.json 読込失敗 (continue): %s", e)
+            logger.warning("settings.json 読込失敗 (continue): %s", e)
 
     # Step 5: generate_listing (reference=None で純粋に仕入先データから生成)
     try:
@@ -356,6 +363,18 @@ def render_supplier_description_section(
             unsafe_allow_html=True,
         )
         st.caption(f"対象商品: {candidate_title[:60]}")
+        # W158 (2026-05-22 PM, user 要望): 個別出品の Step 2.5 (ロゴプレート合成) +
+        # 2.6 (背景グレー統一) + 2.7 (eBay EPS upload) は本セクション **未実装**.
+        # 現状は description (HTML) のみ ReviseItem 反映で、画像は仕入先 raw URL のまま.
+        # 統合作業は ~200-300 LOC + API コスト約 $0.30/件 (Photoroom + Gemini + EPS).
+        # 自動 hero 選択 (Gemini score top) + 画像 ReviseItem (PictureDetails) の
+        # 追加が必要. 次セッションで Q3 構造化フロー (Clarify → 設計 → 2 段 review)
+        # で実装予定.
+        st.warning(
+            "⚠️ **画像加工は未実装** (W158 で予定): 本セクションは description のみ "
+            "ReviseItem 反映. **ロゴプレート合成 + 背景グレー統一** を入れたい場合は "
+            "**個別出品タブ** の Step 2.5 / 2.6 / 2.7 を使用してください."
+        )
 
         # 2026-05-21 user 要望: section 展開時に自動 scrape + rank classify を実行
         # → 結果を session_state にキャッシュ (rerun で再実行しない、~10-15s/回)。

@@ -308,14 +308,20 @@ def _is_economy_shipping(service_code: Optional[str], service_type: Optional[str
 
 
 def _estimate_profit_usd(p: dict, sale_price_usd: Optional[float] = None) -> Optional[float]:
-    """簡易粗利 = sale_price - breakeven. None で current_price を sale 価格として使う."""
+    """簡易粗利 = sale_price - breakeven. None で current_price を sale 価格として使う.
+
+    W156 fix (2026-05-22 PM): 旧実装は `total = sp + sh; total - be` で送料を
+    二重計上していた (be は `compute_breakeven_price_usd` が送料込で binary search
+    した item_price = 送料は内部で考慮済み). docstring の「sale_price - breakeven」
+    に実装を揃える. _render_hero_metrics の 現在粗利 metric と同根バグ.
+    callers: 「赤字のみ」filter (L390) / 商品一覧 (L2045) / 赤字件数 (L3548)
+    全てで赤字検知漏れを起こしていた = money-direct.
+    """
     be = p.get("lp_breakeven_usd")
     if not be or be <= 0:
         return None
     sp = sale_price_usd if sale_price_usd is not None else (p.get("current_price") or 0)
-    sh = p.get("shipping_cost") or 0
-    total = float(sp) + float(sh)
-    return total - float(be)
+    return float(sp) - float(be)
 
 
 # =============================================================================
@@ -830,12 +836,23 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
                       help="仕入価格 + 重量 + 寸法を入力 → 利益計算ボタンで自動算出")
     with cols[2]:
         if be and be > 0:
-            margin = total - be
+            # W156 fix (2026-05-22 PM): 旧計算 `margin = total - be` は次元不整合バグ.
+            # `be` = breakeven item_price (`compute_breakeven_price_usd` が
+            # `is_ddu=False, country_code='US'` で binary search した結果, 送料込
+            # 計算で profit=0 になる item_price). `total = cp + sh` で sh を足すと
+            # be 内に既に組み込まれた送料を二重計上する → 黒字偽装.
+            # 正しい比較は `cp` (現 item_price) vs `be` (breakeven item_price).
+            # 検証例: 357039873158 cp=$95 sh=$16 be=$101.94 → 旧 +$9.06 (黒字偽)
+            # → 新 -$6.94 (赤字真) + 消費税還付 ≈ ¥-37 (還付あり × USA向け と整合).
+            margin = cp - be
             st.metric(
                 "現在粗利", f"${margin:+.2f}",
                 delta=("黒字" if margin > 0 else "赤字" if margin < 0 else "ゼロ"),
                 delta_color=("normal" if margin > 0 else "inverse"),
-                help=f"現在総額 ${total:.2f} - breakeven ${be:.2f}",
+                help=(
+                    f"現 item_price ${cp:.2f} - breakeven item_price ${be:.2f} "
+                    f"(送料は両側で同じく差し引き済 = 二重計上回避)"
+                ),
             )
         else:
             st.metric("現在粗利", "未入力", help="breakeven 未計算")
@@ -1192,6 +1209,20 @@ def _render_url_direct_description_section(p: dict) -> None:
             "仕入先 URL (メルカリ / ヤフオク / 楽天 等) を投入すると、個別出品と "
             "同じ流れで scrape + rank 自動推定 + description HTML 生成. "
             "preview を確認後「✅ eBay に反映」で ReviseItem 発火."
+        )
+        # W158 (2026-05-22 PM, user 要望): 個別出品同等の画像処理 (ロゴプレート
+        # 合成 + 背景グレー統一) は本セクション + 仕入先候補セクション双方で **未実装**.
+        # 現状: 画像は仕入先 raw URL preview のみ、ReviseItem は description のみ反映.
+        # 個別出品の Step 2.5 (Photoroom + Gemini 3 候補, $0.14) / 2.6 (Photoroom 背景
+        # 統一, $0.02/枚) / 2.7 (eBay EPS upload) を本フローに統合する作業は約
+        # 200-300 LOC、API コスト ~$0.30/件. 自動 hero 選択 (Gemini score top) +
+        # 画像 ReviseItem (PictureDetails) の追加が必要. 次セッションで Q3 構造化
+        # フロー (Clarify → 設計 → code-architect → 2 段 review → 実装) で実装予定.
+        st.warning(
+            "⚠️ **画像加工は本セクションでは未実装**: 現状は仕入先 raw 画像 "
+            "preview + description のみ ReviseItem. **ロゴプレート合成 + 背景"
+            "グレー統一** は個別出品タブの Step 2.5 / 2.6 / 2.7 で実行してください "
+            "(W158 で本セクションへの統合を予定)."
         )
         url_input = st.text_input(
             "新規 URL",
