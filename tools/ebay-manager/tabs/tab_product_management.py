@@ -25,6 +25,11 @@ import pandas as pd
 import streamlit as st
 
 from ui_cache import bump_db_version, get_db_version, seed_keyed_list_from_db
+from tabs._supplier_description_pipeline import (
+    apply_description_to_ebay,
+    generate_supplier_description,
+    prefetch_supplier_product_and_rank,
+)
 
 from monitor.database import (
     ack_sale_warning,
@@ -1137,6 +1142,129 @@ def _render_left_basic_and_physical(
 # Right column sections
 # =============================================================================
 
+def _render_url_direct_description_section(p: dict) -> None:
+    """W152 (2026-05-22 user 要望): 仕入先候補セクションの上に「新規 URL 直接投入」.
+
+    任意の仕入先 URL を直接投入 → 個別出品同等の pipeline (scrape + rank 推定 +
+    description 生成) を走らせ、preview 後に user が「✅ eBay に反映」ボタンで
+    ReviseItem を発火させる. 既存採用済 supplier_candidate 経由の
+    render_supplier_description_section とは別経路 (candidate_id 不要).
+
+    K1 simplicity: 既存 prefetch / generate / apply 関数 3 つを candidate_id=0 で
+    流用. supplier_candidates テーブルへの仮 INSERT は行わない (履歴管理は別 W).
+    """
+    eid = p["ebay_item_id"]
+    sku = p.get("sku") or ""
+    is_in_stock = sku.startswith("stock")  # 有在庫 = True / 無在庫 = False
+
+    url_key = f"pm_url_direct_input_{eid}"
+    result_key = f"pm_url_direct_result_{eid}"
+
+    with st.expander("🔗 新規 URL 直接投入 → 画像 + description 生成 → eBay 反映",
+                     expanded=False):
+        st.caption(
+            "仕入先 URL (メルカリ / ヤフオク / 楽天 等) を投入すると、個別出品と "
+            "同じ流れで scrape + rank 自動推定 + description HTML 生成. "
+            "preview を確認後「✅ eBay に反映」で ReviseItem 発火."
+        )
+        url_input = st.text_input(
+            "新規 URL",
+            value=st.session_state.get(url_key, ""),
+            key=url_key,
+            placeholder="https://jp.mercari.com/item/m... or https://page.auctions.yahoo.co.jp/...",
+        )
+        if st.button(
+            "① 画像 + description 生成 (eBay 反映はまだ)",
+            key=f"pm_url_direct_gen_{eid}",
+            disabled=not url_input.strip(),
+        ):
+            with st.spinner("仕入先 scrape + Claude rank 推定 + description 生成中..."):
+                prefetch = prefetch_supplier_product_and_rank(0, url_input.strip())
+                if not prefetch.get("success"):
+                    st.error(f"❌ 取得失敗: {prefetch.get('message') or '(原因不明)'}")
+                    st.session_state.pop(result_key, None)
+                    return
+                gen = generate_supplier_description(
+                    candidate_id=0,
+                    candidate_url=url_input.strip(),
+                    in_stock=is_in_stock,
+                    prefetched_product=prefetch.get("product"),
+                    rank_override_code=None,
+                )
+                if not gen.get("success"):
+                    st.error(f"❌ description 生成失敗: {gen.get('message') or '(原因不明)'}")
+                    st.session_state.pop(result_key, None)
+                    return
+                product = prefetch.get("product")
+                st.session_state[result_key] = {
+                    "url": url_input.strip(),
+                    "title_ja": getattr(product, "title_ja", "") or "",
+                    "title_en": gen.get("title_en") or "",
+                    "rank_code": gen.get("rank_code") or "",
+                    "rank_reasoning": prefetch.get("rank_reasoning") or "",
+                    "image_urls": list(getattr(product, "image_urls", []) or []),
+                    "description_html": gen.get("description_html") or "",
+                    "message": gen.get("message") or "",
+                }
+                st.rerun()
+
+        # 結果 preview
+        result = st.session_state.get(result_key)
+        if result and result.get("url") == url_input.strip():
+            st.markdown("---")
+            st.success(result.get("message") or "生成完了")
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                imgs = result.get("image_urls") or []
+                if imgs:
+                    st.image(imgs[0], caption=f"画像 (全 {len(imgs)} 件中 1 枚)",
+                             use_container_width=True)
+                else:
+                    st.caption("画像なし")
+            with c2:
+                st.markdown(f"**Title (JP)**: {result.get('title_ja', '')[:100]}")
+                st.markdown(f"**Title (EN)**: `{result.get('title_en', '')[:100]}`")
+                st.markdown(f"**推定 Rank**: `{result.get('rank_code', '?')}`")
+                if result.get("rank_reasoning"):
+                    with st.expander("rank 判定根拠", expanded=False):
+                        st.caption(result["rank_reasoning"])
+
+            with st.expander(
+                f"description HTML preview ({len(result.get('description_html', ''))} 文字)",
+                expanded=False,
+            ):
+                st.code(result.get("description_html", "")[:5000], language="html")
+                if len(result.get("description_html", "")) > 5000:
+                    st.caption("⚠️ 先頭 5000 文字のみ表示 (eBay 反映は全文)")
+
+            colA, colB = st.columns([1, 1])
+            with colA:
+                if st.button(
+                    "✅ eBay に反映 (ReviseItem)",
+                    key=f"pm_url_direct_apply_{eid}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    with st.spinner("eBay ReviseItem 実行中..."):
+                        res = apply_description_to_ebay(
+                            ebay_item_id=eid,
+                            description_html=result.get("description_html") or "",
+                        )
+                    if res.get("success"):
+                        st.success(
+                            f"✅ eBay 反映完了 (description "
+                            f"{res.get('description_len') or len(result.get('description_html', ''))} 文字)"
+                        )
+                        st.session_state.pop(result_key, None)
+                        st.session_state.pop(url_key, None)
+                    else:
+                        st.error(f"❌ eBay 反映失敗: {res.get('message') or '(原因不明)'}")
+            with colB:
+                if st.button("結果をクリア", key=f"pm_url_direct_clear_{eid}"):
+                    st.session_state.pop(result_key, None)
+                    st.rerun()
+
+
 def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
     """右列: 在庫監視 + 仕入先候補 + ライバル dataframe."""
     eid = p["ebay_item_id"]
@@ -1172,6 +1300,9 @@ def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
                     f"最終 {m.get('last_check') or '-'} | "
                     f"[URL]({m.get('source_url') or ''})"
                 )
+
+    # ── 🔗 W152 (2026-05-22): 新規 URL 直接投入 → 画像 + description 生成 → eBay 反映 ──
+    _render_url_direct_description_section(p)
 
     # ── 🏪 仕入先候補 dataframe ──
     st.markdown('<div class="pm-section-label">🏪 仕入先候補 (利益額高い順)</div>',

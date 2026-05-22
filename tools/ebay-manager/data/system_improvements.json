@@ -1388,12 +1388,12 @@
     "tag": "W152",
     "title": "商品管理から画像/Description 更新 (個別出品同等パイプライン統合)",
     "description": "user 要望 (2026-05-22 朝): 商品管理画面の「仕入先候補」に URL を直接投入 → 「個別出品」と同様の画像生成 → Description 生成パイプラインを実行できるようにする。既出品 listing に新仕入先 URL から画像/Desc を更新する経路。既存 prefetch_supplier_product_and_rank + revise_item_description + CDATA escape + rank UI を流用 (W148 セッションで完成済の pipeline)。Q3 構造化フロー (Phase 3 Clarify → 設計 → 2 段 review → 実装 → Q1)。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "中",
     "created": "2026-05-22",
-    "completed": null,
+    "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ④)",
-    "progress_note": null
+    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (UI 配置 + 反映方針 2 問) で user 判断 = 「仕入先候補の上に新規 URL 入力欄」+「生成後 preview → ✅eBay反映ボタン」確定. 実装: tabs/tab_product_management.py に `_render_url_direct_description_section(p)` 新規 helper (~80 LOC) + import 追加 + `_render_right_inventory_supplier_rival` 内で呼出. 既存 _supplier_description_pipeline.py の 3 関数 (prefetch_supplier_product_and_rank / generate_supplier_description / apply_description_to_ebay) を candidate_id=0 で流用 (K1 simplicity, supplier_candidates テーブルへの仮 INSERT なし). 有/無在庫は SKU prefix で自動判定 (in_stock 引数). UI: text_input + ①生成ボタン → spinner 中 scrape + rank 推定 + description 生成 → 画像 1 件 + Title (JP/EN) + Rank + 判定根拠 expander + description HTML preview (5000 文字 cap) → ✅eBay反映ボタン (ReviseItem) + 結果クリアボタン. Streamlit hot reload + Playwright 商品管理タブ Console 0 errors. K2 Surgical で既存採用済 candidate 経由の render_supplier_description_section (app.py:5472) は touch せず."
   },
   {
     "id": 236,
