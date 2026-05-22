@@ -139,9 +139,12 @@
     },
     "rival_detection": {
       "enabled": true,
-      "description": "新規ライバルセラー検出（Browse API）",
+      "description": "W153 商品別ライバル検出 (rival_watch_enabled=1 listing のみ Browse API 巡回)",
       "priority": 7,
-      "note": "ebay_sync後の最新キーワードを使用"
+      "execution_times": [2],
+      "max_listings_per_run": 30,
+      "max_requests_per_run": 150,
+      "note": "W153 (2026-05-22 改訂): 商品毎 (rival_watch_enabled=1) の検索ワードで Browse API を巡回し listing_rival_discoveries に新規 rival を蓄積. ebay_sync 後に実行 = is_ended 判定が最新. グローバル known set モデルは廃止、user 承認分のみ competitor_products に流入し W183 値下げ対象に昇格. 対象 0 件の時は task_execution_log に痕跡 + 週 1 Discord reminder (claim_alert_dedupe key='w153_unused_weekly')."
     },
     "news_check": {
       "enabled": false,

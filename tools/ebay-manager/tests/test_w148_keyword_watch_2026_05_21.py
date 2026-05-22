@@ -80,7 +80,7 @@ def test_v46_self_heals_when_tables_missing(tmp_db):
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
             "AND name IN ('keyword_watches','keyword_watch_hits')"
         ).fetchone()[0]
-    assert ver == 49  # W151 cascade: init_db で v46→v47→v48→v49 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」)
+    assert ver == 50  # W153 cascade: init_db で v46→...→v50 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」)
     assert n == 2
 
 

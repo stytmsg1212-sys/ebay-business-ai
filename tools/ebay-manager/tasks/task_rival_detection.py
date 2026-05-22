@@ -1,354 +1,421 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Task: ライバルセラー検出
-eBay Finding API で自分の主力商品と同じキーワードの出品を検索し、
-日本発セラーの中から新規参入者を検出する。
+"""W153 (2026-05-22 改訂): 商品別ライバル検出.
 
-定時実行で使える手段（Claude不要）:
-1. monitor.db から自分の主力商品のタイトル/キーワードを取得
-2. eBay Finding API で同キーワードの他セラー出品を検索
-3. 既知セラーリストと比較して新規を検出
-4. 結果をファイルに保存 + Discord通知
-"""
+旧 (グローバル known set + data/known_rival_sellers.json) は廃止.
+user が UI で「監視 ON」 した listing についてのみ、商品個別の検索ワードで
+eBay Browse API を巡回し listing_rival_discoveries に新規 rival を蓄積.
 
-import sys
-import re
+設計書: .company/engineering/docs/2026-05-22-W153-rival-per-listing-detection-design.md (v2.1)
+"""
 import json
 import logging
-import sqlite3
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, List
+import sys
+import time
+from typing import Optional
 
-import httpx
-
-# pythonw.exe では sys.stdout が None のため安全ガード
+# pythonw.exe gotcha guard
 if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+from datetime import datetime, timedelta
+
+from monitor.credentials import get_ebay_credentials
+from monitor.database import (
+    get_conn,
+    record_rival_discovery,
+)
+from monitor.task_execution_log import claim_alert_dedupe
+
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).parent.parent
-DB_PATH = BASE_DIR / 'data' / 'monitor.db'
-KNOWN_SELLERS_FILE = BASE_DIR / 'data' / 'known_rival_sellers.json'
-FINDING_API_URL = "https://svcs.ebay.com/services/search/FindingService/v1"
+# code-reviewer HIGH-1+2 fix: status_code 直接判定 + transient/decode 包括.
+# module level に集約 (LOW-2: 毎 listing で再構築する無駄を除去).
+try:
+    import httpx as _HTTPX  # type: ignore
+    _HTTP_RETRY_ERRORS: tuple = (
+        _HTTPX.HTTPStatusError,
+        _HTTPX.RequestError,
+        json.JSONDecodeError,
+    )
+except ImportError:
+    _HTTPX = None  # type: ignore
+    _HTTP_RETRY_ERRORS = (json.JSONDecodeError,)
 
 
-def get_top_selling_keywords(limit: int = 10) -> List[str]:
-    """
-    monitor.db から売上/ウォッチ数上位商品のキーワードを抽出
-    ランクA以上、またはwatch_count上位の商品タイトルから検索キーワードを生成
-    """
-    if not DB_PATH.exists():
-        logger.warning(f"データベースが見つかりません: {DB_PATH}")
+def _get_my_seller_username(config: dict) -> Optional[str]:
+    """自分の eBay seller_id (自セラー除外用). 未設定なら None."""
+    return (config.get('ebay') or {}).get('seller_id') or None
+
+
+def _fetch_target_listings() -> list[dict]:
+    """rival_watch_enabled=1 かつ active な listing を返す."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT ebay_item_id, title, rival_search_keywords, "
+            "       initial_registered_at, rival_watch_started_at "
+            "FROM ebay_listings "
+            "WHERE COALESCE(rival_watch_enabled, 0) = 1 "
+            "  AND COALESCE(is_ended, 0) = 0 "
+            "ORDER BY ebay_item_id"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _split_keywords(text: Optional[str]) -> list[str]:
+    if not text:
         return []
+    return [line.strip() for line in text.split("\n") if line.strip()]
 
+
+def _backoff_sleep(retry_count: int) -> float:
+    """H-H: exponential backoff (1s, 2s, 4s ... cap 30s)."""
+    return min(2.0 ** retry_count, 30.0)
+
+
+def run_rival_per_listing_detection_one(
+    eid: str,
+    config: dict,
+    *,
+    keywords_override: Optional[list[str]] = None,
+    sleep_between: float = 2.0,  # M-internal-7: UI 経路 0.0、cron 2.0
+    max_requests_remaining: Optional[int] = None,
+) -> dict:
+    """単一 listing の検索. UI/cron 双方から呼ぶ.
+
+    Returns: {success, ebay_item_id, new_discoveries, refreshed, errors,
+              skipped_bad_item_id, requests_used, message}
+    """
+    summary = {
+        "success": False, "ebay_item_id": eid,
+        "new_discoveries": 0, "refreshed": 0, "errors": 0,
+        "skipped_bad_item_id": 0, "requests_used": 0,
+        "message": "",
+    }
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cursor = conn.cursor()
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT title, rival_search_keywords "
+                "FROM ebay_listings WHERE ebay_item_id = ?", (eid,)
+            ).fetchone()
+        if not row:
+            summary["message"] = f"listing not found: {eid}"
+            return summary
+        keywords = keywords_override or _split_keywords(row["rival_search_keywords"])
+        if not keywords:
+            # H-D: 空 keyword で errors++ + success=False
+            logger.warning(
+                f"[W153] {eid}: no keywords "
+                f"(UI で生成 or 保存してください)"
+            )
+            summary["errors"] += 1
+            summary["message"] = "no keywords"
+            return summary
 
-        # ランクが高い or watch_count が多い商品のタイトルを取得
-        cursor.execute("""
-            SELECT title, watch_count, rank
-            FROM ebay_listings
-            WHERE rank IN ('S', 'A', 'B')
-              AND COALESCE(is_ended, 0) = 0
-            ORDER BY watch_count DESC
-            LIMIT ?
-        """, (limit,))
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
-            # ランクがなければwatch_count順
-            conn = sqlite3.connect(str(DB_PATH))
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT title, watch_count, rank
-                FROM ebay_listings
-                WHERE COALESCE(is_ended, 0) = 0
-                ORDER BY watch_count DESC
-                LIMIT ?
-            """, (limit,))
-            rows = cursor.fetchall()
-            conn.close()
-
-        keywords = []
-        for title, watch, rank in rows:
-            # タイトルから主要キーワードを抽出（記号・絵文字除去、最初の3-4語）
-            clean = title.replace('☆', '').replace('★', '').replace('✅', '').strip()
-            words = clean.split()[:4]
-            kw = ' '.join(words)
-            if kw and len(kw) > 5:
-                keywords.append(kw)
-
-        logger.info(f"主力商品キーワード: {len(keywords)}件抽出")
-        return keywords
-
-    except Exception as e:
-        logger.error(f"キーワード抽出エラー: {e}")
-        return []
-
-
-def search_competing_sellers_via_browse_api(keywords: str, config: Dict) -> List[Dict]:
-    """
-    eBay Browse API で競合セラーを検索
-    日本発セラーの出品を取得し、セラー情報を抽出
-    """
-    from monitor.credentials import get_ebay_credentials
-    _creds = get_ebay_credentials(config)
-    app_id = _creds.get('app_id', '')
-    cert_id = _creds.get('cert_id', '')
-
-    if not app_id or not cert_id:
-        logger.warning("eBay API credentials が未設定")
-        return []
-
-    try:
+        creds = get_ebay_credentials(config)
         from tasks.ebay_browse_api import BrowseAPIClient
-        client = BrowseAPIClient(app_id, cert_id)
-        items = client.search_items(keywords, limit=50, item_location_country="JP")
-    except Exception as e:
-        logger.warning(f"Browse API エラー ({keywords}): {e}")
-        return []
 
-    sellers = []
-    for item in items:
-        seller_name = item.get('seller', '')
-        if seller_name:
-            sellers.append({
-                'seller': seller_name,
-                'feedback_score': item.get('feedback_score', 0),
-                'item_title': item.get('title', ''),
-                'item_id': item.get('item_id', ''),
-                'price_usd': item.get('price_usd', 0),
-                'search_keyword': keywords,
-            })
+        client = BrowseAPIClient(
+            creds.get('app_id', ''),
+            creds.get('cert_id', ''),
+        )
+        my_seller = _get_my_seller_username(config)
 
-    logger.info(f"Browse API: '{keywords[:40]}' → {len(sellers)}セラー検出")
-    return sellers
-
-
-def load_known_sellers() -> set:
-    """既知のライバルセラーリストを読み込む"""
-    if not KNOWN_SELLERS_FILE.exists():
-        return set()
-
-    try:
-        with open(KNOWN_SELLERS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return set(data.get('sellers', []))
-    except Exception:
-        return set()
-
-
-def save_known_sellers(sellers: set):
-    """ライバルセラーリストを保存"""
-    KNOWN_SELLERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    data = {
-        'sellers': sorted(list(sellers)),
-        'updated_at': datetime.now().isoformat(),
-        'count': len(sellers),
-    }
-    with open(KNOWN_SELLERS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def get_my_seller_id(config: Dict) -> str:
-    """自分のセラーIDを取得（configまたはDBから）"""
-    seller_id = config.get('ebay', {}).get('seller_id', '')
-    if seller_id:
-        return seller_id
-
-    # DBから推測（最も多く出品しているセラー = 自分）
-    if DB_PATH.exists():
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM ebay_listings")
-            count = cursor.fetchone()[0]
-            conn.close()
-            if count > 0:
-                return '__self__'  # 自分のリスティングなのでフィルタ不要
-        except Exception:
-            pass
-
-    return ''
-
-
-def save_detection_results(new_sellers: List[Dict], all_sellers_found: int):
-    """検出結果をファイルに保存"""
-    output_dir = BASE_DIR / 'data' / 'rival_detection'
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    output_file = output_dir / f"{today}-rivals.json"
-
-    result = {
-        'date': today,
-        'timestamp': datetime.now().isoformat(),
-        'new_sellers': new_sellers,
-        'new_count': len(new_sellers),
-        'total_sellers_scanned': all_sellers_found,
-    }
-
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    logger.info(f"検出結果を保存: {output_file}")
-
-
-def _save_to_db(new_sellers: List[Dict]):
-    """検出結果を monitor.db の new_competitor_alerts テーブルにも保存"""
-    if not DB_PATH.exists():
-        return
-
-    try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cursor = conn.cursor()
-
-        for seller in new_sellers:
-            seller_name = seller.get('seller', '')
-            for item in seller.get('competing_items', []):
-                # 真の eBay legacy item id を優先 (W98 リンク・送料取得が機能するため必須).
-                # 取得不可時のみ合成 ID で fallback (旧仕様、UI 側で除外フィルタ).
-                _item_id = item.get('legacy_item_id') or (
-                    f"synthetic_{seller_name}_{item.get('keyword', '')[:20]}"
+        for kw in keywords:
+            # H-H: max_requests budget check
+            if max_requests_remaining is not None and max_requests_remaining <= 0:
+                logger.warning(
+                    f"[W153] {eid}: max_requests budget exhausted, "
+                    f"early break (kw={kw!r})"
                 )
+                summary["message"] = "max_requests_per_run reached"
+                # v2.1 HIGH-4 fix: early break path で末尾 sleep を skip
+                summary["_skip_final_sleep"] = True
+                break
+            items = None
+            for retry in range(3):
+                # v2.1 HIGH-3 fix: 試行 *前* に counter 消費
+                # (failed retry も含めて quota cap 厳守)
+                summary["requests_used"] += 1
+                if max_requests_remaining is not None:
+                    max_requests_remaining -= 1
                 try:
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO new_competitor_alerts
-                        (our_item_id, keyword, found_item_id, found_seller,
-                         found_location, found_price, is_japan_seller, found_at)
-                        VALUES (?, ?, ?, ?, 'Japan', ?, 1, ?)
-                    """, (
-                        '',  # our_item_id は不明（キーワード検索のため）
-                        item.get('keyword', ''),
-                        _item_id,
-                        seller_name,
-                        item.get('price_usd', 0),
-                        datetime.now().isoformat(),
-                    ))
-                except sqlite3.IntegrityError:
-                    pass  # 重複は無視
+                    items = client.search_items(
+                        query=kw, limit=50, item_location_country="JP",
+                    )
+                    break
+                except _HTTP_RETRY_ERRORS as e:
+                    # code-reviewer HIGH-1+2 fix: str(e) でなく status_code 直接判定.
+                    # httpx.HTTPStatusError は `Server error '502 ...' for url '...'`
+                    # 形式で str(e) からの先頭 3 文字判定は dead code 化。
+                    status = getattr(
+                        getattr(e, 'response', None), 'status_code', None
+                    )
+                    is_429 = (status == 429)
+                    is_5xx = (status is not None and 500 <= status < 600)
+                    # transport / decode 系も transient 扱い (eBay 一時応答異常)
+                    is_transient = (
+                        _HTTPX is not None and
+                        isinstance(e, _HTTPX.RequestError) and
+                        not isinstance(e, _HTTPX.HTTPStatusError)
+                    )
+                    is_decode = isinstance(e, json.JSONDecodeError)
+                    if is_429 or is_5xx or is_transient or is_decode:
+                        sleep_s = _backoff_sleep(retry)
+                        logger.warning(
+                            f"[W153] {eid}: '{kw[:40]}' "
+                            f"transient (status={status}, type={type(e).__name__}), "
+                            f"retry {retry+1}/3 in {sleep_s}s: {e}"
+                        )
+                        time.sleep(sleep_s)
+                        continue
+                    # 非 transient (auth / 4xx 等) = retry 無価値、即 break
+                    # errors 加算は outer block で行う (double-count 防止)
+                    logger.warning(
+                        f"[W153] {eid}: '{kw[:40]}' "
+                        f"non-transient API error (status={status}): {e}"
+                    )
+                    items = None
+                    break
+            if items is None:
+                # retry 全失敗 (3 回 backoff exhausted) or non-transient break
+                summary["errors"] += 1
+                continue
 
-        conn.commit()
-        conn.close()
-        logger.info(f"DB に {len(new_sellers)} セラーのアラートを保存")
-    except Exception as e:
-        logger.warning(f"DB保存エラー（継続）: {e}")
-
-
-def run_rival_detection(config):
-    """
-    新規ライバルセラーを検出
-
-    1. 自分の主力商品のキーワードを取得
-    2. eBay Finding API で同キーワードの日本発セラーを検索
-    3. 既知セラーリストと比較し、新規を検出
-    4. 既知セラーリストを更新
-
-    Args:
-        config: 設定辞書
-
-    Returns:
-        {'success': bool, 'new_sellers_count': int, 'sellers': list}
-    """
-
-    logger.info("【開始】ライバルセラー検出タスク")
-
-    try:
-        # Step 1: 主力商品キーワード取得
-        keywords_list = get_top_selling_keywords(limit=5)
-        if not keywords_list:
-            logger.warning("主力商品キーワードが取得できません")
-            return {
-                'success': False,
-                'new_sellers_count': 0,
-                'sellers': [],
-                'message': 'No top selling keywords found'
-            }
-
-        # Step 2: 既知セラーリスト読み込み
-        known_sellers = load_known_sellers()
-        my_seller_id = get_my_seller_id(config)
-        logger.info(f"既知ライバルセラー: {len(known_sellers)}件")
-
-        # Step 3: 各キーワードで競合検索
-        all_found_sellers = {}  # seller_name -> info
-
-        for keywords in keywords_list:
-            logger.info(f"競合検索: '{keywords[:50]}'")
-            sellers = search_competing_sellers_via_browse_api(keywords, config)
-
-            for s in sellers:
-                seller_name = s['seller']
-                # 自分自身を除外
-                if seller_name == my_seller_id:
+            for it in items:
+                seller = (it.get("seller") or "").strip()
+                if not seller or seller == my_seller:
                     continue
+                # Browse API itemId "v1|123456789|0" → "123456789" 抽出
+                raw_iid = it.get("item_id") or ""
+                parts = raw_iid.split("|")
+                competitor_iid = parts[1] if len(parts) >= 2 else raw_iid
+                if not competitor_iid:
+                    # H-G: silent gap 排除、WARNING + counter
+                    logger.warning(
+                        f"[W153] {eid}: Browse API returned item without "
+                        f"competitor_item_id (kw={kw!r}, raw_iid={raw_iid!r})"
+                    )
+                    summary["skipped_bad_item_id"] += 1
+                    continue
+                new_id = record_rival_discovery(
+                    ebay_item_id=eid,
+                    competitor_seller=seller,
+                    competitor_item_id=competitor_iid,
+                    competitor_title=(it.get("title") or "")[:200],
+                    competitor_price_usd=it.get("price_usd"),
+                    search_keyword=kw,
+                )
+                if new_id is not None:
+                    summary["new_discoveries"] += 1
+                else:
+                    summary["refreshed"] += 1
 
-                if seller_name not in all_found_sellers:
-                    all_found_sellers[seller_name] = {
-                        'seller': seller_name,
-                        'feedback_score': s['feedback_score'],
-                        'competing_items': [],
-                        'first_seen': datetime.now().isoformat(),
-                    }
-
-                # Browse API itemId は "v1|285999999001|0" 形式. 末尾の数値部のみ抽出.
-                _raw_iid = s.get('item_id', '')
-                _legacy_iid = ''
-                if _raw_iid:
-                    _parts = _raw_iid.split('|')
-                    if len(_parts) >= 2:
-                        _legacy_iid = _parts[1]
-                    else:
-                        _legacy_iid = _raw_iid
-                all_found_sellers[seller_name]['competing_items'].append({
-                    'title': s['item_title'],
-                    'price_usd': s['price_usd'],
-                    'keyword': s['search_keyword'],
-                    'legacy_item_id': _legacy_iid,
-                })
-
-        # Step 4: 新規セラーを検出
-        new_sellers = []
-        for seller_name, info in all_found_sellers.items():
-            if seller_name not in known_sellers:
-                info['is_new'] = True
-                info['competing_count'] = len(info['competing_items'])
-                new_sellers.append(info)
-
-        # feedback_score 順にソート（強い競合を上に）
-        new_sellers.sort(key=lambda x: x['feedback_score'], reverse=True)
-
-        # Step 5: 既知セラーリストを更新
-        updated_sellers = known_sellers | set(all_found_sellers.keys())
-        save_known_sellers(updated_sellers)
-
-        # Step 6: 結果保存（ファイル + DB）
-        save_detection_results(new_sellers, len(all_found_sellers))
-        _save_to_db(new_sellers)
-
-        logger.info(f"ライバル検出完了: 新規{len(new_sellers)}件 / 全{len(all_found_sellers)}件スキャン")
-
-        return {
-            'success': True,
-            'new_sellers_count': len(new_sellers),
-            'total_scanned': len(all_found_sellers),
-            'sellers': new_sellers[:20],  # 上位20件
-            'message': f'新規ライバル{len(new_sellers)}件検出（{len(all_found_sellers)}件スキャン）'
-        }
-
+        # H-D: errors>0 で success=False
+        summary["success"] = (summary["errors"] == 0)
+        summary["message"] = (
+            f"new={summary['new_discoveries']} "
+            f"refreshed={summary['refreshed']} "
+            f"err={summary['errors']} "
+            f"bad_iid={summary['skipped_bad_item_id']}"
+        )
+        # M-internal-7: sleep は呼び側 (cron loop) が arg で制御 (UI 経路は 0)
+        # code-reviewer HIGH-4 fix: max_requests early break path では skip
+        # (retry 後に追加 2s = cron batch hour drift 防止)
+        if sleep_between > 0 and not summary.get("_skip_final_sleep"):
+            time.sleep(sleep_between)
     except Exception as e:
-        logger.error(f"ライバル検出エラー: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return {
-            'success': False,
-            'new_sellers_count': 0,
-            'sellers': [],
-            'error': str(e)
-        }
+        logger.exception(f"[W153] {eid} run_one failed")
+        summary["message"] = f"top-level: {type(e).__name__}: {e}"
+        summary["success"] = False
+    return summary
+
+
+def run_rival_detection(config: dict) -> dict:
+    """cron 経路. daily_scheduler.py L620-625 から呼ばれる.
+
+    署名・戻り型は旧版と互換 (success / sellers / new_sellers_count / total_scanned / message).
+    """
+    summary: dict = {
+        "success": False, "new_sellers_count": 0, "total_scanned": 0,
+        "listings_processed": 0, "new_discoveries_total": 0,
+        "errors": 0, "skipped_bad_item_id": 0, "requests_used": 0,
+        "sellers": [], "message": "",
+    }
+    per_listing_summaries: list[dict] = []
+    new_by_listing: dict = {}
+    try:
+        listings = _fetch_target_listings()
+        if not listings:
+            # H-E: 0 listings 永続シナリオで週 1 reminder
+            _maybe_remind_user_of_unused_w153(config)
+            logger.info("[W153] no listings with rival_watch_enabled=1, skip")
+            summary["success"] = True
+            summary["message"] = "0 listings monitored (UI で監視 ON にしてください)"
+            return summary
+
+        # H-H: per-run cap
+        cfg_block = (config.get('tasks_enabled') or {}).get('rival_detection') or {}
+        max_listings = int(cfg_block.get('max_listings_per_run', 30))
+        max_requests = int(cfg_block.get('max_requests_per_run', 150))
+        if len(listings) > max_listings:
+            logger.info(
+                f"[W153] {len(listings)} listings > "
+                f"max_listings_per_run={max_listings}, truncating"
+            )
+            listings = listings[:max_listings]
+        requests_remaining = max_requests
+
+        for lst in listings:
+            eid = lst["ebay_item_id"]
+            if requests_remaining <= 0:
+                logger.warning(
+                    f"[W153] max_requests_per_run={max_requests} exhausted, "
+                    f"stopping at listings_processed={summary['listings_processed']}"
+                )
+                summary["message"] = "max_requests_per_run reached"
+                break
+            res = run_rival_per_listing_detection_one(
+                eid, config,
+                sleep_between=2.0,
+                max_requests_remaining=requests_remaining,
+            )
+            per_listing_summaries.append(res)
+            summary["listings_processed"] += 1
+            summary["new_discoveries_total"] += res["new_discoveries"]
+            summary["errors"] += res["errors"]
+            summary["skipped_bad_item_id"] += res["skipped_bad_item_id"]
+            summary["requests_used"] += res["requests_used"]
+            requests_remaining -= res["requests_used"]
+            if res["new_discoveries"] > 0:
+                new_by_listing[eid] = {
+                    "new": res["new_discoveries"],
+                    "title": (lst["title"] or "")[:40],
+                    "tail4": eid[-4:],
+                }
+
+        # 旧契約互換 (daily_scheduler L726-738 の reformat ロジック)
+        summary["sellers"] = []
+        summary["new_sellers_count"] = summary["new_discoveries_total"]
+        summary["total_scanned"] = summary["listings_processed"]
+        summary["message"] = (
+            f"listings={summary['listings_processed']} "
+            f"new={summary['new_discoveries_total']} "
+            f"err={summary['errors']} "
+            f"bad_iid={summary['skipped_bad_item_id']} "
+            f"reqs={summary['requests_used']}"
+        )
+
+        # 集約 Discord 通知 (new>0)
+        if new_by_listing:
+            _send_discord_aggregate(config, new_by_listing)
+
+        # H-D: errors>0 で 別 Discord alert + success=False
+        if summary["errors"] > 0:
+            _send_discord_errors_alert(config, summary, per_listing_summaries)
+            summary["success"] = False
+        else:
+            summary["success"] = True
+    except Exception as e:
+        logger.exception("[W153] run_rival_detection failed")
+        summary["message"] = f"top-level: {type(e).__name__}: {e}"
+        summary["success"] = False
+    return summary
+
+
+def _send_discord_aggregate(config: dict, new_by_listing: dict) -> None:
+    """new>0 集約通知 (1 run 1 message). alert fatigue 抑制."""
+    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    if not webhook:
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    lines = [
+        f"- **{v['title']}** ({v['tail4']}): {v['new']} 名"
+        for v in new_by_listing.values()
+    ]
+    content = (
+        f"🎯 **W153 新規ライバル検出** ({len(new_by_listing)} listings)\n"
+        + "\n".join(lines[:20])
+    )
+    if len(lines) > 20:
+        content += f"\n... 他 {len(lines) - 20} listings"
+    try:
+        DiscordNotifier(webhook).send_message(content)
+    except Exception as e:
+        logger.warning(f"[W153] discord aggregate notify failed: {e}")
+
+
+def _send_discord_errors_alert(
+    config: dict, summary: dict, per_listing: list[dict],
+) -> None:
+    """H-D: errors>0 専用 alert. listing 名 + reason を 3-5 件抜粋."""
+    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    if not webhook:
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    err_entries = [r for r in per_listing if r.get("errors", 0) > 0]
+    excerpt = [
+        f"- {r.get('ebay_item_id', '?')}: {r.get('message', '')[:100]}"
+        for r in err_entries[:5]
+    ]
+    extra = len(err_entries) - 5
+    content = (
+        f"⚠️ **W153 errors 検出** "
+        f"(listings={summary['listings_processed']}, "
+        f"errors={summary['errors']})\n"
+        + "\n".join(excerpt)
+        + (f"\n... 他 {extra} listings" if extra > 0 else "")
+    )
+    try:
+        DiscordNotifier(webhook).send_message(content)
+    except Exception as e:
+        logger.warning(f"[W153] discord errors-alert notify failed: {e}")
+
+
+def _maybe_remind_user_of_unused_w153(config: dict) -> None:
+    """H-E: 0 listings 週 1 reminder.
+
+    claim_alert_dedupe は日次 dedupe (date_str + task_key + expected_hour 組で UNIQUE).
+    週 1 cap 実装: alert_date = 当週月曜日 (`today - today.weekday()`) を渡すことで、
+    同じ週内の INSERT OR IGNORE は 2 回目以降 rowcount=0 (= False 返却) で skip 確定.
+
+    v2.1 MED-4 fix: webhook 存在確認を claim *前* に実施.
+    webhook 未設定で claim 消費 = reminder 永久失効を防ぐ.
+    """
+    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    if not webhook:
+        # webhook 未設定 = 何もできない、claim も消費しない
+        return
+    today = datetime.now().date()
+    week_monday = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+    if not claim_alert_dedupe(
+        task_key='w153_unused_weekly',
+        expected_hour=2,
+        alert_date=week_monday,
+    ):
+        return  # 既に当週内に通知済
+    from notifiers.discord_notifier import DiscordNotifier
+    content = (
+        "ℹ️ **W153 リマインダー**: 「ライバル監視 ON」の商品がありません。\n"
+        "商品管理タブの hero 「🎯 ライバル監視 (W153)」section で ON にすると、"
+        "W183 自動値下げの監視対象に新規 rival を流入させられます。"
+    )
+    try:
+        DiscordNotifier(webhook).send_message(content)
+    except Exception as e:
+        # 送信失敗 = claim は消費済なので来週まで再試行できない (1 週ロス admit)
+        logger.warning(
+            f"[W153] discord reminder notify failed (1 week lost): {e}"
+        )
+
+
+if __name__ == "__main__":
+    # 手動 CLI 実行用 (cron 同等)
+    from monitor.config_loader import load_config  # type: ignore
+    cfg = load_config()
+    r = run_rival_detection(cfg)
+    print(json.dumps(r, indent=2, ensure_ascii=False))

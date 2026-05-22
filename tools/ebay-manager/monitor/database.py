@@ -2,12 +2,14 @@
 監視アイテムのSQLiteデータベース管理
 """
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
 DB_PATH = Path(__file__).parent.parent / "data" / "monitor.db"
+logger = logging.getLogger(__name__)
 
 DEFAULT_SITE_CONFIGS = [
     # ---- フリマ・オークション ----
@@ -2406,6 +2408,102 @@ def init_db():
                     and 'initial_registered_at' in _cols_el):
                 conn.execute("PRAGMA user_version = 49")
 
+        # v50 (W153 / 2026-05-22): 商品別ライバル検出.
+        # listing 識別は ebay_item_id (sku-rules、SKU 不使用).
+        # anchor は MAX(initial_registered_at, rival_watch_started_at) — H-A 対策.
+        # additive nullable 4 列 + 新 table listing_rival_discoveries + 3 index.
+        # H-B 対策: drift recovery を schema_ver と独立に毎回 check (W149 v2 設計と同型).
+        _W153_DDL_MAP = {
+            'rival_watch_enabled': 'INTEGER DEFAULT 0',
+            'rival_search_keywords': 'TEXT',
+            'rival_search_keywords_generated_at': 'TIMESTAMP',
+            'rival_watch_started_at': 'TIMESTAMP',
+        }
+        _W153_LRD_CREATE_SQL = """
+        CREATE TABLE IF NOT EXISTS listing_rival_discoveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ebay_item_id TEXT NOT NULL,
+            competitor_seller TEXT NOT NULL,
+            competitor_item_id TEXT NOT NULL,
+            competitor_title TEXT,
+            competitor_price_usd REAL,
+            search_keyword TEXT,
+            first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'new',
+            status_changed_at TIMESTAMP,
+            UNIQUE(ebay_item_id, competitor_seller, competitor_item_id)
+        )
+        """
+        _W153_LRD_INDEXES = (
+            "CREATE INDEX IF NOT EXISTS idx_lrd_listing_status "
+            "ON listing_rival_discoveries(ebay_item_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_lrd_first_seen "
+            "ON listing_rival_discoveries(first_seen_at)",
+            "CREATE INDEX IF NOT EXISTS idx_lrd_status_new "
+            "ON listing_rival_discoveries(status) WHERE status = 'new'",
+        )
+
+        # (1) 列存在 check & 欠損 ALTER (schema_ver 無関係 / H-B drift recovery)
+        _w153_cols_el = set(
+            r[1] for r in conn.execute(
+                "PRAGMA table_info(ebay_listings)"
+            ).fetchall()
+        )
+        _w153_missing = {
+            c for c in _W153_DDL_MAP if c not in _w153_cols_el
+        }
+        for _col in _w153_missing:
+            try:
+                conn.execute(
+                    f"ALTER TABLE ebay_listings ADD COLUMN "
+                    f"{_col} {_W153_DDL_MAP[_col]}"
+                )
+                logger.info(
+                    f"[init_db v50] recovered missing column: "
+                    f"ebay_listings.{_col}"
+                )
+            except sqlite3.OperationalError:
+                pass
+
+        # (2) listing_rival_discoveries table 存在 check & 欠損 CREATE
+        _w153_has_lrd = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='listing_rival_discoveries'"
+        ).fetchone()
+        if not _w153_has_lrd:
+            try:
+                conn.execute(_W153_LRD_CREATE_SQL)
+                logger.info(
+                    "[init_db v50] recovered missing table: "
+                    "listing_rival_discoveries"
+                )
+            except sqlite3.OperationalError:
+                pass
+
+        # (3) index 存在 check & 欠損 CREATE (M-internal-8、CREATE IF NOT EXISTS で冪等)
+        for _idx_sql in _W153_LRD_INDEXES:
+            try:
+                conn.execute(_idx_sql)
+            except sqlite3.OperationalError:
+                pass
+
+        # (4) 完全に揃った後でのみ user_version bump
+        _w153_cols_post = set(
+            r[1] for r in conn.execute(
+                "PRAGMA table_info(ebay_listings)"
+            ).fetchall()
+        )
+        _w153_lrd_post = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='listing_rival_discoveries'"
+        ).fetchone()
+        if (set(_W153_DDL_MAP).issubset(_w153_cols_post)
+                and _w153_lrd_post is not None):
+            if schema_ver < 50:
+                conn.execute("PRAGMA user_version = 50")
+                logger.info("[init_db v50] schema_ver bumped to 50")
+
 
 # ---- サイト設定 ----
 
@@ -2719,6 +2817,213 @@ def set_initial_registered(ebay_item_id: str, registered: bool) -> bool:
                 (ebay_item_id,),
             )
     return cur.rowcount == 1
+
+
+# ============================================================
+# W153 (2026-05-22): 商品別ライバル検出 helpers
+# ============================================================
+
+def set_rival_watch_enabled(ebay_item_id: str, enabled: bool) -> bool:
+    """W153: ライバル監視 ON/OFF.
+
+    ON 時は rival_watch_started_at = COALESCE(既存, NOW()) も set (H-A、再 ON で巻き戻さない).
+    OFF 時は rival_watch_started_at を維持 (NULL に戻さない).
+
+    v2.1 設計判断 (HIGH-1 admit): OFF→keyword 変更→再 ON で「履歴連続性」を優先.
+    「監視リセット」UI button は別 W (本 W K1 scope 外).
+
+    Returns: True if UPDATE 成立 (rowcount==1).
+    """
+    with get_conn() as conn:
+        if enabled:
+            cur = conn.execute(
+                "UPDATE ebay_listings "
+                "SET rival_watch_enabled = 1, "
+                "    rival_watch_started_at = COALESCE(rival_watch_started_at, CURRENT_TIMESTAMP) "
+                "WHERE ebay_item_id = ?",
+                (ebay_item_id,),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE ebay_listings SET rival_watch_enabled = 0 "
+                "WHERE ebay_item_id = ?",
+                (ebay_item_id,),
+            )
+    return cur.rowcount == 1
+
+
+def set_rival_search_keywords(
+    ebay_item_id: str,
+    keywords_text: str,
+    *,
+    mark_generated: bool = False,
+) -> bool:
+    """W153: 検索ワード textarea 内容を保存.
+
+    keywords_text: 改行区切り (各行 1 keyword、空行は無視).
+    mark_generated: True なら rival_search_keywords_generated_at = CURRENT_TIMESTAMP
+                    (🤖 生成ボタン経路). False なら timestamp 維持 (💾 保存ボタン経路).
+    """
+    normalized = "\n".join(
+        line.strip() for line in (keywords_text or "").split("\n") if line.strip()
+    )
+    with get_conn() as conn:
+        if mark_generated:
+            cur = conn.execute(
+                "UPDATE ebay_listings SET rival_search_keywords = ?, "
+                "rival_search_keywords_generated_at = CURRENT_TIMESTAMP "
+                "WHERE ebay_item_id = ?",
+                (normalized, ebay_item_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE ebay_listings SET rival_search_keywords = ? "
+                "WHERE ebay_item_id = ?",
+                (normalized, ebay_item_id),
+            )
+    return cur.rowcount == 1
+
+
+def record_rival_discovery(
+    *,
+    ebay_item_id: str,
+    competitor_seller: str,
+    competitor_item_id: str,
+    competitor_title: str = "",
+    competitor_price_usd: Optional[float] = None,
+    search_keyword: str = "",
+) -> Optional[int]:
+    """W153: claim-then-act. INSERT OR IGNORE → rowcount==1 で新規 id、0 で既存更新.
+
+    Returns: 新規 INSERT した場合 lastrowid、既存重複なら None (last_seen_at + price 更新).
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO listing_rival_discoveries
+               (ebay_item_id, competitor_seller, competitor_item_id,
+                competitor_title, competitor_price_usd, search_keyword,
+                first_seen_at, last_seen_at, status)
+               VALUES (?, ?, ?, ?, ?, ?,
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'new')""",
+            (ebay_item_id, competitor_seller, competitor_item_id,
+             competitor_title, competitor_price_usd, search_keyword),
+        )
+        if cur.rowcount == 1:
+            return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # 既存: last_seen_at + 価格更新
+        conn.execute(
+            """UPDATE listing_rival_discoveries
+               SET last_seen_at = CURRENT_TIMESTAMP,
+                   competitor_price_usd = COALESCE(?, competitor_price_usd)
+               WHERE ebay_item_id = ? AND competitor_seller = ?
+                 AND competitor_item_id = ?""",
+            (competitor_price_usd, ebay_item_id,
+             competitor_seller, competitor_item_id),
+        )
+        return None
+
+
+def get_rival_discoveries(
+    ebay_item_id: str,
+    status: str = 'new',
+    *,
+    since: Optional[str] = None,
+    limit: int = 200,
+) -> list[dict]:
+    """W153: discoveries を取得.
+
+    since: ISO timestamp. 通常は呼び側 (UI) で
+           `rival_watch_started_at or initial_registered_at` を計算して渡す (H-A).
+    """
+    sql = (
+        "SELECT * FROM listing_rival_discoveries "
+        "WHERE ebay_item_id = ? AND status = ?"
+    )
+    args: list = [ebay_item_id, status]
+    if since:
+        sql += " AND first_seen_at >= ?"
+        args.append(since)
+    sql += " ORDER BY first_seen_at DESC LIMIT ?"
+    args.append(limit)
+    with get_conn() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_rival_discovery_status(discovery_id: int, new_status: str) -> bool:
+    """W153: 監視追加 / 却下 button から呼ばれる.
+
+    allowed: 'new' / 'monitoring_added' / 'dismissed'. invalid で ValueError.
+    """
+    if new_status not in ('new', 'monitoring_added', 'dismissed'):
+        raise ValueError(f"invalid status: {new_status}")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listing_rival_discoveries "
+            "SET status = ?, status_changed_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (new_status, discovery_id),
+        )
+    return cur.rowcount == 1
+
+
+def add_or_reactivate_competitor(
+    *,
+    our_item_id: str,
+    our_sku: str,    # 補助情報 (sku-rules: 識別キー化はしない)
+    competitor_seller: str,
+    competitor_item_id: str,
+) -> tuple[int, str]:
+    """W153 → W183 流入の単一エントリポイント.
+
+    過去 is_active=0 にした listing から再追加で IntegrityError で永久に W183 流入
+    しない silent gap を根治 (H-C).
+
+    Returns:
+        (id, action) where action in {'added', 'reactivated', 'conflict'}
+        - 'added':       新規 INSERT (id = lastrowid)
+        - 'reactivated': 同 our_item_id で is_active=0 → 1 復活 (id = 既存 row id)
+        - 'conflict':    別 our_item_id で既登録 (N:1 不可、id = 既存 row id)
+
+    v2.1 MED-6 fix: reactivation で our_sku stale を防ぐため
+    `COALESCE(NULLIF(?, ''), our_sku)` で更新 + updated_at 更新.
+    """
+    with get_conn() as conn:
+        try:
+            conn.execute(
+                """INSERT INTO competitor_products
+                   (our_item_id, our_sku, competitor_seller, competitor_item_id,
+                    seller_location, is_active)
+                   VALUES (?, ?, ?, ?, 'Japan', 1)""",
+                (our_item_id, our_sku, competitor_seller, competitor_item_id),
+            )
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            return (new_id, 'added')
+        except sqlite3.IntegrityError:
+            # UNIQUE(competitor_item_id) 違反 → 既存 row 判定
+            row = conn.execute(
+                "SELECT id, our_item_id, is_active FROM competitor_products "
+                "WHERE competitor_item_id = ?",
+                (competitor_item_id,),
+            ).fetchone()
+            if row is None:
+                # 想定外 (極稀 race)
+                raise
+            existing_id = row['id']
+            existing_our_iid = row['our_item_id']
+            if existing_our_iid == our_item_id:
+                # 同 listing → reactivate (v2.1 MED-6: our_sku 更新も)
+                conn.execute(
+                    "UPDATE competitor_products "
+                    "SET is_active = 1, "
+                    "    our_sku = COALESCE(NULLIF(?, ''), our_sku), "
+                    "    updated_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ?",
+                    (our_sku, existing_id),
+                )
+                return (existing_id, 'reactivated')
+            # 別 listing → conflict (本 W では N:1 不可)
+            return (existing_id, 'conflict')
 
 
 def update_ebay_listing_status(ebay_item_id: str, source_status: str):

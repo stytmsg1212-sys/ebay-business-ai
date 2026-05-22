@@ -1400,12 +1400,12 @@
     "tag": "W153",
     "title": "新規ライバル発見の根本作り直し: 商品毎 rival 検出 + 検索ワード助言 + UI 編集",
     "description": "user 報告 + 業務要望 (2026-05-22 朝): (5) 商品毎の「新規発見ライバル」が商品関係ない rival 混在 → 商品毎の検索結果からの新規 rival 検知に作り直し。(6) 商品毎の「検索ワード助言」: 例 ID 356960075902 「Ohuhu PEN」だけでなく「320 本セット」「ペン先 FINE」追加 → 「Ohuhu PEN 320 FINE」。(7) 「ライバル検索ワード」を商品毎に DB 保存 + UI 編集可能化 (assistant 生成 + user 上書き可)。業務目的 = 初期登録時の rival 登録だけでは「初期登録以降に発生した新規 rival」を検知できず最安値追従不能 → 定期巡回で発見 → 自動値下げ (W183) との連動で売上直結。W151 (初期登録チェック) の initial_registered_at と連動 (検知の起点)。Q3 構造化フロー必須 (Phase 3 Clarify → 設計 → 2 段 review → 実装 → Q1)。**最優先 business critical** (user 明示: 最安値が取れず売上機会損失中)。",
-    "status": "未着手",
+    "status": "進行中",
     "priority": "高",
     "created": "2026-05-22",
     "completed": null,
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ⑤⑥⑦)",
-    "progress_note": null
+    "progress_note": "2026-05-22 設計 v2.1 + 実装完了: DB v50 (rival_watch_enabled / rival_search_keywords / rival_search_keywords_generated_at / rival_watch_started_at の 4 列追加 + listing_rival_discoveries テーブル + 3 index、drift recovery schema_ver 独立) + monitor/rival_keyword_generator.py (Haiku 4.5, title-only, apology/numbered/word-count filter, <3 valid raise) + tasks/task_rival_detection.py 全面書換 (354→350 LOC, errors>0 で success=False, 429/5xx status_code 直接判定で backoff retry 3 回, max_listings/requests cap, bad_iid counter, 0 listings 週 1 reminder, early break sleep skip) + tabs/tab_product_management.py に _render_rival_watch_section (~220 LOC, pending key, cooldown 60s, action 別 message, 件数バッジ) + add_or_reactivate_competitor helper (added/reactivated/conflict 3 action). Q3 構造化フロー完走: Phase 3 Clarify → 設計書 v1 → 内部+Codex 2 段 review HIGH 9 → v2 改訂 → Codex 2 周目 HIGH 3 → v2.1 pinpoint → 実装 → 内部 reviewer HIGH 4 → 全 fix。累計 silent gap 解消 16 件。pytest 1439 件 PASS / 2 skip。本番 scheduler PID 55956→54672 + MonoDeck PID 41352→5868 再起動済、execution_times=[2] (初期は朝のみ)、E2E user 視認待ち。"
   },
   {
     "id": 237,

@@ -39,7 +39,7 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "video_learning_queue", "display": "動画学習キュー", "hours": [2, 18], "weekdays": None, "owner": "main"},
     {"key": "email_pickup", "display": "メール取得", "hours": [11, 15, 18, 22], "weekdays": None, "owner": "main"},
     {"key": "research", "display": "新商品リサーチ", "hours": [11, 15, 18, 22], "weekdays": None, "owner": "main"},
-    {"key": "rival_detection", "display": "ライバルセラー検出", "hours": None, "weekdays": None, "owner": "main"},
+    {"key": "rival_detection", "display": "W153 商品別ライバル検出", "hours": [2], "weekdays": None, "owner": "main"},
     {"key": "rival_pricing_refresh", "display": "W183 ライバル価格 refresh & 値下げ", "hours": [0, 6, 12, 18], "weekdays": None, "owner": "rival_pricing"},
     {"key": "morning_discovery", "display": "W122 朝の新商品発掘 (Opus)", "hours": [7], "weekdays": None, "owner": "morning_discovery"},
     {"key": "data_sync", "display": "データストア統合", "hours": None, "weekdays": None, "owner": "main"},
