@@ -1,0 +1,174 @@
+"""W184 stale alerts cleanup (2026-05-22 PM, one-shot).
+
+背景: 5/22 PM の W153 v3 大改修で task_rival_detection が per-listing 化
+されたが、旧 W99 グローバル keyword scan が 5/22 11:31 JST まで稼働しており
+new_competitor_alerts に 279 件の pending alert を `our_item_id=''` で残した.
+商品管理 UI の _render_new_alerts_for_listing が our_item_id filter 無しで
+pending 全件を取得していたため、どの商品ページにも無関係な 10 件が表示.
+
+本 script は new_competitor_alerts.action = 'ignored' に UPDATE して
+UI から見えなくする (物理 DELETE しない = 履歴保持, user 承認 2026-05-22).
+
+Q2 db-migration-rules.md 6 step 準拠:
+  1. SELECT で対象行を JSONL dump (rollback 用 snapshot)
+  2. --max-id auto fence (この run より後の insert は保護)
+  3. dry-run で件数確認 → 本実行
+  4. UPDATE 後 SELECT で残 pending = 0 を再確認
+  5. 24h 以内 retrospective code-reviewer (user 側)
+  6. self-rename .executed で再実行不可
+
+実行例:
+  # dry-run (UPDATE せず 件数確認)
+  python scripts/cleanup_stale_alerts_2026_05_22.py --dry-run
+
+  # 本実行 (max-id 自動取得, snapshot dump 込み)
+  python scripts/cleanup_stale_alerts_2026_05_22.py
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DB = Path(__file__).parent.parent / "data" / "monitor.db"
+LOG = Path(__file__).parent / ".cleanup_stale_alerts_2026_05_22.log"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--max-id", type=int, default=None,
+        help="UPDATE 対象 id 上限 fence (default: 実行時点の MAX(id) を自動取得)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="UPDATE せず 件数 + 対象 id 範囲だけ表示",
+    )
+    args = parser.parse_args()
+
+    if not DB.exists():
+        print(f"ERROR: DB not found: {DB}", file=sys.stderr)
+        return 1
+
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+
+    # Step 1: max-id auto fence
+    if args.max_id is None:
+        row = con.execute(
+            "SELECT COALESCE(MAX(id), 0) AS m FROM new_competitor_alerts "
+            "WHERE action='pending'"
+        ).fetchone()
+        max_id = int(row["m"])
+    else:
+        max_id = int(args.max_id)
+
+    # Step 2: 対象行 SELECT (rollback snapshot 用)
+    rows = list(con.execute(
+        "SELECT * FROM new_competitor_alerts "
+        "WHERE action='pending' AND id <= ?",
+        (max_id,)
+    ).fetchall())
+
+    n_total = len(rows)
+    n_japan = sum(1 for r in rows if r["is_japan_seller"] == 1)
+    n_other = n_total - n_japan
+    id_min = min((r["id"] for r in rows), default=None)
+    id_max = max((r["id"] for r in rows), default=None)
+
+    print(f"対象件数: {n_total} 件 (japan={n_japan}, other={n_other})")
+    print(f"対象 id range: {id_min} .. {id_max}")
+    print(f"max-id fence: {max_id} (この run 以降の insert は保護)")
+
+    if n_total == 0:
+        print("対象 0 件 — 既に cleanup 済の可能性. nothing to do.")
+        con.close()
+        return 0
+
+    if args.dry_run:
+        print()
+        print("=== dry-run: 上位 5 件 sample ===")
+        for r in rows[:5]:
+            print(f"  id={r['id']} kw={r['keyword'][:40]!r} "
+                  f"seller={r['found_seller']} at={r['found_at']}")
+        print()
+        print("dry-run only. 実行しない. --dry-run を外して再実行してください.")
+        con.close()
+        return 0
+
+    # Step 3: snapshot dump (JSONL)
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    snapshot_path = Path(__file__).parent.parent / "data" / \
+        f"cleanup_stale_alerts_snapshot_{ts}.jsonl"
+    with snapshot_path.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(dict(r), ensure_ascii=False, default=str) + "\n")
+    print(f"snapshot dump: {snapshot_path} ({n_total} rows)")
+
+    # Step 4: 1 件試行 (WHERE id=min, ROWS AFFECTED == 1 を verify)
+    cur = con.cursor()
+    cur.execute(
+        "UPDATE new_competitor_alerts SET action='ignored', notified=1 "
+        "WHERE id=? AND action='pending'",
+        (id_min,)
+    )
+    if cur.rowcount != 1:
+        print(f"ERROR: 1 件試行で rowcount={cur.rowcount} (期待 1). rollback.",
+              file=sys.stderr)
+        con.rollback()
+        con.close()
+        return 1
+    print(f"1 件試行成功 (id={id_min}). 残り {n_total - 1} 件を一括 UPDATE...")
+
+    # Step 5: 残りを一括 UPDATE
+    cur.execute(
+        "UPDATE new_competitor_alerts SET action='ignored', notified=1 "
+        "WHERE action='pending' AND id <= ? AND id != ?",
+        (max_id, id_min)
+    )
+    n_bulk = cur.rowcount
+    con.commit()
+    print(f"一括 UPDATE 完了 ({n_bulk} 件).")
+
+    # Step 6: 結果 verify
+    remain = con.execute(
+        "SELECT COUNT(*) FROM new_competitor_alerts "
+        "WHERE action='pending' AND id <= ?",
+        (max_id,)
+    ).fetchone()[0]
+    print(f"verify: 残 pending (id <= {max_id}) = {remain} 件 (期待 0)")
+    if remain != 0:
+        print(f"ERROR: 残 pending = {remain}. 想定外", file=sys.stderr)
+        con.close()
+        return 1
+
+    # log 記録
+    with LOG.open("a", encoding="utf-8") as f:
+        f.write(
+            f"{datetime.now().isoformat()} ignored {n_total} alerts "
+            f"(id {id_min}..{id_max}, snapshot={snapshot_path.name})\n"
+        )
+
+    con.close()
+
+    # self-rename .executed (再実行防止)
+    self_path = Path(__file__)
+    executed_path = self_path.with_suffix(self_path.suffix + ".executed")
+    try:
+        os.rename(self_path, executed_path)
+        print(f"self-rename: {self_path.name} -> {executed_path.name}")
+    except OSError as e:
+        print(f"WARN: self-rename 失敗 (手動で .executed 化推奨): {e}",
+              file=sys.stderr)
+
+    print()
+    print(f"✅ 完了: {n_total} 件を ignored 化. rollback は snapshot から実施可能.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

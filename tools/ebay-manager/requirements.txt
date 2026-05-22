@@ -17,3 +17,5 @@ rembg>=2.0.50
 onnxruntime>=1.17.0
 Pillow>=10.0.0
 pillow-heif>=0.18.0
+# W154 (2026-05-22): AI ニュース RSS パーサ
+feedparser>=6.0.10

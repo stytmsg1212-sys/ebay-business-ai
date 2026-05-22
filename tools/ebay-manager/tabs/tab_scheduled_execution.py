@@ -171,8 +171,9 @@ def render_tab() -> None:
         else:
             r["log"] = None
 
-    # 上 → 時刻順、同時刻内では owner=main → x_news → customs の順、その後 task_key 辞書順
-    _owner_order = {"main": 0, "x_news": 1, "customs": 2}
+    # 上 → 時刻順、同時刻内では owner=main → news → customs の順、その後 task_key 辞書順
+    # W154 (2026-05-22): x_news (旧 W13 X/Grok) を news (W154 統合) に rename
+    _owner_order = {"main": 0, "news": 1, "customs": 2}
     schedule_rows.sort(key=lambda x: (x["hour"], _owner_order.get(x["owner"], 9), x["task_key"]))
 
     # ヘッダー

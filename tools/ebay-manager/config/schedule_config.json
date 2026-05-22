@@ -147,11 +147,12 @@
       "note": "W153 (2026-05-22 改訂): 商品毎 (rival_watch_enabled=1) の検索ワードで Browse API を巡回し listing_rival_discoveries に新規 rival を蓄積. ebay_sync 後に実行 = is_ended 判定が最新. グローバル known set モデルは廃止、user 承認分のみ competitor_products に流入し W183 値下げ対象に昇格. 対象 0 件の時は task_execution_log に痕跡 + 週 1 Discord reminder (claim_alert_dedupe key='w153_unused_weekly')."
     },
     "news_check": {
-      "enabled": false,
-      "description": "Claude/AIニュース確認（Anthropic公式サイト）",
-      "priority": 11,
-      "note": "独立タスク。最後に実行",
-      "_migration_note": "2026-04-24 W13 吸収により停止。x_news_check が後継。"
+      "enabled": true,
+      "description": "W154 (2026-05-22 PM): AI ニュース取得 (Tier 0 公式 RSS 4 + Tier 1 編集メディア RSS 4 + Reddit 6 + HN 4 query)",
+      "priority": 15,
+      "cron_hour": 6,
+      "cron_minute": 0,
+      "note": "独立 CronJob (06:00). 旧 W13 (x_news_check, X+Grok) と旧 W55 (Anthropic HTML scrape) を本 task に統合. cron_hour / cron_minute は本 entry で調整可."
     },
     "data_sync": {
       "enabled": true,
@@ -218,13 +219,8 @@
       ],
       "note": "毎週月曜02:30のみ実行。取得失敗時はDiscord通知。週次更新なのでこれで十分"
     },
-    "x_news_check": {
-      "enabled": true,
-      "description": "W13: X/Reddit/HN から AI ニュースを取得 (search-x + Claude Haiku)",
-      "priority": 15,
-      "cron_hour": 6,
-      "cron_minute": 0,
-      "note": "独立 CronJob (06:00)。失敗・暴走防止のため feature flag で rollback 可。"
+    "_x_news_check_removed": {
+      "_note": "W154 (2026-05-22 PM) で W13 x_news_check は news_check に統合, 削除済. X (Grok) のリストラ + RSS 8 source 化. monitor/x_news_*.py + monitor/xai_wrapper.py + tasks/task_x_news_check.py + tests/test_x_news.py 物理削除."
     },
     "customs_check": {
       "enabled": true,

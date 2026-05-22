@@ -293,7 +293,7 @@ if _w134_sel == "DASHBOARD":
         import logging as _bl
         _bl.getLogger(__name__).debug(f"morning brief 表示 skip: {_brief_e}")
 
-    # ── W119 (2026-05-12): 在庫通知 (有在庫 SKU で在庫低下・在庫切れ・在庫未入力) ──
+    # ── W119 (2026-05-12): 在庫通知 (有在庫 SKU で在庫切れ・在庫未入力) ──
     # H4 (Wave B): stock prefix + inventory_count=NULL = 在庫数未入力 listing も明示表示.
     # 旧実装は NULL を sweep して silent skip → 売れた時に減算されず oversell リスク.
     try:
@@ -307,15 +307,6 @@ if _w134_sel == "DASHBOARD":
                      AND inventory_count IS NOT NULL
                      AND inventory_count = 0
                    ORDER BY ebay_item_id"""
-            ).fetchall()
-            _inv_low = _inv_c.execute(
-                """SELECT ebay_item_id, sku, title, inventory_count
-                   FROM ebay_listings
-                   WHERE (is_ended IS NULL OR is_ended=0)
-                     AND sku LIKE 'stock%'
-                     AND inventory_count IS NOT NULL
-                     AND inventory_count > 0 AND inventory_count <= 2
-                   ORDER BY inventory_count ASC, ebay_item_id"""
             ).fetchall()
             # H4: stock prefix だが inventory_count NULL (= user 在庫数未入力)
             _inv_unset = _inv_c.execute(
@@ -335,21 +326,19 @@ if _w134_sel == "DASHBOARD":
                    ORDER BY decremented_at DESC LIMIT 15"""
             ).fetchall()
 
-        if _inv_zero or _inv_low or _inv_unset:
+        if _inv_zero or _inv_unset:
             with st.container(border=True):
                 st.markdown("### 📦 在庫通知")
-                metric_cols = st.columns(4)
+                metric_cols = st.columns(3)
                 with metric_cols[0]:
                     st.metric("🔴 在庫切れ (0 個)", len(_inv_zero),
                               help="商品管理タブで在庫補充 + eBay 反映を")
                 with metric_cols[1]:
-                    st.metric("🟡 在庫低下 (1-2 個)", len(_inv_low))
-                with metric_cols[2]:
                     st.metric("⚪ 在庫数未入力", len(_inv_unset),
                               help="stock prefix SKU だが inventory_count=NULL. "
                                    "売れても自動減算されないため oversell リスク. "
                                    "商品管理タブで在庫数を入力してください.")
-                with metric_cols[3]:
+                with metric_cols[2]:
                     st.metric("📉 直近 7 日減算", len(_inv_dec_recent))
 
                 if _inv_zero:
@@ -363,17 +352,6 @@ if _w134_sel == "DASHBOARD":
                         )
                     if len(_inv_zero) > 10:
                         st.caption(f"... 他 {len(_inv_zero) - 10} 件")
-
-                if _inv_low:
-                    st.markdown("**🟡 在庫低下 (残り 1-2 個)**")
-                    for r in _inv_low[:5]:
-                        st.markdown(
-                            f"- `{r['sku']}` | 残 **{r['inventory_count']}** | "
-                            f"[{(r['title'] or '')[:60]}]"
-                            f"(https://www.ebay.com/itm/{r['ebay_item_id']})"
-                        )
-                    if len(_inv_low) > 5:
-                        st.caption(f"... 他 {len(_inv_low) - 5} 件")
 
                 if _inv_unset:
                     st.warning(

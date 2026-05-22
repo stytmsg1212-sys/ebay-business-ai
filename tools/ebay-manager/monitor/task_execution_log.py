@@ -21,7 +21,7 @@ from monitor.database import get_conn
 # (task_key, display_name, expected_hours, expected_weekdays, batch_owner)
 #   expected_hours: そのタスクが本来実行されるべき時刻 (None = 全 batch hour で実行).
 #   expected_weekdays: None = 毎日, [0] = 月曜のみ など.
-#   batch_owner: 'main' (execute_daily_tasks) / 'x_news' / 'customs'
+#   batch_owner: 'main' (execute_daily_tasks) / 'news' / 'customs'
 # ──────────────────────────────────────────────────────────────────────
 TASK_SCHEDULE: list[dict[str, Any]] = [
     # main batch (02,11,15,18,22 の execution_schedule.times)
@@ -47,7 +47,7 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "sales_tracking", "display": "売上トラッキング", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "fuel_surcharge_check", "display": "燃料サーチャージ取得", "hours": [2], "weekdays": [0], "owner": "main"},
     # 独立 cron
-    {"key": "x_news_check", "display": "W13 X AI ニュース", "hours": [6], "weekdays": None, "owner": "x_news"},
+    {"key": "news_check", "display": "W154 AI ニュース取得", "hours": [6], "weekdays": None, "owner": "news"},
     {"key": "customs_check", "display": "W14 通関対応", "hours": [6], "weekdays": None, "owner": "customs"},
     {"key": "budget_alert", "display": "予算アラート", "hours": [6, 12, 19], "weekdays": None, "owner": "budget"},
     {"key": "market_analysis_refresh", "display": "W7-A 市場戦略 refresh", "hours": [2], "weekdays": [6], "owner": "market_analysis"},

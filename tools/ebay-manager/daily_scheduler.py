@@ -654,15 +654,10 @@ def execute_daily_tasks(config, scheduled_hour=None):
             lambda: run_sales_tracking(config),
             task_key='sales_tracking')
 
-    # ──────────────────────────────────────
-    # Step 11: ニュース確認（独立タスク）
-    # ──────────────────────────────────────
-    if should_task_run('news_check', config):
-        from tasks.task_news_check import run_news_check
-        results['news'] = run_task(
-            'AI/Claudeニュース',
-            lambda: run_news_check(config),
-            task_key='news_check')
+    # W154 (2026-05-22 PM): main batch の news_check dispatch 削除.
+    # W154 で旧 W55 (Anthropic HTML) + 旧 W13 (X+Reddit+HN) を統合し、
+    # 独立 cron (06:00) で 1 本化. main batch 経由の二重起動を防ぐため
+    # ここの分岐を物理削除. config の "news_check" entry も併せて削除済.
 
     # ──────────────────────────────────────
     # Step 12: 燃料サーチャージ自動取得（週次、月曜朝のみ）
@@ -789,23 +784,23 @@ def setup_scheduler():
         )
         logger.info(f"スケジュール設定: 毎日 {hour:02d}:{minute:02d} 実行 (scheduled_hour={hour})")
 
-    # ── W13 X ベース AI ニュース取得 (独立 CronJob) ──
-    # code-reviewer H-4 対応: 既存 execution_times とは別に固有の時刻で発火.
-    # schedule_config.json で時刻・有効フラグ調整可能.
-    x_news_cfg = (config.get('tasks_enabled', {}).get('x_news_check') or {})
-    if x_news_cfg.get('enabled', True):
-        x_hour = int(x_news_cfg.get('cron_hour', 6))
-        x_minute = int(x_news_cfg.get('cron_minute', 0))
+    # ── W154 AI ニュース取得 (独立 CronJob) ──
+    # 旧 W13 (x_news_check) を W154 で news_check に統合. config の
+    # "news_check" entry (cron_hour / cron_minute / enabled) を参照.
+    news_cfg = (config.get('tasks_enabled', {}).get('news_check') or {})
+    if news_cfg.get('enabled', True):
+        n_hour = int(news_cfg.get('cron_hour', 6))
+        n_minute = int(news_cfg.get('cron_minute', 0))
         scheduler.add_job(
-            _run_x_news_only,
-            trigger=CronTrigger(hour=x_hour, minute=x_minute, second=0),
-            args=[config, x_hour],
-            id=f'x_news_check_{x_hour:02d}_{x_minute:02d}',
-            name=f'W13 X AI ニュース ({x_hour:02d}:{x_minute:02d})',
+            _run_news_only,
+            trigger=CronTrigger(hour=n_hour, minute=n_minute, second=0),
+            args=[config, n_hour],
+            id=f'news_check_{n_hour:02d}_{n_minute:02d}',
+            name=f'W154 AI ニュース取得 ({n_hour:02d}:{n_minute:02d})',
             replace_existing=True,
         )
         logger.info(
-            f"W13 X ニュース発火: 毎日 {x_hour:02d}:{x_minute:02d}"
+            f"W154 ニュース発火: 毎日 {n_hour:02d}:{n_minute:02d}"
         )
 
     # ── W14 通関対応自動化 (独立 CronJob) ──
@@ -1239,13 +1234,13 @@ def _run_isolated_task(task_key: str, display_name: str, runner,
         _batch_ctx.update(saved_ctx)
 
 
-def _run_x_news_only(config: dict, scheduled_hour: int = 6):
-    """W13 専用の独立実行 (他タスクと併走しない)."""
+def _run_news_only(config: dict, scheduled_hour: int = 6):
+    """W154 AI ニュース取得 専用の独立実行 (他タスクと併走しない)."""
     logger.info("============================================================")
-    logger.info("【W13 X ニュース 単独実行】")
-    from tasks.task_x_news_check import run_x_news_check
-    _run_isolated_task('x_news_check', 'W13 X AI ニュース',
-                       lambda: run_x_news_check(config), scheduled_hour=scheduled_hour)
+    logger.info("【W154 AI ニュース取得 単独実行】")
+    from tasks.task_news_check import run_news_check
+    _run_isolated_task('news_check', 'W154 AI ニュース取得',
+                       lambda: run_news_check(config), scheduled_hour=scheduled_hour)
 
 
 def _run_customs_check_only(config: dict, scheduled_hour: int = 6):

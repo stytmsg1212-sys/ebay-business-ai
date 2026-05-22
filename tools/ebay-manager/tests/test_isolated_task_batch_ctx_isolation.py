@@ -95,8 +95,8 @@ def test_isolated_task_no_outer_ctx_then_restores_initial_state():
         return {"success": True}
 
     daily_scheduler._run_isolated_task(
-        task_key="x_news_check",
-        display_name="W13",
+        task_key="news_check",
+        display_name="W154",
         runner=_runner,
         scheduled_hour=5,
     )

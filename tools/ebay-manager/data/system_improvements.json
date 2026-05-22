@@ -565,10 +565,11 @@
     "id": 156,
     "tag": "W64",
     "title": "task_x_news_check と task_news_check の並走負債解消",
-    "description": "daily_scheduler から task_news_check (Anthropic news/engineering HTML scrape) と task_x_news_check (X 投稿チェック) が両方 news_items テーブルに書き込み中. INSERT 件数の解釈が source 別に分かれており, W55 の inserted_count 集計が複合化. 統合 or 分離テーブル化を検討. 完成時に W55 の Q1 DoD verify ステップで netcheck をすべき.",
-    "status": "未着手",
+    "description": "daily_scheduler から task_news_check (Anthropic news/engineering HTML scrape) と task_x_news_check (X 投稿チェック) が両方 news_items テーブルに書き込み中. INSERT 件数の解釈が source 別に分かれており, W55 の inserted_count 集計が複合化. 統合 or 分離テーブル化を検討. 完成時に W55 の Q1 DoD verify ステップで netcheck をすべき. [W154 で完了 2026-05-22: 旧 task_news_check と task_x_news_check を 1 本に統合、X (Grok) リストラ + RSS 8 source 化と同時に news_items 単一書込経路化]",
+    "status": "完了 (W154 で吸収)",
     "priority": "低",
-    "created": "2026-04-30"
+    "created": "2026-04-30",
+    "completed": "2026-05-22"
   },
   {
     "id": 157,
@@ -1418,5 +1419,14 @@
     "completed": "2026-05-22",
     "origin": "user 口頭判断 2026-05-22 朝 (W150 ①sold 0件 = sales_history populate 未実装 = W149 が根本基盤と判明、先行着手)",
     "progress_note": "**2026-05-22 完走 (本日 1 セッション)**: 設計書 v1 (5/21 commit 5535715) を Phase A self-review で v2 改訂 (4 件根治: shipping/fee qty 比按分 / メール経由 task_sales_tracking OFF / 30min polling 失敗 retry queue / eBay GetOrders API 構造誤読修正). Phase B = DB migration v47 (sales_history.ebay_order_id + fulfillment_order_link + sales_history_fetch_failures) + fulfillment_order_matcher.py (link_unmatched/link_one_by_sale/link_one + FIFO 時系列ガード) + test 10 件. Phase C = task_order_alert.py 30min polling に W149 sales 充填 (order_id group+qty 比按分) + リアルタイムマッチ + retry queue (5 回連続失敗 Discord) + task_purchase_confirm.py kind='fulfillment' で link_one + schedule_config.json で sales_tracking OFF + backfill script. Phase D = pytest 1397 PASS + 本番 DB v48 適用 + backfill 完了 (101 件 sales_history、sold>0 listings 0→66). **self-discover で v48 silent gap 修正** (v47 UNIQUE(ebay_order_id) 単独 → 1 注文 N 商品で line item silent 消失 → v48 複合キー (ebay_order_id, ebay_item_id) で根治、backfill 101 transaction → 100 件 INSERT で 1 件 dup skip 実測で発見). **内部 code-reviewer Opus HIGH 2 件**: HIGH-1 paid_time 空 silent skip (sold_at='' で並び順破壊 + matcher 文字列比較で時系列ガード崩壊) / HIGH-2 INSERT OR IGNORE rowcount 欠落 (race で attempt_count 止まる) を修正 + 回帰 test 2 件追加. **Codex GPT-5.5 review = 0 件追加指摘** (HIGH=0 達成). cascade pin: test_w138a / test_w68 / test_w148 を v46→v48 更新. ebay_client.py に get_orders range 引数 (CreateTimeFrom/To) 追加 (90 日上限). 検証: top 5 sold = maxell カセット 7 売 / Razer 4 売 / Pixel Tablet 4 売. scheduler+MonoDeck 再起動済 + Playwright 商品管理タブ Console 0 errors."
+  },
+  {
+    "id": 238,
+    "tag": "W154",
+    "title": "AI ニュース取得: X (Grok) リストラ → RSS 8 source + 旧 task_news_check 統合",
+    "description": "5/22 PM W153 v3 直後の指示で X (Grok 経由 search-x) を AI ニュース source から外す。X はパロディ/偽スクショ/煽動コンテンツ混在で信頼度低 (engagement 加重で sensationalist 浮上)、金銭直結情報源には不適。代替として 8 RSS フィード (Anthropic community + OpenAI / Google DeepMind / Hugging Face = Tier 0 公式、+ MIT Tech Review / VentureBeat / TechCrunch / Ars Technica = Tier 1 編集者付きメディア) を採用。同時に旧 W55 task_news_check.py (Anthropic HTML scrape) と新 W13 task_x_news_check.py の並走負債 (両方が news_items に書き込み、INSERT 件数集計が複合化) を解消するため task_news_check.py へ統合。Reddit (r/singularity → r/MachineLearning 入替、AGI 終末論ノイズ排除) + HN は維持。xai_wrapper.py / x_news_*.py / config/x_news_sources.json / tests/test_x_news.py / tasks/task_x_news_check.py 物理削除。月 ~0 (xai_daily_cap_usd .0/day) 節約。実装後 code-reviewer Opus 4.7 + Codex GPT-5.5 二段レビュー (新機能 + 外部 API + 金銭直結で義務級) + Q1 DoD 11 step 完走。",
+    "status": "進行中",
+    "priority": "中",
+    "created": "2026-05-22"
   }
 ]

@@ -1504,8 +1504,13 @@ def _render_rival_dataframe(p: dict, config: dict) -> None:
             except (sqlite3.OperationalError, ValueError, TypeError, KeyError) as e:
                 st.error(f"エラー: {e}")
 
-    # 新規発見ライバル alerts
-    _render_new_alerts_for_listing(p, config, existing_ids)
+    # W184「新規発見ライバル alerts」は 2026-05-22 PM の W153 v3
+    # (per-listing 検出) で上位互換となったため非表示化. 旧 new_competitor_alerts
+    # テーブルは our_item_id 紐付け無しでグローバル pending が全 listing に
+    # 混在表示される構造的バグがあった. 関数本体 _render_new_alerts_for_listing
+    # と DB table / helper 群 (get_japan_competitor_alerts /
+    # fetch_alert_shipping_usd / update_alert_action) は dead code として
+    # 残置, 物理削除は別 W で実施.
 
     # CLI 一括検索結果からの候補追加 (初期登録専用、後で削除予定)
     _render_cli_bulk_candidates(p, existing_ids)
