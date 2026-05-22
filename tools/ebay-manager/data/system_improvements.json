@@ -1376,12 +1376,12 @@
     "tag": "W151",
     "title": "商品管理 初期登録支援: フィルタ + 商品毎チェックボックス",
     "description": "user 業務支援 (2026-05-22 朝): user が現在「初期登録」作業 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等の base 設定) を進めている。完了商品にチェックを入れて未完了/完了をフィルタで切り替えたい。DB 新規列 (initial_registered BOOLEAN + initial_registered_at TIMESTAMP) + 商品管理フィルタ「初期登録」追加 + per-listing チェックボックス。W153 新規ライバル発見の「初期登録以降の rival」base point と連動 (initial_registered_at が新規 rival 検知の起点)。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "中",
     "created": "2026-05-22",
-    "completed": null,
+    "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ②)",
-    "progress_note": null
+    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (on/off 振る舞い) で user 判断 = シンプル 2 状態 (on→完了時刻 NOW, off→NULL に戻す, K1 simplicity). 実装: (1) DB migration v49 + Q2 自己修復 (ebay_listings.initial_registered INTEGER DEFAULT 0 + initial_registered_at TIMESTAMP, additive nullable). (2) set_initial_registered(ebay_item_id, registered) 関数 (database.py、UPDATE rowcount 判定). (3) tab_product_management.py _fetch_all_products SELECT に 2 列追加 (COALESCE 0 fallback). (4) フィルタ section fcols 5→6 列に拡張 + 「📝 初期未完了のみ」checkbox 追加. (5) _render_one_product hero 上部に「📝 初期登録済み」checkbox + 完了時刻 caption + on_change で set_initial_registered + bump_db_version + st.rerun. (6) test_w151 7 件 (migration 冪等性 / 自己修復 / set on/off / nonexistent / default). cascade pin v48→v49: test_w138a (3) / test_w68 (5) / test_w148 (1) / test_w149 (1). 61 PASS. 本番 DB v49 適用済 (2 列実在確認). Streamlit hot reload + Playwright 商品管理タブ Console 0 errors."
   },
   {
     "id": 235,

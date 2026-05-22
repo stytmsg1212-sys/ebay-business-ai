@@ -38,6 +38,7 @@ from monitor.database import (
     get_japan_competitor_alerts,
     get_listing_note,
     get_open_sale_warnings,
+    set_initial_registered,
     update_alert_action,
     upsert_listing_note,
 )
@@ -173,7 +174,11 @@ def _fetch_all_products() -> list[dict]:
                  WHERE ln.ebay_item_id = el.ebay_item_id
                    AND ln.note_text IS NOT NULL
                    AND TRIM(ln.note_text) != ''
-                ) AS has_note
+                ) AS has_note,
+                -- W151 (2026-05-22): 初期登録 status (未完了 / 完了).
+                -- COALESCE で v49 適用前の listing は 0 (未完了) 扱い.
+                COALESCE(el.initial_registered, 0) AS initial_registered,
+                el.initial_registered_at
             FROM ebay_listings el
             WHERE (el.is_ended IS NULL OR el.is_ended = 0)
               AND el.title IS NOT NULL AND el.title != ''
@@ -330,7 +335,7 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
             key="pm_sort",
         )
 
-    fcols = st.columns(5)
+    fcols = st.columns(6)
     with fcols[0]:
         only_missing = st.checkbox("⚠️ 未 FIX (仕入¥/重/寸/BE)", key="pm_only_missing")
     with fcols[1]:
@@ -341,6 +346,13 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
         only_us = st.checkbox("🇺🇸 US_only のみ", key="pm_only_us")
     with fcols[4]:
         only_negative = st.checkbox("💸 利益マイナスのみ", key="pm_only_neg")
+    with fcols[5]:
+        # W151 (2026-05-22): 初期登録未完了 listing のみ表示 (user 初期登録作業フォーカス用)
+        only_initial_pending = st.checkbox(
+            "📝 初期未完了のみ", key="pm_only_initial_pending",
+            help="チェック on = 初期登録未完了 listing のみ表示 (商品 hero の "
+                 "「📝 初期登録済み」未チェック分)",
+        )
 
     if search:
         s = search.lower()
@@ -367,6 +379,9 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
             profit = _estimate_profit_usd(p)
             return profit is not None and profit < 0
         products = [p for p in products if _neg(p)]
+    if only_initial_pending:
+        # W151: 初期登録未完了 (initial_registered=0 or NULL) のみ表示
+        products = [p for p in products if not p.get("initial_registered")]
 
     if sort_key == "売れ筋 (sold)":
         products.sort(key=lambda x: -(x.get("total_sold_count") or 0))
@@ -2035,6 +2050,26 @@ def _render_one_product(p: dict, config: dict) -> None:
     with st.expander(header, expanded=is_open):
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
+
+        # ── W151 (2026-05-22): 初期登録済み checkbox ──
+        # user 業務 = 初期登録 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等)
+        # 完了 listing にチェック → フィルタ「📝 初期未完了のみ」で残作業を絞り込み.
+        # W153 (新規ライバル発見) の base point として initial_registered_at を参照予定.
+        _init_current = bool(p.get("initial_registered"))
+        _init_cols = st.columns([1, 4])
+        with _init_cols[0]:
+            _init_new = st.checkbox(
+                "📝 初期登録済み",
+                value=_init_current,
+                key=f"pm_init_reg_{eid}",
+            )
+        with _init_cols[1]:
+            if _init_current and p.get("initial_registered_at"):
+                st.caption(f"完了時刻: {p['initial_registered_at']} UTC")
+        if _init_new != _init_current:
+            set_initial_registered(eid, _init_new)
+            bump_db_version()
+            st.rerun()
 
         # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
         # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は

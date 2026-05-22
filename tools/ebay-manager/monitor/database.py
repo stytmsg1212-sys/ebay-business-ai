@@ -2376,6 +2376,36 @@ def init_db():
             if _v48_ok == 1:
                 conn.execute("PRAGMA user_version = 48")
 
+        # v49 (W151 / 2026-05-22): 初期登録 trackering. user 業務 = 各 listing の
+        # 初期登録 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等) 完了時に
+        # checkbox を入れて未完了 / 完了済をフィルタ可能化. initial_registered_at
+        # は W153 (新規ライバル発見) の「初期登録以降の rival」base point として参照.
+        # additive nullable column (Q2 冪等性), 既存データ非破壊.
+        if schema_ver < 49:
+            try:
+                conn.execute(
+                    "ALTER TABLE ebay_listings ADD COLUMN "
+                    "initial_registered INTEGER DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                pass  # 既存
+            try:
+                conn.execute(
+                    "ALTER TABLE ebay_listings ADD COLUMN "
+                    "initial_registered_at TIMESTAMP"
+                )
+            except sqlite3.OperationalError:
+                pass
+            # 自己修復: 2 列実在確認後に version bump
+            _cols_el = [
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            ]
+            if ('initial_registered' in _cols_el
+                    and 'initial_registered_at' in _cols_el):
+                conn.execute("PRAGMA user_version = 49")
+
 
 # ---- サイト設定 ----
 
@@ -2663,6 +2693,32 @@ def get_ebay_listing_by_item_id(ebay_item_id: str) -> Optional[dict]:
 
 # 2026-05-01 W75 完走 (4a + 4b + 4c) で deprecated `get_ebay_listing_by_sku()` を削除.
 # listing 識別は `get_ebay_listing_by_item_id(ebay_item_id)` を使用 (.claude/rules/sku-rules.md 準拠).
+
+
+def set_initial_registered(ebay_item_id: str, registered: bool) -> bool:
+    """W151 (2026-05-22): 初期登録 status の on/off.
+
+    on (registered=True):  initial_registered=1, initial_registered_at=CURRENT_TIMESTAMP
+    off (registered=False): initial_registered=0, initial_registered_at=NULL
+    K1 simplicity: シンプル 2 状態 (履歴は別 W で audit log 化検討).
+    Returns: True if UPDATE 成立 (rowcount==1).
+    """
+    with get_conn() as conn:
+        if registered:
+            cur = conn.execute(
+                "UPDATE ebay_listings SET initial_registered = 1, "
+                "initial_registered_at = CURRENT_TIMESTAMP "
+                "WHERE ebay_item_id = ?",
+                (ebay_item_id,),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE ebay_listings SET initial_registered = 0, "
+                "initial_registered_at = NULL "
+                "WHERE ebay_item_id = ?",
+                (ebay_item_id,),
+            )
+    return cur.rowcount == 1
 
 
 def update_ebay_listing_status(ebay_item_id: str, source_status: str):
