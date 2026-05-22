@@ -1208,21 +1208,7 @@ def _render_url_direct_description_section(p: dict) -> None:
         st.caption(
             "仕入先 URL (メルカリ / ヤフオク / 楽天 等) を投入すると、個別出品と "
             "同じ流れで scrape + rank 自動推定 + description HTML 生成. "
-            "preview を確認後「✅ eBay に反映」で ReviseItem 発火."
-        )
-        # W158 (2026-05-22 PM, user 要望): 個別出品同等の画像処理 (ロゴプレート
-        # 合成 + 背景グレー統一) は本セクション + 仕入先候補セクション双方で **未実装**.
-        # 現状: 画像は仕入先 raw URL preview のみ、ReviseItem は description のみ反映.
-        # 個別出品の Step 2.5 (Photoroom + Gemini 3 候補, $0.14) / 2.6 (Photoroom 背景
-        # 統一, $0.02/枚) / 2.7 (eBay EPS upload) を本フローに統合する作業は約
-        # 200-300 LOC、API コスト ~$0.30/件. 自動 hero 選択 (Gemini score top) +
-        # 画像 ReviseItem (PictureDetails) の追加が必要. 次セッションで Q3 構造化
-        # フロー (Clarify → 設計 → code-architect → 2 段 review → 実装) で実装予定.
-        st.warning(
-            "⚠️ **画像加工は本セクションでは未実装**: 現状は仕入先 raw 画像 "
-            "preview + description のみ ReviseItem. **ロゴプレート合成 + 背景"
-            "グレー統一** は個別出品タブの Step 2.5 / 2.6 / 2.7 で実行してください "
-            "(W158 で本セクションへの統合を予定)."
+            "preview を確認後、画像加工 (Step B-D) + 3 通りの反映 button で運用 (W158, 2026-05-23)."
         )
         url_input = st.text_input(
             "新規 URL",
@@ -1294,32 +1280,47 @@ def _render_url_direct_description_section(p: dict) -> None:
                 if len(result.get("description_html", "")) > 5000:
                     st.caption("⚠️ 先頭 5000 文字のみ表示 (eBay 反映は全文)")
 
-            colA, colB = st.columns([1, 1])
-            with colA:
-                if st.button(
-                    "✅ eBay に反映 (ReviseItem)",
-                    key=f"pm_url_direct_apply_{eid}",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    with st.spinner("eBay ReviseItem 実行中..."):
-                        res = apply_description_to_ebay(
-                            ebay_item_id=eid,
-                            description_html=result.get("description_html") or "",
-                        )
-                    if res.get("success"):
-                        st.success(
-                            f"✅ eBay 反映完了 (description "
-                            f"{res.get('description_len') or len(result.get('description_html', ''))} 文字)"
-                        )
-                        st.session_state.pop(result_key, None)
-                        st.session_state.pop(url_key, None)
-                    else:
-                        st.error(f"❌ eBay 反映失敗: {res.get('message') or '(原因不明)'}")
-            with colB:
-                if st.button("結果をクリア", key=f"pm_url_direct_clear_{eid}"):
-                    st.session_state.pop(result_key, None)
-                    st.rerun()
+            # ── W158 (2026-05-23): 画像加工 + 3 反映 button (個別出品同等) ──
+            from tabs._image_pipeline_ui import (
+                render_image_pipeline_section, clear_pipeline_keys,
+            )
+            from tabs._supplier_description_pipeline import apply_listing_update_to_ebay
+
+            w158_prefix = f"pm_url_direct_{eid}_w158_"
+
+            # cascade clear: url_input 変化検知時に shared 内 key 一括クリア
+            # (前回 URL の hero/additional 画像が残留しないように)
+            w158_url_key = f"pm_url_direct_{eid}_w158_last_url"
+            if st.session_state.get(w158_url_key) != url_input.strip():
+                clear_pipeline_keys(w158_prefix)
+                st.session_state[w158_url_key] = url_input.strip()
+
+            def _on_apply_image_pm(urls: list[str]) -> dict:
+                return apply_listing_update_to_ebay(eid, picture_urls=urls)
+
+            def _on_apply_desc_pm(desc: str) -> dict:
+                return apply_listing_update_to_ebay(eid, description_html=desc)
+
+            def _on_apply_both_pm(desc: str, urls: list[str]) -> dict:
+                return apply_listing_update_to_ebay(
+                    eid, description_html=desc, picture_urls=urls,
+                )
+
+            render_image_pipeline_section(
+                prefix=w158_prefix,
+                source_urls=imgs,
+                sku_hint=f"eid_{eid}",
+                ebay_item_id=eid,
+                description_html=result.get("description_html") or "",
+                on_apply_image=_on_apply_image_pm,
+                on_apply_description=_on_apply_desc_pm,
+                on_apply_both=_on_apply_both_pm,
+            )
+
+            if st.button("結果をクリア", key=f"pm_url_direct_clear_{eid}"):
+                clear_pipeline_keys(w158_prefix)
+                st.session_state.pop(result_key, None)
+                st.rerun()
 
 
 def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:

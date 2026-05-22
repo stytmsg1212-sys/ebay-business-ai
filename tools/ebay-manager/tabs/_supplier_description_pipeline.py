@@ -301,34 +301,174 @@ def generate_supplier_description(
     }
 
 
-def apply_description_to_ebay(
-    ebay_item_id: str, description_html: str,
+def apply_listing_update_to_ebay(
+    ebay_item_id: str,
+    *,
+    description_html: Optional[str] = None,
+    picture_urls: Optional[list[str]] = None,
 ) -> dict:
-    """生成済 description を eBay にReviseItem で反映.
+    """W158 (2026-05-23): description / image / both の 3 path sequencer.
 
-    Returns: {'success': bool, 'message': str, 'description_len': int}
+    既存 revise_item_description + revise_item_pictures を順次呼ぶ:
+      - 両方指定: description → pictures の順
+      - description 失敗 → pictures **実行しない** (early return + skipped_reason)
+      - description 成功 + pictures 失敗 → updated.description=True, pictures=False
+        (description は反映済 rollback 不可。pictures は session_state の paths
+        が残置されているため UI から 「画像だけ再試行」 可能)
+      - 各 ReviseItem は独立 atomic (片方の Ack=Warning が他方に影響しない)
+
+    Pre-validation:
+      - 両方 None → success=False (no-op error)
+      - description / pictures は revise_item_* 関数側で個別 validate
+        (picture_urls >12 件 / non-https etc は revise_item_pictures が reject)
+
+    Returns:
+        {'success': bool,                         # 指定された全 step success ならば True
+         'message': str,
+         'updated': {'description': bool, 'pictures': bool},
+         'attempted': {'description': bool, 'pictures': bool},  # 実行を試みたか
+         'skipped_reason': Optional[str],         # skip した step の理由
+         'description_len': int,
+         'picture_urls': list[str],
+         'description_result': Optional[dict],    # revise_item_description 戻値
+         'pictures_result': Optional[dict]}       # revise_item_pictures 戻値
     """
     from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
-    from monitor.ebay_client import revise_item_description
+    from monitor.ebay_client import revise_item_description, revise_item_pictures
+
+    has_desc = bool((description_html or "").strip())
+    has_pics = bool(picture_urls)
+
+    # validation: 両方 None
+    if not has_desc and not has_pics:
+        return {
+            'success': False,
+            'message': 'description_html / picture_urls の少なくとも一方が必須です',
+            'updated': {'description': False, 'pictures': False},
+            'attempted': {'description': False, 'pictures': False},
+            'skipped_reason': 'no_input',
+            'description_len': 0,
+            'picture_urls': [],
+            'description_result': None,
+            'pictures_result': None,
+        }
 
     creds = get_ebay_credentials()
     if not ebay_credentials_ok(creds):
         return {
             'success': False,
-            'message': (
-                'eBay credentials not configured '
-                '(env var 設定 + OAuth 完了確認)'
-            ),
+            'message': 'eBay credentials not configured (env var 設定 + OAuth 完了確認)',
+            'updated': {'description': False, 'pictures': False},
+            'attempted': {'description': False, 'pictures': False},
+            'skipped_reason': 'credentials_missing',
             'description_len': len(description_html or ''),
+            'picture_urls': list(picture_urls or []),
+            'description_result': None,
+            'pictures_result': None,
         }
 
-    return revise_item_description(
-        item_id=ebay_item_id,
-        description_html=description_html,
-        app_id=creds['app_id'],
-        dev_id=creds['dev_id'],
-        cert_id=creds['cert_id'],
-        user_token=creds['user_token'],
+    description_result: Optional[dict] = None
+    pictures_result: Optional[dict] = None
+    desc_ok = False
+    pics_ok = False
+    attempted_desc = False
+    attempted_pics = False
+    skipped_reason: Optional[str] = None
+
+    # Step 1: description (両方 OR description-only)
+    if has_desc:
+        attempted_desc = True
+        description_result = revise_item_description(
+            item_id=ebay_item_id,
+            description_html=description_html,
+            app_id=creds['app_id'],
+            dev_id=creds['dev_id'],
+            cert_id=creds['cert_id'],
+            user_token=creds['user_token'],
+        )
+        desc_ok = bool((description_result or {}).get('success'))
+
+        # description 失敗 → pictures 実行しない (HIGH-Codex-4 sequencer 仕様)
+        if not desc_ok and has_pics:
+            skipped_reason = 'description_failed_early_return'
+            msg = (
+                f"❌ 説明文反映失敗: {(description_result or {}).get('message') or 'unknown'}. "
+                f"画像反映は未実行 (説明文先実行 → 失敗で stop)。"
+                f"説明文を確認後、画像だけ反映 button を押してください."
+            )
+            return {
+                'success': False,
+                'message': msg,
+                'updated': {'description': False, 'pictures': False},
+                'attempted': {'description': True, 'pictures': False},
+                'skipped_reason': skipped_reason,
+                'description_len': len(description_html or ''),
+                'picture_urls': list(picture_urls or []),
+                'description_result': description_result,
+                'pictures_result': None,
+            }
+
+    # Step 2: pictures (両方 OR pictures-only、desc 成功時は継続)
+    if has_pics:
+        attempted_pics = True
+        pictures_result = revise_item_pictures(
+            item_id=ebay_item_id,
+            picture_urls=list(picture_urls or []),
+            app_id=creds['app_id'],
+            dev_id=creds['dev_id'],
+            cert_id=creds['cert_id'],
+            user_token=creds['user_token'],
+        )
+        pics_ok = bool((pictures_result or {}).get('success'))
+
+    # overall success: 指定された全 step が success
+    if has_desc and has_pics:
+        overall = desc_ok and pics_ok
+    elif has_desc:
+        overall = desc_ok
+    else:
+        overall = pics_ok
+
+    # message 組立
+    msg_parts: list[str] = []
+    if attempted_desc:
+        if desc_ok:
+            msg_parts.append(f"✅ 説明文反映 ({len(description_html or '')} 文字)")
+        else:
+            msg_parts.append(f"❌ 説明文反映失敗: {(description_result or {}).get('message') or 'unknown'}")
+    if attempted_pics:
+        if pics_ok:
+            msg_parts.append(f"✅ 画像反映 ({len(picture_urls or [])} 枚)")
+        else:
+            msg_parts.append(f"❌ 画像反映失敗: {(pictures_result or {}).get('message') or 'unknown'}")
+    msg = " / ".join(msg_parts) if msg_parts else "no operation"
+
+    return {
+        'success': overall,
+        'message': msg,
+        'updated': {'description': desc_ok, 'pictures': pics_ok},
+        'attempted': {'description': attempted_desc, 'pictures': attempted_pics},
+        'skipped_reason': skipped_reason,
+        'description_len': len(description_html or '') if desc_ok else 0,
+        'picture_urls': list(picture_urls or []) if pics_ok else [],
+        'description_result': description_result,
+        'pictures_result': pictures_result,
+    }
+
+
+# W158 (2026-05-23): 旧名 alias for backward compatibility.
+# 既存 callsite (tab_product_management.py:1306, render_supplier_description_section L535)
+# は無修正で動作する.
+def apply_description_to_ebay(
+    ebay_item_id: str, description_html: str,
+) -> dict:
+    """旧 API alias. apply_listing_update_to_ebay の description-only 経路へ委譲.
+
+    Returns 互換性: 旧 caller が想定する {'success', 'message', 'description_len'}
+    の 3 key は維持 (新 key 'updated' / 'attempted' / 'skipped_reason' 等は追加).
+    """
+    return apply_listing_update_to_ebay(
+        ebay_item_id, description_html=description_html,
     )
 
 
@@ -363,17 +503,9 @@ def render_supplier_description_section(
             unsafe_allow_html=True,
         )
         st.caption(f"対象商品: {candidate_title[:60]}")
-        # W158 (2026-05-22 PM, user 要望): 個別出品の Step 2.5 (ロゴプレート合成) +
-        # 2.6 (背景グレー統一) + 2.7 (eBay EPS upload) は本セクション **未実装**.
-        # 現状は description (HTML) のみ ReviseItem 反映で、画像は仕入先 raw URL のまま.
-        # 統合作業は ~200-300 LOC + API コスト約 $0.30/件 (Photoroom + Gemini + EPS).
-        # 自動 hero 選択 (Gemini score top) + 画像 ReviseItem (PictureDetails) の
-        # 追加が必要. 次セッションで Q3 構造化フロー (Clarify → 設計 → 2 段 review)
-        # で実装予定.
-        st.warning(
-            "⚠️ **画像加工は未実装** (W158 で予定): 本セクションは description のみ "
-            "ReviseItem 反映. **ロゴプレート合成 + 背景グレー統一** を入れたい場合は "
-            "**個別出品タブ** の Step 2.5 / 2.6 / 2.7 を使用してください."
+        st.caption(
+            "W158 (2026-05-23): description 生成後、下に Step B-D の画像加工 + "
+            "3 通り反映 button が出ます (画像のみ / 説明文のみ / 両方)."
         )
 
         # 2026-05-21 user 要望: section 展開時に自動 scrape + rank classify を実行
@@ -543,3 +675,42 @@ def render_supplier_description_section(
                     if k in st.session_state:
                         del st.session_state[k]
                 st.rerun()
+
+        # ── W158 (2026-05-23): 画像加工 + 3 反映 button (個別出品同等) ──
+        st.markdown("---")
+        from tabs._image_pipeline_ui import (
+            render_image_pipeline_section, clear_pipeline_keys,
+        )
+        w158_prefix = f"sup_desc_pipeline_{candidate_id}_w158_"
+
+        # cascade clear: candidate URL 変化検知時 (prefetch 結果の URL 変動)
+        w158_url_key = f"{w158_prefix}last_url"
+        if st.session_state.get(w158_url_key) != candidate_url:
+            clear_pipeline_keys(w158_prefix)
+            st.session_state[w158_url_key] = candidate_url
+
+        # scraped product から source URLs を取得
+        product = prefetch.get('product')
+        source_urls = list(getattr(product, 'image_urls', None) or [])
+
+        def _on_apply_image_sup(urls: list[str]) -> dict:
+            return apply_listing_update_to_ebay(ebay_item_id, picture_urls=urls)
+
+        def _on_apply_desc_sup(d: str) -> dict:
+            return apply_listing_update_to_ebay(ebay_item_id, description_html=d)
+
+        def _on_apply_both_sup(d: str, urls: list[str]) -> dict:
+            return apply_listing_update_to_ebay(
+                ebay_item_id, description_html=d, picture_urls=urls,
+            )
+
+        render_image_pipeline_section(
+            prefix=w158_prefix,
+            source_urls=source_urls,
+            sku_hint=f"cand_{candidate_id}",
+            ebay_item_id=ebay_item_id,
+            description_html=desc,
+            on_apply_image=_on_apply_image_sup,
+            on_apply_description=_on_apply_desc_sup,
+            on_apply_both=_on_apply_both_sup,
+        )
