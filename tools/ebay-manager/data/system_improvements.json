@@ -1462,7 +1462,7 @@
   {
     "id": 242,
     "tag": "W158",
-    "title": "商品管理 / 仕入先候補に個別出品同等の画像加工パイプライン統合 (未実装)",
+    "title": "商品管理 / 仕入先候補に個別出品同等の画像加工パイプライン統合 (実装完了 2026-05-23)",
     "description": "user 要望: 個別出品同様にロゴプレート合成 (Step 2.5) + 背景グレー統一 (Step 2.6) + EPS upload (Step 2.7) を、tab_product_management.py _render_url_direct_description_section と _supplier_description_pipeline.py render_supplier_description_section にも実装. 現状は description (HTML) のみ ReviseItem 反映で画像は仕入先 raw URL のまま. 約 200-300 LOC + API コスト ~$0.30/件 (Photoroom $0.14 hero + $0.02/枚 others + EPS upload). 自動 hero 選択 (Gemini score top) + 画像 ReviseItem (PictureDetails) の 実装が必要. Q3 構造化フロー (Clarify → 設計 → code-architect → 2 段 review) で本実装. 2026-05-22 W158 注記: 暫定で UI に warning + 個別出品タブへの 誘導表示済 (画像加工が必要な user は個別出品タブで実行). [W158 実装完了 2026-05-23: monitor/image_pipeline_shared.py (~450 LOC pure 関数) + tabs/_image_pipeline_ui.py (~520 LOC UI section) + apply_listing_update_to_ebay sequencer (既存 revise_item_description + revise_item_pictures を順次呼ぶ) + 商品管理 URL 直接投入 + 仕入先候補 採用後 UI に統合. ROADMAP 設計書 v2.2 で内部 code-reviewer 3 周 + Codex GPT-5.5 1 周 = 計 HIGH 7 件 fix (HIGH-Codex-2 manifest source URL 不一致検知 + HIGH-Codex-1 in-flight lock + HIGH-Codex-4 sequencer 矛盾解消 含む). 第 10 次「内部+Codex で money-direct silent gap 突破」事例. pytest 113 件 PASS (test_image_pipeline_shared 17 新規 + 既存回帰). 個別出品 refactor は K2 Surgical で別 W deferred (既存 _do_hero_compose / _do_process_additional_images / _upload_processed_to_eps_sync は無修正、shared module を借用する形で次 W で refactor 予定).]",
     "status": "実装完了 (個別出品 refactor は K2 Surgical で別 W deferred)",
     "priority": "中",
