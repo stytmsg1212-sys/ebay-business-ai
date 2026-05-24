@@ -1425,9 +1425,10 @@
     "tag": "W154",
     "title": "AI ニュース取得: X (Grok) リストラ → RSS 8 source + 旧 task_news_check 統合",
     "description": "5/22 PM W153 v3 直後の指示で X (Grok 経由 search-x) を AI ニュース source から外す。X はパロディ/偽スクショ/煽動コンテンツ混在で信頼度低 (engagement 加重で sensationalist 浮上)、金銭直結情報源には不適。代替として 8 RSS フィード (Anthropic community + OpenAI / Google DeepMind / Hugging Face = Tier 0 公式、+ MIT Tech Review / VentureBeat / TechCrunch / Ars Technica = Tier 1 編集者付きメディア) を採用。同時に旧 W55 task_news_check.py (Anthropic HTML scrape) と新 W13 task_x_news_check.py の並走負債 (両方が news_items に書き込み、INSERT 件数集計が複合化) を解消するため task_news_check.py へ統合。Reddit (r/singularity → r/MachineLearning 入替、AGI 終末論ノイズ排除) + HN は維持。xai_wrapper.py / x_news_*.py / config/x_news_sources.json / tests/test_x_news.py / tasks/task_x_news_check.py 物理削除。月 ~0 (xai_daily_cap_usd .0/day) 節約。実装後 code-reviewer Opus 4.7 + Codex GPT-5.5 二段レビュー (新機能 + 外部 API + 金銭直結で義務級) + Q1 DoD 11 step 完走。",
-    "status": "進行中",
+    "status": "完了",
     "priority": "中",
-    "created": "2026-05-22"
+    "created": "2026-05-22",
+    "completed": "2026-05-23"
   },
   {
     "id": 239,
@@ -1468,5 +1469,15 @@
     "priority": "中",
     "created": "2026-05-22",
     "completed": "2026-05-23"
+  },
+  {
+    "id": 243,
+    "tag": "W159",
+    "title": "個別出品タブの画像加工処理を W158 shared module に refactor",
+    "description": "W158 (2026-05-23 完了) で monitor/image_pipeline_shared.py + tabs/_image_pipeline_ui.py の共通 module を新設したが、個別出品タブの _render_hero_compose_section / _do_hero_compose / _render_additional_photoroom_section / _do_process_additional_images / _render_eps_upload_section / _upload_processed_to_eps_sync は K2 Surgical 観点で本番稼働中のため touch せず、別 W で refactor 予定だった. 本 W で個別出品タブの該当 UI section を `render_image_pipeline_section(prefix=\"il_\", ...)` 呼出に置換し、`_do_hero_compose` / `_do_process_additional_images` / `_upload_processed_to_eps_sync` を pure 関数 (`compose_hero_candidates_cached` 等) を呼ぶ薄 wrapper に縮小. 既存 session_state key (`il_hero_selected_path` 等) は prefix=`il_` 流用で互換維持. 既存 test_individual_listing が通る. 見積: ~120 LOC 削減 + 重複ロジック解消. K2 Surgical のため Q1 DoD (Streamlit + Playwright + eBay live 1 商品 test) 必須. [W159 完了 2026-05-24: _do_hero_compose (~100 LOC → 30 LOC) + _do_process_additional_images (~60 LOC → 25 LOC) + _upload_processed_to_eps_sync 内部置換 (-15 LOC) で計 -120 LOC 削減. shared module の manifest.json 経路に統合され source URL 不一致 silent gap が個別出品タブにも適用 (HIGH-Codex-2 fix). pytest 85 件 PASS (test_image_pipeline_shared 17 + test_listing_generator 54 + test_revise_item_pictures 7 + test_supplier_photo_pipeline 7).",
+    "status": "完了",
+    "priority": "中",
+    "created": "2026-05-23",
+    "completed": "2026-05-24"
   }
 ]

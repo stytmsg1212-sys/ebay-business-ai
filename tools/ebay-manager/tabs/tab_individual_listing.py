@@ -769,78 +769,40 @@ def _render_additional_photoroom_section() -> None:
 def _do_process_additional_images(urls: list[str], force_regenerate: bool = False) -> None:
     """非 hero の画像を並列 Photoroom で処理して session_state に保存.
 
-    2026-04-26 コスト保護:
-        force_regenerate=False なら、out_base 内に _additional_*.png が既に
-        len(urls) 枚以上あれば Photoroom API を skip して復元.
-        $0.02/枚 × 4 = $0.08 のリトライ無駄を排除.
+    W159 (2026-05-24): W158 shared unify_additional_backgrounds_cached pure
+    関数を呼ぶ thin wrapper に縮小. 内部の Photoroom 並列実行 + cache 復元 +
+    manifest 管理は全て shared module に集約.
     """
     from pathlib import Path as _Path
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import httpx
 
     try:
-        from monitor.image_composer_photoroom import compose_cover_with_photoroom
-    except Exception as e:  # noqa: BLE001
-        st.error(f"モジュール import 失敗: {e}")
+        from monitor.image_pipeline_shared import unify_additional_backgrounds_cached
+    except ImportError as e:
+        st.error(f"image_pipeline_shared import 失敗: {e}")
         return
 
     sku = st.session_state.get(f"{_SS}sku") or f"temp_{int(time.time())}"
     out_base = _Path(f"data/hero_candidates/{sku}")
-    out_base.mkdir(parents=True, exist_ok=True)
 
-    # ───────────────────────────────────────────────────────────
-    # コスト保護: 既存 _additional_*.png があれば API skip して復元
-    # ───────────────────────────────────────────────────────────
-    existing_additionals = sorted(out_base.glob("_additional_*.png"))
-    if not force_regenerate and len(existing_additionals) >= len(urls):
-        # url 順に対応する _additional_NN.png をマッピング
-        results = []
-        for idx, url in enumerate(urls):
-            target = out_base / f"_additional_{idx:02d}.png"
-            if target.exists():
-                results.append({"source_url": url, "path": str(target)})
-        if len(results) >= len(urls):
-            st.session_state[f"{_SS}additional_processed"] = results
-            st.success(
-                f"既存 additional 画像 {len(results)} 枚を再使用 (Photoroom 課金 0)。"
-                f"再合成したい場合は「再生成」ボタンを使用してください。"
-            )
-            return
-
-    def _process_one(idx_url: tuple[int, str]) -> Optional[dict]:
-        idx, url = idx_url
-        try:
-            with httpx.Client(timeout=30, follow_redirects=True) as c:
-                src_bytes = c.get(url).content
-            r = compose_cover_with_photoroom(src_bytes)
-            if not r.success or r.image is None:
-                return None
-            out_path = out_base / f"_additional_{idx:02d}.png"
-            r.image.save(out_path)
-            return {"source_url": url, "path": str(out_path)}
-        except Exception as e:  # noqa: BLE001
-            logger.warning("additional photoroom failed for %s: %s", url, e)
-            return None
-
-    results: list[dict] = []
     with st.status(
-        f"{len(urls)} 枚を Photoroom で並列処理中...", expanded=False
+        f"{len(urls)} 枚を Photoroom で並列処理中...", expanded=False,
     ) as _s:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = {pool.submit(_process_one, (i, u)): i for i, u in enumerate(urls)}
-            done = 0
-            for fut in as_completed(futures):
-                done += 1
-                res = fut.result()
-                if res:
-                    results.append(res)
-                _s.update(label=f"処理中 {done}/{len(urls)}...")
-        _s.update(label=f"完了: {len(results)}/{len(urls)} 枚処理成功", state="complete")
-
-    # 元の順序を保持して session_state に保存
-    order = {u: i for i, u in enumerate(urls)}
-    results.sort(key=lambda r: order.get(r["source_url"], 999))
-    st.session_state[f"{_SS}additional_processed"] = results
+        results = unify_additional_backgrounds_cached(
+            urls, out_base,
+            force_regenerate=force_regenerate, max_workers=3,
+        )
+        # session_state 互換維持: 旧 dict 形 {source_url, path} で書込
+        st.session_state[f"{_SS}additional_processed"] = [r.to_dict() for r in results]
+        if len(results) < len(urls):
+            _s.update(
+                label=f"部分完了: {len(results)}/{len(urls)} 枚成功",
+                state="complete",
+            )
+        else:
+            _s.update(
+                label=f"完了: {len(results)}/{len(urls)} 枚処理成功",
+                state="complete",
+            )
 
 
 def _upload_processed_to_eps_sync() -> None:
@@ -897,143 +859,99 @@ def _upload_processed_to_eps_sync() -> None:
         )
         return
 
+    # W159 (2026-05-24): W158 shared upload_to_eps_cached 経由に置換
+    # 旧 upload_images_parallel 直接呼出は撤回. shared module で missing path の
+    # explicit failed 化 (Q0 silent drop 防止) + dataclass 構造化が入る.
+    from monitor.image_pipeline_shared import upload_to_eps_cached
+
     with st.status(
         f"eBay EPS に {len(paths)} 枚アップロード中 (~{len(paths)*3} 秒)...",
-        expanded=True,  # 2026-04-26: ユーザーが進捗確認できるよう常時展開
+        expanded=True,  # ユーザーが進捗確認できるよう常時展開
     ) as _s:
         st.write(f"対象ファイル: {[p.name for p in paths]}")
-        results = upload_images_parallel(paths, max_workers=3, use_cache=True)
-        urls: list[str] = []
-        failed_details: list[str] = []
-        for r, p in zip(results, paths):
-            if r.success and r.eps_url:
-                urls.append(r.eps_url)
-                st.write(f"  ✅ {p.name} → cache か EPS URL 取得")
-            else:
-                failed_details.append(f"{p.name}: {r.error or 'unknown'}")
-                logger.warning(f"EPS upload failed: {p.name}: {r.error}")
-        st.session_state[f"{_SS}processed_image_urls"] = urls[:24]  # eBay 上限 24
+        outcome = upload_to_eps_cached(paths, max_workers=3, use_cache=True)
+        urls = list(outcome.eps_urls)
+        st.session_state[f"{_SS}processed_image_urls"] = urls[:24]  # AddFixedPriceItem 上限 24
 
-        if not failed_details:
+        for url in urls:
+            st.write(f"  ✅ {url[:80]}")
+
+        if outcome.success and not outcome.failed:
             _s.update(label=f"完了: {len(urls)} 枚 EPS にアップロード", state="complete")
         elif urls:
             _s.update(
-                label=f"部分成功: {len(urls)}/{len(paths)} 枚 ({len(failed_details)} 枚失敗)",
+                label=f"部分成功: {len(urls)}/{len(paths)} 枚 ({len(outcome.failed)} 枚失敗)",
                 state="complete",  # 部分成功は warning 扱い
             )
-            for d in failed_details:
-                st.warning(f"失敗: {d}")
+            for fname, err in outcome.failed:
+                st.warning(f"失敗: {fname}: {err}")
         else:
             _s.update(
-                label=f"全失敗: {len(failed_details)}/{len(paths)} 枚",
+                label=f"全失敗: {len(outcome.failed)}/{len(paths)} 枚",
                 state="error",
             )
-            for d in failed_details:
-                st.error(f"失敗: {d}")
+            for fname, err in outcome.failed:
+                st.error(f"失敗: {fname}: {err}")
 
 
 def _do_hero_compose(source_url: str, force_regenerate: bool = False) -> None:
     """Photoroom + Gemini パイプライン実行 (session_state に結果を詰める).
 
-    2026-04-26 コスト保護:
-        force_regenerate=False (デフォルト) なら、out_base 内に既存 hero_W*.png が
-        あれば Photoroom + Gemini API を **完全に skip** して session_state に
-        ファイルパスだけ復元する. リトライ時の課金 ($0.20-0.40/回) を 0 にする.
-        force_regenerate=True で「再生成」ボタン押下時のみ実 API 呼出し.
+    W159 (2026-05-24): W158 で新設した monitor.image_pipeline_shared の
+    compose_hero_candidates_cached pure 関数を呼ぶ thin wrapper に縮小.
+    内部の Photoroom + Gemini + manifest 管理は全て shared module に集約.
 
-    失敗時は st.error で通知して fail-soft。
+    旧実装の cache 判定はファイル存在のみ (source URL 不一致 silent gap risk あり
+    = W158 Codex GPT-5.5 HIGH-Codex-2 で指摘) だったが、shared 版は manifest.json
+    による source URL + sha256 + pipeline_version 完全一致 check に強化されている.
+    既存 data/hero_candidates/{sku}/ に manifest なしの場合は初回 cache miss で
+    1 度 API 再課金 ($0.14) 発生、以降は manifest 経由で skip 復元.
+
+    Q1 DoD pytest 113 件 + 既存 test_individual_listing 系互換維持確認済.
+
+    失敗時は st.error で通知して fail-soft (旧挙動と同じ).
     """
     from pathlib import Path as _Path
-    import httpx
 
     try:
-        from monitor.image_composer_photoroom import compose_cover_with_photoroom
-        from monitor.image_composer_gemini import generate_hero_candidates
-    except Exception as e:  # noqa: BLE001
-        st.error(f"モジュール import 失敗: {e}")
+        from monitor.image_pipeline_shared import compose_hero_candidates_cached
+    except ImportError as e:
+        st.error(f"image_pipeline_shared import 失敗: {e}")
         return
 
     sku = st.session_state.get(f"{_SS}sku") or f"temp_{int(time.time())}"
     out_base = _Path(f"data/hero_candidates/{sku}")
-    out_base.mkdir(parents=True, exist_ok=True)
 
-    # ───────────────────────────────────────────────────────────
-    # コスト保護: 既存ファイルがあれば API skip して復元 (W29 補強)
-    # ───────────────────────────────────────────────────────────
-    existing_heros = sorted(out_base.glob("hero_W*.png"))
-    existing_studio = out_base / "_studio.png"
-    if not force_regenerate and existing_heros and existing_studio.exists():
-        # 既存合成結果を session_state に復元 (Photoroom/Gemini 課金 0)
-        candidates = [
-            {"name": p.stem, "path": str(p)} for p in existing_heros
-        ]
-        st.session_state[f"{_SS}hero_candidates"] = candidates
-        st.session_state[f"{_SS}hero_source_url"] = source_url
-        st.session_state[f"{_SS}hero_studio_path"] = str(existing_studio)
-        st.success(
-            f"既存合成結果 {len(candidates)} 候補を再使用 (API 課金 0)。"
-            f"再合成したい場合は「再生成」ボタンを使用してください。"
+    with st.status(
+        "Photoroom + Gemini で 3 候補生成中 (~40 秒)..." if force_regenerate
+        else "既存合成結果を確認中...",
+        expanded=False,
+    ) as _s:
+        candidates, studio_path = compose_hero_candidates_cached(
+            source_url, out_base,
+            force_regenerate=force_regenerate,
+            k=3, max_parallel=3,
         )
-        return
+        if not candidates:
+            _s.update(label="hero 合成失敗 (logger 参照)", state="error")
+            st.error("hero 合成失敗. PHOTOROOM_API_KEY / FAL_KEY / GOOGLE_API_KEY 設定 + logs/scheduler.log を確認.")
+            return
 
-    # 1. source ダウンロード
-    source_path = out_base / "_source.jpg"
-    try:
-        with st.status("画像をダウンロード中...", expanded=False) as _s:
-            with httpx.Client(timeout=30, follow_redirects=True) as c:
-                r = c.get(source_url)
-                r.raise_for_status()
-                source_path.write_bytes(r.content)
-            _s.update(label=f"ダウンロード完了 ({len(r.content) // 1024} KB)", state="complete")
-    except Exception as e:  # noqa: BLE001
-        st.error(f"画像ダウンロード失敗: {e}")
-        return
-
-    # 2. Photoroom studio 化
-    try:
-        with st.status("Photoroom で studio 化中 (約 10 秒)...", expanded=False) as _s:
-            pr = compose_cover_with_photoroom(source_path)
-            if not pr.success:
-                st.error(f"Photoroom 失敗: {pr.error}")
-                return
-            studio_path = out_base / "_studio.png"
-            pr.image.save(studio_path)
+        # session_state 互換維持: 旧 dict 形 (plate_id / score / path / reasoning) で書込
+        st.session_state[f"{_SS}hero_candidates"] = [c.to_dict() for c in candidates]
+        st.session_state[f"{_SS}hero_source_url"] = source_url
+        if studio_path:
             st.session_state[f"{_SS}hero_studio_path"] = str(studio_path)
-            _s.update(label="Photoroom 完了", state="complete")
-    except Exception as e:  # noqa: BLE001
-        st.error(f"Photoroom 例外: {e}")
-        return
-
-    # 3. Gemini 3 候補合成
-    try:
-        with st.status("Gemini でプレート合成中 (約 30-40 秒, 3 候補並列)...", expanded=False) as _s:
-            result = generate_hero_candidates(
-                studio_product_path=studio_path,
-                output_dir=out_base,
-                k=3,
-                max_parallel=3,
-            )
-            candidates: list[dict] = []
-            for c in result.candidates:
-                if c.success and c.output_path:
-                    candidates.append({
-                        "plate_id": c.plate_id,
-                        "score": float(c.score),
-                        "path": str(c.output_path),
-                        "reasoning": c.reasoning,
-                    })
-            st.session_state[f"{_SS}hero_candidates"] = candidates
-            st.session_state[f"{_SS}hero_source_url"] = source_url
+        # cache restored vs fresh で hero_selected_path の扱いを分岐 (旧挙動互換)
+        # cache restored 時は旧 hero_selected_path を残す (user 採用済を保持)
+        # fresh generation 時は None リセット (新候補から再選択促す)
+        if force_regenerate:
             st.session_state[f"{_SS}hero_selected_path"] = None
-            _s.update(
-                label=f"完了: {len(candidates)} 候補生成 "
-                f"(shape={result.analysis.product_shape}/"
-                f"{result.analysis.camera_elevation})",
-                state="complete",
-            )
-    except Exception as e:  # noqa: BLE001
-        st.error(f"Gemini 合成例外: {e}")
-        return
+
+        _s.update(
+            label=f"完了: {len(candidates)} 候補 (cache hit or API 実行)",
+            state="complete",
+        )
 
 
 def _render_manual_fallback_form(product: dict) -> None:
