@@ -5441,10 +5441,34 @@ if _w134_sel == "仕入先候補":
                 _eid_do = _dometa.get("eid") or ""
                 _url_do = _dometa.get("url") or ""
                 if not _url_do:
-                    st.error(
-                        f"cid={_docid}: URL 情報不足 → 採用やり直しで再 prompt 発生"
-                    )
-                    continue
+                    # 2026-05-25 防御強化: session_state 消失時に DB から URL 復元.
+                    # 採用フロー側 (L5191 apply_supplier_candidate) で例外発生 +
+                    # session_state["_sup_photo_meta_*"] 設定が skip された場合に、
+                    # status='accepted'/'applied' な候補の description 反映 section
+                    # に到達できない不具合 (357414236596 cid=1121 事案、5/24).
+                    try:
+                        from monitor.database import get_conn
+                        with get_conn() as _conn:
+                            _row = _conn.execute(
+                                "SELECT candidate_url, ebay_item_id, candidate_title "
+                                "FROM supplier_candidates WHERE id=?", (_docid,),
+                            ).fetchone()
+                    except Exception:  # noqa: BLE001 — UI 補完経路なので例外で section 壊さない
+                        _row = None
+                    if _row and _row[0]:
+                        _url_do = _row[0]
+                        _eid_do = _eid_do or (_row[1] or "")
+                        _ttl_do = _ttl_do or (_row[2] or "")
+                        # 次 rerun 以降の写真フロー safe net 用に session_state も補完
+                        st.session_state[f"_sup_photo_meta_{_docid}"] = {
+                            "url": _url_do, "eid": _eid_do, "title": _ttl_do,
+                        }
+                    else:
+                        st.error(
+                            f"cid={_docid}: URL 情報不足 + DB lookup 失敗 → "
+                            f"採用やり直しで再 prompt 発生"
+                        )
+                        continue
                 st.markdown(
                     f"**▼ description 反映: {_ttl_do[:60]} (item {_eid_do})**"
                 )
