@@ -38,7 +38,10 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "research_morning_brief", "display": "Research 脳 morning brief (W24)", "hours": [2], "weekdays": None, "owner": "main"},
     {"key": "video_learning_queue", "display": "動画学習キュー", "hours": [2, 18], "weekdays": None, "owner": "main"},
     {"key": "email_pickup", "display": "メール取得", "hours": [11, 15, 18, 22], "weekdays": None, "owner": "main"},
-    {"key": "research", "display": "新商品リサーチ", "hours": [11, 15, 18, 22], "weekdays": None, "owner": "main"},
+    # W21 (2026-04-26) で 'research' (新商品リサーチ) は廃止. 2026-05-25 に
+    # TASK_SCHEDULE からも削除 (毎 main slot で health_alert false-positive を出し
+    # ていた、silent-skip 検知能力を低下させていた回復). daily_scheduler dispatcher
+    # からも既に削除済 (grep 'research' で hit なし).
     {"key": "rival_detection", "display": "W153 商品別ライバル検出", "hours": [2], "weekdays": None, "owner": "main"},
     {"key": "rival_pricing_refresh", "display": "W183 ライバル価格 refresh & 値下げ", "hours": [0, 6, 12, 18], "weekdays": None, "owner": "rival_pricing"},
     {"key": "morning_discovery", "display": "W122 朝の新商品発掘 (Opus)", "hours": [7], "weekdays": None, "owner": "morning_discovery"},

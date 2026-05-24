@@ -25,11 +25,19 @@ import sys
 import re
 import json
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import httpx
+
+# 並行実行 protect (Top 2 refactor 副作用: Phase A read → Phase B AI call → Phase C write の
+# 3-Phase 化で API call が DB 接続外に出たため、cron + UI 手動 trigger 同時発火で
+# Phase A の重複判定が古い state を見て同 news 250 件に Claude API を二重課金する race
+# が成立可能になった. INSERT OR IGNORE で DB は安全だが Anthropic quota は守られない
+# (Haiku 250 件 ≈ $0.05-0.15、Opus 含めば $5+). module global lock で直列化.).
+_NEWS_CHECK_LOCK = threading.Lock()
 
 # pythonw.exe では sys.stdout が None のため安全ガード
 if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
@@ -399,6 +407,22 @@ def save_news_results(news_items: List[Dict]) -> int:
     Returns:
         実 INSERT 件数 (UNIQUE(source, title) 衝突 IGNORE と事前 SELECT continue は除外)
     """
+    # 並行実行 protect: cron + UI 手動 trigger 同時発火による Phase B AI 二重課金 race を防ぐ.
+    # acquire 失敗時は完全 skip ではなく warning + 0 返却 (silent skip でないこと明示, Q0 配慮).
+    if not _NEWS_CHECK_LOCK.acquire(blocking=False):
+        logger.warning(
+            "save_news_results: 並行実行を検知, AI quota 保護のため skip (input=%d 件)",
+            len(news_items),
+        )
+        return 0
+    try:
+        return _save_news_results_inner(news_items)
+    finally:
+        _NEWS_CHECK_LOCK.release()
+
+
+def _save_news_results_inner(news_items: List[Dict]) -> int:
+    """save_news_results 本体. Lock 取得済前提で呼ぶこと."""
     # 1) 従来のファイル出力 (後方互換のダッシュボード表示)
     output_dir = BASE_DIR / 'data' / 'news'
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -428,49 +452,74 @@ def save_news_results(news_items: List[Dict]) -> int:
         logger.warning(f"claude_summarizer import 失敗: {e}")
         _claude_summarize_news = None
 
+    # 2026-05-25 改修: 長 transaction による DB lock 解消 (3-Phase 分離).
+    # 旧実装は `with get_conn():` の中で 250 item × Claude API call (~1-3s) を呼んでおり,
+    # 4 分超 write lock を握り続け、同時刻の他 task の log_api_call が
+    # `database is locked` で 5 件連続失敗していた (2026-05-25 06:02 SCHEDULER 警告).
+    # Phase A (read): 重複判定だけ短い read transaction で実施.
+    # Phase B (no DB): API call は DB 接続外でゆっくり走らせる.
+    # Phase C (short write): 純 INSERT のみを 1 transaction で纏める.
     inserted = 0
+
+    # Phase A: 重複判定 (read only, write lock を取らない)
+    existing_keys: set = set()
     with get_conn() as conn:
         for item in news_items:
             title = item.get('title') or ''
             source = item.get('source') or ''
-            exists = conn.execute(
-                "SELECT id FROM news_items WHERE source=? AND title=?",
+            if conn.execute(
+                "SELECT 1 FROM news_items WHERE source=? AND title=? LIMIT 1",
                 (source, title),
-            ).fetchone()
-            if exists:
-                continue
+            ).fetchone():
+                existing_keys.add((source, title))
 
-            summary_ja = impact_ja = ''
-            impact_level = item.get('impact') or 'none'
-            cats_str = ''
-            if _claude_summarize_news:
-                try:
-                    ai = _claude_summarize_news(title, source=source)
-                    summary_ja = (ai or {}).get('summary_ja') or ''
-                    impact_ja = (ai or {}).get('impact_ja') or ''
-                    impact_level = (ai or {}).get('impact_level') or impact_level
-                    cats = (ai or {}).get('categories') or []
-                    cats_str = (
-                        ','.join(str(c) for c in cats)
-                        if isinstance(cats, list) else str(cats)
-                    )
-                except Exception as enrich_err:  # noqa: BLE001
-                    # Anthropic SDK の例外型は version 差で安定しない. 個別 enrichment 失敗で
-                    # 全件 silent skip させないため広く catch + warning (Q0 違反防止).
-                    logger.warning(
-                        f"news enrichment 失敗 (title={title[:60]}): {enrich_err}"
-                    )
+    # Phase B: 新規 item のみ Claude 要約 (DB 接続なし = 他 task をブロックしない)
+    new_items_enriched: list[tuple] = []
+    for item in news_items:
+        title = item.get('title') or ''
+        source = item.get('source') or ''
+        if (source, title) in existing_keys:
+            continue
 
-            cur = conn.execute(
-                """INSERT OR IGNORE INTO news_items
-                   (source, title, url, summary_ja, impact_ja, impact_level,
-                    categories, published_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (source, title, item.get('url', ''),
-                 summary_ja, impact_ja, impact_level, cats_str,
-                 item.get('published_at', '')),
-            )
-            inserted += cur.rowcount
+        summary_ja = impact_ja = ''
+        impact_level = item.get('impact') or 'none'
+        cats_str = ''
+        if _claude_summarize_news:
+            try:
+                ai = _claude_summarize_news(title, source=source)
+                summary_ja = (ai or {}).get('summary_ja') or ''
+                impact_ja = (ai or {}).get('impact_ja') or ''
+                impact_level = (ai or {}).get('impact_level') or impact_level
+                cats = (ai or {}).get('categories') or []
+                cats_str = (
+                    ','.join(str(c) for c in cats)
+                    if isinstance(cats, list) else str(cats)
+                )
+            except Exception as enrich_err:  # noqa: BLE001
+                # Anthropic SDK の例外型は version 差で安定しない. 個別 enrichment 失敗で
+                # 全件 silent skip させないため広く catch + warning (Q0 違反防止).
+                logger.warning(
+                    f"news enrichment 失敗 (title={title[:60]}): {enrich_err}"
+                )
+
+        new_items_enriched.append((
+            source, title, item.get('url', ''),
+            summary_ja, impact_ja, impact_level, cats_str,
+            item.get('published_at', ''),
+        ))
+
+    # Phase C: 短い write transaction で一括 INSERT (API call 一切なし = ms 単位)
+    if new_items_enriched:
+        with get_conn() as conn:
+            for values in new_items_enriched:
+                cur = conn.execute(
+                    """INSERT OR IGNORE INTO news_items
+                       (source, title, url, summary_ja, impact_ja, impact_level,
+                        categories, published_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    values,
+                )
+                inserted += cur.rowcount
 
     logger.info(f"ニュース DB 保存: 候補 {len(news_items)} 件 / 新規 INSERT {inserted} 件")
     return inserted

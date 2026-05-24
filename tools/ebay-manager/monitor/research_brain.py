@@ -181,10 +181,25 @@ def _invoke_subagent(
     duration_ms = int((time.time() - started) * 1000)
 
     if result.returncode != 0:
-        return "", {
-            "error": f"claude exit {result.returncode}: {result.stderr[:500]}",
-            "duration_ms": duration_ms,
-        }
+        # 2026-05-25 強化: 5/19-5/25 で 5 日連続 "claude exit 1: " (stderr 空) が
+        # 発生し原因不明だった. stderr だけでなく stdout / 解決 PATH / 実コマンドも
+        # 保存して診断材料を増やす. ANTHROPIC_API_KEY を意図的に剥がしている点
+        # (Max plan 強制) の影響可視化も目的.
+        import shutil
+        # WARNING: ここに API key の値 prefix を **絶対に追加しない**.
+        # diag は task_execution_log.message → Discord 通知に流れるため漏洩リスク.
+        # claude PATH は Windows ユーザー名 (PII) を含むため basename だけに削る.
+        resolved = shutil.which("claude")
+        claude_basename = Path(resolved).name if resolved else "NOT_FOUND_IN_PATH"
+        api_key_present = bool(os.environ.get("ANTHROPIC_API_KEY"))  # 親 process 側
+        diag = (
+            f"claude exit {result.returncode} | "
+            f"stderr={(result.stderr or '')[:300]!r} | "
+            f"stdout={(result.stdout or '')[:300]!r} | "
+            f"claude_basename={claude_basename} | "
+            f"parent_api_key_set={api_key_present}"
+        )
+        return "", {"error": diag, "duration_ms": duration_ms}
 
     # output-format=json should give us a JSON object with result text
     try:

@@ -45,6 +45,10 @@ def run(config: Optional[dict] = None) -> dict:
     )
 
     today = datetime.now().strftime("%Y-%m-%d")
+    # 2026-05-25: dir 未作成で FileNotFoundError が連日発生 (5/19-5/25 で 5 日失敗).
+    # log_path.open("a") 直前で気付くと recent_files=0 早期 return で dir 作成すら
+    # skip される構造だったため、entry 冒頭で確実に mkdir.
+    LINT_LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LINT_LOG_DIR / f"{today}-lint.jsonl"
 
     # 直近 7 日に編集された file を対象

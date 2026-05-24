@@ -248,13 +248,40 @@ def run_fuel_surcharge_check(config: dict) -> dict:
     result['success'] = result['dhl_rate'] is not None or result['fedex_rate'] is not None
 
     # Discord通知（失敗 or 大幅変動時）
+    # 2026-05-25 強化: 失敗時に現在値 + 最終更新からの経過日数 + 手動更新 UI 手順を含める.
+    # 旧通知は URL のみで, 月曜 1 回失敗すると次回まで 1 週間放置 → 利益計算が古い値で
+    # 稼働し続ける money-direct リスクがあった (calculator.py:278-279 で fuel_surcharge_*
+    # を直接利益計算に使う). days_ago>30 で警告レベル上昇.
     webhook = (config.get('discord', {}) or {}).get('webhook_url') or settings.get('discord_webhook_url', '')
     notify_msgs = []
 
-    if result['fedex_error']:
-        notify_msgs.append(f":warning: FedEx燃料サーチャージ取得失敗\n{result['fedex_error']}\n手動確認: {FEDEX_URL}")
-    if result['dhl_error']:
-        notify_msgs.append(f":warning: DHL燃料サーチャージ取得失敗\n{result['dhl_error']}\n手動確認: {DHL_URL}")
+    last_str = settings.get('fuel_surcharge_last_updated', '不明')
+    days_ago: Optional[int] = None
+    try:
+        last_dt = datetime.fromisoformat(last_str)
+        days_ago = (datetime.now() - last_dt).days
+        days_label = f"{days_ago} 日経過"
+    except (ValueError, TypeError):
+        days_label = '不明'
+
+    if result['fedex_error'] or result['dhl_error']:
+        parts: list[str] = []
+        if result['fedex_error']:
+            parts.append(f"• **FedEx**: {result['fedex_error']}")
+        if result['dhl_error']:
+            parts.append(f"• **DHL**: {result['dhl_error']}")
+        parts.append("")
+        parts.append(f"**現在値**: FedEx {old_fedex}% / DHL {old_dhl}%")
+        parts.append(f"**最終更新**: {last_str} ({days_label})")
+        parts.append("")
+        parts.append("**手動更新の手順**:")
+        parts.append(f"1. FedEx 公式で現在週の値を確認: {FEDEX_URL}")
+        parts.append(f"2. DHL 公式で現在週の値を確認: {DHL_URL}")
+        parts.append("3. MonoDeck → 「全体設定」タブ → 「燃料サーチャージ FedEx（%）」「燃料サーチャージ DHL（%）」欄に入力 → 保存")
+        parts.append("")
+        if days_ago is not None and days_ago > 30:
+            parts.append(":rotating_light: **30日以上更新されていません。利益計算が古い値で稼働中、即時手動更新推奨。**")
+        notify_msgs.append(":warning: 燃料サーチャージ自動取得失敗\n" + "\n".join(parts))
 
     # 大幅変動（5pt以上）は自動反映していないので、手動確認を促す
     for msg in rejected_large_change:
