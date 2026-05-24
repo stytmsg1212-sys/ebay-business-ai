@@ -1489,5 +1489,32 @@
     "priority": "中",
     "created": "2026-05-24",
     "completed": "2026-05-24"
+  },
+  {
+    "id": 245,
+    "tag": "W161",
+    "title": "paypay フリマ 構造的 HTTP 500 在庫判定不能 14 件の代替検出方法",
+    "description": "前 session 5/21 PM 発見の OOS retry 168 件 paypay 500 構造的 error の延長案件. 5/24 時点で paypay monitored_items 22 件中 14 件 (64%) が last_status=\"不明\" 状態. W139 ensure_monitor_coverage が履行不能 listing の発見遅延を生む silent gap. 案 A (Playwright headless ブラウザでレンダー後 DOM 取得、~150 LOC) を main path 採用、案 C (Yahoo Auction / Mercari の代替経路検索 fallback) を補助. 案 B (公式 Yahoo Shopping API) は paypay フリマ商品の API 公開状況次第. 設計書: .company/engineering/docs/2026-05-24-W161-paypay-500-alternate-detection.md (v1, Phase 4). 実装 Phase 6 は別 session 着手予定 (本 session は設計起票のみ).",
+    "status": "未着手 (設計書 v1 起票済)",
+    "priority": "中",
+    "created": "2026-05-24"
+  },
+  {
+    "id": 246,
+    "tag": "W162",
+    "title": "W148 (キーワード新着監視) 残 MED 5 件 一括対応",
+    "description": "前 session 5/22 W148 (commit 3884361) 完成時に Codex 3 周 HIGH=0 で MED 5 件が残置. 本 W で一括対応. (1) **release 固着**: 採用済 candidate の status='released' 遷移後も watch_keyword が消えない bug (UI 上 active 表示残留, supplier_purchase 判定不能). monitored_items.released_at index + watch deactivate trigger. (2) **inactive watch leak**: keyword_watches で is_active=0 になった entry が crawl runner で skip されず scan list に残り、null route で warning ログ蓄積. fetch_active_watches WHERE is_active=1 強化. (3) **webhook burst**: Discord webhook の 5xx で resend pass 起動時に 同時刻に大量 retry 発生で rate limit hit. exponential backoff 追加. (4) **orphan fatigue**: sentinel_zero alert が DOM 改修毎に大量発生で user 通知疲れ. sentinel grace period 24h or weekday filter 検討. (5) **cron overlap**: keyword_watch_crawl (2h ごと :20) と main batch (02:30/11:00/15:00/18:00/22:00) の重なりで DB lock 競合. subprocess 内で BEGIN IMMEDIATE 強化 + cron schedule の minute オフセット拡大. 実装規模 ~250 LOC 想定 (5 件合計). pytest 各 fix で regression test 1-2 件追加.",
+    "status": "未着手 (設計概要記載済、Phase 4 設計書は別 session)",
+    "priority": "中",
+    "created": "2026-05-24"
+  },
+  {
+    "id": 247,
+    "tag": "W163",
+    "title": "W153 (商品別ライバル検出) v3 拡張 6 件 一括対応",
+    "description": "前 session 5/22 PM W153 v3 (commit 99ffe1b) 完成後に user 要望 + 内部認識で 残置の 6 拡張. 本 W で一括対応. (1) **Brand/MPN 列追加**: listing_rival_discoveries に competitor_brand / competitor_mpn 2 列追加 (DB v53) + Haiku 生成精度向上 (現状 title-only)。(2) **N:1 監視緩和**: UNIQUE(competitor_item_id) 制約を緩めて 1 競合 N listing 監視可能化 (現状 conflict warning で disambiguate 不能)。 (3) **「監視解除」UI button**: monitoring_added → new 戻し (L-internal-2 deferred 分)。(4) **Browse API quota 共有 monitor**: W122 / W184 / W153 で 5K/day cap の 集中監視 dashboard (現状 task 別 cap で全体把握不能)。(5) **DB backend cooldown**: 現状 session_state での cooldown (60s) を DB row 化して別タブ/別プロセス共有可能化 (MED-5 deferred 分)。(6) **既存 rival retro-enrich script**: shipping_service_code が NULL の既存 rival 全件を fresh 化 (quota 圧迫注意 + dry-run flag 必須)。実装規模: DB migration v53 + 6 件合計 ~400 LOC 想定. Codex 2 段 review 必須 (money-direct 系: brand precision affects pricing decision).",
+    "status": "未着手 (設計概要記載済、Phase 4 設計書は別 session)",
+    "priority": "中",
+    "created": "2026-05-24"
   }
 ]
