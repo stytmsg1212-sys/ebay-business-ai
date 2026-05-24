@@ -4201,7 +4201,7 @@ if _w134_sel == "手動実行":
         'supplier':  ('仕入先候補',        'tasks.task_supplier_select',    'run_supplier_select'),
         'data_sync': ('データ統合',        'tasks.task_sync_data_stores',   'run_sync_data_stores'),
         'price':     ('価格最適化',        'tasks.task_price_optimization', 'run_price_optimization'),
-        'sales':     ('売上トラッキング',   'tasks.task_sales_tracking',     'run_sales_tracking'),
+        # W160 (2026-05-24): 'sales' (task_sales_tracking) 削除. W149 で task_order_alert.GetOrders に置換済.
         'video_learning': ('動画学習',      'tasks.task_video_learning',     'run_video_learning_queue'),
     }
 
@@ -4365,7 +4365,8 @@ if _w134_sel == "手動実行":
                             # 'research' — W21 (2026-04-26) 削除済
                             'rival': 'rival_detection', 'alert': 'inventory_alert',
                             'supplier': 'supplier_select', 'data_sync': 'data_sync',
-                            'price': 'price_optimization', 'sales': 'sales_tracking',
+                            'price': 'price_optimization',
+                            # 'sales': 'sales_tracking' は W160 で削除
                         }
                         _qroute({_rkey_map.get(_qkey, _qkey): _qresult})
                     except Exception:

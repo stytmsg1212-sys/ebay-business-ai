@@ -38,7 +38,7 @@ TASK_REGISTRY = {
     'rival_detection':  ('tasks.task_rival_detection',  'run_rival_detection',  'rival_detection'),
     'data_sync':        ('tasks.task_sync_data_stores', 'run_sync_data_stores', 'data_sync'),
     'price_optimization': ('tasks.task_price_optimization', 'run_price_optimization', 'price_optimization'),
-    'sales_tracking':   ('tasks.task_sales_tracking',   'run_sales_tracking',   'sales_tracking'),
+    # W160 (2026-05-24): 'sales_tracking' (task_sales_tracking) 削除. W149 で置換済.
     'news_check':       ('tasks.task_news_check',       'run_news_check',       'news'),
 }
 
@@ -68,7 +68,8 @@ REQUIRED_DATA_FILES = [
 ROUTER_FUNCTIONS = [
     'route_ebay_sync', 'route_inventory_check', 'route_inventory_alert',
     'route_rival_detection', 'route_news_check', 'route_supplier_select',
-    'route_email', 'route_sales_tracking', 'route_price_optimization',
+    'route_email', 'route_price_optimization',
+    # 'route_sales_tracking' は W160 (2026-05-24) で削除
     'route_data_sync', 'route_all_results',
 ]
 

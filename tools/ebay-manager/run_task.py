@@ -57,7 +57,7 @@ TASKS = {
     'rival':     ('👥 ライバル検出',     'tasks.task_rival_detection',    'run_rival_detection'),
     'data_sync': ('🗄️ データストア統合', 'tasks.task_sync_data_stores',   'run_sync_data_stores'),
     'price':     ('💰 価格最適化',       'tasks.task_price_optimization', 'run_price_optimization'),
-    'sales':     ('📊 売上トラッキング', 'tasks.task_sales_tracking',     'run_sales_tracking'),
+    # W160 (2026-05-24): 'sales' (task_sales_tracking) 削除. W149 で置換済.
 }
 
 
@@ -125,7 +125,8 @@ def run_single_task(task_key, config):
                 'sync': 'ebay_sync', 'inventory': 'inventory_check',
                 'alert': 'inventory_alert', 'supplier': 'supplier_select',
                 'rival': 'rival_detection', 'data_sync': 'data_sync',
-                'price': 'price_optimization', 'sales': 'sales_tracking',
+                'price': 'price_optimization',
+                # 'sales': 'sales_tracking' は W160 で削除
             }
             rkey = results_key_map.get(task_key, task_key)
             route_all_results({rkey: result})

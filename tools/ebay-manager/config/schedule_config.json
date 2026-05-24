@@ -166,12 +166,8 @@
       "priority": 9,
       "note": "data_sync 後に実行。ランク・競合データが最新の状態で分析"
     },
-    "sales_tracking": {
-      "enabled": false,
-      "description": "Gmail売上通知から販売データ抽出 → sales_history (W149 で OFF)",
-      "priority": 10,
-      "note": "Gmail API 使用。finance部署にレポート配信",
-      "stop_reason": "W149 (2026-05-22) で eBay Trading API GetOrders 直接取得に置換 (task_order_alert が sales_history を populate, ebay_order_id UNIQUE で再実行冪等)。本 task は ebay_order_id を持たない add_sale 呼出のため UNIQUE 制約を素通り = sales_history に重複 row 発生確定。enabled=false で停止 (Q0 silent skip 防止のため stop_reason 記録)。別 W で完全削除予定。"
+    "_sales_tracking_removed": {
+      "_note": "W160 (2026-05-24) で sales_tracking 完全削除. W149 (2026-05-22) で enabled:false 化 + task_order_alert.GetOrders に置換済だった dead code を本 W で物理削除. tasks/task_sales_tracking.py + daily_scheduler dispatch + task_execution_log TASK_SCHEDULE + app.py run_task UI + company_router route_sales_tracking + harness_test + discord_notifier 全 mapping 撤去."
     },
     "video_learning_queue": {
       "enabled": true,

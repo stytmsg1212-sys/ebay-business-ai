@@ -1479,5 +1479,15 @@
     "priority": "中",
     "created": "2026-05-23",
     "completed": "2026-05-24"
+  },
+  {
+    "id": 244,
+    "tag": "W160",
+    "title": "task_sales_tracking.py 物理削除 (W149 で OFF 済 dead code 整理)",
+    "description": "W149 (2026-05-22) で sales_tracking task が enabled:false 化 + task_order_alert.GetOrders に置換済 (重複 INSERT 防止のため). W160 (2026-05-24) で物理削除. 削除対象: tasks/task_sales_tracking.py + daily_scheduler L649-655 dispatch + monitor/task_execution_log TASK_SCHEDULE entry + config/schedule_config.json sales_tracking entry + app.py run_task UI mapping + run_task.py CLI mapping + company_router.route_sales_tracking + harness_test.py 2 か所 + notifiers/discord_notifier task_names. 計 8 file 修正. pytest 関連テスト互換維持確認済 (sales/sync_data/scheduler_health 6 件 PASS).",
+    "status": "完了",
+    "priority": "中",
+    "created": "2026-05-24",
+    "completed": "2026-05-24"
   }
 ]

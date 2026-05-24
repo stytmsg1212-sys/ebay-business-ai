@@ -125,7 +125,6 @@ class DiscordNotifier:
             'rival_detection': '👥 ライバルセラー検出',
             'data_sync': '🗄️ データストア統合',
             'price_optimization': '💰 価格最適化',
-            'sales_tracking': '📊 売上トラッキング',
             'news': '📰 AIニュース',
         }
 

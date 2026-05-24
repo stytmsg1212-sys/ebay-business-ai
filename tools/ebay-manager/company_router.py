@@ -354,28 +354,8 @@ def route_email(result: Dict, company_root: Path):
 # ============================================================
 
 # タスク名 → ルーティング関数のマッピング
-def route_sales_tracking(result: Dict, company_root: Path):
-    """売上トラッキング → finance/ に自動保存済み（task内で実行）。ここでは秘書に通知のみ"""
-    if not result or not result.get('success'):
-        return
-
-    sales_count = result.get('sales_count', 0)
-    if sales_count == 0:
-        return
-
-    inbox_file = company_root / "secretary" / "inbox" / f"{_today()}.md"
-    content = f"\n## 売上記録 ({_now_time()})\n\n"
-    content += f"- 新規売上: {sales_count}件記録\n"
-
-    report = result.get('report', {})
-    summary = report.get('summary_7d', {})
-    if summary:
-        content += f"- 7日間売上: {summary.get('count', 0)}件 / ${summary.get('revenue_usd', 0):,.2f}\n"
-
-    content += "\n"
-    _append_to_file(inbox_file, content)
-    logger.info(f"[Router] 売上({sales_count}件) → secretary/inbox/")
-
+# W160 (2026-05-24): route_sales_tracking 削除. W149 で sales_tracking task が
+# enabled:false 化 + task_order_alert.GetOrders に置換、W160 で物理削除済.
 
 def route_price_optimization(result: Dict, company_root: Path):
     """価格最適化 → task内で secretary/inbox に保存済み。追加ルーティング不要"""
@@ -400,7 +380,6 @@ ROUTE_TABLE = {
     'supplier_select': route_supplier_select,
     'product_search': route_product_search,
     'email': route_email,
-    'sales_tracking': route_sales_tracking,
     'price_optimization': route_price_optimization,
     'data_sync': route_data_sync,
     # research と company_secretary は自身で .company に書き込み済み

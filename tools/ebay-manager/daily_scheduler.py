@@ -647,12 +647,9 @@ def execute_daily_tasks(config, scheduled_hour=None):
     # ──────────────────────────────────────
     # Step 10: 売上トラッキング
     # ──────────────────────────────────────
-    if should_task_run('sales_tracking', config):
-        from tasks.task_sales_tracking import run_sales_tracking
-        results['sales_tracking'] = run_task(
-            '売上トラッキング',
-            lambda: run_sales_tracking(config),
-            task_key='sales_tracking')
+    # W160 (2026-05-24): sales_tracking 物理削除. W149 (2026-05-22) で
+    # enabled:false 化済 (task_order_alert.GetOrders に置換)。本 W で
+    # tasks/task_sales_tracking.py + 関連 mapping を完全撤去.
 
     # W154 (2026-05-22 PM): main batch の news_check dispatch 削除.
     # W154 で旧 W55 (Anthropic HTML) + 旧 W13 (X+Reddit+HN) を統合し、

@@ -44,7 +44,6 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "morning_discovery", "display": "W122 朝の新商品発掘 (Opus)", "hours": [7], "weekdays": None, "owner": "morning_discovery"},
     {"key": "data_sync", "display": "データストア統合", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "price_optimization", "display": "価格最適化", "hours": None, "weekdays": None, "owner": "main"},
-    {"key": "sales_tracking", "display": "売上トラッキング", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "fuel_surcharge_check", "display": "燃料サーチャージ取得", "hours": [2], "weekdays": [0], "owner": "main"},
     # 独立 cron
     {"key": "news_check", "display": "W154 AI ニュース取得", "hours": [6], "weekdays": None, "owner": "news"},
