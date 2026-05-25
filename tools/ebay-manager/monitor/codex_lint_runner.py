@@ -17,10 +17,14 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -152,8 +156,14 @@ def run_codex_lint(
     file_list_text = "\n".join(f"- {f}" for f in target_files)
     prompt = LINT_PROMPT_TEMPLATE.format(today=_today_str(), file_list=file_list_text)
 
+    # 2026-05-25 緊急修正: Windows で `subprocess.run(['codex', ...])` は .CMD/.BAT を
+    # 自動解決しないため `FileNotFoundError [WinError 2]` で sync fail し、旧 except
+    # 節が空 list return = silent success していた (Q0 違反). shutil.which で実 path
+    # 解決して .CMD まで含める. cross-platform: Linux/Mac では bare 'codex' (exe) 一致.
+    codex_exe = shutil.which("codex") or "codex"
+
     cmd = [
-        "codex", "exec",
+        codex_exe, "exec",
         "--sandbox", "read-only",
         "--json",
         "--skip-git-repo-check",
@@ -171,9 +181,30 @@ def run_codex_lint(
             errors="replace",
         )
     except subprocess.TimeoutExpired:
+        # 2026-05-25: silent return [] でなく明示 log + 空 list (上位 task で
+        # findings_count=0 が異常か正常か判定不能の盲点を回避).
+        logger.warning(
+            "run_codex_lint TIMEOUT after %ss (cmd=%s, cwd=%s)",
+            timeout_sec, codex_exe, cwd,
+        )
         return []
-    except FileNotFoundError:
-        # codex CLI 未インストール
+    except FileNotFoundError as fnf_err:
+        # codex CLI 未インストール = production incident. 旧 silent return から escalation.
+        logger.error(
+            "run_codex_lint CRITICAL: codex CLI invocation failed: %s (resolved=%s). "
+            "Wiki cascade verify is OFFLINE. Install codex or fix PATH.",
+            fnf_err, codex_exe,
+        )
+        return []
+
+    # 2026-05-25: returncode != 0 を明示捕捉 (旧コードは parse 段階で空 list = silent success).
+    if result.returncode != 0:
+        logger.error(
+            "run_codex_lint codex CLI exit %s | stderr=%r | stdout_head=%r",
+            result.returncode,
+            (result.stderr or "")[:500],
+            (result.stdout or "")[:500],
+        )
         return []
 
     json_lines = result.stdout.split("\n")
