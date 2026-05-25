@@ -1516,5 +1516,55 @@
     "status": "未着手 (設計概要記載済、Phase 4 設計書は別 session)",
     "priority": "中",
     "created": "2026-05-24"
+  },
+  {
+    "id": 248,
+    "tag": "W164",
+    "title": "Harness-Maturity Lv3 化 (CLAUDE.md / karpathy-principles に「対応モデル: Opus 4.7」明記)",
+    "description": "記事 https://zenn.dev/earlgray_mk/articles/472ef76d9e9d3e の指摘: CLAUDE.md は『コード』、モデルがランタイム。Karpathy 原則 4 はモデル依存度高 (Haiku でほぼ機能せず)。Lv3 = 使用モデル明記 / Lv4 = モデル更新時 review 運用。CLAUDE.md project root + .claude/rules/karpathy-principles.md + subagent 5 SKILL に「対応モデル: Opus 4.7 (Haiku では原則 4 非機能)」明記",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "Codex Phase B review 2026-05-25 + Zenn article みーた"
+  },
+  {
+    "id": 249,
+    "tag": "W165",
+    "title": "設計書テンプレに retry / timezone / transaction / idempotency / rollback / rate limit 必須化",
+    "description": "Codex Phase B Q2 (9 件): 全 cron task の retry policy / JST↔UTC 境界 / DB transaction 範囲 / idempotency key / migration rollback / API rate limit を設計書テンプレ (.company/engineering/docs/) と HTML 章 15 に必須項目化。新規 task / 新規 API 連携時のチェックリスト化",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "Codex Phase B review 2026-05-25"
+  },
+  {
+    "id": 250,
+    "tag": "W166",
+    "title": "memory poisoning 対策 (frontmatter に source_type / confidence / expiry / owner 追加)",
+    "description": "Codex Phase B Q5 (8 件): assistant memory は動画/Web/user/過去 memory が無境界で injection される。frontmatter に source_type (verified/unverified/community) / confidence (high/med/low) / expiry / owner / approval_status を追加。通関 draft 同等の <untrusted_source> tag を memory にも導入。conflict resolution rule 制定 (古い memory vs 新しい設計書の優先順位)",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "Codex Phase B review 2026-05-25"
+  },
+  {
+    "id": 251,
+    "tag": "W167",
+    "title": "変更設計ガイドに rollback plan / feature flag / dry-run / acceptance criteria 明確化",
+    "description": "Codex Phase B Q6 (7 件): 設計書テンプレに rollback plan (DB migration / eBay API side effect / Gmail send で戻せない操作) / feature flag / kill switch / dry-run 項目追加。Phase 7 acceptance criteria (pytest + Streamlit + Playwright + DB SELECT + scheduler.log) の合格基準を数値化。ローカル検証コマンド一覧 (外注初日が叩くもの) を別ファイル化",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "Codex Phase B review 2026-05-25"
+  },
+  {
+    "id": 252,
+    "tag": "W168",
+    "title": "HTML 設計書に 7 章追加 (Observability + Environment + ERD + Release + Compliance + Cost & quota + Test strategy)",
+    "description": "Codex Phase B Q7 (7 章追加): (1) Observability (logs/metrics/alert routing/missed-alert blind spots) (2) Environment (prod/dev/test, redacted DB, env vars, local setup, ports) (3) Data lineage / ERD (eBay API → DB → UI → scheduler → Discord/Gmail) (4) Release / deployment (restart 要否、versioning、rollback、change freeze) (5) Compliance / legal (eBay policy / VeRO / buyer PII / customs/export / tax/accounting) (6) Cost / quota (Anthropic/Gemini/eBay/Gmail/Discord 月次上限と停止条件) (7) Test strategy (unit/integration/UI/scheduler/DB migration/eBay sandbox 範囲)",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "Codex Phase B review 2026-05-25"
   }
 ]

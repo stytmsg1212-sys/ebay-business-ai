@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eBay 物販ビジネス システム全体説明書 (2026-05-25 v1)</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: "Helvetica Neue", "Yu Gothic UI", "Meiryo", sans-serif;
+  max-width: 1080px; margin: 0 auto; padding: 24px;
+  line-height: 1.7; color: #1a1a1a; background: #fafafa;
+}
+h1 { font-size: 1.8em; border-bottom: 4px solid #1f618d; padding-bottom: 8px; }
+h2 { font-size: 1.4em; border-bottom: 2px solid #2980b9; padding-bottom: 6px; margin-top: 36px; color: #1f3a52; }
+h3 { font-size: 1.15em; color: #34495e; margin-top: 24px; }
+h4 { font-size: 1.0em; color: #5d6d7e; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92em; }
+th, td { border: 1px solid #d0d7de; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #eef4f8; font-weight: 600; }
+code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-family: "Consolas", "Menlo", monospace; font-size: 0.9em; }
+pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 0.85em; line-height: 1.4; }
+details {
+  border: 1px solid #d0d7de; border-radius: 4px;
+  margin: 8px 0; padding: 0; background: white;
+}
+details > summary {
+  cursor: pointer; padding: 8px 12px; background: #eef4f8;
+  font-weight: bold; border-radius: 3px;
+}
+details[open] > summary { border-bottom: 1px solid #d0d7de; margin-bottom: 8px; }
+details > *:not(summary) { margin-left: 12px; margin-right: 12px; }
+details > *:last-child { margin-bottom: 10px; }
+.meta-box {
+  background: #fef9e7; border-left: 4px solid #d4a017;
+  padding: 8px 14px; margin: 8px 0; font-size: 0.88em; border-radius: 3px;
+}
+.warning-box {
+  background: #fdecea; border-left: 4px solid #c0392b;
+  padding: 8px 14px; margin: 8px 0; border-radius: 3px;
+}
+.tip-box {
+  background: #eafaf1; border-left: 4px solid #27ae60;
+  padding: 8px 14px; margin: 8px 0; border-radius: 3px;
+}
+.info-box {
+  background: #ebf5fb; border-left: 4px solid #2980b9;
+  padding: 8px 14px; margin: 8px 0; border-radius: 3px;
+}
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.78em; margin-right: 4px; }
+.tag-biz { background: #d4e6f1; color: #1f618d; }
+.tag-tech { background: #f5cba7; color: #af601a; }
+.tag-ops { background: #d5f5e3; color: #196f3d; }
+.tag-warn { background: #fadbd8; color: #922b21; }
+nav.toc {
+  background: white; padding: 14px 18px; border: 1px solid #d0d7de;
+  border-radius: 4px; margin: 16px 0 32px;
+}
+nav.toc ol { margin: 4px 0; padding-left: 24px; }
+nav.toc li { margin: 2px 0; }
+.section-meta { font-size: 0.82em; color: #6c757d; margin-bottom: 12px; }
+hr.chap-end { border: 0; border-top: 1px dashed #b0b9c2; margin: 36px 0; }
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin: 12px 0;
+}
+.kpi {
+  background: white; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 10px 14px; text-align: center;
+}
+.kpi-label { font-size: 0.85em; color: #6c757d; }
+.kpi-value { font-size: 1.5em; font-weight: bold; color: #1f618d; }
+.role-card {
+  background: white; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 10px 14px; margin: 6px 0;
+}
+@media print {
+  body { background: white; padding: 12px; }
+  details { page-break-inside: avoid; border: 1px solid #888; }
+  details:not([open]) { display: none; }
+  details > summary { background: white !important; border-bottom: 1px solid #888; }
+  nav.toc { page-break-after: always; }
+  h2 { page-break-before: auto; page-break-after: avoid; }
+}
+svg.diagram { display: block; max-width: 100%; margin: 16px auto; background: white; border: 1px solid #d0d7de; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>eBay 物販ビジネス システム全体説明書</h1>
+
+<div class="info-box">
+<strong>版数</strong>: v1.0 (2026-05-25) /
+<strong>対象</strong>: 初見の外注エンジニア / 6 ヶ月後の自分 / business owner /
+<strong>repo</strong>: <code>github.com/stytmsg1212-sys/ebay-business-ai</code> /
+<strong>maintainer</strong>: user (gucch) + Claude Opus 4.7
+<br><br>
+<strong>📊 KPI 数値の as-of</strong>: <strong>2026-05-25 10:30 JST 時点</strong> (DB query 実施時). cron wave (02:30 / 11:00 / 15:00 / 18:00 / 22:00) 後に active 出品 / 退役 / supplier candidate 等は数件単位で変動. 数字の絶対値より「桁感」と「構造比率」を読む方が安全. 厳密値は本資料末尾の <a href="#regen">自動再生成 script (未実装、ROADMAP 候補)</a> で都度生成する想定.<br>
+<strong>不変側</strong> (規約 / 構造 / table 数 / cron 数 / 部署数) は cron 走行に依らず安定.
+</div>
+
+<div class="tip-box">
+<strong>📖 読者別の推奨読み方</strong>
+<div class="role-card"><strong>外注エンジニア (初日)</strong>: 1 → 2 → 3 → 5 (ユースケース) → 11 (責任境界) → 15 (変更設計ガイド)</div>
+<div class="role-card"><strong>business owner (user)</strong>: 1 → 2 → 6 (MonoDeck) → 11 → 13 (運用) → 14 (障害対応)</div>
+<div class="role-card"><strong>6 ヶ月後の自分 (新機能設計時)</strong>: 15 (変更設計ガイド) → 関連章 → 11 (責任境界) → 12 (権限)</div>
+<div class="role-card"><strong>運用当番 (毎朝の確認)</strong>: 8 (定時実行) → 14 (障害対応) → 13 (運用手順)</div>
+</div>
+
+<nav class="toc">
+<strong>📚 目次</strong>
+<p><span class="tag tag-biz">業務理解</span> 1-5 / <span class="tag tag-tech">技術詳細</span> 6-10 / <span class="tag tag-ops">運用・設計</span> 11-16</p>
+<ol>
+<li><a href="#ch1">業務概要</a> — 何のビジネスか</li>
+<li><a href="#ch2">業務フロー</a> — 仕入先発見 → 出品 → 売上 → 利益記録</li>
+<li><a href="#ch3">全体アーキテクチャ図</a> — 1 枚図解</li>
+<li><a href="#ch4">業務ドメイン規約</a> — DDP / Section 232 / SKU / コンディション 8 段階 / VeRO</li>
+<li><a href="#ch5">主要ユースケース別フロー</a> — 新規出品 / 在庫切れ / 売上 / 通関 / 利益</li>
+<li><a href="#ch6">MonoDeck UI</a> — 11 タブの機能</li>
+<li><a href="#ch7">データベース schema</a> — 43 table の役割</li>
+<li><a href="#ch8">定時実行 scheduler</a> — 26 task の cron 表</li>
+<li><a href="#ch9">外部 API / MCP 連携</a> — eBay / Anthropic / Gemini / Gmail / Discord / FedEx & DHL / 他</li>
+<li><a href="#ch10">AI エージェント + 知識基盤</a> — subagent 5 種 + .company 9 部署 + Obsidian Vault + memory cycle</li>
+<li><a href="#ch11">責任境界 / データ信頼度 / 人間確認ポイント</a> ⭐</li>
+<li><a href="#ch12">セキュリティ / 秘密情報 / 権限</a> ⭐</li>
+<li><a href="#ch13">運用手順</a> — 起動 / 停止 / commit / push / バックアップ</li>
+<li><a href="#ch14">障害対応 / トラブルシュート</a> — 症状別 + 復旧手順</li>
+<li><a href="#ch15">変更設計ガイド</a> — 新機能追加時の手順 (W164 を作る時)</li>
+<li><a href="#ch16">知識増強サイクル</a> ⭐ — 動画学習 / cascade-update / OPLOG / daily lint / 設計書循環</li>
+<li><a href="#ch17">用語集 / 参照パス一覧</a></li>
+</ol>
+</nav>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch1">1. 業務概要 — 何のビジネスか</h2>
+<p class="section-meta"><span class="tag tag-biz">業務理解</span> 最終更新 2026-05-25</p>
+
+<p>日本国内のフリマ / オークション / 量販店から商品を仕入れ、<strong>eBay (北米向け中心)</strong> に出品する <strong>越境 EC 物販</strong>ビジネス。1 人運営、利益直結なので「自動化精度 = 売上」に直結する。</p>
+
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">active 出品</div><div class="kpi-value">535</div></div>
+<div class="kpi"><div class="kpi-label">退役 listing</div><div class="kpi-value">197</div></div>
+<div class="kpi"><div class="kpi-label">仕入先候補 (pending)</div><div class="kpi-value">163</div></div>
+<div class="kpi"><div class="kpi-label">採用→反映済</div><div class="kpi-value">25</div></div>
+<div class="kpi"><div class="kpi-label">DB table 数</div><div class="kpi-value">43</div></div>
+<div class="kpi"><div class="kpi-label">定時 task 数</div><div class="kpi-value">26</div></div>
+</div>
+
+<details><summary>収益モデル + 主要規制</summary>
+<ul>
+<li><strong>収益源</strong>: 仕入額 (JPY) と eBay 売上 (USD) の差額 - eBay 手数料 - 配送料 - 関税 (DDP 売主負担) - 為替損益</li>
+<li><strong>米国向け = DDP 出荷</strong> = 関税は <strong>売主負担</strong> (Negative feedback 防止だが利益直撃)。<a href="#ch4">第 4 章 業務ドメイン規約</a> 参照</li>
+<li><strong>Section 232 派生品関税 25%</strong> (鉄鋼・アルミ含む 84-87 章) で 1 商品 ~$200 売主負担、赤字化リスクあり</li>
+<li><strong>VeRO ブランド</strong> (Apple / Nintendo / SONY 等) は非正規ルート品で出品禁止 → アカウント停止リスク</li>
+</ul>
+</details>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch2">2. 業務フロー — 仕入先発見 → 出品 → 売上 → 利益記録</h2>
+<p class="section-meta"><span class="tag tag-biz">業務理解</span> 最終更新 2026-05-25</p>
+
+<svg class="diagram" viewBox="0 0 920 320" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f618d"/>
+    </marker>
+  </defs>
+  <style>
+    .box { fill: white; stroke: #1f618d; stroke-width: 1.5; }
+    .box-biz { fill: #ebf5fb; stroke: #1f618d; }
+    .box-tech { fill: #fef9e7; stroke: #d4a017; }
+    .label { font: 13px 'Helvetica Neue', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+    .small { font: 11px 'Helvetica Neue', sans-serif; fill: #555; text-anchor: middle; }
+    .arrow { stroke: #1f618d; stroke-width: 1.8; fill: none; }
+  </style>
+  <!-- Stage 1: 仕入先発見 -->
+  <rect class="box box-biz" x="20" y="80" width="140" height="60" rx="6"/>
+  <text class="label" x="90" y="105">① 仕入先発見</text>
+  <text class="small" x="90" y="125">メルカリ / ヤフオク</text>
+  <!-- Stage 2: vetting -->
+  <rect class="box box-biz" x="190" y="80" width="140" height="60" rx="6"/>
+  <text class="label" x="260" y="105">② vetting</text>
+  <text class="small" x="260" y="125">Haiku match_score / rank</text>
+  <!-- Stage 3: 出品 -->
+  <rect class="box box-biz" x="360" y="80" width="140" height="60" rx="6"/>
+  <text class="label" x="430" y="105">③ eBay 出品</text>
+  <text class="small" x="430" y="125">AddItem + ReviseItem</text>
+  <!-- Stage 4: 在庫監視 -->
+  <rect class="box box-biz" x="530" y="80" width="140" height="60" rx="6"/>
+  <text class="label" x="600" y="105">④ 在庫監視</text>
+  <text class="small" x="600" y="125">inventory_check 5h</text>
+  <!-- Stage 5: 売上 -->
+  <rect class="box box-biz" x="700" y="80" width="140" height="60" rx="6"/>
+  <text class="label" x="770" y="105">⑤ 売上発生</text>
+  <text class="small" x="770" y="125">order_alert 30min</text>
+  <!-- arrows -->
+  <line class="arrow" x1="160" y1="110" x2="190" y2="110" marker-end="url(#arr)"/>
+  <line class="arrow" x1="330" y1="110" x2="360" y2="110" marker-end="url(#arr)"/>
+  <line class="arrow" x1="500" y1="110" x2="530" y2="110" marker-end="url(#arr)"/>
+  <line class="arrow" x1="670" y1="110" x2="700" y2="110" marker-end="url(#arr)"/>
+  <!-- Stage 6+7 (second row) -->
+  <rect class="box box-biz" x="190" y="200" width="140" height="60" rx="6"/>
+  <text class="label" x="260" y="225">⑥ 仕入実行</text>
+  <text class="small" x="260" y="245">無在庫 → 仕入先 URL 発注</text>
+  <rect class="box box-biz" x="360" y="200" width="140" height="60" rx="6"/>
+  <text class="label" x="430" y="225">⑦ 通関書類</text>
+  <text class="small" x="430" y="245">FedEx/DHL/UPS 回答</text>
+  <rect class="box box-biz" x="530" y="200" width="140" height="60" rx="6"/>
+  <text class="label" x="600" y="225">⑧ 入金確認</text>
+  <text class="small" x="600" y="245">Payoneer / freee</text>
+  <rect class="box box-biz" x="700" y="200" width="140" height="60" rx="6"/>
+  <text class="label" x="770" y="225">⑨ 利益記録</text>
+  <text class="small" x="770" y="245">DB sales_history</text>
+  <line class="arrow" x1="770" y1="140" x2="770" y2="200" marker-end="url(#arr)"/>
+  <line class="arrow" x1="700" y1="230" x2="670" y2="230" marker-end="url(#arr)"/>
+  <line class="arrow" x1="530" y1="230" x2="500" y2="230" marker-end="url(#arr)"/>
+  <line class="arrow" x1="360" y1="230" x2="330" y2="230" marker-end="url(#arr)"/>
+  <text class="small" x="460" y="295" style="font-size:12px;fill:#888;">全 9 stage = MonoDeck UI + 定時実行 + 人間判断 のハイブリッド</text>
+</svg>
+
+<details><summary>各 stage の責任主体 (誰がやる? Claude / 自動 / 人間)</summary>
+<table>
+<tr><th>Stage</th><th>主体</th><th>自動度</th><th>人間確認</th></tr>
+<tr><td>① 仕入先発見</td><td>scheduler (morning_discovery 07:00 + supplier_sweep 02:30)</td><td>自動</td><td>不要 (候補生成のみ)</td></tr>
+<tr><td>② vetting (採用判定)</td><td>Claude Haiku で match_score 算出 + 人間が UI で「採用」click</td><td>半自動</td><td><strong>必須</strong></td></tr>
+<tr><td>③ eBay 出品</td><td>MonoDeck「個別出品」タブで人間がパラメータ調整 → AddItem 自動送信</td><td>半自動</td><td><strong>必須</strong> (ボタン押下)</td></tr>
+<tr><td>④ 在庫監視</td><td>inventory_check (5 時間ごと、367 SKU 巡回)</td><td>自動</td><td>不要</td></tr>
+<tr><td>⑤ 売上発生</td><td>order_alert_check (30 分ごと GetOrders polling)</td><td>自動</td><td>不要</td></tr>
+<tr><td>⑥ 仕入実行</td><td>人間が仕入先 URL を開いて発注</td><td>手動</td><td>100%</td></tr>
+<tr><td>⑦ 通関書類</td><td>FedEx メール来訪 → customs_check 自動 detect → draft 生成 → 人間 review → send</td><td>半自動</td><td><strong>必須</strong> (送信)</td></tr>
+<tr><td>⑧ 入金確認</td><td>Payoneer (手動) / freee 自動取込</td><td>手動 + 自動</td><td>必須</td></tr>
+<tr><td>⑨ 利益記録</td><td>task_order_alert が sales_history に自動 INSERT</td><td>自動</td><td>不要</td></tr>
+</table>
+</details>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch3">3. 全体アーキテクチャ図 — 1 枚図解</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25</p>
+
+<svg class="diagram" viewBox="0 0 920 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#666"/>
+    </marker>
+  </defs>
+  <style>
+    .layer { fill: white; stroke: #1f618d; stroke-width: 1.5; }
+    .layer-user { fill: #ebf5fb; }
+    .layer-ui { fill: #fef9e7; stroke: #d4a017; }
+    .layer-sched { fill: #fdecea; stroke: #c0392b; }
+    .layer-db { fill: #eafaf1; stroke: #27ae60; }
+    .layer-api { fill: #f4ecf7; stroke: #8e44ad; }
+    .layer-ai { fill: #fef5e7; stroke: #d68910; }
+    .title { font: bold 14px 'Helvetica Neue'; fill: #1a1a1a; text-anchor: middle; }
+    .sub { font: 11px 'Helvetica Neue'; fill: #555; text-anchor: middle; }
+    .arr { stroke: #666; stroke-width: 1.2; fill: none; }
+  </style>
+  <!-- user -->
+  <rect class="layer layer-user" x="380" y="20" width="160" height="50" rx="6"/>
+  <text class="title" x="460" y="42">👤 user (1人)</text>
+  <text class="sub" x="460" y="58">業務判断 / 緊急停止</text>
+  <!-- MonoDeck -->
+  <rect class="layer layer-ui" x="260" y="110" width="400" height="60" rx="6"/>
+  <text class="title" x="460" y="135">📊 MonoDeck (Streamlit UI, PID 24416)</text>
+  <text class="sub" x="460" y="155">11 タブ: 商品管理 / 仕入先 / 在庫 / 売上 / 通関 / 設定 / 定時実行 / 等</text>
+  <!-- Scheduler -->
+  <rect class="layer layer-sched" x="40" y="220" width="380" height="60" rx="6"/>
+  <text class="title" x="230" y="245">⏰ 定時実行 scheduler (PID 67036)</text>
+  <text class="sub" x="230" y="265">26 task / cron 02:30 / 06:00 / 11 / 15 / 18 / 22 等</text>
+  <!-- AI -->
+  <rect class="layer layer-ai" x="500" y="220" width="380" height="60" rx="6"/>
+  <text class="title" x="690" y="245">🧠 AI エージェント</text>
+  <text class="sub" x="690" y="265">subagent 5 種 + .company 9 部署 + Codex CLI</text>
+  <!-- DB -->
+  <rect class="layer layer-db" x="40" y="330" width="380" height="60" rx="6"/>
+  <text class="title" x="230" y="355">💾 SQLite DB (data/monitor.db)</text>
+  <text class="sub" x="230" y="375">43 table: ebay_listings / supplier_candidates / sales_history / 等</text>
+  <!-- External API -->
+  <rect class="layer layer-api" x="500" y="330" width="380" height="60" rx="6"/>
+  <text class="title" x="690" y="355">🌐 外部 API / MCP</text>
+  <text class="sub" x="690" y="375">eBay / Anthropic / Gemini / Gmail / Discord / FedEx & DHL / Drive / freee</text>
+  <!-- Discord -->
+  <rect class="layer layer-api" x="380" y="420" width="160" height="40" rx="6"/>
+  <text class="title" x="460" y="445">📢 Discord 通知</text>
+  <!-- arrows -->
+  <line class="arr" x1="460" y1="70" x2="460" y2="110" marker-end="url(#arr2)"/>
+  <line class="arr" x1="340" y1="170" x2="230" y2="220" marker-end="url(#arr2)"/>
+  <line class="arr" x1="580" y1="170" x2="690" y2="220" marker-end="url(#arr2)"/>
+  <line class="arr" x1="230" y1="280" x2="230" y2="330" marker-end="url(#arr2)"/>
+  <line class="arr" x1="690" y1="280" x2="690" y2="330" marker-end="url(#arr2)"/>
+  <line class="arr" x1="420" y1="360" x2="500" y2="360" marker-end="url(#arr2)"/>
+  <line class="arr" x1="500" y1="360" x2="420" y2="360" marker-end="url(#arr2)"/>
+  <line class="arr" x1="230" y1="390" x2="380" y2="420" marker-end="url(#arr2)"/>
+  <line class="arr" x1="690" y1="390" x2="540" y2="420" marker-end="url(#arr2)"/>
+</svg>
+
+<div class="meta-box">
+<strong>📌 注目ポイント</strong>:
+<ul>
+<li>MonoDeck と scheduler は <strong>独立した 2 プロセス</strong> (UI が落ちても自動実行は継続)</li>
+<li>DB は <strong>SQLite 単一ファイル</strong> (バックアップ容易、ただし WAL モードで同時書き込み制約あり)</li>
+<li>Discord は <strong>結果通知の唯一の outbound 経路</strong> (user の Discord アプリで実視認)</li>
+<li>Codex CLI は <strong>セカンドオピニオン用</strong> (Claude の見落とし発見、money-direct 修正前に投入)</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch4">4. 業務ドメイン規約 — DDP / Section 232 / SKU / コンディション 8 段階 / VeRO</h2>
+<p class="section-meta"><span class="tag tag-biz">業務理解</span> <span class="tag tag-warn">違反 = 金銭事故</span> 最終更新 2026-05-25</p>
+
+<div class="warning-box">
+<strong>⚠️ 本章は「絶対ルール」の集約。違反 = 売上喪失 / アカウント停止 / 関税赤字直結</strong>
+</div>
+
+<h3>4-1. DDP 出荷 (米国向け)</h3>
+<p><strong>Delivered Duty Paid</strong> = 関税は売主負担。販売価格に関税 buffer 必須 (最低 15%)。</p>
+
+<div class="meta-box">
+<strong>販売価格設計式</strong>:<br>
+<code>販売価格 = 原価 + 国際送料 + 関税 buffer + PLS 2% + eBay fee + 利益</code>
+</div>
+
+<h3>4-2. Section 232 関税 (鉄鋼・アルミ派生品)</h3>
+<table>
+<tr><th>Annex</th><th>税率</th><th>条件</th><th>該当例</th></tr>
+<tr><td>I-A</td><td>50%</td><td>重量閾値なし</td><td>HS 73xx 鉄鋼 / 76xx アルミ / 74xx 銅</td></tr>
+<tr><td>I-B</td><td>25%</td><td>metal weight ≥ 15%</td><td>HS 8516 炊飯器 / 8418 冷蔵 / 8708 自動車部品</td></tr>
+<tr><td>III</td><td>15%</td><td>transitional ~2027-12-31</td><td>HS 8421 ろ過 / 8428 産業ロボット</td></tr>
+</table>
+
+<h3>4-3. SKU 用途は 2 つだけ</h3>
+<table>
+<tr><th>在庫種別</th><th>SKU 形式</th><th>性質</th></tr>
+<tr><td>有在庫</td><td><code>stock**</code> (stock:01 / stock1 等)</td><td>同一 SKU を複数 listing が持つのが正常</td></tr>
+<tr><td>無在庫</td><td><code>ebay**_*****</code> (例 <code>ebayyh_p1221413657</code>)</td><td>SKU 変換 → 仕入先 URL</td></tr>
+</table>
+<div class="warning-box">
+<strong>絶対禁止</strong>: SKU を listing 主キーとして使う。<code>WHERE sku=?</code> / <code>GROUP BY sku</code> / <code>UNIQUE(sku)</code> / <code>JOIN ON sku=sku</code> 全部 NG。<strong>listing 識別は <code>ebay_item_id</code></strong>。詳細は <code>.claude/rules/sku-rules.md</code>
+</div>
+
+<h3>4-4. コンディション 8 段階</h3>
+<table>
+<tr><th>Rank</th><th>EN</th><th>JP</th><th>eBay Cond ID</th></tr>
+<tr><td>N</td><td>New (Unopened)</td><td>新品・未開封</td><td>1000</td></tr>
+<tr><td>S</td><td>Like New</td><td>新品同様</td><td>1500 (※カテゴリ依存)</td></tr>
+<tr><td>A</td><td>Excellent</td><td>美品・動作確認済</td><td>3000</td></tr>
+<tr><td>B</td><td>Good</td><td>並品</td><td>3000</td></tr>
+<tr><td>C</td><td>Fair</td><td>使用感あり</td><td>3000</td></tr>
+<tr><td>D</td><td>Issues</td><td>難あり</td><td>3000</td></tr>
+<tr><td>PO</td><td>Power-On Only</td><td>通電のみ</td><td>3000</td></tr>
+<tr><td>As-Is</td><td>As-Is</td><td>未確認/部品取り</td><td>7000 (理由必須)</td></tr>
+</table>
+
+<h3>4-5. eBay 出品文の禁止事項</h3>
+<ul>
+<li>❌ <strong>Country of Origin / Country of Manufacture</strong>: Title / HTML description / Item Specifics に絶対記載しない (関税リスク)</li>
+<li>❌ <strong>Manufacturer 欄</strong>: eBay XML builder は空文字列で送出</li>
+<li>✅ <strong>通関書類のみ</strong>: Manufacturer = 日本代理店、End Use = 実用途 (resale / 中国本社禁止)</li>
+</ul>
+
+<h3>4-6. VeRO ブランド</h3>
+<p>Apple / Nintendo / SONY 等の VeRO 該当ブランドは <code>data/vero_brands.json</code> で事前判定。非正規ルート品は出品しない (アカウント停止リスク)。</p>
+
+<details><summary>関連ファイル一覧</summary>
+<ul>
+<li><code>.claude/rules/sku-rules.md</code> — SKU 規約全文</li>
+<li><code>tools/ebay-manager/CLAUDE.md</code> — eBay 規約 4 セクション</li>
+<li><code>.company/ebay-knowledge/topics/section_232_tariff_2026_04.md</code> — Section 232 全 HTS</li>
+<li><code>reference_shipping_tariff_logic.md</code> (memory) — 送料 4 区分</li>
+</ul>
+</details>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch5">5. 主要ユースケース別フロー</h2>
+<p class="section-meta"><span class="tag tag-biz">業務理解</span> 最終更新 2026-05-25</p>
+
+<p>シナリオごとに「どの画面 → どの task → どの table → どの API」が連動するかを示す。これを覚えれば 80% のトラブルシュートに対応可能。</p>
+
+<details open><summary>UC-1. 新規商品の出品 (人間トリガー)</summary>
+<table>
+<tr><th>step</th><th>場所</th><th>処理</th><th>触る table / API</th></tr>
+<tr><td>1</td><td>MonoDeck「個別出品」タブ</td><td>仕入先 URL を入力</td><td>—</td></tr>
+<tr><td>2</td><td>同タブ「prefetch」</td><td>商品ページ scrape + Claude Haiku で rank 推定</td><td>API: Anthropic</td></tr>
+<tr><td>3</td><td>同タブ「description 生成」</td><td>Claude Sonnet で description HTML 生成</td><td>API: Anthropic</td></tr>
+<tr><td>4</td><td>同タブ「画像加工」</td><td>Photoroom + Gemini で hero 合成</td><td>API: Photoroom / Gemini</td></tr>
+<tr><td>5</td><td>同タブ「eBay 出品」</td><td><code>AddFixedPriceItem</code> 送信</td><td>API: eBay Trading / table: ebay_listings INSERT</td></tr>
+</table>
+</details>
+
+<details><summary>UC-2. 既存無在庫の在庫切れ検知 (自動)</summary>
+<table>
+<tr><th>step</th><th>場所</th><th>処理</th></tr>
+<tr><td>1</td><td>cron 02:30 / 11:00 / 15:00 / 18:00 / 22:00</td><td><code>inventory_check</code> が 367 SKU 巡回 (Selenium / httpx)</td></tr>
+<tr><td>2</td><td><code>monitored_items</code> table</td><td>status 更新 (在庫有 / 在庫無 / ページなし / エラー)</td></tr>
+<tr><td>3</td><td><code>inventory_alert</code> task</td><td>status 変化分のみ抽出 → Discord 通知</td></tr>
+<tr><td>4</td><td>MonoDeck「仕入先候補」タブ</td><td>OOS 商品に新仕入先候補が紐づいてれば表示</td></tr>
+<tr><td>5</td><td>人間が「採用」click</td><td><code>apply_supplier_candidate</code> → eBay <code>ReviseFixedPriceItem</code> で SKU 置換</td></tr>
+</table>
+</details>
+
+<details><summary>UC-3. 売上発生 → 仕入実行 → 利益確定</summary>
+<table>
+<tr><th>step</th><th>場所</th><th>処理</th></tr>
+<tr><td>1</td><td>cron 30 分ごと</td><td><code>order_alert_check</code> が eBay <code>GetOrders</code> polling</td></tr>
+<tr><td>2</td><td><code>sales_history</code> table</td><td>新規注文を INSERT (ebay_order_id 重複 IGNORE)</td></tr>
+<tr><td>3</td><td>Discord</td><td>高額 EU 注文 / DDPB 派生品 alert</td></tr>
+<tr><td>4</td><td>人間が仕入先 URL を開いて発注 (無在庫)</td><td>—</td></tr>
+<tr><td>5</td><td>仕入先 → user に「発注確認メール」送信</td><td><code>email_pickup</code> で取り込み</td></tr>
+<tr><td>6</td><td>MonoDeck「入荷確認」タブ</td><td>人間が「✅ 入荷確定」click → <code>fulfillment_order_link</code> table 更新</td></tr>
+<tr><td>7</td><td>商品到着 → user 検品 → eBay 経由で発送</td><td>—</td></tr>
+<tr><td>8</td><td>Payoneer 入金 / freee 同期</td><td>会計記録</td></tr>
+</table>
+</details>
+
+<details><summary>UC-4. 通関要求対応 (FedEx/DHL/UPS)</summary>
+<table>
+<tr><th>step</th><th>場所</th><th>処理</th></tr>
+<tr><td>1</td><td>cron 06:10</td><td><code>customs_check</code> が Gmail から「paperwork@fedex.com」等を検出</td></tr>
+<tr><td>2</td><td><code>customs_requests</code> table</td><td>新規要求を INSERT (TRK 番号 / 商品 / 期限)</td></tr>
+<tr><td>3</td><td>MonoDeck「通関対応」タブ</td><td>ドラフト自動生成 (Manufacturer = 日本代理店、End Use = 実用途)</td></tr>
+<tr><td>4</td><td>人間が review → 送信 click</td><td>Gmail send (kill switch: <code>customs_automation.send_enabled</code>)</td></tr>
+</table>
+</details>
+
+<details><summary>UC-5. ライバル価格追従 (W183 自動値下げ)</summary>
+<table>
+<tr><th>step</th><th>場所</th><th>処理</th></tr>
+<tr><td>1</td><td>cron 00:45 / 06:45 / 12:45 / 18:45</td><td><code>rival_pricing_refresh</code> task が <code>competitor_products</code> の最安値 fetch</td></tr>
+<tr><td>2</td><td>自社 listing の breakeven 比較</td><td>cap 内なら ReviseFixedPriceItem で値下げ</td></tr>
+<tr><td>3</td><td>cron 02:30 (週 7)</td><td><code>rival_detection</code> (W153) が新ライバル発見 → 人間 review 後 <code>competitor_products</code> に流入</td></tr>
+</table>
+</details>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch6">6. MonoDeck UI — 21 タブの機能 (実装 <code>app.py _W134_TABS</code> 準拠)</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25 (Codex Q1-1 反映: 11→21 タブ全件)</p>
+
+<p><strong>プロセス</strong>: <code>streamlit run app.py</code> (PID 24416、別 process)。起動方法は第 13 章参照。<br>
+<strong>tab 順序定義</strong>: <code>app.py:232-253</code> の <code>_W134_TABS</code></p>
+
+<table>
+<tr><th>順</th><th>タブ名</th><th>主機能</th></tr>
+<tr><td>1</td><td><strong>DASHBOARD</strong></td><td>日次集計 / 在庫切れ・売上・通関未送信 metric / 重要メール triage</td></tr>
+<tr><td>2</td><td><strong>商品管理</strong></td><td>active 535 listings の一覧 / 価格・SKU 編集 / 利益表示 / URL 直接 description 生成 (W152)</td></tr>
+<tr><td>3</td><td><strong>リサーチ脳</strong></td><td>W24 Research 脳 (Opus 4.7) の Q&A 履歴 / 業務深掘り</td></tr>
+<tr><td>4</td><td><strong>今日の発掘</strong></td><td>W122 朝 07:00 cron の結果表示 / 仕入先候補 sneak peek</td></tr>
+<tr><td>5</td><td><strong>入荷確認</strong></td><td>仕入完了 / fulfillment と eBay 注文の自動突合 (kind discriminator)</td></tr>
+<tr><td>6</td><td><strong>利益計算</strong></td><td>cost / breakeven / margin の単独 calc (W147 利益表示明確化)</td></tr>
+<tr><td>7</td><td><strong>在庫監視</strong></td><td>inventory_check 結果可視化 / 在庫無 / 在庫有 / ページなし / エラー 件数</td></tr>
+<tr><td>8</td><td><strong>eBay 連携</strong></td><td>eBay API 状態 / sync 履歴 / token 期限</td></tr>
+<tr><td>9</td><td><strong>最安値チェック</strong></td><td>W183 ライバル価格 vs 自社 / 自動値下げ実績</td></tr>
+<tr><td>10</td><td><strong>仕入先候補</strong></td><td>756 候補の一覧 / 採用・不採用 / 写真反映 / description 反映 (採用 1-click)</td></tr>
+<tr><td>11</td><td><strong>キーワード新着監視</strong></td><td>W148 / メルカリ・ヤフオク 2h ごと巡回 / 価格レンジ合致で Discord</td></tr>
+<tr><td>12</td><td><strong>モデル比較</strong></td><td>Opus / Sonnet / Haiku / Gemini の outcome 比較 (実験的)</td></tr>
+<tr><td>13</td><td><strong>個別出品</strong></td><td>URL → scrape → rank 推定 → description 生成 → 出品まで 1 連の wizard</td></tr>
+<tr><td>14</td><td><strong>通関対応</strong></td><td>customs_requests の draft review / 送信 (W14)</td></tr>
+<tr><td>15</td><td><strong>市場戦略</strong></td><td>W7-A primary_market 4 区分 (US_only / mixed_global / global_only / unknown)</td></tr>
+<tr><td>16</td><td><strong>動画学習</strong></td><td>YouTube → Gemini 構造化抽出 / knowledge_index 2550 chunk</td></tr>
+<tr><td>17</td><td><strong>エージェント監視</strong></td><td>subagent / .company 部署の活動状況 (実装中)</td></tr>
+<tr><td>18</td><td><strong>SKU 変換</strong></td><td>無在庫 SKU → 仕入先 URL 変換 dashboard</td></tr>
+<tr><td>19</td><td><strong>手動実行</strong></td><td>cron task を UI から手動 invoke (debug 用)</td></tr>
+<tr><td>20</td><td><strong>定時実行</strong></td><td>26 task の実行状況可視化 / missed alert / 健康 status</td></tr>
+<tr><td>21</td><td><strong>設定</strong></td><td>全体設定 (送料 / 燃料サーチャージ / eBay 認証 / Anthropic budget 等)</td></tr>
+</table>
+
+<div class="info-box">
+<strong>📌 file 配置</strong>: 11 タブは <code>tabs/tab_*.py</code> に分離、残り 10 タブは <code>app.py</code> 内 inline (歴史的経緯、refactor 候補)。tab 順序は user 業務頻度に基づき 5/16 W134 で再配置済。
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch7">7. データベース schema — 43 table の役割</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25</p>
+
+<p><strong>file</strong>: <code>tools/ebay-manager/data/monitor.db</code> (SQLite WAL mode)<br>
+<strong>schema 定義</strong>: <code>monitor/database.py</code> + 各 migration script。<code>PRAGMA user_version</code> で migration 番号管理。</p>
+
+<details open><summary>主要 table 上位 15 (件数順、最低 1 件以上)</summary>
+<table>
+<tr><th>table</th><th>件数</th><th>役割</th></tr>
+<tr><td><code>api_call_log</code></td><td>17,656</td><td>全 API 呼び出しログ (cost monitoring)</td></tr>
+<tr><td><code>task_execution_log</code></td><td>4,775</td><td>定時 task の実行履歴 (Q0 silent-skip 検出基盤)</td></tr>
+<tr><td><code>knowledge_index</code></td><td>2,550</td><td>動画学習で抽出した知識 chunk</td></tr>
+<tr><td><code>news_items</code></td><td>1,252</td><td>W154 AI ニュース (RSS / Reddit / HN)</td></tr>
+<tr><td><code>market_analysis</code></td><td>1,320</td><td>W7-A primary_market 分析結果</td></tr>
+<tr><td><code>supplier_ab_test_runs</code></td><td>1,180</td><td>仕入先 vetting AB test 結果</td></tr>
+<tr><td><code>market_strategy_decisions</code></td><td>934</td><td>市場戦略の意思決定履歴</td></tr>
+<tr><td><code>supplier_candidates</code></td><td>756</td><td>仕入先候補 (pending 163 / accepted 9 / applied 25 / rejected 559)</td></tr>
+<tr><td><code>ebay_listings</code></td><td>732 (active 535)</td><td>eBay 出品 master</td></tr>
+<tr><td><code>health_alert_log</code></td><td>484</td><td>scheduler_health_check の alert dedupe</td></tr>
+<tr><td><code>monitored_items</code></td><td>391</td><td>在庫監視台帳 (W139)</td></tr>
+<tr><td><code>emails</code></td><td>382</td><td>Gmail 取込ログ</td></tr>
+<tr><td><code>new_competitor_alerts</code></td><td>279</td><td>W184 新規競合 alert</td></tr>
+<tr><td><code>relist_history</code></td><td>112</td><td>End→Relist SEO ブースト履歴</td></tr>
+<tr><td><code>sales_history</code></td><td>108</td><td>売却履歴 (W149 で populate)</td></tr>
+</table>
+</details>
+
+<details><summary>その他 28 table (低件数 + 構造系)</summary>
+<p>customs_requests / competitor_products / listing_rival_discoveries / eps_upload_cache / site_configs / videos_learned / api_budget_log / check_log / ddpb_dispatch_alerts / description_templates / fulfillment_order_link / high_value_eu_alerts / inventory_decrement_log / keyword_watch_hits / keyword_watches / listing_drafts / listing_notes / listing_sale_warnings / morning_discovery_candidates / pending_market_changes / price_change_log / purchase_confirmation_log / research_brain_quota / research_qa / sales_history_fetch_failures / supplier_eval_pending / customs_kb_pending / customs_send_audit</p>
+</details>
+
+<div class="meta-box">
+<strong>📌 重要な PRIMARY KEY / UNIQUE INDEX</strong>
+<ul>
+<li><code>ebay_listings</code>: <strong>ebay_item_id</strong> (SKU ではない!)</li>
+<li><code>monitored_items</code>: ebay_item_id 識別 (W139fix 後)</li>
+<li><code>supplier_candidates</code>: id (auto-increment)</li>
+<li><code>sales_history</code>: <strong>UNIQUE(ebay_order_id, ebay_item_id) WHERE ebay_order_id IS NOT NULL</strong> (W149 で複合キー化、Codex Q1-3 訂正)</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch8">8. 定時実行 scheduler — 26 task の cron 表</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25</p>
+
+<p><strong>file</strong>: <code>daily_scheduler.py</code> (APScheduler BackgroundScheduler)<br>
+<strong>config</strong>: <code>config/schedule_config.json</code><br>
+<strong>execution_times</strong>: <code>[2, 11, 15, 18, 22]</code> (main batch) + 独立 cron 数種<br>
+<strong>レジストリ</strong>: <code>monitor/task_execution_log.py</code> の <code>TASK_SCHEDULE</code> (26 entries)</p>
+
+<div class="info-box">
+<strong>📌 「26 entries」と「下記 cron 表」の差異</strong> (Codex Q1-4 補足):
+<code>TASK_SCHEDULE</code> 26 件 = <strong>missed slot 検出対象</strong>のみ. 下記 cron 表には <code>order_alert_check</code> (30 min) / <code>scheduler_health_check</code> (04/12/16/19/23) / <code>claude_loop_healthcheck</code> (30 min :15) も含むが、これらは <code>kind=interval</code> or 内部監視系で registry から意図的に除外 (毎回発火を missed alert に出さないため). 章 6 の「定時実行」タブで全 cron job (registry 外含む) を可視化.
+</div>
+
+<details open><summary>cron 別 task 一覧</summary>
+<table>
+<tr><th>時刻</th><th>task</th><th>役割</th><th>所要</th></tr>
+<tr><td>02:30 (main batch)</td><td>ebay_sync</td><td>eBay GetMyeBaySelling で 535 listings 同期</td><td>~10 min</td></tr>
+<tr><td>02:30</td><td>ensure_monitor_coverage</td><td>W139 監視台帳 自動補完</td><td>~0s</td></tr>
+<tr><td>02:30</td><td>inventory_check</td><td>367 SKU の在庫巡回 (Selenium / httpx) ※ <code>schedule_config.json:60</code> description は「348件」と stale 記述、実数は monitored_items active=367</td><td>~23 min</td></tr>
+<tr><td>02:30</td><td>inventory_alert</td><td>status 変化分を Discord 通知</td><td>~0s</td></tr>
+<tr><td>02:30</td><td>supplier_select</td><td>長期在庫切れ 50 件の候補選出</td><td>~0s</td></tr>
+<tr><td>02:30 のみ</td><td>supplier_sweep</td><td>30 SKU 一括仕入先探索 (Anthropic Batch)</td><td>~15 min</td></tr>
+<tr><td>02:30 のみ</td><td>enrich_listings_physical</td><td>weight/dimensions populate</td><td>~1-2 min</td></tr>
+<tr><td>02:30 のみ</td><td>estimate_weights_claude</td><td>Haiku で weight 推定</td><td>~30s</td></tr>
+<tr><td>02:30 のみ</td><td>daily_relist</td><td>End→Relist SEO ブースト 7 件/日</td><td>~6s</td></tr>
+<tr><td>02:30 のみ</td><td>cleanup_old_relisted</td><td>90 日経過 listing 物理 DELETE</td><td>~0s</td></tr>
+<tr><td>02:30 のみ</td><td>research_morning_brief</td><td>Opus 4.7 で本日の重点 3 項目生成</td><td>~1-2 min</td></tr>
+<tr><td>02:30 のみ</td><td>rival_detection</td><td>W153 商品別ライバル発見 (Browse API)</td><td>~30s</td></tr>
+<tr><td>02:30 + 18:00</td><td>video_learning_queue</td><td>Gemini で動画 8 件知識化</td><td>~5 min</td></tr>
+<tr><td>11/15/18/22 のみ</td><td>email_pickup</td><td>Gmail から重要メール抽出</td><td>~1-2 min</td></tr>
+<tr><td>main batch 全 slot</td><td>data_sync</td><td>sku_conversion + inventory_check → DB 統合</td><td>~0s</td></tr>
+<tr><td>main batch 全 slot</td><td>price_optimization</td><td>ランク + 競合データで価格提案 30 件</td><td>~0s</td></tr>
+<tr><td>月曜 02:30 のみ</td><td>fuel_surcharge_check</td><td>FedEx / DHL 燃料サーチャージ取得</td><td>~5s</td></tr>
+<tr><td>02:30 (日曜のみ)</td><td>market_analysis_refresh</td><td>W7-A 市場戦略 refresh (CDP Chrome 必要)</td><td>~5 min</td></tr>
+<tr><td>06:00 独立</td><td>news_check</td><td>W154 AI ニュース (RSS 8 + Reddit 6 + HN 4)</td><td>~4 min</td></tr>
+<tr><td>06:10 独立</td><td>customs_check</td><td>FedEx / DHL / UPS 通関要求検知</td><td>~5s</td></tr>
+<tr><td>06/12/19 独立</td><td>budget_alert</td><td>Anthropic API 月予算アラート</td><td>~1s</td></tr>
+<tr><td>07:00 独立</td><td>morning_discovery</td><td>W122 Opus 4.7 新商品発掘</td><td>~3-8 min</td></tr>
+<tr><td>03:00 独立</td><td>daily_codex_lint</td><td>W125 memory / 設計書 Codex 文書 lint</td><td>~14s</td></tr>
+<tr><td>00/06/12/18 :45</td><td>rival_pricing_refresh</td><td>W183 ライバル価格 refresh + 自動値下げ</td><td>~50s</td></tr>
+<tr><td>04/12/16/19/23 :00</td><td>scheduler_health_check</td><td>missed slot 検出 → Discord</td><td>~1s</td></tr>
+<tr><td>30 min ごと</td><td>order_alert_check</td><td>eBay GetOrders polling + 高額 EU alert</td><td>~3s</td></tr>
+<tr><td>30 min ごと :15</td><td>claude_loop_healthcheck</td><td>claude-loop 生存監視</td><td>~0s</td></tr>
+<tr><td>2h ごと :20</td><td>keyword_watch_crawl</td><td>W148 メルカリ・ヤフオク監視</td><td>~1-5 min</td></tr>
+</table>
+</details>
+
+<div class="meta-box">
+<strong>📌 meta-info (scheduler 共通)</strong>
+<ul>
+<li><strong>責務</strong>: 業務自動化の中核、人間が居ない時間帯に処理を進める</li>
+<li><strong>関連 path</strong>: <code>daily_scheduler.py</code> / <code>tasks/task_*.py</code> (39 file) / <code>config/schedule_config.json</code></li>
+<li><strong>失敗時の影響</strong>: task ごと: 在庫情報 stale / 売上検知遅延 / 通関期限 miss / 値下げ機会損失</li>
+<li><strong>手動復旧</strong>: scheduler PID kill → python daily_scheduler.py で再起動 (第 13 章)</li>
+<li><strong>変更時の注意</strong>: TASK_SCHEDULE 編集後は scheduler 再起動必須 (古いコードが cache される)。新 task は task_key 必須、kind=interval は expected slot 模型から除外</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch9">9. 外部 API / MCP 連携</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25</p>
+
+<table>
+<tr><th>API / MCP</th><th>用途</th><th>認証</th><th>quota / cost</th><th>失敗時</th></tr>
+<tr><td>eBay Trading API</td><td>出品 / 同期 / 注文 / Revise</td><td>OAuth user_token (.env)</td><td>API call/day 上限</td><td>retry queue → 24h 後再試行</td></tr>
+<tr><td>eBay Browse API</td><td>W153 ライバル検出</td><td>OAuth app token</td><td>5000 calls/day</td><td>backoff retry, daily cap で skip</td></tr>
+<tr><td>Anthropic API (Claude)</td><td>description 生成 / vetting / 動画分析 / research-brain</td><td>API key (.env)</td><td>月 $120 cap (現状)</td><td>budget_alert で警告 → 自動 fallback</td></tr>
+<tr><td>Gemini API</td><td>動画学習 (8 件/日 Flash)</td><td>Google credential</td><td>Free tier 20 RPD</td><td>permanent_failed マーク (W19)</td></tr>
+<tr><td>Photoroom API</td><td>画像背景除去 / hero 合成</td><td>API key</td><td>—</td><td>UI で warning</td></tr>
+<tr><td>Gmail API</td><td>メール pickup / 通関検知 / customs 送信</td><td>OAuth2 token (credentials.json)</td><td>Quota Units 1B/day</td><td>token refresh 失敗で停止</td></tr>
+<tr><td>FedEx / DHL HTML</td><td>燃料サーチャージ取得</td><td>—</td><td>—</td><td>bot 検知失敗 → Discord 通知 + 手動更新</td></tr>
+<tr><td>Discord Webhook</td><td>全通知の outbound</td><td>webhook URL</td><td>5 msg/2s</td><td>5xx で 1s retry x1、失敗で claim 巻き戻し</td></tr>
+<tr><td>MCP: Google Drive</td><td>file 連携 (将来)</td><td>OAuth</td><td>—</td><td>—</td></tr>
+<tr><td>MCP: freee</td><td>会計連携 (将来)</td><td>OAuth</td><td>—</td><td>—</td></tr>
+<tr><td>MCP: Playwright</td><td>UI 自動テスト</td><td>local</td><td>—</td><td>—</td></tr>
+<tr><td>Codex CLI (GPT-5.5)</td><td>セカンドオピニオン (memory / 設計書)</td><td>ChatGPT Plus</td><td>5h 枠 15-80 件</td><td>timeout / 認証失敗で空 list (修正済)</td></tr>
+</table>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch10">10. AI エージェント + 知識基盤 — subagent 5 種 + .company 9 部署 + Obsidian Vault + assistant memory</h2>
+<p class="section-meta"><span class="tag tag-tech">技術詳細</span> 最終更新 2026-05-25</p>
+
+<h3>10-1. Claude Code subagent (5 種、コードレベル)</h3>
+<table>
+<tr><th>subagent</th><th>モデル</th><th>用途</th><th>呼出元</th></tr>
+<tr><td><code>code-architect</code></td><td>Opus 4.7</td><td>機能設計、設計書作成</td><td>新機能 W 番号着手時</td></tr>
+<tr><td><code>code-reviewer</code></td><td>Opus 4.7</td><td>code review (HIGH=0 まで loop)</td><td>commit 前、Q4 規約</td></tr>
+<tr><td><code>codex-reviewer</code></td><td>Opus 4.7 + GPT-5.5</td><td>memory / 設計書の外部 lint</td><td>daily_codex_lint cron + 自発</td></tr>
+<tr><td><code>ebay-listing</code></td><td>Haiku 4.5</td><td>個別出品の Title/description 生成</td><td>MonoDeck UI から</td></tr>
+<tr><td><code>research-brain</code></td><td>Opus 4.7</td><td>業務判断・深い考察</td><td>research_morning_brief / supplier 二段判定</td></tr>
+</table>
+
+<h3>10-2. .company/ 部署 (9 部署、業務組織として)</h3>
+<table>
+<tr><th>部署</th><th>file 数</th><th>役割</th></tr>
+<tr><td><code>secretary/</code></td><td>115</td><td>窓口・相談・タスク管理、user との対話の主</td></tr>
+<tr><td><code>research/</code></td><td>102</td><td>商品 / 競合 / トレンドリサーチ、ライバル分析</td></tr>
+<tr><td><code>daily-operations/</code></td><td>53</td><td>出品 / 在庫 / 注文 / CS 日々業務</td></tr>
+<tr><td><code>finance/</code></td><td>42</td><td>売上 / 仕入 / 経費 / 損益、freee 連携</td></tr>
+<tr><td><code>engineering/</code></td><td>26</td><td>システム開発 / 自動化 / API 連携</td></tr>
+<tr><td><code>learning/</code></td><td>18</td><td>動画学習で抽出した知識集</td></tr>
+<tr><td><code>_archive/</code></td><td>11</td><td>過去 ROADMAP / 完了案件</td></tr>
+<tr><td><code>ebay-knowledge/</code></td><td>6</td><td>eBay ポリシー / 規約 / KB</td></tr>
+<tr><td><code>ebay-listing/</code></td><td>4</td><td>出品文 template / ガイドライン</td></tr>
+</table>
+
+<div class="info-box">
+<strong>📌 運営ルール</strong> (詳細 <code>.company/CLAUDE.md</code>)
+<ul>
+<li>user との対話は <strong>常に secretary</strong> が窓口</li>
+<li>部署作業は該当フォルダに自動記録 (decisions.md / learnings.md / inbox/)</li>
+<li>同日 1 ファイル原則、追記式</li>
+</ul>
+</div>
+
+<h3>10-3. Obsidian Vault (memory dir) — assistant の知識基盤</h3>
+<p>assistant (Claude Opus 4.7) の <strong>cross-session 記憶 + 累積知識</strong> は <code>~/.claude/projects/C--Users-gucch-projects-claude/memory/</code> に <strong>177 個の .md ファイル</strong>として保存されている。これを Obsidian Vault として開くと、Graph view で知識構造を可視化できる。</p>
+
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">memory .md file</div><div class="kpi-value">177</div></div>
+<div class="kpi"><div class="kpi-label">frontmatter 適用率</div><div class="kpi-value">96%</div></div>
+<div class="kpi"><div class="kpi-label">type field (flat+nested)</div><div class="kpi-value">95%</div></div>
+<div class="kpi"><div class="kpi-label">[[wikilink]] 出現</div><div class="kpi-value">163</div></div>
+<div class="kpi"><div class="kpi-label">unique link target</div><div class="kpi-value">91</div></div>
+<div class="kpi"><div class="kpi-label">MEMORY.md size</div><div class="kpi-value">12 KB</div></div>
+</div>
+
+<h4>memory file の 4 種類 (prefix 命名規約)</h4>
+<table>
+<tr><th>prefix</th><th>件数</th><th>用途</th><th>例</th></tr>
+<tr><td><code>session_*</code></td><td>66</td><td>1 日 1 file、その日の作業総括 + 失敗 + 学び + carryover</td><td><code>session_2026_05_25_*.md</code></td></tr>
+<tr><td><code>feedback_*</code></td><td>60</td><td>user 指摘 / 自己学び / rule 性質を持つもの (R-1〜R-12 含む)</td><td><code>feedback_codex_review_usage.md</code></td></tr>
+<tr><td><code>project_*</code></td><td>14</td><td>W 番号別の機能進捗・状況</td><td><code>project_sku_mapping.md</code></td></tr>
+<tr><td><code>reference_*</code></td><td>10</td><td>業務 KB / 規約の引用先 (cascade-update R-4 対象)</td><td><code>reference_shipping_tariff_logic.md</code></td></tr>
+<tr><td>その他</td><td>27</td><td>learning / source / audit / user_role / _overview / MEMORY*</td><td><code>_overview.md</code> (知識構造マップ)</td></tr>
+</table>
+
+<h4>frontmatter schema</h4>
+<pre>---
+name: kebab-case-slug          # file 名と同じ
+description: 1 行要約           # 関連性判定で使う
+metadata:
+  type: feedback|reference|session|project|user|learning
+  layer: tier-1|tier-2|tier-3   # always-load / on-demand / archive
+  updated: 2026-05-25
+  sources:
+    - https://...
+    - .company/engineering/docs/...
+---</pre>
+
+<h4>auto-load 動線 (SessionStart hook)</h4>
+<ol>
+<li>session 開始時、native Claude Code が <code>MEMORY.md</code> を <strong>25 KB cap</strong> で自動 load (= 私の context に injection)</li>
+<li>同時に SessionStart hook が <code>_NEXT_SESSION.md</code> を <strong>7000 chars cap</strong> で読み込み (前 session からの carryover)</li>
+<li>tier-2 file (詳細 session memory) は MEMORY.md で <strong>1 行 hook</strong> として navigate、必要時に Read tool で随時読み込み</li>
+</ol>
+
+<div class="meta-box">
+<strong>📌 5/25 朝の緊急復旧</strong>: MEMORY.md が 51 KB に肥大化 (各行 1000-3000 chars のダイジェスト本文埋め込み型) → 25 KB cap で truncate → 私が session 開始時に文脈把握不全。slim 化で 12 KB に削減、各行 200 chars 以下にした。commit <code>c746daf</code>
+</div>
+
+<h3>10-4. assistant memory cycle (記憶のライフサイクル)</h3>
+
+<svg class="diagram" viewBox="0 0 920 360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8e44ad"/>
+    </marker>
+  </defs>
+  <style>
+    .mbox { fill: white; stroke: #8e44ad; stroke-width: 1.5; }
+    .mbox-input { fill: #f4ecf7; }
+    .mbox-store { fill: #fef9e7; stroke: #d4a017; }
+    .mbox-out { fill: #eafaf1; stroke: #27ae60; }
+    .mlabel { font: 13px 'Helvetica Neue'; fill: #1a1a1a; text-anchor: middle; }
+    .msub { font: 10px 'Helvetica Neue'; fill: #555; text-anchor: middle; }
+    .marrow { stroke: #8e44ad; stroke-width: 1.6; fill: none; }
+  </style>
+  <!-- Input -->
+  <rect class="mbox mbox-input" x="20" y="40" width="140" height="50" rx="6"/>
+  <text class="mlabel" x="90" y="62">① user 指示</text>
+  <text class="msub" x="90" y="78">対話 / 修正 / 質問</text>
+  <rect class="mbox mbox-input" x="20" y="110" width="140" height="50" rx="6"/>
+  <text class="mlabel" x="90" y="132">② 失敗 / 学び</text>
+  <text class="msub" x="90" y="148">事故 / push back</text>
+  <rect class="mbox mbox-input" x="20" y="180" width="140" height="50" rx="6"/>
+  <text class="mlabel" x="90" y="202">③ 動画学習</text>
+  <text class="msub" x="90" y="218">YouTube → Gemini</text>
+  <rect class="mbox mbox-input" x="20" y="250" width="140" height="50" rx="6"/>
+  <text class="mlabel" x="90" y="272">④ 業務 KB / 規約</text>
+  <text class="msub" x="90" y="288">Section 232 等</text>
+  <!-- Store -->
+  <rect class="mbox mbox-store" x="220" y="40" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="320" y="62">session memory</text>
+  <text class="msub" x="320" y="78">66 file / 1 日 1 file</text>
+  <rect class="mbox mbox-store" x="220" y="110" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="320" y="132">feedback memory</text>
+  <text class="msub" x="320" y="148">60 file / rule 性質</text>
+  <rect class="mbox mbox-store" x="220" y="180" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="320" y="202">knowledge_index DB</text>
+  <text class="msub" x="320" y="218">2550 chunk / 45 video</text>
+  <rect class="mbox mbox-store" x="220" y="250" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="320" y="272">reference memory</text>
+  <text class="msub" x="320" y="288">10 file / cascade 対象</text>
+  <!-- Mid layer -->
+  <rect class="mbox" x="480" y="110" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="580" y="132">MEMORY.md index</text>
+  <text class="msub" x="580" y="148">72 行 / 1 行 200 chars</text>
+  <rect class="mbox" x="480" y="180" width="200" height="50" rx="6"/>
+  <text class="mlabel" x="580" y="202">_overview.md</text>
+  <text class="msub" x="580" y="218">知識構造マップ</text>
+  <!-- Output -->
+  <rect class="mbox mbox-out" x="740" y="110" width="160" height="50" rx="6"/>
+  <text class="mlabel" x="820" y="132">SessionStart hook</text>
+  <text class="msub" x="820" y="148">auto-load 25 KB</text>
+  <rect class="mbox mbox-out" x="740" y="180" width="160" height="50" rx="6"/>
+  <text class="mlabel" x="820" y="202">_NEXT_SESSION.md</text>
+  <text class="msub" x="820" y="218">前 session carryover</text>
+  <!-- Arrows: input -> store -->
+  <line class="marrow" x1="160" y1="65" x2="220" y2="65" marker-end="url(#arr3)"/>
+  <line class="marrow" x1="160" y1="135" x2="220" y2="135" marker-end="url(#arr3)"/>
+  <line class="marrow" x1="160" y1="205" x2="220" y2="205" marker-end="url(#arr3)"/>
+  <line class="marrow" x1="160" y1="275" x2="220" y2="275" marker-end="url(#arr3)"/>
+  <!-- Store -> index -->
+  <line class="marrow" x1="420" y1="135" x2="480" y2="135" marker-end="url(#arr3)"/>
+  <line class="marrow" x1="420" y1="205" x2="480" y2="205" marker-end="url(#arr3)"/>
+  <!-- Index -> auto-load -->
+  <line class="marrow" x1="680" y1="135" x2="740" y2="135" marker-end="url(#arr3)"/>
+  <line class="marrow" x1="680" y1="205" x2="740" y2="205" marker-end="url(#arr3)"/>
+  <text class="msub" x="450" y="335" style="fill:#888;">入力 → 保存 → index → 次 session の私に injection (cross-session 連続性)</text>
+</svg>
+
+<div class="meta-box">
+<strong>📌 meta-info (10-3 + 10-4 共通)</strong>
+<ul>
+<li><strong>責務</strong>: assistant の cross-session 記憶 / 累積知識 / 規約遵守の substrate</li>
+<li><strong>関連 path</strong>: <code>~/.claude/projects/.../memory/*.md</code> (177 file) / <code>~/.claude/agents/*.md</code></li>
+<li><strong>関連 rule</strong>: <code>.claude/rule-snippets/wiki-frontmatter.md</code> / <code>cascade-update.md</code> / <code>llm-wiki-compilation.md</code></li>
+<li><strong>失敗時の影響</strong>: MEMORY.md truncate → session 開始時の文脈把握不全 → 過去事故再発リスク</li>
+<li><strong>手動復旧</strong>: <code>session-resume</code> skill (/resume) で過去 session を再 read、もしくは <code>_overview.md</code> で知識構造再構築</li>
+<li><strong>変更時の注意</strong>: MEMORY.md は <strong>index、各行 200 chars 以下</strong>。本文は session_*.md 本体に。<code>[[wikilink]]</code> は slug 一致必須 (hyphen / underscore 混在禁止)</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch11">11. 責任境界 / データ信頼度 / 人間確認ポイント ⭐</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> <span class="tag tag-warn">最重要</span> 最終更新 2026-05-25</p>
+
+<div class="info-box">
+<strong>📌 本章の本旨</strong>: 「どこまで自動化されているか / どこから人間判断必須か」「DB と外部 API のどちらが正か」を明確化。これが無いと外注エンジニアが事故を起こす。
+</div>
+
+<h3>11-1. 責任境界マトリクス</h3>
+<table>
+<tr><th>判断</th><th>主体</th><th>人間確認</th></tr>
+<tr><td>新規 listing の Title / description 文言</td><td>Claude 生成</td><td><strong>必須</strong> (出品 button 押下前)</td></tr>
+<tr><td>仕入先候補の採用 / 不採用</td><td>Claude match_score 提案</td><td><strong>必須</strong> (checkbox + 一括実行)</td></tr>
+<tr><td>在庫状態の判定 (在庫有/無/ページなし)</td><td>scheduler 自動</td><td>不要</td></tr>
+<tr><td>ライバル価格追従の自動値下げ</td><td>scheduler 自動 (breakeven cap 内)</td><td>不要 (cap 超過時は提案のみ)</td></tr>
+<tr><td>通関書類の送信</td><td>Claude draft 生成</td><td><strong>必須</strong> (送信 click)</td></tr>
+<tr><td>eBay listing の SKU 変更 (採用後)</td><td>Claude 自動 + ReviseFixedPriceItem</td><td>採用 click 後は自動</td></tr>
+<tr><td>fulfillment と eBay 注文の突合</td><td>Claude 自動 (kind=fulfillment、qty 比按分)</td><td>不要 (失敗時 retry queue)</td></tr>
+<tr><td>DB schema 変更 (migration)</td><td>—</td><td><strong>絶対 必須</strong> (Q2 6 step / 24h retrospective review)</td></tr>
+<tr><td>scheduler 設定変更</td><td>—</td><td><strong>必須</strong> (再起動も)</td></tr>
+<tr><td>外注エンジニアへの権限付与</td><td>—</td><td><strong>絶対 必須</strong> (user 自身)</td></tr>
+</table>
+
+<h3>11-2. データ信頼度の階層</h3>
+<table>
+<tr><th>data</th><th>真実源</th><th>DB との関係</th><th>信頼度</th></tr>
+<tr><td>eBay 出品状態 (出品中/終了)</td><td><strong>eBay 側が正</strong></td><td>ebay_sync で 5 時間ごと反映、最大 5h 遅延</td><td>~95%</td></tr>
+<tr><td>仕入先在庫</td><td><strong>外部サイトが正</strong></td><td>inventory_check で 5 時間ごと反映、bot 検知時は古いまま</td><td>~85%</td></tr>
+<tr><td>eBay 注文</td><td><strong>eBay 側が正</strong></td><td>order_alert_check で 30 分ごと反映、最大 30 min 遅延</td><td>~99%</td></tr>
+<tr><td>sales_history</td><td>DB</td><td>eBay 由来だが 90 日上限あり (5/22 以降は populate 済)</td><td>2026/1/1 以降は ~99%</td></tr>
+<tr><td>fulfillment_order_link</td><td>DB (Claude 推定)</td><td>order_id + qty 比 按分、人間 review 推奨</td><td>~80%</td></tr>
+<tr><td>送料 (US 軸差分式)</td><td>settings.json + 暫定 <code>price * 0.20</code></td><td>4 区分別実装は候補 C/D で進行中</td><td>暫定 (β fix)</td></tr>
+<tr><td>燃料サーチャージ</td><td>settings.json (月曜 cron)</td><td>bot 検知時は古いまま → 5/25 現在 5 週間前の値</td><td>🟡 stale 警告</td></tr>
+<tr><td>Claude の提案 (description / rank)</td><td>Claude モデル</td><td>確定情報ではない、人間 review 必須</td><td>候補</td></tr>
+<tr><td>scheduler の missed alert</td><td>health_alert_log</td><td>intermittent failure は捕捉漏れあり (改善中)</td><td>missed-only ~95%</td></tr>
+</table>
+
+<h3>11-3. 「DB 直接編集禁止」の境界</h3>
+<div class="warning-box">
+<strong>🚨 DB 直接 INSERT/UPDATE/DELETE は原則禁止</strong><br>
+やむを得ず実行する場合は <code>.claude/rules/db-migration-rules.md</code> の 6 step (snapshot → 1 件試行 → 全件 → SELECT → 24h retrospective code-reviewer → 補正/rollback)
+</div>
+<ul>
+<li>✅ <strong>SELECT 系</strong>: いつでも OK</li>
+<li>✅ <strong>UI 経由の編集</strong>: MonoDeck の各タブから操作 (履歴が UI に残る)</li>
+<li>❌ <strong>本番ステータス遷移</strong>: <code>status='failed' → 'pending'</code> 等</li>
+<li>❌ <strong>金銭関連カラム</strong>: price / profit / quantity</li>
+<li>❌ <strong>スキーマ変更</strong>: ALTER / DROP</li>
+</ul>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch12">12. セキュリティ / 秘密情報 / 権限 ⭐</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> <span class="tag tag-warn">外注前に必読</span> 最終更新 2026-05-25</p>
+
+<h3>12-1. 秘密情報の保存場所</h3>
+<table>
+<tr><th>情報</th><th>保存場所</th><th>絶対禁止</th></tr>
+<tr><td>eBay OAuth token (18 ヶ月)</td><td><code>.env</code> (project root)</td><td>git commit / Discord / log 出力</td></tr>
+<tr><td>Anthropic API key</td><td><code>.env</code></td><td>同上</td></tr>
+<tr><td>Discord webhook URL</td><td><code>config/schedule_config.json</code> (本来 .env 推奨)</td><td>同上</td></tr>
+<tr><td>Gmail OAuth2 credentials</td><td><code>config/credentials.json</code></td><td>同上</td></tr>
+<tr><td>Gmail OAuth2 token (refresh)</td><td><code>%LOCALAPPDATA%\ebay-manager\gmail_token.json</code> (OneDrive 同期外 secure store)</td><td>OneDrive 配下に置かない、自動移行済 (<code>monitor/secure_paths.py</code>)</td></tr>
+<tr><td>Photoroom API key</td><td><code>.env</code></td><td>同上</td></tr>
+</table>
+
+<h3>12-2. 外注に渡してよい / だめな情報</h3>
+<table>
+<tr><th>カテゴリ</th><th>渡してよい</th><th>絶対渡してはいけない</th></tr>
+<tr><td>ソースコード</td><td>✅ (GitHub repo public)</td><td>—</td></tr>
+<tr><td>設計書 / 説明資料</td><td>✅ 本資料含む</td><td>—</td></tr>
+<tr><td>DB schema</td><td>✅</td><td>本番 monitor.db 全件</td></tr>
+<tr><td>API key</td><td>—</td><td>❌ 全 .env 変数</td></tr>
+<tr><td>eBay 出品実データ</td><td>サンプル 3-5 件 OK</td><td>❌ 全 535 件 + Buyer 情報</td></tr>
+<tr><td>顧客情報 (Buyer / 注文者)</td><td>—</td><td>❌ 個人情報保護法</td></tr>
+<tr><td>仕入先 URL / 価格</td><td>サンプル OK</td><td>—</td></tr>
+<tr><td>銀行口座 / Payoneer / freee 情報</td><td>—</td><td>❌</td></tr>
+</table>
+
+<h3>12-3. .gitignore で除外している file</h3>
+<details><summary>.env / credentials / .pid / .lock / data/* 等</summary>
+<pre>.env
+config/credentials.json
+config/token.json
+data/scheduler.pid
+data/monitor.db (本番、別途バックアップ運用)
+data/monitor.db-shm
+data/monitor.db-wal
+*.lock
+data/tmp/
+data/backups/
+data/.selenium_profile/</pre>
+</details>
+
+<h3>12-4. quality-gate.sh による物理 BLOCK</h3>
+<p><code>.claude/hooks/quality-gate.sh</code> (PreToolUse) で以下を <strong>tool 実行前に拒否</strong>:</p>
+<ul>
+<li><code>print(file=sys.stderr)</code> (pythonw 互換性)</li>
+<li><code>except: pass</code> / <code>except Exception: pass</code> (silent skip 防止)</li>
+<li>migration 内の <code>DROP TABLE</code> / <code>DELETE FROM</code> 無 try/except</li>
+</ul>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch13">13. 運用手順 — 起動 / 停止 / commit / push / バックアップ</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> 最終更新 2026-05-25</p>
+
+<h3>13-1. MonoDeck (Streamlit UI)</h3>
+<details><summary>起動 / 停止</summary>
+<pre># 起動
+cd C:\Users\gucch\projects\claude\tools\ebay-manager
+python run_monodeck.py
+# (Py3.13 win32_ver WMI ハング回避済、PID は data/monodeck.pid)
+
+# 停止
+Stop-Process -Id &lt;PID&gt; -Force
+
+# /mono コマンド (Claude Code skill) で 1 コマンド起動</pre>
+</details>
+
+<h3>13-2. scheduler</h3>
+<details><summary>起動 / 停止 / 再起動 (新コード反映必須)</summary>
+<pre># 起動
+cd C:\Users\gucch\projects\claude\tools\ebay-manager
+$env:PYTHONUNBUFFERED='1'; $env:PYTHONIOENCODING='utf-8'
+Start-Process -FilePath python -ArgumentList 'daily_scheduler.py' -WindowStyle Hidden -PassThru
+
+# 再起動 (scripts/scheduler_restart_w133.ps1 推奨)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scheduler_restart_w133.ps1
+
+# 停止
+$oldPid = (Get-Content data/scheduler.pid -Raw).Trim()
+Stop-Process -Id $oldPid -Force</pre>
+</details>
+
+<div class="warning-box">
+<strong>⚠️ コード変更後は必ず scheduler 再起動</strong>: APScheduler は module を起動時に load、commit/push しただけでは古いコードが動き続ける (5/23 W154 で実証された事故)
+</div>
+
+<h3>13-3. git workflow</h3>
+<details><summary>commit / push / branch</summary>
+<pre># status
+git status
+
+# diff
+git diff &lt;file&gt;
+
+# add (specific files only, .env 等を巻き込まない)
+git add tools/ebay-manager/path/to/file.py
+
+# commit (HEREDOC で multi-line)
+git commit -m "$(cat &lt;&lt;'EOF'
+fix: xxx
+詳細...
+Co-Authored-By: Claude Opus 4.7 (1M context) &lt;noreply@anthropic.com&gt;
+EOF
+)"
+
+# push
+git push origin main</pre>
+</details>
+
+<h3>13-4. DB バックアップ</h3>
+<ul>
+<li><strong>場所</strong>: <code>data/backups/</code> (gitignored)</li>
+<li><strong>頻度</strong>: 重要変更前に手動 (例: migration 前)</li>
+<li><strong>取り方</strong>: <code>Copy-Item data/monitor.db data/backups/monitor.db.backup_&lt;date&gt;</code></li>
+<li><strong>復元</strong>: scheduler / MonoDeck 停止 → file 上書き → 起動</li>
+</ul>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch14">14. 障害対応 / トラブルシュート</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> 最終更新 2026-05-25</p>
+
+<h3>14-1. 症状別 検索</h3>
+<details open><summary>定時実行が動いてない (= Discord に通知が来ない)</summary>
+<ol>
+<li>scheduler 生存確認: <code>Get-Process -Id (Get-Content data/scheduler.pid)</code></li>
+<li>死んでたら 13-2 で再起動</li>
+<li>生きてたら scheduler.log tail で最後の発火時刻確認</li>
+<li>task 別の最終 success: DB <code>SELECT MAX(finished_at) FROM task_execution_log WHERE task_key='xxx'</code></li>
+<li>原因不明なら <code>scheduler_health_check</code> の最新 message を見る</li>
+</ol>
+</details>
+
+<details><summary>MonoDeck が真っ白 / エラー画面</summary>
+<ol>
+<li><code>data/streamlit.log</code> tail で traceback</li>
+<li>MonoDeck PID kill → 13-1 で再起動</li>
+<li>session_state 関連なら browser tab reload (R キー)</li>
+</ol>
+</details>
+
+<details><summary>DB locked / database is locked</summary>
+<ol>
+<li>WAL competition: 長時間 transaction を持つ task (news_check 等) と log_api_call が衝突</li>
+<li>原因 task の transaction 短縮が根治 (5/25 commit c746daf で対応済)</li>
+<li>緊急回避: scheduler 再起動で transaction reset</li>
+</ol>
+</details>
+
+<details><summary>eBay 出品の状態が DB と違う</summary>
+<ol>
+<li><strong>eBay 側が正</strong> (第 11 章データ信頼度参照)</li>
+<li><code>ebay_sync</code> を手動 invoke で強制同期</li>
+<li>差分が大きい場合は <code>ebay_listings</code> backup + 全件 re-sync</li>
+</ol>
+</details>
+
+<details><summary>仕入先 OOS / FedEx / DHL bot 検知で失敗</summary>
+<ol>
+<li>Discord 通知に「手動更新の手順」が記載される (5/25 強化済)</li>
+<li>fuel_surcharge: 公式 URL で値確認 → MonoDeck「全体設定」タブで手入力</li>
+<li>OOS retry: paypay HTTP 500 は構造的 error、W161 Playwright fallback で対応予定</li>
+</ol>
+</details>
+
+<h3>14-2. やってはいけない操作</h3>
+<div class="warning-box">
+<ul>
+<li>❌ <code>git push --force</code> origin/main (履歴破壊)</li>
+<li>❌ <code>data/monitor.db</code> 直接 SQL UPDATE/DELETE (Q2 6 step なし)</li>
+<li>❌ <code>.env</code> を git add</li>
+<li>❌ scheduler を強制 kill 中に migration 実行 (DB lock 残骸)</li>
+<li>❌ MonoDeck 稼働中に <code>monitor.db</code> を上書き</li>
+<li>❌ Discord webhook URL を log 出力</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch15">15. 変更設計ガイド — 新機能追加時の手順</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> 最終更新 2026-05-25</p>
+
+<div class="info-box">
+<strong>📌 本章の本旨</strong>: 「W164 新機能を作る時、どこを見て、どこを触ればよいか」のチェックリスト。設計書 template としても再利用。
+</div>
+
+<h3>15-1. Phase 構成 (Q3 構造化フロー)</h3>
+<table>
+<tr><th>Phase</th><th>やること</th><th>成果物</th></tr>
+<tr><td>Phase 0</td><td>ROADMAP 起票 (<code>/add_s</code> or <code>data/system_improvements.json</code>)</td><td>W 番号 + 1 行説明</td></tr>
+<tr><td>Phase 1</td><td>関連コード探索 (Grep / Glob で既存実装)</td><td>—</td></tr>
+<tr><td>Phase 2</td><td>影響範囲分析 (関連 task / table / API / UI)</td><td>—</td></tr>
+<tr><td>Phase 3</td><td>Clarify (user に 3-5 questions、仕様確定)</td><td>—</td></tr>
+<tr><td>Phase 4</td><td>code-architect で設計書作成</td><td><code>.company/engineering/docs/YYYY-MM-DD-Wxxx-*.md</code></td></tr>
+<tr><td>Phase 5</td><td>2 段 review: 内部 code-reviewer (Opus) + Codex (GPT-5.5)</td><td>HIGH=0 まで loop</td></tr>
+<tr><td>Phase 6</td><td>実装 (新規 file / 既存 file edit / DB migration)</td><td>code + test</td></tr>
+<tr><td>Phase 7</td><td>Q1 DoD 検証: pytest + Streamlit + Playwright + DB SELECT + scheduler.log</td><td>—</td></tr>
+<tr><td>Phase 8</td><td>commit + push + ROADMAP「完了」mark</td><td>git push origin main</td></tr>
+</table>
+
+<h3>15-2. 新機能のチェックリスト</h3>
+<table>
+<tr><th>項目</th><th>確認</th></tr>
+<tr><td>新規 cron task か?</td><td>→ <code>TASK_SCHEDULE</code> 登録 + <code>daily_scheduler.py</code> dispatch + <code>schedule_config.json</code> tasks_enabled</td></tr>
+<tr><td>新規 DB column / table か?</td><td>→ <code>monitor/database.py</code> init_db で <code>try/except OperationalError</code> でラップ + <code>PRAGMA user_version</code> bump</td></tr>
+<tr><td>UI 追加か?</td><td>→ <code>tabs/tab_xxx.py</code> 新規 + <code>app.py</code> で tab 登録</td></tr>
+<tr><td>外部 API 新規呼出か?</td><td>→ <code>monitor/api_logger.py</code> で <code>log_api_call</code> wrap、cost monitoring 必須</td></tr>
+<tr><td>Discord 通知追加か?</td><td>→ <code>notifiers/discord_notifier.py</code> 経由 + R-11 user 実視認 verify</td></tr>
+<tr><td>SKU を扱うか?</td><td>→ <code>.claude/rules/sku-rules.md</code> 再読 (主キー使用禁止)</td></tr>
+<tr><td>金銭計算を含むか?</td><td>→ Codex 2 段 review 推奨 (money-direct silent gap 防止)</td></tr>
+<tr><td>テストを書くか?</td><td>→ <code>tests/test_xxx.py</code>、<code>tests/conftest.py</code> autouse fixture で DB 隔離済</td></tr>
+</table>
+
+<h3>15-3. 設計書テンプレ (.company/engineering/docs/)</h3>
+<details><summary>YYYY-MM-DD-Wxxx-機能名.md の構成</summary>
+<pre>---
+created: YYYY-MM-DD
+status: 設計中 | レビュー中 | 実装中 | 完了
+roadmap_id: 247
+---
+
+# Wxxx 機能名 設計書 v1
+
+## 1. 業務目的
+何の問題を解決するか (業務メタファで)
+
+## 2. 現状 (as-is)
+- 既存実装
+- 既存制約
+- 既存 pain point
+
+## 3. 設計 (to-be)
+- 新規 file
+- 既存 file 変更
+- DB schema 変更
+- UI 変更
+- cron 変更
+
+## 4. 影響範囲
+- 関連 file (grep 結果)
+- 関連 task
+- 関連 table
+- 関連 API
+- regression test 対象
+
+## 5. リスク
+- silent skip 候補
+- money-direct 影響
+- データ整合性
+
+## 6. 検証 (Q1 DoD)
+- pytest
+- Streamlit + Playwright
+- DB SELECT
+- scheduler.log
+
+## 7. 完了基準</pre>
+</details>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch16">16. 知識増強サイクル ⭐ — 動画学習 / cascade-update / OPLOG / daily lint / 設計書循環</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> <span class="tag tag-warn">assistant 強化の本旨</span> 最終更新 2026-05-25</p>
+
+<div class="info-box">
+<strong>📌 本章の本旨</strong>: assistant (Claude Opus 4.7) の知識を <strong>恒常的に増やす + 矛盾を自動検出</strong>する仕組み。本章が機能不全だと、assistant は同じ事故を何度も繰り返す (md-files-can-be-wrong R-1 違反 / 過去事例忘却)。
+</div>
+
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">動画学習済</div><div class="kpi-value">45</div></div>
+<div class="kpi"><div class="kpi-label">knowledge chunk</div><div class="kpi-value">2,550</div></div>
+<div class="kpi"><div class="kpi-label">ROADMAP W 番号</div><div class="kpi-value">147</div></div>
+<div class="kpi"><div class="kpi-label">完了 W</div><div class="kpi-value">55</div></div>
+<div class="kpi"><div class="kpi-label">設計書 .md</div><div class="kpi-value">21</div></div>
+<div class="kpi"><div class="kpi-label">memory file</div><div class="kpi-value">177</div></div>
+</div>
+
+<h3>16-1. 知識の 5 入力源</h3>
+<table>
+<tr><th>入力源</th><th>形式</th><th>取り込み機構</th><th>保存先</th></tr>
+<tr><td><strong>動画学習</strong> (YouTube)</td><td>mp4 / transcript</td><td><code>video_learning_queue</code> cron (02:30 + 18:00、8 件/日 Gemini Flash)</td><td><code>knowledge_index</code> table (2550 chunk) + <code>videos_learned</code> (45 件)</td></tr>
+<tr><td><strong>user 対話 / 指摘</strong></td><td>自然言語</td><td>session 中に私が <code>feedback_*.md</code> 新規作成</td><td><code>memory/feedback_*.md</code> (60 件)</td></tr>
+<tr><td><strong>業務 KB / 規約</strong></td><td>Markdown</td><td>user or 私が <code>.company/ebay-knowledge/</code> に追加</td><td><code>.company/ebay-knowledge/*.md</code> (6 件) + <code>reference_*.md</code> memory (10 件)</td></tr>
+<tr><td><strong>設計書 (新機能 W 番号)</strong></td><td>Markdown</td><td>code-architect (Opus 4.7) が作成、Phase 4</td><td><code>.company/engineering/docs/YYYY-MM-DD-Wxxx-*.md</code> (21 件)</td></tr>
+<tr><td><strong>失敗 / 事故</strong></td><td>自然言語</td><td>session memory に総括として記録 (1 日 1 file)</td><td><code>memory/session_*.md</code> (66 件)</td></tr>
+</table>
+
+<h3>16-2. 知識の 4 出力機構 (assistant への injection)</h3>
+<table>
+<tr><th>機構</th><th>タイミング</th><th>対象</th><th>cap / 制約</th></tr>
+<tr><td>SessionStart hook auto-load</td><td>session 開始時</td><td><code>MEMORY.md</code> + <code>_NEXT_SESSION.md</code></td><td>25 KB + 7000 chars</td></tr>
+<tr><td>UserPromptSubmit hook router</td><td>user prompt 毎</td><td><code>.claude/rule-snippets/*.md</code> (5 file) の keyword 一致時 JIT inject</td><td>10 KB</td></tr>
+<tr><td>always-load rule (constitution)</td><td>session 開始時</td><td><code>.claude/rules/*.md</code> (Critical 7 + constitution = 656 行)</td><td>—</td></tr>
+<tr><td>Read tool on-demand</td><td>私が必要と判断時</td><td>memory / 設計書 / 業務 KB を直接 Read</td><td>—</td></tr>
+</table>
+
+<h3>16-3. 知識整合性の検証機構 (cascade / lint / 矛盾検出)</h3>
+
+<svg class="diagram" viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#27ae60"/>
+    </marker>
+  </defs>
+  <style>
+    .vbox { fill: white; stroke: #27ae60; stroke-width: 1.5; }
+    .vbox-rule { fill: #eafaf1; }
+    .vbox-tool { fill: #fef9e7; stroke: #d4a017; }
+    .vbox-out { fill: #fdecea; stroke: #c0392b; }
+    .vlabel { font: 13px 'Helvetica Neue'; fill: #1a1a1a; text-anchor: middle; }
+    .vsub { font: 10px 'Helvetica Neue'; fill: #555; text-anchor: middle; }
+    .varrow { stroke: #27ae60; stroke-width: 1.6; fill: none; }
+  </style>
+  <!-- 知識編集 trigger -->
+  <rect class="vbox vbox-rule" x="40" y="40" width="200" height="60" rx="6"/>
+  <text class="vlabel" x="140" y="65">memory / 規約 / 業務 KB 編集</text>
+  <text class="vsub" x="140" y="83">user 指示 or 私が更新</text>
+  <!-- cascade-update rule -->
+  <rect class="vbox vbox-rule" x="40" y="140" width="200" height="60" rx="6"/>
+  <text class="vlabel" x="140" y="165">cascade-update rule</text>
+  <text class="vsub" x="140" y="183">関連 file 全件 grep 必須</text>
+  <!-- daily lint -->
+  <rect class="vbox vbox-tool" x="320" y="40" width="200" height="60" rx="6"/>
+  <text class="vlabel" x="420" y="65">daily_codex_lint (03:00 cron)</text>
+  <text class="vsub" x="420" y="83">Codex GPT-5.5 で 30 file lint</text>
+  <!-- cascade detector -->
+  <rect class="vbox vbox-tool" x="320" y="140" width="200" height="60" rx="6"/>
+  <text class="vlabel" x="420" y="165">cascade gap detector</text>
+  <text class="vsub" x="420" y="183">keyword 共有 file 矛盾検出</text>
+  <!-- Outputs -->
+  <rect class="vbox vbox-out" x="600" y="40" width="280" height="60" rx="6"/>
+  <text class="vlabel" x="740" y="65">findings JSONL (HIGH=0 期待)</text>
+  <text class="vsub" x="740" y="83">data/codex_lint_log/YYYY-MM-DD-lint.jsonl</text>
+  <rect class="vbox vbox-out" x="600" y="140" width="280" height="60" rx="6"/>
+  <text class="vlabel" x="740" y="165">Discord 通知 (HIGH 3+ 件)</text>
+  <text class="vsub" x="740" y="183">user が翌朝確認 → 修正</text>
+  <!-- Arrows -->
+  <line class="varrow" x1="240" y1="70" x2="320" y2="70" marker-end="url(#arr4)"/>
+  <line class="varrow" x1="240" y1="170" x2="320" y2="170" marker-end="url(#arr4)"/>
+  <line class="varrow" x1="520" y1="70" x2="600" y2="70" marker-end="url(#arr4)"/>
+  <line class="varrow" x1="520" y1="170" x2="600" y2="170" marker-end="url(#arr4)"/>
+  <text class="vsub" x="460" y="245" style="fill:#888;">編集 → 自動 lint → 矛盾検出 → user に Discord → 修正 = 知識循環の verify ループ</text>
+</svg>
+
+<table>
+<tr><th>検証機構</th><th>頻度</th><th>検出対象</th><th>修正 SLA</th></tr>
+<tr><td><code>daily_codex_lint</code> (W125)</td><td>cron 03:00 + 手動</td><td>memory / 設計書の矛盾 / stale date / 出典欠落 / wikilink 切れ / frontmatter 不備</td><td>HIGH 3+ 件で Discord → 24 h 以内 user 修正</td></tr>
+<tr><td><code>cascade-update</code> rule</td><td>編集時必須</td><td>規約変更時の関連 file 漏れ (3 か所鏡像更新)</td><td>同 session で全 file 更新必須</td></tr>
+<tr><td>Codex 2 段 review</td><td>money-direct 修正前</td><td>内部 code-reviewer (Opus) が見落とした silent gap</td><td>HIGH=0 まで loop</td></tr>
+<tr><td>md-files-can-be-wrong R-1</td><td>調査時 mental check</td><td>.md 文書も誤りを含む前提</td><td>実コード grep で sanity check</td></tr>
+</table>
+
+<h3>16-4. 知識循環の運用ルール</h3>
+
+<h4>動画学習 (W22 / W28)</h4>
+<ul>
+<li><strong>仕組み</strong>: user が興味ある YouTube URL を memory にメモ → cron 02:30 / 18:00 で <code>video_learning_queue</code> task が pickup → Gemini 2.5 Flash で transcript + 構造化抽出 → <code>knowledge_index</code> に chunk 化保存 (現在 2550 chunk / 45 video)</li>
+<li><strong>Opus 4.7 深掘り</strong> (W22 ハイブリッド): Flash 抽出後、重要動画は Opus で「業務適用ポイント」を再生成</li>
+<li><strong>quota</strong>: Free tier 20 RPD、現状 8 件/日に余裕あり (W28 で 5→8 増量済)</li>
+<li><strong>失敗 mark</strong>: <code>permanent_failed</code> (W19) で再試行禁止 = silent skip 防止</li>
+</ul>
+
+<h4>ROADMAP 自動登録 (W 番号管理)</h4>
+<ul>
+<li><strong>file</strong>: <code>tools/ebay-manager/data/system_improvements.json</code> (147 W 番号 / 完了 55 / 進行 51)</li>
+<li><strong>登録</strong>: user 口頭依頼を即 <code>/add_s</code> skill で W 番号付き登録 (feedback_roadmap_auto_add.md 規約)</li>
+<li><strong>状態</strong>: 未着手 / 設計中 / 設計完了 / 実装中 / レビュー中 / 完了 / 棄却</li>
+<li><strong>関連設計書</strong>: <code>.company/engineering/docs/YYYY-MM-DD-Wxxx-*.md</code> (21 件)</li>
+</ul>
+
+<h4>cascade-update R-4 (3 か所鏡像更新)</h4>
+<ul>
+<li><strong>trigger</strong>: <code>CLAUDE.md</code> / <code>.claude/rules/*.md</code> / <code>reference_*.md</code> / 業務 KB / 設計書 / <code>tools/ebay-manager/CLAUDE.md</code> / rule 性質 feedback の 編集時</li>
+<li><strong>5 step</strong>: keyword 抽出 → grep 全件発掘 → 要否判定 (touching / informative / unrelated) → 同 session で同時更新 → session memory に「cascade scan: keyword=X, 影響 N file, 更新 M file」記録</li>
+<li><strong>違反事例</strong>: 2026-04-29 SKU 規約改訂で 1 か所だけ修正 → 翌日 assistant が古い記述を真に受け事故再発</li>
+</ul>
+
+<h4>OPLOG / INGEST 機械台帳 (Q7 LLM Wiki Compilation)</h4>
+<ul>
+<li><strong>設計</strong>: <code>.claude/rule-snippets/llm-wiki-compilation.md</code> で「session_*.md 内に <code>[OPLOG]</code> 行で 1 行 wiki 更新履歴を記録」と定義済</li>
+<li><strong>現状</strong>: <strong>未実装</strong> (5/25 朝の Codex 指摘で発覚、抽出/集計 checker は未来 W で起票候補)</li>
+<li><strong>本来の役割</strong>: 「いつ / 誰が / どの memory file を / 何のために編集したか」を機械的に grep 可能化</li>
+</ul>
+
+<div class="meta-box">
+<strong>📌 meta-info (本章共通)</strong>
+<ul>
+<li><strong>責務</strong>: assistant 知識の取り込み + 整合性検証 + 矛盾自動検出</li>
+<li><strong>関連 path</strong>: <code>tools/ebay-manager/tasks/task_video_learning.py</code> / <code>monitor/codex_lint_runner.py</code> / <code>.claude/rule-snippets/llm-wiki-compilation.md</code> / <code>.claude/rules/cascade-update.md</code></li>
+<li><strong>関連 task</strong>: <code>video_learning_queue</code> (02:30+18:00) / <code>daily_codex_lint</code> (03:00)</li>
+<li><strong>関連 table</strong>: <code>knowledge_index</code> / <code>videos_learned</code> / <code>news_items</code></li>
+<li><strong>失敗時影響</strong>: cascade 漏れ → 古い記述残存 → assistant 誤判定 → 過去事故再発 (今日の 5/25 だけで 2 件発生: MEMORY.md 巨大化 silent truncate / daily_codex_lint silent success 5 日)</li>
+<li><strong>変更時の注意</strong>: 動画学習 quota 上限変更時は task_video_learning.py の max_items_per_run と Gemini billing 連動。cascade-update の触発 trigger に新 file 種別追加時は cascade-update.md を更新</li>
+<li><strong>未解決 TODO</strong>: OPLOG/INGEST checker 実装 / metadata.type 命名統一 (flat vs nested) / Obsidian Graph view export 自動化</li>
+</ul>
+</div>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<h2 id="ch17">17. 用語集 / 参照パス一覧</h2>
+<p class="section-meta"><span class="tag tag-ops">運用・設計</span> 最終更新 2026-05-25</p>
+
+<h3>17-1. 用語集</h3>
+<table>
+<tr><th>用語</th><th>意味</th></tr>
+<tr><td>W番号 (例 W164)</td><td>ROADMAP の機能番号、<code>data/system_improvements.json</code> 管理</td></tr>
+<tr><td>Q0-Q7</td><td>品質ルール (Q0 silent-skip 禁止 / Q1 DoD 11 step / Q2 DB migration 冪等 / Q3 構造化フロー / Q4 code-reviewer HIGH=0 / Q5 完了報告 / Q6 モデル選定 / Q7 LLM Wiki)</td></tr>
+<tr><td>K0-K3</td><td>Karpathy 4 原則 (K0 Think Before / K1 Simplicity / K2 Surgical / K3 Goal-Driven)</td></tr>
+<tr><td>R-1〜R-12</td><td>運用 R (R-1 .md も誤りを含む / R-4 3 か所鏡像更新 / R-9 SUPERSEDED 検出 / R-10 SessionStart recovery / R-11 Discord 視認 / R-12 doc 配置 check first)</td></tr>
+<tr><td>DDP</td><td>Delivered Duty Paid、関税売主負担</td></tr>
+<tr><td>VeRO</td><td>Verified Rights Owner、eBay の知財保護プログラム</td></tr>
+<tr><td>primary_market</td><td>W7-A 4 区分 (US_only / mixed_global / global_only / unknown)</td></tr>
+<tr><td>SKU</td><td>有在庫 = stock**、無在庫 = ebay**_*****</td></tr>
+<tr><td>cascade-update</td><td>関連 file 全件 grep + 同 session 更新 (rule)</td></tr>
+<tr><td>silent skip / silent success</td><td>失敗が記録されない (Q0 禁止)</td></tr>
+<tr><td>MonoDeck</td><td>Streamlit UI dashboard</td></tr>
+<tr><td>subagent</td><td>Claude Code の階層エージェント (code-architect 等)</td></tr>
+<tr><td>cascade pin</td><td>test_w*_migration で <code>assert ver == N</code> を全件更新</td></tr>
+</table>
+
+<h3>17-2. 参照パス一覧 (重要 file)</h3>
+<table>
+<tr><th>path</th><th>役割</th></tr>
+<tr><td><code>CLAUDE.md</code> (project root)</td><td>プロジェクト構造・絶対ルール</td></tr>
+<tr><td><code>tools/ebay-manager/CLAUDE.md</code></td><td>eBay 規約 4 セクション</td></tr>
+<tr><td><code>.claude/rules/*.md</code></td><td>Critical 7 + constitution (常時 always-load)</td></tr>
+<tr><td><code>.claude/rule-snippets/*.md</code></td><td>on-demand snippet (router で JIT inject)</td></tr>
+<tr><td><code>.claude/agents/*.md</code></td><td>subagent 定義 5 種</td></tr>
+<tr><td><code>tools/ebay-manager/app.py</code></td><td>MonoDeck UI 本体</td></tr>
+<tr><td><code>tools/ebay-manager/daily_scheduler.py</code></td><td>cron scheduler</td></tr>
+<tr><td><code>tools/ebay-manager/monitor/database.py</code></td><td>DB schema 定義</td></tr>
+<tr><td><code>tools/ebay-manager/monitor/task_execution_log.py</code></td><td>TASK_SCHEDULE 26 entries + log helpers</td></tr>
+<tr><td><code>tools/ebay-manager/config/schedule_config.json</code></td><td>cron config</td></tr>
+<tr><td><code>~/.claude/projects/.../memory/MEMORY.md</code></td><td>memory index (auto-load)</td></tr>
+<tr><td><code>~/.claude/projects/.../memory/_overview.md</code></td><td>知識構造マップ</td></tr>
+<tr><td><code>USER_MANUAL.md</code> (project root)</td><td>user 手動操作手順集</td></tr>
+</table>
+
+<hr class="chap-end">
+
+<!-- ============================================================ -->
+<div class="info-box" id="regen">
+<strong>📝 本資料の更新ポリシー</strong>
+<ul>
+<li>新機能 W 完了時に該当章を更新 (cascade-update.md 規約に従う)</li>
+<li>DB schema / cron / 部署 / subagent 追加時は事実数字を再 fetch (本資料 KPI セクション)</li>
+<li>外注に渡す時は第 12 章「外注に渡してよい/だめな情報」を確認</li>
+<li>自動再生成 script: <code>scripts/regen_system_overview.py</code> (未実装、ROADMAP 候補)</li>
+<li><strong>fact check 結果 (2026-05-25 14:35)</strong>: 機械 verify 16 項目中 13 一致、3 件 ±1 ズレ (active 出品 / 退役 listing / supplier pending、午前 cron 走行で正常変動). 不変側 (規約・構造) は 100% 一致</li>
+</ul>
+</div>
+
+<p style="text-align:center; margin-top:40px; color:#888; font-size:0.85em;">
+End of document — generated 2026-05-25 by Claude Opus 4.7 + Codex GPT-5.5 (independent review)
+</p>
+
+</body>
+</html>

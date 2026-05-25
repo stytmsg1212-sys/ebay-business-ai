@@ -4,14 +4,25 @@
 """
 Discord Notifier - Discord Webhook 通知システム
 定期実行タスク の結果を Discord チャネルに投稿
+
+2026-05-25 (Codex Phase B review Q4): webhook URL の .env 移行.
+旧: schedule_config.json に bare 保存 → git commit で公開リスク
+新: .env DISCORD_WEBHOOK_URL 優先, schedule_config は後方互換 fallback
 """
 
+import os
 import sys
 import json
 import requests
 import logging
 from datetime import datetime
 from typing import Optional, Dict, List
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+except ImportError:
+    pass  # dotenv 未インストール時は os.environ 直接参照 (起動側で読み込まれていれば OK)
 
 if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -24,9 +35,23 @@ class DiscordNotifier:
     def __init__(self, webhook_url: str):
         """
         Args:
-            webhook_url: Discord Webhook URL
+            webhook_url: Discord Webhook URL (後方互換 fallback only)
+
+        2026-05-25 改訂: .env DISCORD_WEBHOOK_URL を最優先.
+        schedule_config.json から渡される webhook_url は legacy fallback で,
+        .env が無い時のみ使用. 本来は schedule_config から URL を完全撤去.
         """
-        self.webhook_url = webhook_url
+        env_url = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
+        if env_url:
+            self.webhook_url = env_url
+        else:
+            if webhook_url and 'discord.com/api/webhooks' in webhook_url:
+                # legacy schedule_config 由来. 警告 log で .env 移行を促す.
+                logger.warning(
+                    "Discord webhook_url が schedule_config 由来. .env DISCORD_WEBHOOK_URL に "
+                    "移行してください (security risk: git commit で公開)"
+                )
+            self.webhook_url = webhook_url or ''
         self.timeout = 10
 
     def send_message(self, message: str, embed: Optional[Dict] = None) -> bool:

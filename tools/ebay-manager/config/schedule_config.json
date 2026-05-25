@@ -3,7 +3,8 @@
   "created_at": "2026-04-11",
   "description": "日々全体フロー自動化システム - スケジュール設定",
   "discord": {
-    "webhook_url": "https://discord.com/api/webhooks/1492273797292621895/9OSE_Xqn7R_0qHVMTj7GwSKGigtfmtthV-ZxKjUll7dUbDHiVf8fN3yBJbBLPMg_xpJI",
+    "webhook_url": "",
+    "_webhook_url_note": "2026-05-25 Codex Q4: .env DISCORD_WEBHOOK_URL に移行. notifier.DiscordNotifier が env を優先で読む. 旧 URL は user が Discord 管理画面で rotate 済.",
     "enabled": true,
     "notification_channel": "#notifications"
   },
