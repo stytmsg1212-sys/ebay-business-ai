@@ -1600,6 +1600,26 @@
     "source": "W164-pm Phase C 検知後 cleanup を踏まえた再発防止案"
   },
   {
+    "id": 259,
+    "tag": "W175",
+    "title": "個別出品 wizard 完了後 HTTP 431 (Request Header Too Large) 根治",
+    "description": "2026-05-25 user 報告: 個別出品 タブで `保存&ACTIVE出品` 実行 (eBay AddItem 成功 ebay_item_id=358597336018 / listing_drafts id=16 status='applied' DB 確定) 後、Streamlit が HTTP 431 で全 page 不達。Claude 当初仮説 (session_state 累積 → Cookie overflow) は Codex review (W175 fix_plan) で『session_state は server-side で request header に乗らない、Cookie は session UUID 50 bytes のみ』と却下。真因要計測。Phase 0: Chrome DevTools Network → Headers → Cookie 行 byte 数を出品前後で計測し真因特定。候補真因 (1) 過去 session Cookie 累積 (Streamlit 複数 cookie 発行) (2) 拡張機能注入 (3) 巨大 query string / Referer (4) Tornado max_header_size 16KB 超過。判明後別 W で対策 (cookie削除 / Tornado config / 拡張機能 isolation)。本 W175 は計測待ちで blocking 状態",
+    "status": "調査中 (Phase 0 計測待ち)",
+    "priority": "高",
+    "created": "2026-05-25",
+    "source": "2026-05-25 user 報告 HTTP 431 + Codex review で root cause 再検証"
+  },
+  {
+    "id": 258,
+    "tag": "W174",
+    "title": "test_fixture DB schema 不足解消 (14 件 pre-existing pytest failure)",
+    "description": "2026-05-25 W170 fix verify 時に発覚した 14 件 pre-existing test 失敗を解消。customs_kb / customs_sender / customs_w14ext_draft / morning_discovery 系で `sqlite3.OperationalError: no such table: customs_kb_pending` 等の DB schema 不足 error。conftest.py で本番 DB 隔離 (tmp_path) は機能しているが init_db() が呼ばれていないか migration version が test では skip されている疑い。本来 W170 と無関係の pre-existing 問題だが、CI/regression coverage の盲点なので別 W で対応。修正規模: conftest.py の autouse fixture 内で init_db() を呼ぶ + 必要なら migration を test 環境で完走させるロジック追加 (~10-20 LOC)",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "W170 fix verify 時に発覚した pre-existing failures"
+  },
+  {
     "id": 257,
     "tag": "W173",
     "title": "W164-pm 4 fix 完了 (morning_brief budget / fuel_surcharge HTML dump / rival_detection first_err / orphan cleanup)",

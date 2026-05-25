@@ -4943,9 +4943,41 @@ if _w134_sel == "仕入先候補":
         unsafe_allow_html=True,
     )
 
+    @st.fragment
     def _render_candidate_card(row: dict, context: str):
-        """1候補の表示＋操作ボタン。context='replace' or 'altlist' で色分け。"""
+        """1候補の表示＋操作ボタン。context='replace' or 'altlist' で色分け。
+
+        2026-05-25 W174-pm user 報告: 採用/不採用 button 押下後 st.rerun() で
+        st.tabs() が tab 0 (復活候補) にリセットされ、user が操作中のタブから
+        移動してしまう UX バグ。@st.fragment で button rerun を fragment scope
+        に限定し、親の st.tabs() 状態を維持する (同 codebase _render_oos_block
+        と同 pattern).
+
+        scope 設計 (code-reviewer HIGH-2 対応):
+        - 不採用 (L5305 付近): default fragment scope = タブ維持優先
+          + session_state `_sup_rejected_{cid}` hide フラグで「処理済」caption
+        - 採用 (L5293 付近): `st.rerun(scope="app")` で full rerun =
+          採用直後の photo prompt / desc prompt section (L5314+) を表示優先
+          (採用は元から status='applied' で履歴タブに candidate 移動 = タブ
+          維持は副次的、photo prompt 表示が UX 仕様 W112+W148-X)
+        """
         cid = row["id"]
+        # W174-pm H-1: 不採用直後の hide caption (fragment scope で card 自体は
+        # 残るため、user に「処理されました」明示しないと「効いてない」と感じる)
+        if st.session_state.get(f"_sup_rejected_{cid}"):
+            st.caption(
+                f"✓ 不採用にしました (cid={cid})。"
+                "次回画面更新で履歴タブに移動します。"
+            )
+            return
+        # W174-pm 別SKU出品機会 (alt_only) 採用後の hide caption
+        # 個別出品タブで pre-fill 済を user に明示 + 次アクション誘導
+        if st.session_state.get(f"_sup_il_prefilled_{cid}"):
+            st.caption(
+                f"✓ 採用 → 「個別出品」タブで仕入先 URL pre-fill 済 (cid={cid})。"
+                "タブを切り替えて続行してください。"
+            )
+            return
         # W112 H-3 (2026-05-08 retrospective): 前回 click のメッセージを表示
         # (rerun 後に消えないよう session_state 経由で持ち越し).
         for _lvl, _msg in st.session_state.pop(f"_sup_msgs_{cid}", []):
@@ -5148,7 +5180,10 @@ if _w134_sel == "仕入先候補":
         # alt_listing のみ (score<60 + alt=1) は反映不可なので採用ボタンも disabled.
         alt_only = (score < 60) and bool(row.get("alt_listing_possible"))
         if alt_only:
-            st.caption("別SKU出品機会のため現 listing には反映不可（別途新規出品フロー）")
+            st.caption(
+                "別SKU出品機会: 採用で「個別出品」タブに仕入先 URL を pre-fill します "
+                "(現 listing への SKU 書換は別途別パス)"
+            )
 
         _lock_key = f"_sup_lock_{cid}"
         _processing = st.session_state.get(_lock_key, False)
@@ -5158,9 +5193,40 @@ if _w134_sel == "仕入先候補":
             if _processing:
                 st.caption("⏳ 処理中... (二度押し防止)")
             elif st.button(
-                "採用", key=f"sup_accept_{context}_{cid}",
-                type="primary", disabled=alt_only,
+                "個別出品で新規" if alt_only else "採用",
+                key=f"sup_accept_{context}_{cid}",
+                type="primary",
+                help=(
+                    "別SKU出品機会: 仕入先 URL を「個別出品」タブの URL 欄に pre-fill "
+                    "(status='accepted' 印付け、SKU 書換は行わない)"
+                    if alt_only
+                    else "採用: SKU 書換 + eBay 在庫復元 (復活/置換 candidate のみ有効)"
+                ),
             ):
+                # W174-pm 別SKU出品機会 採用パス (alt_only=True 専用)
+                # 既存の SKU 書換 / qty 復元 path は alt_only candidates に不適切なので
+                # ここで分岐。個別出品タブの session_state に URL を pre-fill し、
+                # status='accepted' を立てて履歴タブに移動 (印付け).
+                if alt_only:
+                    try:
+                        update_supplier_candidate_status(cid, "accepted")
+                        # 個別出品タブの session_state key (tab_individual_listing.py _SS="il_")
+                        st.session_state["il_supplier_url"] = url
+                        st.session_state[f"_sup_il_prefilled_{cid}"] = True
+                        st.toast(
+                            f"「個別出品」タブに仕入先 URL を pre-fill しました "
+                            f"(cid={cid})。タブを切り替えて続行してください。",
+                            icon="✓",
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception("altlist accept failed cid=%s", cid)
+                        st.session_state[f"_sup_msgs_{cid}"] = [
+                            ("error",
+                             f"採用記録失敗 (cid={cid})。詳細はログ確認。"),
+                        ]
+                    st.rerun(scope="fragment")
+                    return  # H-2
+                # 通常 採用 path (revive / replace) は既存ロジック継続:
                 st.session_state[_lock_key] = True
                 _msgs: list[tuple[str, str]] = []
                 _eid = row.get("ebay_item_id") or ""
@@ -5290,19 +5356,28 @@ if _w134_sel == "仕入先候補":
                 finally:
                     st.session_state[_lock_key] = False
                     st.session_state[f"_sup_msgs_{cid}"] = _msgs
-                st.rerun()
+                # W174-pm H-2: 採用は photo/desc prompt section (L5314+) を outer
+                # scope で表示するため full rerun. 採用後は status='applied' で
+                # candidate が履歴タブに移動するためタブ維持は副次的.
+                st.rerun(scope="app")
                 return  # H-2: defensive early return
         with _btn_cols[1]:
             if st.button("不採用", key=f"sup_reject_{context}_{cid}"):
                 # 不採用の DB 更新も例外吸収せず痕跡残す (Surface B 対称性 / Q0 silent skip 防止)
                 try:
                     update_supplier_candidate_status(cid, "rejected")
+                    # W174-pm H-1: fragment scope で card 自体が消えないので
+                    # hide フラグを立てて関数冒頭の早期 return path で caption 表示
+                    st.session_state[f"_sup_rejected_{cid}"] = True
                 except Exception:  # noqa: BLE001
                     logger.exception("supplier reject failed cid=%s", cid)
                     st.session_state[f"_sup_msgs_{cid}"] = [
                         ("error", f"不採用記録に失敗しました (cid={cid}). 詳細はログ確認."),
                     ]
-                st.rerun()
+                # W174-pm 重要: st.rerun() は @st.fragment 内でも default scope="app"
+                # (Streamlit 1.37+ 仕様、user 報告で発覚). 明示的に scope="fragment"
+                # 指定でタブ維持を実現.
+                st.rerun(scope="fragment")
                 return  # H-2
 
     # ── 2026-05-20 user 緊急要望: 採用後の写真反映 prompt (タブ非依存) ──
