@@ -17,12 +17,34 @@ daily_relist が 5 日間サイレントスキップされていたが、誰も�
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_webhook_url(config: dict) -> str:
+    """Discord webhook URL を取得 (config 優先、空なら .env DISCORD_WEBHOOK_URL fallback).
+
+    2026-05-25 真因 (commit 8473103): schedule_config.json から bare URL を撤去し
+    .env DISCORD_WEBHOOK_URL に移行したが、本ファイル内 3 系統の Discord 通知関数は
+    config 経由のみ参照していたため、URL が空文字列のまま silent skip していた.
+    `notifiers/discord_notifier.py` は dotenv 経由で読むが、本 module は独自に
+    httpx.post を呼ぶため別途 fallback が必要.
+    """
+    url = (config.get("discord") or {}).get("webhook_url") or ""
+    if url:
+        return url
+    # config 空 → .env 再読込で os.environ に反映 (idempotent)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    except ImportError:
+        pass  # dotenv 未インストール時は parent process の env を期待
+    return os.environ.get("DISCORD_WEBHOOK_URL", "")
 
 
 def _send_discord_alert(webhook_url: str, fresh_missed: list[dict]) -> bool:
@@ -164,7 +186,7 @@ def _check_coverage(config: dict) -> dict:
         logger.error(f"coverage gap 算出失敗: {e}", exc_info=True)
         err_sent = False
         try:
-            webhook_url = (config.get("discord") or {}).get("webhook_url") or ""
+            webhook_url = _resolve_webhook_url(config)
             err_sent = _send_coverage_error_alert(webhook_url, str(e))
         except Exception as _ae:  # noqa: BLE001 — 通知失敗も silent にしない
             logger.error(f"coverage error alert 送信失敗: {_ae}", exc_info=True)
@@ -195,7 +217,7 @@ def _check_coverage(config: dict) -> dict:
             alert_dlq = list(dlq)
     sent = False
     if alert_coverable or alert_dlq:
-        webhook_url = (config.get("discord") or {}).get("webhook_url") or ""
+        webhook_url = _resolve_webhook_url(config)
         sent = _send_coverage_alert(webhook_url, alert_coverable, alert_dlq)
     return {"coverable": len(coverable), "dlq": len(dlq),
             "dlq_skus": [d["sku"] for d in dlq],
@@ -367,7 +389,7 @@ def run_scheduler_health_check(config: dict) -> dict:
     """
     cov = _check_coverage(config)
     phase_c = _check_phase_c_health(config)
-    webhook_url = (config.get("discord") or {}).get("webhook_url") or ""
+    webhook_url = _resolve_webhook_url(config)
     phase_c_sent = _send_phase_c_alert(webhook_url, phase_c)
     phase_c["alert_sent"] = phase_c_sent
     try:

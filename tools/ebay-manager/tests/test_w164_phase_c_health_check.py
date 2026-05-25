@@ -16,6 +16,7 @@ from unittest.mock import patch, MagicMock
 
 from tasks.task_scheduler_health_check import (
     _check_phase_c_health,
+    _resolve_webhook_url,
     _send_phase_c_alert,
 )
 
@@ -50,6 +51,24 @@ def test_normal_alert_uses_orange():
         mp.side_effect = lambda url, json, timeout: (captured.append(json), fake_resp)[1]
         _send_phase_c_alert("https://example.test/webhook", findings)
     assert captured[0]["embeds"][0]["color"] == 0xE69138
+
+
+def test_resolve_webhook_url_falls_back_to_env(monkeypatch):
+    """W170 真因 (commit 8473103 で .env 移行後 silent skip) 回帰テスト.
+
+    schedule_config.json 側の webhook_url が空文字列でも、.env DISCORD_WEBHOOK_URL を
+    fallback で取得して URL が返ること. 旧コードは空文字列をそのまま返し silent skip
+    していた = 19:00 health check で coverable=1 / fresh=1 / orphan 3 件すべて通知欠落.
+    """
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/from_env")
+    # config.discord.webhook_url が空 (8473103 commit 後の実態)
+    config_empty = {"discord": {"webhook_url": ""}}
+    assert _resolve_webhook_url(config_empty) == "https://example.test/from_env"
+    # config.discord 自体が無い場合も .env fallback
+    assert _resolve_webhook_url({}) == "https://example.test/from_env"
+    # config 側に URL があれば config 優先 (legacy 後方互換)
+    config_legacy = {"discord": {"webhook_url": "https://example.test/from_config"}}
+    assert _resolve_webhook_url(config_legacy) == "https://example.test/from_config"
 
 
 def test_cutoff_is_jst_naive_string(monkeypatch):
