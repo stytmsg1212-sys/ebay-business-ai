@@ -1584,9 +1584,11 @@
     "tag": "W170",
     "title": "find_missed_tasks の TZ 内部矛盾 cascade audit (sqlite-timezone rule の例外確認)",
     "description": "W169 review で発覚: monitor/task_execution_log.py の find_missed_tasks (L286-296) は `DATE(started_at, '+9 hours')` で +9h shift しているが、実態は log_task_start (L81) が datetime.now() で JST naive bind = JST+9h = 翌日扱いになる recordings が存在し得る。.claude/rules/sqlite-timezone.md の「全 timestamp UTC 保存」記述と矛盾 (md-files-can-be-wrong R-1)。task_execution_log.py 全 query を cascade scan し、JST naive 前提に統一 or sqlite-timezone.md 側に「task_execution_log は JST naive 保存の例外」を明記。code-reviewer 確信度 80%",
-    "status": "未着手",
+    "status": "完了",
     "priority": "中",
     "created": "2026-05-25",
+    "completed": "2026-05-25",
+    "completion_note": "実 DB hour 分布 (過去 30日 4806 records で main slots 02/11/15/18/22 にきれいに集中) で JST naive 保存を確定。L296 を `DATE(started_at) = ?` に修正、コメント訂正、sqlite-timezone.md に例外節追加 (Python datetime.now() bind 系 vs SQL CURRENT_TIMESTAMP 系の表)、tests/test_w170_find_missed_tasks_tz.py 3 件 PASS、関連 13 tests 全件 PASS で regression なし。cascade scan: 他 file の `started_at, +9 hours` 参照は本 fix の説明文と test のみ",
     "source": "W169 review で code-reviewer 指摘 (確信度 80%、別 W 推奨)"
   }
 ]

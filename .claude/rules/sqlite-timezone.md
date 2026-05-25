@@ -6,7 +6,28 @@
 
 SQLite の `CURRENT_TIMESTAMP` / `datetime('now')` は **常に UTC で保存される** (TZ 設定無視)。
 
-本プロジェクト DB (`monitor.db`) の **全 timestamp カラム** (`called_at`, `created_at`, `started_at`, `finished_at`, `updated_at`, etc.) は UTC で保存されている。
+本プロジェクト DB (`monitor.db`) の timestamp カラムの **大半は UTC 保存**:
+- `api_call_log.called_at` 等 SQL `CURRENT_TIMESTAMP` 系 = UTC
+
+## ⚠️ 例外: Python `datetime.now()` bind 系は JST naive 保存 (W170 / 2026-05-25 発覚)
+
+`log_task_start` (`monitor/task_execution_log.py:81`) など、INSERT 時に Python の **`datetime.now()` の戻り値を bind** している場合、SQLite は受け取った値をそのまま文字列として保存するため **Windows ローカル時刻 (= JST naive)** になる。本 rule の **例外カラム**。
+
+| カラム | INSERT 経路 | 保存 TZ | 比較時の正しい書式 |
+|---|---|---|---|
+| `task_execution_log.started_at` / `finished_at` | Python `datetime.now()` bind | **JST naive** | `DATE(started_at) = ?` で JST date 直接比較 (`+9 hours` shift **禁止**) |
+| `api_call_log.called_at` | SQL `CURRENT_TIMESTAMP` 系 | UTC | `datetime('now', '-N hours')` または `DATE(called_at, '+9 hours')` で JST shift |
+
+**判別方法**: INSERT を行う関数の SQL を grep し、`CURRENT_TIMESTAMP` または `datetime('now')` が使われていれば UTC、Python 側で `datetime.now()` を bind していれば JST naive。
+
+**新規 INSERT 関数を作る時は SQL `CURRENT_TIMESTAMP` 側に統一推奨** (W170 で混在による debug コスト発生)。
+
+## 過去事故 (本 rule の例外カラム関連)
+
+| 日付 | 事故 | 経緯 |
+|---|---|---|
+| 2026-05-05 | FINDING 5 で `find_missed_tasks` に `DATE(started_at, '+9 hours')` を入れた | rule を信じて started_at を UTC と仮定 → 実態は JST naive で **追加 +9h shift = 過剰補正** |
+| 2026-05-25 | W169 Phase C 検査追加時に発覚 | 実 DB SELECT で started_at の値と JST/UTC 時刻を比較し JST naive と確定 → W170 で fix |
 
 ### ❌ NG: JST 日付文字列で直接 query
 

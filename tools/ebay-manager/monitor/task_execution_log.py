@@ -283,9 +283,12 @@ def find_missed_tasks(
     if not expected:
         return []
     main_slots = sorted(set(_resolve_main_slots(config)))
-    # 2026-05-05 修正 (FINDING 5): SQLite started_at は UTC 保存, now は JST naive.
-    # 単純文字列比較 (started_at >= today_start_naive) だと JST 00:00-09:00 の batch を
-    # miss していた (.claude/rules/sqlite-timezone.md 違反). DATE() で JST shift して比較.
+    # W170 (2026-05-25): started_at は `log_task_start` で `datetime.now()` を bind するため
+    # **JST naive 保存** (UTC ではない). `sqlite-timezone.md` の「全 timestamp UTC 保存」
+    # 記述は SQL `CURRENT_TIMESTAMP` 系のみで、Python bind 系は例外 (md-files-can-be-wrong R-1).
+    # 旧コード `DATE(started_at, '+9 hours')` は JST 値に **追加で +9h shift** = 過剰補正で
+    # JST 15:00 以降の completion を翌日扱いにし missed と誤判定. 5/05 修正 (FINDING 5) は
+    # データ format の誤認に基づいた逆効果修正だった (実 DB hour 分布 02/11/15/18/22 で確認).
     jst_today = now.strftime('%Y-%m-%d')
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
@@ -293,7 +296,7 @@ def find_missed_tasks(
             """
             SELECT task_key, batch_hour
               FROM task_execution_log
-             WHERE DATE(started_at, '+9 hours') = ? AND status = 'completed' AND success = 1
+             WHERE DATE(started_at) = ? AND status = 'completed' AND success = 1
             """,
             (jst_today,),
         ).fetchall()
