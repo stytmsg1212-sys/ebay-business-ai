@@ -1,5 +1,7 @@
 # eBay物販ビジネスAI
 
+**対応モデル**: Claude Opus 4.7 (Haiku 4.5 では K3 Goal-Driven 原則が非機能、Sonnet 4.6 では複雑ゴールで迷子化。詳細: `.claude/rules/karpathy-principles.md` モデル依存性表). 出典: [Zenn / harness maturity Lv3](https://zenn.dev/earlgray_mk/articles/472ef76d9e9d3e)
+
 本ファイルが他のすべての指示に優先する。本プロジェクトは金銭損失に直結するため、違反は **品質事故** として session memory に記録する。
 
 ## 思考姿勢: Karpathy 4 原則 (常時)

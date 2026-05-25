@@ -62,3 +62,16 @@ type: rule
 | K1 | "Simple Thing That Works" / Tip 4 |
 | K2 | Tip 1 / Tip 27 |
 | K3 | Tip 2 / Tip 24 / Tip 28 |
+
+## モデル依存性 (W164 Lv3 / Harness Maturity)
+
+K0-K2 は普遍的だが **K3 Goal-Driven はモデル依存度が高い** (出典: [Zenn / harness maturity Lv3](https://zenn.dev/earlgray_mk/articles/472ef76d9e9d3e), 2026-05-25 採用).
+
+| モデル | 状態 (Zenn) | 適用方針 |
+|---|---|---|
+| Opus 4.7 | 本領発揮 | 全 K 原則前提、全 task 対応 |
+| Opus 4.6 | 推測でショートカット | K0 仮定明示を重点警戒 |
+| Sonnet 4.6 | 複雑ゴールで迷子 | K3 measurable goal を分割して渡す |
+| Haiku 4.5 | K3 ほぼ非機能 | bulk / 短文限定、K3 不要 task のみ |
+
+**本 project の対応モデル**: Opus 4.7 (CLAUDE.md 冒頭明記). 違反検知時は `feedback_model_selection_policy.md` Q6 と併せて参照.

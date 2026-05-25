@@ -5,13 +5,21 @@ daily_relist が 5 日間サイレントスキップされていたが、誰も�
 これを再発させないため、各 batch 終了後に「期待された slot に成功完了ログがあるか」
 を照合し、欠落していれば Discord webhook で即時アラートを送る.
 
+2026-05-25 Phase C 拡張: 朝の総点検で発覚した 4 盲点を追加検出
+  (1) intermittent failure: 24h で同 task が 3+ 回 failed (silent flakiness)
+  (2) orphan started: started のまま finished_at NULL かつ 2h+ 経過
+  (3) DB lock spike: scheduler.log で直近 1h に "database is locked" 3+ 回
+  (4) subprocess error: success=0 かつ message に returncode 痕跡 (codex_lint 型再発)
+
 実行タイミング (daily_scheduler.setup_scheduler 参照):
     04:00 / 12:00 / 16:00 / 19:00 / 23:00 — 各 batch 終了後
 """
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -194,19 +202,180 @@ def _check_coverage(config: dict) -> dict:
             "coverage_alert_sent": sent}
 
 
+def _check_phase_c_health(config: dict) -> dict:
+    """W164 Phase C: 朝の 8 盲点中 4 検査を統合実行.
+
+    各検査は失敗しても他に影響しない (try/except 個別)。閾値は固定 (24h/3件/2h/1h/3件).
+    timezone: task_execution_log.started_at は `log_task_start` の `datetime.now()` で
+    JST naive 保存 (`.claude/rules/sqlite-timezone.md` の「全 UTC 保存」記述は本 table
+    に当てはまらない、md-files-can-be-wrong R-1)。SQL の `datetime('now')` は UTC のため
+    9h ずれる。Python 側で cutoff 計算して bind する.
+    """
+    findings: dict = {"intermittent": [], "orphans": [], "db_locks": 0, "subprocess_errors": []}
+    now_jst = datetime.now()
+    cutoff_24h = (now_jst - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_2h = (now_jst - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        from monitor.database import get_conn
+        with get_conn() as conn:
+            # (1) 24h で同 task_key が 3+ 回 failed (silent flakiness)
+            rows = conn.execute(
+                "SELECT task_key, COUNT(*) AS n, MAX(started_at) AS last_at "
+                "FROM task_execution_log "
+                "WHERE status='failed' AND started_at >= ? "
+                "GROUP BY task_key HAVING n >= 3 ORDER BY n DESC",
+                (cutoff_24h,),
+            ).fetchall()
+            findings["intermittent"] = [
+                {"task_key": r[0], "count": r[1], "last_at": r[2]} for r in rows
+            ]
+            # (2) started のまま finished_at NULL かつ 2h+ 経過 (orphan)
+            rows = conn.execute(
+                "SELECT task_key, batch_id, started_at FROM task_execution_log "
+                "WHERE status='started' AND finished_at IS NULL "
+                "AND started_at < ? "
+                "ORDER BY started_at DESC LIMIT 20",
+                (cutoff_2h,),
+            ).fetchall()
+            findings["orphans"] = [
+                {"task_key": r[0], "batch_id": r[1], "started_at": r[2]} for r in rows
+            ]
+            # (4) subprocess returncode 非 0 痕跡 (codex_lint 型再発、過去 24h)
+            rows = conn.execute(
+                "SELECT task_key, started_at, message FROM task_execution_log "
+                "WHERE success=0 AND message LIKE '%returncode%' "
+                "AND started_at >= ? "
+                "ORDER BY started_at DESC LIMIT 10",
+                (cutoff_24h,),
+            ).fetchall()
+            findings["subprocess_errors"] = [
+                {"task_key": r[0], "started_at": r[1], "message": (r[2] or "")[:200]}
+                for r in rows
+            ]
+    except Exception as e:  # noqa: BLE001 — 検査自体の失敗を silent にしない
+        logger.error(f"phase_c DB checks 失敗: {e}", exc_info=True)
+        findings["db_query_error"] = str(e)
+
+    # (3) scheduler.log で直近 1h の "database is locked" 出現回数
+    try:
+        log_path = Path(__file__).resolve().parent.parent / "logs" / "scheduler.log"
+        if log_path.exists():
+            cutoff = datetime.now() - timedelta(hours=1)
+            count = 0
+            # 末尾 256KB だけ読む (1h 分は十分収まる、低 I/O)
+            with log_path.open("rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 256 * 1024))
+                tail = f.read().decode("utf-8", errors="replace")
+            ts_pat = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+            for line in tail.splitlines():
+                if "database is locked" not in line:
+                    continue
+                m = ts_pat.match(line)
+                if not m:
+                    continue
+                try:
+                    ts = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    continue
+                if ts >= cutoff:
+                    count += 1
+            findings["db_locks"] = count
+    except Exception as e:  # noqa: BLE001 — log 読取失敗も silent にしない
+        logger.warning(f"phase_c scheduler.log scan 失敗: {e}")
+        findings["log_scan_error"] = str(e)
+
+    return findings
+
+
+def _send_phase_c_alert(webhook_url: str, findings: dict) -> bool:
+    """Phase C 4 検査の異常を 1 embed で送る (検出 0 件なら送らない).
+
+    検査『自体』の失敗 (db_query_error / log_scan_error) も Discord で必ず可視化
+    する (Codex HIGH 2026-05-18 同型: 監視の監視が沈黙したら最緊急に格上げ、R-11).
+    """
+    has_self_error = bool(findings.get("db_query_error") or findings.get("log_scan_error"))
+    has_alert = bool(
+        findings.get("intermittent") or findings.get("orphans")
+        or findings.get("subprocess_errors") or (findings.get("db_locks") or 0) >= 3
+    ) or has_self_error
+    if not webhook_url or not has_alert:
+        return False
+    try:
+        import httpx
+    except ImportError as e:  # noqa: BLE001
+        logger.error(f"httpx import 失敗: {e}")
+        return False
+    fields = []
+    if findings.get("intermittent"):
+        v = "\n".join(f"`{x['task_key']}` failed {x['count']}回 (last {x['last_at']})"
+                      for x in findings["intermittent"][:5])
+        fields.append({"name": "[要対応] 慢性失敗 (24h で 3+回 failed)", "value": v, "inline": False})
+    if findings.get("orphans"):
+        v = "\n".join(f"`{x['task_key']}` batch={x['batch_id']} started={x['started_at']}"
+                      for x in findings["orphans"][:5])
+        fields.append({"name": "[要対応] started 残骸 (2h+ 未完了)", "value": v, "inline": False})
+    if (findings.get("db_locks") or 0) >= 3:
+        fields.append({
+            "name": f"[警告] DB lock spike 1h で {findings['db_locks']}回",
+            "value": "scheduler.log で 'database is locked' 多発。並行 write 競合を疑う",
+            "inline": False,
+        })
+    if findings.get("subprocess_errors"):
+        v = "\n".join(f"`{x['task_key']}` {x['started_at']}\n  {x['message'][:80]}"
+                      for x in findings["subprocess_errors"][:5])
+        fields.append({"name": "[警告] subprocess 失敗 (codex_lint 型再発候補)",
+                       "value": v, "inline": False})
+    if findings.get("db_query_error"):
+        fields.append({
+            "name": "[最緊急] Phase C DB query 自体が失敗 (3 検査が沈黙)",
+            "value": f"intermittent / orphans / subprocess 検知が一時停止中。"
+                     f"error={str(findings['db_query_error'])[:800]}",
+            "inline": False,
+        })
+    if findings.get("log_scan_error"):
+        fields.append({
+            "name": "[警告] Phase C scheduler.log scan 失敗 (DB lock 検知沈黙)",
+            "value": f"error={str(findings['log_scan_error'])[:800]}",
+            "inline": False,
+        })
+    embed = {
+        "title": "[Phase C] scheduler 健康診断 異常検出",
+        "description": ("既存の missed-task 検知では捕まらない 4 盲点 (慢性失敗 / orphan / "
+                        "DB lock / subprocess) を検出しました。scheduler.log と MonoDeck で精査."),
+        # 自己エラー時は赤色 (監視の監視沈黙 = 最緊急)、他は橙色 (注意要)
+        "color": 0xD84C38 if has_self_error else 0xE69138,
+        "timestamp": datetime.now().isoformat(),
+        "fields": fields,
+    }
+    try:
+        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
+        return r.status_code in (200, 204)
+    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
+        logger.error(f"Phase C Discord 通知エラー: {e}")
+        return False
+
+
 def run_scheduler_health_check(config: dict) -> dict:
     """本日の expected vs executed を照合し、欠落あれば通知 (本日初通知のみ).
 
     W139: 加えて監視台帳カバレッジ欠落 (active 無在庫の在庫監視漏れ /
     URL生成不能 DLQ) も同時に検知し Discord 通知する (監視の監視)。
+    W164 Phase C (2026-05-25): 朝の 8 盲点中 4 検査を追加 (慢性失敗 / orphan started /
+    DB lock spike / subprocess returncode 非 0)。検出時は橙色 embed で別送。
     """
     cov = _check_coverage(config)
+    phase_c = _check_phase_c_health(config)
+    webhook_url = (config.get("discord") or {}).get("webhook_url") or ""
+    phase_c_sent = _send_phase_c_alert(webhook_url, phase_c)
+    phase_c["alert_sent"] = phase_c_sent
     try:
         from monitor.task_execution_log import find_missed_tasks, claim_alert_dedupe
     except ImportError as e:
         logger.error(f"task_execution_log import 失敗: {e}")
         return {"success": False, "message": f"import error: {e}",
-                "coverage": cov}
+                "coverage": cov, "phase_c": phase_c}
 
     missed = find_missed_tasks(datetime.now(), config=config)
     if not missed:
@@ -215,10 +384,15 @@ def run_scheduler_health_check(config: dict) -> dict:
             "success": True,
             "missed_count": 0,
             "coverage": cov,
+            "phase_c": phase_c,
             "message": (
                 "all expected tasks completed | "
                 f"coverage: unregistered={cov['coverable']} "
-                f"dlq={cov['dlq']}"
+                f"dlq={cov['dlq']} | "
+                f"phase_c: intermittent={len(phase_c['intermittent'])} "
+                f"orphans={len(phase_c['orphans'])} "
+                f"locks_1h={phase_c['db_locks']} "
+                f"subproc_err={len(phase_c['subprocess_errors'])}"
             ),
         }
 
@@ -246,7 +420,6 @@ def run_scheduler_health_check(config: dict) -> dict:
 
     sent = False
     if fresh_missed:
-        webhook_url = (config.get("discord") or {}).get("webhook_url") or ""
         sent = _send_discord_alert(webhook_url, fresh_missed)
     return {
         "success": True,
@@ -256,11 +429,16 @@ def run_scheduler_health_check(config: dict) -> dict:
         "missed": missed,
         "discord_sent": sent,
         "coverage": cov,
+        "phase_c": phase_c,
         "message": (
             f"missed {len(missed)} tasks "
             f"(fresh={len(fresh_missed)}, suppressed={suppressed}), "
             f"discord_sent={sent} | "
             f"coverage: unregistered={cov['coverable']} dlq={cov['dlq']} "
-            f"cov_alert={cov['coverage_alert_sent']}"
+            f"cov_alert={cov['coverage_alert_sent']} | "
+            f"phase_c: intermittent={len(phase_c['intermittent'])} "
+            f"orphans={len(phase_c['orphans'])} "
+            f"locks_1h={phase_c['db_locks']} "
+            f"subproc_err={len(phase_c['subprocess_errors'])}"
         ),
     }
