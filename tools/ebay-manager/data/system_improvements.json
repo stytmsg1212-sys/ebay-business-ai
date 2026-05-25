@@ -1580,6 +1580,37 @@
     "source": "5/25 朝 user 報告「定時実行 OK」だが DB 上 5 種類慢性失敗発覚の続き"
   },
   {
+    "id": 255,
+    "tag": "W171",
+    "title": "rival_pricing_refresh 18:45 misfire 根本調査 (APScheduler v3 coalesce + misfire_grace_time 競合パス)",
+    "description": "2026-05-25 19:00 health check で rival_pricing_refresh expected_hour=18 missed 検出。scheduler.log で `Run time of job ... was missed by 0:00:01.503857` 確認。daily_scheduler.py:756-761 で job_defaults misfire_grace_time=600 (10 分 grace) 設定済、L902-911 の add_job は override なしで defaults 継承のはず。にもかかわらず 1.5s 遅延で skip = APScheduler v3 の coalesce=True + misfire_grace 内部処理に未知の skip パスがある。再現条件 + APScheduler source 調査 + 適切な修正方針確定が必要。W164-pm Codex review で「保険 misfire_grace_time=300 上書きは K1 違反 + Q0 silent skip 残存」と却下されたため別 W 化。scheduler.log 履歴で 5/15 以降ほぼ毎日同症発生 (rival_pricing_refresh expected_hour=18 missed)",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-25",
+    "source": "W164-pm Codex review 2026-05-25 で本 session 対象外と判定"
+  },
+  {
+    "id": 256,
+    "tag": "W172",
+    "title": "scheduler 起動時 orphan started 自動 cleanup (再発防止恒久策)",
+    "description": "2026-05-25 W164-pm Problem #5 で 5/02 / 5/21 / 5/22 inventory_check の started 残骸 3 件を one-shot script で cleanup。scheduler crash/kill 時に finished_at 未更新で残る構造的問題 = 今後も再発する。scheduler 起動時に「自分が知らない PID の started + finished_at NULL + started_at < now-2h」レコードを自動 failed 化するロジックを daily_scheduler 起動時 hook に追加。W164-pm では K2 越境で別 W 化。実装規模 ~30 LOC、Q2 6 step を hook 内で実施可能か別途検討要",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "W164-pm Phase C 検知後 cleanup を踏まえた再発防止案"
+  },
+  {
+    "id": 257,
+    "tag": "W173",
+    "title": "W164-pm 4 fix 完了 (morning_brief budget / fuel_surcharge HTML dump / rival_detection first_err / orphan cleanup)",
+    "description": "2026-05-25 19:00 health check で検出した 7 件の本番問題のうち 4 件を即時修正完了 (Codex review 経由)。(2) fuel_surcharge: 抽出失敗時 raw HTML を data/tmp/fuel_surcharge_failure_<date>_<source>.html に dump (3) morning_brief: max_budget_usd=1.0 (実 max=$0.36 / today $0.5099 + 100% buffer) + 超過時 Discord 明示通知 (R-11) (4) rival_detection: errors>0 時 task_execution_log.message に first error listing id + 100 chars 追記 (audit 用) (5) orphan 3 件 (id=674/3894/4201) Q2 6 step cleanup 完了 + rollback artifact (orphan_snapshot_2026_05_25.json) 保存。Codex review HIGH 4 (snapshot 不在 false alarm / regression test 0 件 / except 過広 / +12h 架空 duration) 全対応。pytest 8 件 PASS。残 (#1 daily_codex_lint / #6 W139 coverable / #7 rival_pricing misfire) は別 W (W171 / 観察) で対応",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-05-25",
+    "completed": "2026-05-25",
+    "source": "W164-pm Codex review 2026-05-25 + user 即時修正指示"
+  },
+  {
     "id": 254,
     "tag": "W170",
     "title": "find_missed_tasks の TZ 内部矛盾 cascade audit (sqlite-timezone rule の例外確認)",

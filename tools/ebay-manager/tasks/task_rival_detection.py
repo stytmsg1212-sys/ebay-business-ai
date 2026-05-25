@@ -380,6 +380,16 @@ def run_rival_detection(config: dict) -> dict:
             f"bad_iid={summary['skipped_bad_item_id']} "
             f"reqs={summary['requests_used']}"
         )
+        # W164-pm Codex #4: errors>0 時 DB message に first error 詳細を追記.
+        # Discord には既に詳細が乗っているが (_send_discord_errors_alert) Discord
+        # は揮発、DB は audit 用. 次回 failure 時 task_execution_log で原因即特定.
+        if summary["errors"] > 0:
+            err_entries = [r for r in per_listing_summaries if r.get("errors", 0) > 0]
+            if err_entries:
+                first = err_entries[0]
+                eid = first.get("ebay_item_id", "?")
+                excerpt = (first.get("message") or "")[:100]
+                summary["message"] += f" | first_err: {eid}: {excerpt}"
 
         # 集約 Discord 通知 (new>0)
         if new_by_listing:

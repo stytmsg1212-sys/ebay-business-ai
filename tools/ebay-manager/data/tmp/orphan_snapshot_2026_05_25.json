@@ -1,0 +1,44 @@
+{
+  "saved_at": "2026-05-25T21:49:11.685506",
+  "rows": [
+    {
+      "id": 674,
+      "task_key": "inventory_check",
+      "batch_id": "20260502_22sched_order_alert_",
+      "batch_hour": 22,
+      "status": "started",
+      "started_at": "2026-05-02 22:07:17.375707",
+      "finished_at": null,
+      "duration_sec": null,
+      "success": null,
+      "message": null,
+      "expected_today": 1
+    },
+    {
+      "id": 3894,
+      "task_key": "inventory_check",
+      "batch_id": "20260521_11sched",
+      "batch_hour": 11,
+      "status": "started",
+      "started_at": "2026-05-21 11:08:22.562085",
+      "finished_at": null,
+      "duration_sec": null,
+      "success": null,
+      "message": null,
+      "expected_today": 1
+    },
+    {
+      "id": 4201,
+      "task_key": "inventory_check",
+      "batch_id": "20260522_18sched",
+      "batch_hour": 18,
+      "status": "started",
+      "started_at": "2026-05-22 18:09:07.544594",
+      "finished_at": null,
+      "duration_sec": null,
+      "success": null,
+      "message": null,
+      "expected_today": 1
+    }
+  ]
+}

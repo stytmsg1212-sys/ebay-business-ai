@@ -52,6 +52,33 @@ def _build_brief_query() -> str:
     )
 
 
+def _notify_budget_exceeded(config: Optional[dict], answer) -> None:
+    """予算超過時に Discord 明示通知 (silent skip 防止、R-11).
+
+    notify 自体の失敗も silent skip 禁止: webhook 空 / 送信失敗時は logger.error
+    で痕跡を残す (code-reviewer W164-pm HIGH-3 対応). 例外は具体型に絞る.
+    """
+    try:
+        from notifiers.discord_notifier import DiscordNotifier
+        notifier = DiscordNotifier(webhook_url="")  # .env 優先
+        if not notifier.webhook_url:
+            logger.error(
+                "budget_exceeded notify: webhook_url 空 = user に届かない. "
+                ".env DISCORD_WEBHOOK_URL を確認 (Q0 silent skip 防止)"
+            )
+            return
+        ok = notifier.send_message(
+            f"⚠️ **morning_brief 予算超過**\n"
+            f"Opus 4.7 budget $1.0 を超過. cost={getattr(answer, 'cost_usd', '?')} "
+            f"qa_id={getattr(answer, 'qa_id', '?')}. CLAUDE.md Q6 1日30 calls 上限近接の可能性."
+        )
+        if not ok:
+            logger.error("budget_exceeded notify: Discord 送信失敗 (R-11 user 不達)")
+    except (ImportError, ConnectionError, TimeoutError, OSError) as e:
+        # 具体例外に絞る (bare except Exception 禁止、CLAUDE.md coding-standards)
+        logger.exception(f"budget_exceeded notify 例外: {e}")
+
+
 def run_research_morning_brief(config: Optional[dict] = None) -> dict:
     """daily_scheduler から呼ばれる. 1 日 1 回のみ生成 (重複防止)."""
     if _today_brief_exists():
@@ -70,6 +97,9 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
 
     query = _build_brief_query()
     logger.info("morning_brief: Research 脳 (Opus 4.7) で生成開始 (~60-90 秒)")
+    # 2026-05-25 (W164-pm Codex review #3): 既定 $0.50 だと 5/25 03:39 で
+    # $0.5099 で error_max_budget_usd 超過、claude exit 1. 直近実コスト + 100%
+    # buffer で $1.0 に引上げ. 超過時は Discord で明示通知 (Q0 silent skip 防止).
     answer = ask(
         query,
         source="morning_brief",
@@ -77,10 +107,14 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
         enable_thinking=False,  # cost 抑制 (UI 非表示なので thinking 不要)
         save_history=True,
         timeout=180,
+        max_budget_usd=1.0,
     )
 
     if answer.error:
         logger.error(f"morning_brief 失敗: {answer.error}")
+        # 予算超過は user に明示通知 (silent skip 防止、R-11 user 実視認 verify)
+        if "error_max_budget_usd" in str(answer.error):
+            _notify_budget_exceeded(config, answer)
         return {
             "success": False,
             "message": f"morning_brief failed: {answer.error}",

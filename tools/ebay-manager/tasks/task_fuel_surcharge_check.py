@@ -136,6 +136,25 @@ def _extract_fedex_surcharge(html: str) -> Optional[float]:
     return max(candidates)
 
 
+def _dump_failure_html(source: str, html: Optional[str]) -> None:
+    """W164-pm Codex #2: 抽出失敗時に raw HTML を保存 (次回手動 debug 用).
+
+    `data/tmp/fuel_surcharge_failure_<date>_<source>.html` に保存. 既存ファイルは
+    上書き (今日分のみ追跡、過去は不要). dump 失敗は warn のみ (silent skip 防止).
+    """
+    if not html:
+        return
+    try:
+        dump_dir = BASE_DIR / "data" / "tmp"
+        dump_dir.mkdir(parents=True, exist_ok=True)
+        today = datetime.now().strftime("%Y-%m-%d")
+        path = dump_dir / f"fuel_surcharge_failure_{today}_{source}.html"
+        path.write_text(html, encoding="utf-8", errors="replace")
+        logger.warning(f"raw HTML dumped: {path} ({len(html)} chars)")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"raw HTML dump 失敗 ({source}): {e}")
+
+
 def _send_discord_notification(webhook_url: str, message: str) -> None:
     """Discordに通知（失敗しても黙って続行）"""
     if not webhook_url:
@@ -187,6 +206,8 @@ def run_fuel_surcharge_check(config: dict) -> dict:
         if dhl_rate is None:
             result['dhl_error'] = "HTMLから燃料サーチャージ値を抽出できませんでした"
             logger.warning(result['dhl_error'])
+            # W164-pm Codex #2: 抽出失敗時に raw HTML を dump (次回手動 debug 用)
+            _dump_failure_html("dhl", dhl_html)
         else:
             result['dhl_rate'] = dhl_rate
             logger.info(f"DHL: {dhl_rate}% (旧値 {old_dhl}%)")
@@ -202,6 +223,7 @@ def run_fuel_surcharge_check(config: dict) -> dict:
         if fedex_rate is None:
             result['fedex_error'] = "HTMLから燃料サーチャージ値を抽出できませんでした（bot対策の可能性）"
             logger.warning(result['fedex_error'])
+            _dump_failure_html("fedex", fedex_html)
         else:
             result['fedex_rate'] = fedex_rate
             logger.info(f"FedEx: {fedex_rate}% (旧値 {old_fedex}%)")
