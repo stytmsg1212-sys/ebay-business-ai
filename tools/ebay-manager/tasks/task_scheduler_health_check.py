@@ -224,6 +224,124 @@ def _check_coverage(config: dict) -> dict:
             "coverage_alert_sent": sent}
 
 
+def _send_url_divergence_alert(webhook_url: str, divergent: list[dict]) -> bool:
+    """W139-revisit (2026-05-26): listing.source_url と monitored_items.source_url の
+    乖離を Discord 通知.
+
+    money-direct risk: 乖離 listing は『間違った URL を監視中』= 実仕入先 OOS を
+    検知できず履行不能事故になる。19 件発覚 (本日午前 cleanup 済 18 件 + 1 件は既に
+    一致) の経緯から daily audit が必要 (Codex HIGH #6)。
+    """
+    if not webhook_url or not divergent:
+        return False
+    try:
+        import httpx
+    except ImportError as e:  # noqa: BLE001
+        logger.error(f"httpx import 失敗: {e}")
+        return False
+    samples = []
+    for d in divergent[:10]:
+        samples.append(
+            f"• `{d['ebay_item_id']}` sku={d['sku']}\n"
+            f"  listing={d['listing_url'][-40:]}\n"
+            f"  monitor={d['monitored_url'][-40:]}"
+        )
+    embed = {
+        "title": f"[緊急] URL乖離検知 {len(divergent)} 件 (W139-revisit)",
+        "description": (
+            "listing.source_url と monitored_items.source_url が乖離している "
+            "listing が検知されました。**間違った URL を監視中 = 実仕入先 OOS "
+            "見逃し = 履行不能リスク**。scripts/cleanup_url_divergence_2026_05_26.py "
+            "の dry-run を確認、対象を update_ebay_listing_sku で揃えてください。"
+        ),
+        "color": 0xD84C38,
+        "timestamp": datetime.now().isoformat(),
+        "fields": [
+            {
+                "name": "対象 (先頭 10 件)",
+                "value": "\n".join(samples) if samples else "(なし)",
+                "inline": False,
+            }
+        ],
+    }
+    try:
+        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
+        return r.status_code in (200, 204)
+    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
+        logger.error(f"Discord url_divergence 通知送信エラー: {e}")
+        return False
+
+
+def _check_url_divergence(config: dict) -> dict:
+    """W139-revisit (2026-05-26): listing.source_url ≠ monitored.source_url 検出.
+
+    join keyed by ebay_item_id (sku-rules 準拠). active 同士のみ。
+    money-direct risk のため、検知時は日次 dedupe で Discord 通知
+    (key=`__w139_url_divergence_daily__`)。
+    """
+    divergent: list[dict] = []
+    try:
+        from monitor.database import get_conn
+        with get_conn() as conn:
+            # MED-1 (code-reviewer 2026-05-26): get_conn() が既に row_factory=Row
+            # 設定済のため明示再設定は冗長 (K1).
+            # MED-2: `LIKE 'ebay%'` は SQLite default で case-insensitive のため
+            # `GLOB 'ebay*'` に変更 = case-sensitive prefix 照合 (sku-rules 準拠).
+            # MED-4: 同 ebay_item_id で multi-row monitored (active+inactive 共存) の
+            # 場合に divergent が水増し → DISTINCT で 1 listing 1 行に集約.
+            rows = conn.execute("""
+                SELECT DISTINCT l.ebay_item_id, l.sku, l.title,
+                       l.source_url AS listing_url,
+                       m.source_url AS monitored_url
+                  FROM ebay_listings l
+                  JOIN monitored_items m
+                    ON m.ebay_item_id = l.ebay_item_id
+                   AND m.ebay_item_id IS NOT NULL
+                   AND m.ebay_item_id <> ''
+                 WHERE COALESCE(l.is_ended, 0) = 0
+                   AND (l.quantity_ebay IS NULL OR l.quantity_ebay >= 1)
+                   AND l.sku GLOB 'ebay*'
+                   AND l.source_url IS NOT NULL AND l.source_url <> ''
+                   AND m.source_url IS NOT NULL AND m.source_url <> ''
+                   AND COALESCE(m.is_active, 1) = 1
+                   AND l.source_url <> m.source_url
+                 ORDER BY l.ebay_item_id
+            """).fetchall()
+            divergent = [dict(r) for r in rows]
+    except Exception as e:  # noqa: BLE001 — 検出失敗を silent にしない (Q0)
+        logger.error(f"url_divergence 検出失敗: {e}", exc_info=True)
+        return {"divergence_count": -1, "alert_sent": False,
+                "divergence_error": str(e)}
+
+    if divergent:
+        logger.error(
+            f"[W139-revisit] URL乖離 {len(divergent)} 件 "
+            f"(money-direct risk = 仕入先OOS見逃し): "
+            f"{[d['ebay_item_id'] for d in divergent[:10]]}")
+
+    alert_sent = False
+    if divergent:
+        try:
+            from monitor.task_execution_log import claim_alert_dedupe
+            # HIGH-3 (code-reviewer 2026-05-26): expected_hour=0 は固定値.
+            # 本 pseudo-task (`__` prefix で TASK_SCHEDULE 未登録 = find_missed_tasks
+            # から逆参照されない) は時刻軸を持たないため、`(date, task_key, 0)` で
+            # 日次 1 通知 dedupe. scheduler_health_check が日中複数回 (04/12/16/19/23)
+            # 走っても最初の hour で claim → 後続は fresh=False で suppress = 設計通り.
+            fresh = claim_alert_dedupe(
+                task_key="__w139_url_divergence_daily__", expected_hour=0)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"url_divergence dedupe DB error: {e}")
+            fresh = True  # fail-safe
+        if fresh:
+            webhook_url = _resolve_webhook_url(config)
+            alert_sent = _send_url_divergence_alert(webhook_url, divergent)
+
+    return {"divergence_count": len(divergent),
+            "divergent_ids": [d["ebay_item_id"] for d in divergent],
+            "alert_sent": alert_sent}
+
+
 def _check_phase_c_health(config: dict) -> dict:
     """W164 Phase C: 朝の 8 盲点中 4 検査を統合実行.
 
@@ -317,7 +435,8 @@ def _send_phase_c_alert(webhook_url: str, findings: dict) -> bool:
     検査『自体』の失敗 (db_query_error / log_scan_error) も Discord で必ず可視化
     する (Codex HIGH 2026-05-18 同型: 監視の監視が沈黙したら最緊急に格上げ、R-11).
     """
-    has_self_error = bool(findings.get("db_query_error") or findings.get("log_scan_error"))
+    has_self_error = bool(findings.get("db_query_error") or findings.get("log_scan_error")
+                           or findings.get("url_divergence_error"))
     has_alert = bool(
         findings.get("intermittent") or findings.get("orphans")
         or findings.get("subprocess_errors") or (findings.get("db_locks") or 0) >= 3
@@ -362,6 +481,16 @@ def _send_phase_c_alert(webhook_url: str, findings: dict) -> bool:
             "value": f"error={str(findings['log_scan_error'])[:800]}",
             "inline": False,
         })
+    # W139-revisit HIGH-1 (2026-05-26 code-reviewer): url_divergence 検出
+    # 『自体』が壊れた状態は Phase C と同等の最緊急 (audit の audit が沈黙 =
+    # money-direct silent skip 再開リスク). 専用 field で可視化.
+    if findings.get("url_divergence_error"):
+        fields.append({
+            "name": "[最緊急] W139-revisit URL乖離 audit 自体が失敗",
+            "value": f"daily audit が動作不能 = 実仕入先OOS見逃し再発検知が沈黙. "
+                     f"error={str(findings['url_divergence_error'])[:800]}",
+            "inline": False,
+        })
     embed = {
         "title": "[Phase C] scheduler 健康診断 異常検出",
         "description": ("既存の missed-task 検知では捕まらない 4 盲点 (慢性失敗 / orphan / "
@@ -388,7 +517,12 @@ def run_scheduler_health_check(config: dict) -> dict:
     DB lock spike / subprocess returncode 非 0)。検出時は橙色 embed で別送。
     """
     cov = _check_coverage(config)
+    url_div = _check_url_divergence(config)
     phase_c = _check_phase_c_health(config)
+    # HIGH-1 (code-reviewer 2026-05-26): url_divergence audit 自身の失敗を
+    # phase_c の最緊急 alert 経路に注入 (Q0 silent skip 再発防止).
+    if url_div.get("divergence_error"):
+        phase_c["url_divergence_error"] = url_div["divergence_error"]
     webhook_url = _resolve_webhook_url(config)
     phase_c_sent = _send_phase_c_alert(webhook_url, phase_c)
     phase_c["alert_sent"] = phase_c_sent
@@ -406,11 +540,13 @@ def run_scheduler_health_check(config: dict) -> dict:
             "success": True,
             "missed_count": 0,
             "coverage": cov,
+            "url_divergence": url_div,
             "phase_c": phase_c,
             "message": (
                 "all expected tasks completed | "
                 f"coverage: unregistered={cov['coverable']} "
                 f"dlq={cov['dlq']} | "
+                f"url_divergence: {url_div['divergence_count']} | "
                 f"phase_c: intermittent={len(phase_c['intermittent'])} "
                 f"orphans={len(phase_c['orphans'])} "
                 f"locks_1h={phase_c['db_locks']} "
@@ -451,6 +587,7 @@ def run_scheduler_health_check(config: dict) -> dict:
         "missed": missed,
         "discord_sent": sent,
         "coverage": cov,
+        "url_divergence": url_div,
         "phase_c": phase_c,
         "message": (
             f"missed {len(missed)} tasks "
@@ -458,6 +595,8 @@ def run_scheduler_health_check(config: dict) -> dict:
             f"discord_sent={sent} | "
             f"coverage: unregistered={cov['coverable']} dlq={cov['dlq']} "
             f"cov_alert={cov['coverage_alert_sent']} | "
+            f"url_divergence: {url_div['divergence_count']} "
+            f"div_alert={url_div['alert_sent']} | "
             f"phase_c: intermittent={len(phase_c['intermittent'])} "
             f"orphans={len(phase_c['orphans'])} "
             f"locks_1h={phase_c['db_locks']} "

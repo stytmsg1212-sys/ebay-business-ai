@@ -108,6 +108,7 @@ def run_rival_per_listing_detection_one(
         "success": False, "ebay_item_id": eid,
         "new_discoveries": 0, "refreshed": 0, "errors": 0,
         "skipped_bad_item_id": 0,
+        "skipped_keywords_null": 0,  # W153-UX (Codex 推奨 2026-05-26): keywords 未設定 = failure ではなく skipped
         "requests_used": 0,
         "message": "",
     }
@@ -122,13 +123,17 @@ def run_rival_per_listing_detection_one(
             return summary
         query = _normalize_query(query_override or row["rival_search_keywords"])
         if not query:
-            # H-D: 空 query で errors++ + success=False
-            logger.warning(
-                f"[W153] {eid}: no query "
-                f"(UI で生成 or 保存してください)"
+            # W153-UX (Codex 推奨 2026-05-26): keywords 未設定 = 半有効状態 (rival_watch_enabled=1 だが query 未設定)
+            # failure ではなく **skipped** として扱う (毎日 first_err 化を回避)。
+            # 旧: errors++ + success=False (H-D 当時の判断、毎朝 first_err Discord 通知 + log 騒音)
+            # 新: skipped_keywords_null++ + success=True (UI で生成すれば自然解消、騒音 0)
+            logger.info(
+                f"[W153] {eid}: keywords NULL = skipped "
+                f"(UI で『検索ワード生成』ボタン押下が必要)"
             )
-            summary["errors"] += 1
-            summary["message"] = "no query"
+            summary["skipped_keywords_null"] += 1
+            summary["success"] = True
+            summary["message"] = "keywords NULL (skipped, UI で生成要)"
             return summary
         # v2: 単 query AND 検索 = 1 word は AND が成立せず noise hit
         words = query.split(" ")
@@ -296,6 +301,7 @@ def run_rival_detection(config: dict) -> dict:
         "success": False, "new_sellers_count": 0, "total_scanned": 0,
         "listings_processed": 0, "new_discoveries_total": 0,
         "errors": 0, "skipped_bad_item_id": 0,
+        "skipped_keywords_null": 0,  # W153-UX (Codex 推奨 2026-05-26): UI 生成待ち listing
         "requests_used": 0,
         "sellers": [], "message": "",
     }
@@ -360,6 +366,8 @@ def run_rival_detection(config: dict) -> dict:
             summary["new_discoveries_total"] += res["new_discoveries"]
             summary["errors"] += res["errors"]
             summary["skipped_bad_item_id"] += res["skipped_bad_item_id"]
+            # W153-UX (Codex 推奨 2026-05-26): keywords NULL skipped を集計 (errors と分離)
+            summary["skipped_keywords_null"] += res.get("skipped_keywords_null", 0)
             summary["requests_used"] += res["requests_used"]
             requests_remaining -= res["requests_used"]
             if res["new_discoveries"] > 0:
@@ -378,6 +386,7 @@ def run_rival_detection(config: dict) -> dict:
             f"new={summary['new_discoveries_total']} "
             f"err={summary['errors']} "
             f"bad_iid={summary['skipped_bad_item_id']} "
+            f"skip_kw_null={summary['skipped_keywords_null']} "
             f"reqs={summary['requests_used']}"
         )
         # W164-pm Codex #4: errors>0 時 DB message に first error 詳細を追記.
@@ -401,6 +410,10 @@ def run_rival_detection(config: dict) -> dict:
             summary["success"] = False
         else:
             summary["success"] = True
+
+        # W153-UX HIGH-4 (code-reviewer 2026-05-26): keywords NULL skipped 率が
+        # 高い時の週次 reminder (silent failure 検知の補完).
+        _maybe_remind_user_of_keywords_null(config, summary)
     except Exception as e:
         logger.exception("[W153] run_rival_detection failed")
         summary["message"] = f"top-level: {type(e).__name__}: {e}"
@@ -491,6 +504,54 @@ def _maybe_remind_user_of_unused_w153(config: dict) -> None:
         # 送信失敗 = claim は消費済なので来週まで再試行できない (1 週ロス admit)
         logger.warning(
             f"[W153] discord reminder notify failed (1 week lost): {e}"
+        )
+
+
+def _maybe_remind_user_of_keywords_null(config: dict, summary: dict) -> None:
+    """W153-UX HIGH-4 (code-reviewer 2026-05-26): keywords NULL skipped 率が
+    高い時の週次 reminder.
+
+    背景: keywords NULL を errors → skipped に変更したことで毎朝 Discord errors_alert
+    騒音は解消したが、user が log を見ない限り NULL 状態に気づけない (Q0 silent skip
+    防止 weak化). skipped_keywords_null 率 ≥ 30% を threshold に週 1 reminder を発射
+    (rival_keyword_generator silent failure or user 未生成 の両方を可視化).
+
+    H-E の `_maybe_remind_user_of_unused_w153` と同じ週 1 dedupe (alert_date=月曜).
+    webhook 未設定なら何もしない (claim 消費を避ける).
+    """
+    if summary.get("listings_processed", 0) == 0:
+        return  # H-E 経路でカバー済 (0 listing reminder)
+    skip_rate = (summary.get("skipped_keywords_null", 0)
+                 / summary["listings_processed"])
+    if skip_rate < 0.3:
+        return
+    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    if not webhook:
+        return
+    today = datetime.now().date()
+    week_monday = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+    if not claim_alert_dedupe(
+        task_key='w153_keywords_null_weekly',
+        expected_hour=2,
+        alert_date=week_monday,
+    ):
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    n_skip = summary["skipped_keywords_null"]
+    n_total = summary["listings_processed"]
+    content = (
+        f"ℹ️ **W153 検索ワード未生成リマインダー**\n"
+        f"ライバル監視 ON ({n_total} 件) のうち **{n_skip} 件 ({skip_rate*100:.0f}%)** "
+        f"が検索ワード未生成 = rival_detection で skip 中.\n"
+        f"商品管理タブで該当 listing の **「検索ワード生成」ボタン** を押下してください。"
+        f"\n(もし UI で生成しても永続 skip の場合、rival_keyword_generator の "
+        f"silent failure 可能性あり = scheduler.log 要確認)"
+    )
+    try:
+        DiscordNotifier(webhook).send_message(content)
+    except Exception as e:
+        logger.warning(
+            f"[W153] discord keywords-null reminder failed (1 week lost): {e}"
         )
 
 

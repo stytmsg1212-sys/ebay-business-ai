@@ -486,8 +486,11 @@ def test_generate_keywords_uses_ebay_anthropic_key_first(
 # Section 4: detection task (H-D / H-E / H-G / H-H / v2 1-query)
 # ============================================================
 
-def test_run_one_empty_query_increments_errors(tmp_db):
-    """H-D: 空 query で errors++ + success=False."""
+def test_run_one_empty_query_is_skipped(tmp_db):
+    """W153-UX (2026-05-26 Codex 推奨): 空 query は errors ではなく
+    skipped_keywords_null として扱い、success=True を返す.
+    旧 (H-D): errors++ + success=False (毎朝 first_err 騒音化)
+    新: skipped_keywords_null++ + success=True (UI 生成待ちの半有効状態)"""
     from monitor.database import get_conn
     from tasks.task_rival_detection import run_rival_per_listing_detection_one
     with get_conn() as conn:
@@ -495,8 +498,10 @@ def test_run_one_empty_query_increments_errors(tmp_db):
     res = run_rival_per_listing_detection_one(
         "eid_emp", {"ebay": {"app_id": "x", "cert_id": "x", "seller_id": "me"}},
     )
-    assert res["errors"] >= 1
-    assert res["success"] is False
+    assert res["errors"] == 0
+    assert res["skipped_keywords_null"] == 1
+    assert res["success"] is True
+    assert "keywords NULL" in res["message"]
 
 
 def test_run_one_single_word_query_refused(tmp_db):
@@ -704,8 +709,11 @@ def test_run_rival_detection_zero_listings_returns_success_with_message(tmp_db):
 
 
 @patch("tasks.ebay_browse_api.BrowseAPIClient")
-def test_errors_gt_zero_sets_success_false(mock_browse_cls, tmp_db):
-    """H-D: errors>0 で全体 success=False (空 keyword listing 経由)."""
+def test_empty_keywords_yields_skipped_not_errors(mock_browse_cls, tmp_db):
+    """W153-UX (2026-05-26 Codex 推奨): 空 keyword listing は skipped 集計.
+    旧 (H-D): errors>0 で全体 success=False
+    新: skipped_keywords_null>0 / errors=0 / success=True
+    (ok 1 listing + empty 1 listing で全体 success=True)"""
     from monitor.database import get_conn
     from tasks.task_rival_detection import run_rival_detection
     with get_conn() as conn:
@@ -732,8 +740,9 @@ def test_errors_gt_zero_sets_success_false(mock_browse_cls, tmp_db):
     }
     with patch("tasks.task_rival_detection.time.sleep"):
         res = run_rival_detection(cfg)
-    assert res["errors"] >= 1
-    assert res["success"] is False
+    assert res["errors"] == 0
+    assert res["skipped_keywords_null"] == 1
+    assert res["success"] is True
 
 
 # ============================================================
