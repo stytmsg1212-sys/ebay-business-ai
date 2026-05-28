@@ -67,11 +67,12 @@ DEFAULT_SITE_CONFIGS = [
     {
         "site_name": "楽天市場",
         "url_keyword": "item.rakuten",
-        "in_stock_text1": "かごに追加",
+        # W183 (2026-05-28): schema.org microdata で在庫判定 (migration v55 と同値に統一).
+        # 旧 'かごに追加'/'売り切れ' は売切ページにも disabled で残り誤判定 (Codex 実機調査).
+        # 詳細: .company/engineering/migration/codex-ec-direct-url-design.md
+        "in_stock_text1": 'itemprop="availability" content="http://schema.org/InStock"',
         "in_stock_text2": "",
-        # H10 fix (W120 / 2026-05-12): DEFAULT_SITE_CONFIGS と v38 migration UPDATE の整合.
-        # 旧 default は空文字で判定不能、楽天商品で頻出する標準表記を設定.
-        "sold_out_text": "売り切れ",
+        "sold_out_text": 'itemprop="availability" content="http://schema.org/OutOfStock"',
         "no_page_text": "ご指定のページは見つかりません",
         "common_url": "https://x.gd/",
         "convert_url": "ebayRT_",
@@ -99,8 +100,10 @@ DEFAULT_SITE_CONFIGS = [
     {
         "site_name": "Amazon",
         "url_keyword": "www.amazon.co.jp",
-        "in_stock_text1": "カートに入れる",
-        "in_stock_text2": "今すぐ買う",
+        # W183 (2026-05-28): add-to-cart-button で主ボタン特定 (migration v55 と同値に統一).
+        # 旧 'カートに入れる' は nav / 関連商品にも出て誤判定 (Codex 実機調査).
+        "in_stock_text1": 'id="add-to-cart-button"',
+        "in_stock_text2": 'name="submit.add-to-cart"',
         "sold_out_text": "現在在庫切れ",
         "no_page_text": "この商品は現在お取り扱いできません",
         "common_url": "https://www.amazon.co.jp/dp/",
@@ -2557,6 +2560,98 @@ def init_db():
                     conn.execute("PRAGMA user_version = 52")
                     logger.info("[init_db v52] schema_ver bumped to 52")
 
+        # v54 (W182, 2026-05-28): supplier_candidates に availability check カラム追加.
+        # sold_out 商品を candidate として登録する bug の恒久対策 (Codex 2026-05-28 調査).
+        # 詳細: .company/engineering/migration/codex-supplier-bug-investigation.md
+        # v53 は W139-revisit Phase 1 (coverage_anomaly_log) 予約済のため v54 を採番.
+        if schema_ver < 54:
+            _W182_V54_SC_COLS = {
+                "availability_status": "TEXT",
+                "availability_checked_at": "TIMESTAMP",
+                "availability_signal": "TEXT",
+            }
+            for _col, _type in _W182_V54_SC_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE supplier_candidates ADD COLUMN "
+                        f"{_col} {_type}"
+                    )
+                    logger.info(
+                        f"[init_db v54] supplier_candidates.{_col} added"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+            _w182v54_post = set(
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(supplier_candidates)"
+                ).fetchall()
+            )
+            if set(_W182_V54_SC_COLS).issubset(_w182v54_post):
+                conn.execute("PRAGMA user_version = 54")
+                logger.info("[init_db v54] schema_ver bumped to 54")
+
+        # v55 (W183, 2026-05-28): EC サイト直接 URL 無在庫出品対応 + 楽天/Amazon 在庫判定修正.
+        # source_url_manual=1 で SKU 同期による source_url 上書きを防ぎ、Amazon/楽天等の
+        # SKU 規則性のない EC サイトを商品管理で直接 URL 設定して無在庫監視できるようにする.
+        # 併せて楽天 (schema.org microdata) / Amazon (add-to-cart-button) の在庫判定 signal を
+        # 実 HTML と一致する値に修正 (Codex 2026-05-28 実機調査).
+        # 詳細: .company/engineering/migration/codex-ec-direct-url-design.md
+        if schema_ver < 55:
+            _W183_V55_COLS = {
+                "ebay_listings": {
+                    "source_url_manual": "INTEGER NOT NULL DEFAULT 0",
+                    "source_url_updated_at": "TIMESTAMP",
+                },
+                "monitored_items": {
+                    "source_url_manual": "INTEGER NOT NULL DEFAULT 0",
+                    "source_url_updated_at": "TIMESTAMP",
+                },
+            }
+            for _tbl, _cols in _W183_V55_COLS.items():
+                for _col, _type in _cols.items():
+                    try:
+                        conn.execute(
+                            f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_type}"
+                        )
+                        logger.info(f"[init_db v55] {_tbl}.{_col} added")
+                    except sqlite3.OperationalError:
+                        pass
+            # 楽天 / Amazon の在庫判定 signal を実 HTML 一致値に修正 (冪等 UPDATE).
+            # 楽天: schema.org microdata (InStock/OutOfStock 排他)。旧 'かごに追加' は
+            #       売切ページでも disabled button として残るため誤判定 (Codex 検証).
+            # Amazon: id="add-to-cart-button" で主ボタン特定。旧 'カートに入れる' は
+            #         nav / 関連商品にも出て誤判定 (Codex 検証)。CAPTCHA は scraper 側で unknown 化.
+            try:
+                conn.execute(
+                    "UPDATE site_configs SET "
+                    "in_stock_text1=?, in_stock_text2='', sold_out_text=? "
+                    "WHERE convert_url='ebayRT_' AND url_keyword='item.rakuten'",
+                    ('itemprop="availability" content="http://schema.org/InStock"',
+                     'itemprop="availability" content="http://schema.org/OutOfStock"'),
+                )
+                conn.execute(
+                    "UPDATE site_configs SET "
+                    "in_stock_text1=?, in_stock_text2=?, sold_out_text=? "
+                    "WHERE convert_url='ebayAM_' AND url_keyword='www.amazon.co.jp'",
+                    ('id="add-to-cart-button"', 'name="submit.add-to-cart"', '現在在庫切れ'),
+                )
+                logger.info("[init_db v55] 楽天/Amazon site_configs signal 更新")
+            except sqlite3.OperationalError:
+                pass
+            # 全列が揃った後でのみ user_version bump (冪等性: 部分適用で bump しない)
+            _v55_ok = True
+            for _tbl, _cols in _W183_V55_COLS.items():
+                _post = set(
+                    r[1] for r in conn.execute(
+                        f"PRAGMA table_info({_tbl})"
+                    ).fetchall()
+                )
+                if not set(_cols).issubset(_post):
+                    _v55_ok = False
+            if _v55_ok:
+                conn.execute("PRAGMA user_version = 55")
+                logger.info("[init_db v55] schema_ver bumped to 55")
+
 
 # ---- サイト設定 ----
 
@@ -2624,6 +2719,86 @@ def build_source_url(sku: str) -> Optional[str]:
     return common + item_id if common else None
 
 
+def find_site_config_by_url(url: str) -> Optional[dict]:
+    """URL から site_config を検索 (SKU prefix 非依存、W183).
+
+    url_keyword の部分一致で判定。Amazon/楽天等を直接 URL で監視する際、
+    SKU prefix に頼らず site の在庫判定文字列 (in_stock/sold_out/no_page) を引く。
+    """
+    if not url:
+        return None
+    for cfg in get_site_configs():
+        kw = cfg.get("url_keyword", "")
+        if kw and kw in url:
+            return cfg
+    return None
+
+
+def set_listing_source_url_manual(
+    ebay_item_id: str, source_url: str, manual: bool = True
+) -> bool:
+    """listing の source_url を手動設定し SKU 同期上書きから保護する (W183).
+
+    manual=True : source_url を直接設定 + source_url_manual=1 で固定。以後
+                  upsert_item / upsert_ebay_listing / _sync_monitored_items_sku は
+                  この URL を SKU 派生で上書きしない。
+    manual=False: 固定解除 (source_url_manual=0)。SKU 派生に戻る。
+
+    listing 識別は ebay_item_id (sku-rules.md 準拠)。ebay_listings を更新し、
+    同 ebay_item_id の monitored_items があれば同期。site_config_id は URL から解決。
+    Returns: ebay_listings を更新できたら True / listing 不在で False.
+    """
+    if not ebay_item_id:
+        return False
+    src = (source_url or "").strip()
+    cfg = find_site_config_by_url(src) if src else None
+    site_config_id = cfg["id"] if cfg else None
+    manual_flag = 1 if manual else 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        # 既存 listing 取得 (不在なら False / URL 変更検知 / 監視台帳新規作成用)
+        row = conn.execute(
+            "SELECT source_url, sku, title FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        url_changed = (row[0] or "") != (src or "")
+        if url_changed:
+            # URL が変わったら旧在庫判定は無効 → 次回 inventory_check が再評価
+            # (upsert_ebay_listing 非 manual 経路と同 semantics)。
+            conn.execute(
+                "UPDATE ebay_listings SET source_url=?, source_url_manual=?, "
+                "source_url_updated_at=?, source_status='unknown', "
+                "source_last_checked=NULL WHERE ebay_item_id=?",
+                (src or None, manual_flag, now, ebay_item_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE ebay_listings SET source_url=?, source_url_manual=?, "
+                "source_url_updated_at=? WHERE ebay_item_id=?",
+                (src or None, manual_flag, now, ebay_item_id),
+            )
+        upd = conn.execute(
+            "UPDATE monitored_items SET source_url=?, source_url_manual=?, "
+            "source_url_updated_at=?, site_config_id=? WHERE ebay_item_id=?",
+            (src or None, manual_flag, now, site_config_id, ebay_item_id),
+        )
+        # W183 HIGH-1 (code-reviewer 2026-05-28): manual=True で監視台帳に未登録なら
+        # 新規 INSERT。これが無いと ensure_monitor_coverage が後で SKU 派生 URL で
+        # monitored_items 行を作り、手動 URL が誤 URL に汚染される (W139 同型の
+        # 仕入先 OOS 見逃し → 履行不能)。listing 識別は ebay_item_id (sku-rules)。
+        if manual and (upd.rowcount or 0) == 0:
+            conn.execute(
+                "INSERT INTO monitored_items (ebay_item_id, title, sku, source_url, "
+                "site_config_id, source_url_manual, source_url_updated_at, is_active) "
+                "VALUES (?,?,?,?,?,?,?,1)",
+                (ebay_item_id, row[2] or "", row[1] or "", src or None,
+                 site_config_id, manual_flag, now),
+            )
+    return True
+
+
 # ---- 監視アイテム ----
 
 def upsert_item(sku: str, ebay_item_id: str = "", title: str = "") -> int:
@@ -2661,12 +2836,26 @@ def upsert_item(sku: str, ebay_item_id: str = "", title: str = "") -> int:
             ).fetchone()
 
         if existing:
-            conn.execute(
-                """UPDATE monitored_items SET title=?, sku=?, source_url=?,
-                   site_config_id=?, is_active=1, ebay_item_id=COALESCE(NULLIF(?, ''), ebay_item_id)
-                   WHERE id=?""",
-                (title, sku, source_url, site_config_id, ebay_item_id, existing["id"]),
-            )
+            # W183 (2026-05-28): source_url_manual=1 の行は手動設定 URL を維持し、
+            # SKU 派生 source_url で上書きしない (EC 直接 URL 無在庫監視の保護).
+            _manual_row = conn.execute(
+                "SELECT COALESCE(source_url_manual, 0) FROM monitored_items WHERE id=?",
+                (existing["id"],),
+            ).fetchone()
+            if _manual_row and int(_manual_row[0]) == 1:
+                conn.execute(
+                    """UPDATE monitored_items SET title=?, sku=?, is_active=1,
+                       ebay_item_id=COALESCE(NULLIF(?, ''), ebay_item_id)
+                       WHERE id=?""",
+                    (title, sku, ebay_item_id, existing["id"]),
+                )
+            else:
+                conn.execute(
+                    """UPDATE monitored_items SET title=?, sku=?, source_url=?,
+                       site_config_id=?, is_active=1, ebay_item_id=COALESCE(NULLIF(?, ''), ebay_item_id)
+                       WHERE id=?""",
+                    (title, sku, source_url, site_config_id, ebay_item_id, existing["id"]),
+                )
             return existing["id"]
 
         conn.execute(
@@ -2773,8 +2962,17 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
         if existing:
             existing_sku = existing["sku"] or ""
             sku_changed = (sku or "") != existing_sku
+            # W183 (2026-05-28): source_url_manual=1 の listing は手動設定 URL を保護.
+            # SKU が変わっても source_url / source_status / source_last_checked を
+            # SKU 派生で上書きしない (EC 直接 URL 無在庫監視の継続性確保).
+            _manual_row = conn.execute(
+                "SELECT COALESCE(source_url_manual, 0) FROM ebay_listings "
+                "WHERE ebay_item_id=?",
+                (ebay_item_id,),
+            ).fetchone()
+            is_manual = bool(_manual_row and int(_manual_row[0]) == 1)
 
-            if sku_changed:
+            if sku_changed and not is_manual:
                 # 2026-05-20 Codex 指摘 HIGH 対応: 旧 `if sku_changed and sku:`
                 # は eBay 側で SKU が空文字に変わった場合 (W139 後の filter 解除で
                 # SKU 空 listing も DB に流入するように変更) を skip して旧 SKU
@@ -2801,6 +2999,19 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                 # を追従 (同一 conn 原子的)。汚染源 2 経路目 (user 承認済)。
                 # 2026-05-20: sku='' でも追従 (旧 sku の monitored_items 行が
                 # 残ると find_coverage_gaps が誤判定するため)。
+                _sync_monitored_items_sku(conn, ebay_item_id, sku)
+            elif sku_changed and is_manual:
+                # W183: 手動 URL listing は sku のみ追従、source_url / source_status /
+                # source_last_checked / risk_confirmed は維持 (手動 URL は不変なので
+                # 在庫状態を reset する必要なし)。
+                conn.execute(
+                    """UPDATE ebay_listings SET
+                          sku=?, title=?, current_price=?, quantity_ebay=?,
+                          shipping_cost=?, last_synced_at=?
+                       WHERE ebay_item_id=?""",
+                    (sku, title, current_price, quantity_ebay, shipping_cost, now,
+                     ebay_item_id),
+                )
                 _sync_monitored_items_sku(conn, ebay_item_id, sku)
             else:
                 conn.execute(
@@ -3948,10 +4159,15 @@ def add_supplier_candidate(
     alt_listing_possible: int = 0,
     alt_listing_note: Optional[str] = None,
     eval_model: Optional[str] = None,
+    availability_status: Optional[str] = None,
+    availability_checked_at: Optional[str] = None,
+    availability_signal: Optional[str] = None,
 ) -> Optional[int]:
     """
     仕入先候補を登録（同一 sku + candidate_url の重複は無視）。
     eval_model: AI 評価に使った model (claude-opus-4-7 / claude-haiku-4-5 等).
+    availability_*: W182 (2026-05-28) 在庫 gate を通過した時点の判定結果.
+        - status='available' 以外は呼び出し側で reject 済の想定 (二重防御として記録).
     Returns: 挿入された行のid、重複なら None
     """
     with get_conn() as conn:
@@ -3961,13 +4177,15 @@ def add_supplier_candidate(
                 candidate_price_jpy, candidate_title, match_score,
                 match_reasoning, profit_jpy, profitable, discovered_via,
                 junk_likely_untested, alt_listing_possible, alt_listing_note,
-                eval_model)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                eval_model, availability_status, availability_checked_at,
+                availability_signal)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (sku, ebay_item_id, source_platform, candidate_url,
              candidate_price_jpy, candidate_title, match_score,
              match_reasoning, profit_jpy, profitable, discovered_via,
              junk_likely_untested, alt_listing_possible, alt_listing_note,
-             eval_model),
+             eval_model, availability_status, availability_checked_at,
+             availability_signal),
         )
         return cur.lastrowid if cur.rowcount else None
 
@@ -4119,11 +4337,17 @@ def _sync_monitored_items_sku(conn, ebay_item_id: str, new_sku: str) -> None:
                       or (build_source_url(new_sku) if new_sku else None))
     cfg = find_site_config_by_sku(new_sku) if new_sku else None
     site_config_id = cfg["id"] if cfg else None
+    # W183 (2026-05-28): source_url_manual=1 の monitored_items 行は手動 URL を維持
+    # (sku のみ追従、source_url / site_config_id は SKU 派生で上書きしない).
     conn.execute(
         """UPDATE monitored_items
               SET sku=?,
-                  source_url=COALESCE(?, source_url),
-                  site_config_id=?
+                  source_url=CASE WHEN COALESCE(source_url_manual, 0)=1
+                                  THEN source_url
+                                  ELSE COALESCE(?, source_url) END,
+                  site_config_id=CASE WHEN COALESCE(source_url_manual, 0)=1
+                                      THEN site_config_id
+                                      ELSE ? END
             WHERE ebay_item_id=? AND ebay_item_id IS NOT NULL
               AND ebay_item_id <> ''""",
         (new_sku, new_source_url, site_config_id, ebay_item_id),
@@ -4143,18 +4367,30 @@ def update_ebay_listing_sku(ebay_item_id: str, new_sku: str):
     new_source_url = _build_source_url_from_sku(new_sku)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
-        conn.execute(
-            """UPDATE ebay_listings SET
-                  sku=?,
-                  source_url=COALESCE(?, source_url),
-                  source_status='unknown',
-                  source_last_checked=NULL,
-                  source_out_of_stock_since=NULL,
-                  risk_confirmed=0,
-                  last_synced_at=?
-               WHERE ebay_item_id=?""",
-            (new_sku, new_source_url, now, ebay_item_id),
-        )
+        # W183 (2026-05-28): source_url_manual=1 の listing は手動 URL + 在庫状態を維持
+        # (手動 URL は SKU 変更で変わらないので source_* reset 不要).
+        _mrow = conn.execute(
+            "SELECT COALESCE(source_url_manual,0) FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,),
+        ).fetchone()
+        if _mrow and int(_mrow[0]) == 1:
+            conn.execute(
+                "UPDATE ebay_listings SET sku=?, last_synced_at=? WHERE ebay_item_id=?",
+                (new_sku, now, ebay_item_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE ebay_listings SET
+                      sku=?,
+                      source_url=COALESCE(?, source_url),
+                      source_status='unknown',
+                      source_last_checked=NULL,
+                      source_out_of_stock_since=NULL,
+                      risk_confirmed=0,
+                      last_synced_at=?
+                   WHERE ebay_item_id=?""",
+                (new_sku, new_source_url, now, ebay_item_id),
+            )
         # W139-fix (2026-05-18): 同一 conn で monitored_items も ebay_item_id
         # キーで追従 (原子的)。これがないと find_coverage_gaps が phantom gap 化。
         _sync_monitored_items_sku(conn, ebay_item_id, new_sku)

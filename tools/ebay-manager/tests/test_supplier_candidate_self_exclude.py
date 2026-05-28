@@ -64,6 +64,17 @@ def _setup_common(monkeypatch, t, listing, hits, platform="paypay"):
     # (canonical lookup key を ebay_item_id に変更).
     monkeypatch.setattr(t, "get_ebay_listing_by_item_id", lambda eid: listing)
     monkeypatch.setattr(t, "load_settings", lambda: {})
+    # W182 (2026-05-28): 在庫 gate を「常に available」固定で mock (本 test は self URL
+    # 除外の単体検証であり、availability gate の挙動は test_w182_availability_gate.py
+    # 側で別途網羅. mock 無いと task module の check_candidate_availability が実 HTTP fetch
+    # を発火し、test 不安定 + 既存 self-exclude 経路の検証が壊れる).
+    monkeypatch.setattr(
+        t, "check_candidate_availability",
+        lambda url, **_kw: {
+            "status": "available", "signal": "test mock",
+            "checked_at": "2026-05-28T00:00:00+00:00",
+        },
+    )
     monkeypatch.setattr(
         t, "search_candidates_on_platform",
         lambda plat, kw, max_results=5: hits if plat == platform else [],

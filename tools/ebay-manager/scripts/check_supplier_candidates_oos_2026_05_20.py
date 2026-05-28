@@ -189,26 +189,37 @@ def main() -> int:
         "--limit", type=int, default=None,
         help="先頭 N 件だけ処理 (sample mode、default=全件)",
     )
+    p.add_argument(
+        "--include-accepted", action="store_true",
+        help="W182 (2026-05-28): accepted も対象に含める (default=pending のみ). "
+             "user 明示承認後の候補でも sold_out 確認したい時用.",
+    )
     args = p.parse_args()
 
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
 
     # Codex 2026-05-20 MEDIUM 対応: accepted は user が明示承認した候補なので
-    # auto-reject 対象から除外 (既存 cleanup_stale_supplier_candidates も
-    # accepted は user 判断尊重で除外)。pending のみが対象。
+    # default では auto-reject 対象から除外 (既存 cleanup_stale_supplier_candidates も
+    # accepted は user 判断尊重で除外). W182 で --include-accepted フラグ追加.
+    if args.include_accepted:
+        status_clause = "status IN ('pending', 'accepted')"
+        status_label = "pending + accepted"
+    else:
+        status_clause = "status = 'pending'"
+        status_label = "pending のみ"
     rows = conn.execute(
-        "SELECT id, candidate_url, source_platform, status, candidate_title "
-        "FROM supplier_candidates "
-        "WHERE status = 'pending' "
-        "  AND candidate_url IS NOT NULL AND candidate_url != '' "
-        "ORDER BY id" + (f" LIMIT {int(args.limit)}" if args.limit else "")
+        f"SELECT id, candidate_url, source_platform, status, candidate_title "
+        f"FROM supplier_candidates "
+        f"WHERE {status_clause} "
+        f"  AND candidate_url IS NOT NULL AND candidate_url != '' "
+        f"ORDER BY id" + (f" LIMIT {int(args.limit)}" if args.limit else "")
     ).fetchall()
 
     total = len(rows)
     mode = "DRY-RUN" if args.dry_run else "PRODUCTION"
     logger.info(
-        f"対象 supplier_candidates: {total} 件 (pending のみ) [{mode}]"
+        f"対象 supplier_candidates: {total} 件 ({status_label}) [{mode}]"
     )
 
     summary = {
@@ -250,25 +261,43 @@ def main() -> int:
 
         # 排除条件: out_of_stock or not_found = 「もはや取扱不能」確定
         if cls in ('out_of_stock', 'not_found'):
+            # W182 HIGH-1 fix (2026-05-28 code-reviewer): UPDATE WHERE 句の status を
+            # SELECT 時の status_clause と整合させる。旧コードは UPDATE が
+            # status='pending' 固定で、--include-accepted 指定時に accepted な
+            # sold_out 行が UPDATE 0 件影響だが summary では reject 済とカウント =
+            # Q0 偽装成功違反。修正: SELECT で hit した status 集合に対して UPDATE
+            # を発行し、rowcount で実 update を verify。0 行影響時は summary も
+            # カウントしない (silent skip 防止)。
+            actually_updated = False
             if not args.dry_run:
-                conn.execute(
-                    "UPDATE supplier_candidates "
-                    "SET status='rejected', auto_rejected=1, "
-                    "    user_action_at=CURRENT_TIMESTAMP "
-                    "WHERE id=? AND status='pending'",
+                cur = conn.execute(
+                    f"UPDATE supplier_candidates "
+                    f"SET status='rejected', auto_rejected=1, "
+                    f"    user_action_at=CURRENT_TIMESTAMP "
+                    f"WHERE id=? AND {status_clause}",
                     (cid,),
                 )
+                actually_updated = (cur.rowcount or 0) > 0
+                if not actually_updated:
+                    logger.warning(
+                        f"  cid={cid} UPDATE rowcount=0 (status changed between "
+                        f"SELECT and UPDATE? 集計から除外)"
+                    )
                 conn.commit()
-            summary['platforms'][platform]['oos'] += 1
-            if cls == 'out_of_stock':
-                summary['auto_rejected_oos'] += 1
             else:
-                summary['auto_rejected_404'] += 1
-            if len(summary['samples_oos']) < 10:
-                summary['samples_oos'].append({
-                    'cid': cid, 'platform': platform, 'classification': cls,
-                    'signal': result['signal'], 'title': ttl,
-                })
+                # dry-run は SELECT 結果ベースで集計 (実 update なし)
+                actually_updated = True
+            if actually_updated:
+                summary['platforms'][platform]['oos'] += 1
+                if cls == 'out_of_stock':
+                    summary['auto_rejected_oos'] += 1
+                else:
+                    summary['auto_rejected_404'] += 1
+                if len(summary['samples_oos']) < 10:
+                    summary['samples_oos'].append({
+                        'cid': cid, 'platform': platform, 'classification': cls,
+                        'signal': result['signal'], 'title': ttl,
+                    })
 
         if cls == 'uncertain' and len(summary['samples_uncertain']) < 5:
             summary['samples_uncertain'].append({

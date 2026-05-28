@@ -1641,5 +1641,86 @@
     "completed": "2026-05-25",
     "completion_note": "実 DB hour 分布 (過去 30日 4806 records で main slots 02/11/15/18/22 にきれいに集中) で JST naive 保存を確定。L296 を `DATE(started_at) = ?` に修正、コメント訂正、sqlite-timezone.md に例外節追加 (Python datetime.now() bind 系 vs SQL CURRENT_TIMESTAMP 系の表)、tests/test_w170_find_missed_tasks_tz.py 3 件 PASS、関連 13 tests 全件 PASS で regression なし。cascade scan: 他 file の `started_at, +9 hours` 参照は本 fix の説明文と test のみ",
     "source": "W169 review で code-reviewer 指摘 (確信度 80%、別 W 推奨)"
+  },
+  {
+    "id": 260,
+    "tag": "W176",
+    "title": "個別出品→商品管理の即時反映 (ebay_listings 即時 upsert + bump_db_version)",
+    "description": "個別出品タブの AddFixedPriceItem 成功直後に ebay_listings テーブルへ upsert_ebay_listing + bump_db_version を追加し、商品管理タブで即時検索可能にする。現状は listing_drafts.status='applied' に更新するのみで ebay_listings には書き込まず、次回 ebay_sync (5回/日: 02:30/11:00/15:00/18:00/22:00) まで反映されない。出品直後にライバル登録など即時操作したいケースで gap になっている。修正規模: tab_individual_listing.py の Step C 成功分岐 (L2013-2021) 直後に 5-10 LOC 追加 + bump_db_version で UI cache 即時無効化",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-05-27",
+    "completed": null,
+    "source": "2026-05-27 user 報告: 個別出品した商品が商品管理タブで検索に出ない"
+  },
+  {
+    "id": 261,
+    "tag": "W177",
+    "title": "eBay連携タブに単一 listing 同期機能を追加 (Item ID 指定 1 件のみ ~3 秒 sync)",
+    "description": "eBay連携タブに Item ID 指定で 1 件だけ GetItem → ebay_listings upsert + metrics 更新する機能を追加。全体同期 (~1-2 分、534 件 GetItem) を回さずに特定 listing だけ最新化したい時用。実装: monitor/ebay_client.py に get_single_listing、monitor/ebay_sync.py に sync_single_listing、app.py L3376-3429 に UI (text_input + button、busy flag で連打防御、SQLite lock 検知で friendly message)。回帰テスト 4 件 PASSED (SKU 空 skip / listing None / credentials 欠落 / item_id 空)。W176 (個別出品自動 upsert) と相互補完: W176=新出品自動、W177=既存 listing 手動再 sync",
+    "status": "完了",
+    "priority": "中",
+    "created": "2026-05-27",
+    "completed": "2026-05-27",
+    "source": "2026-05-27 user 依頼「eBay連携に item id 設定して 1 件だけ連携する機能」+ W176 補完",
+    "completion_note": "Q4 code-reviewer 2 周で HIGH 3→0 (価格 schema コメント / SQLite OperationalError friendly / button 連打防御)。Playwright で実機 verify: Fujikura 358602711505 (W176 trigger 商品) 同期成功、last_synced_at=2026-05-27 07:18:48 で確認"
+  },
+  {
+    "id": 262,
+    "tag": "W178",
+    "title": "画像合成ロゴプレート品質改善 (Codex P1-3: W3 pin 解除 + Vision bbox + 動的 prompt)",
+    "description": "現状 60 点の hero 画像合成を 85 点に。Codex GPT-5.5 review 結果に基づく 3 段改善: (P1) PINNED_PLATE_ID='W3' 撤廃、W3 は弱い prior (+1.0) として残す。AI camera_elevation 判定を真の top に効かせる (~15-30 LOC)。(P2) Vision に normalized bbox (x,y,w,h) + product_center + product_vertical + bbox_confidence を追加、derive_layout で preferred_corner + plate_size_ratio 派生計算 (~40-80 LOC)。(P3) image_composer_gemini.py の _COMPOSE_PROMPT を build_compose_prompt(analysis, plate) 関数化、bbox から corner/size/数値座標を動的注入 (~60-120 LOC)。3 つの user 報告 (角度不一致 / サイズ不整合 / 配置干渉) の根因に対する surgical change。Q4 code-reviewer + 実機検証込み",
+    "status": "失敗 - rollback",
+    "priority": "高",
+    "created": "2026-05-27",
+    "completed": "2026-05-27",
+    "source": "2026-05-27 user 「ロゴプレート合成が 60 点」報告 + Codex GPT-5.5 consultation (scripts/codex-consult-image-composer-improve.md)",
+    "completion_note": "P1-P3 全実装 + Codex 2 段ループで HIGH=0 達成したが、本日 PM の user 実機評価で W181 含めて全 attempt が朝の出発点 (PINNED_PLATE_ID='W3' 状態) より品質劣ると判定。user 要請で git checkout HEAD で 4 file (plate_library/plate_selector/image_composer_gemini/image_pipeline_shared) を b2cabd7 状態に復帰、plate_placer_pil.py + test_w178_derive_layout.py 物理削除。Codex 改善案 (W3 pin 解除 + bbox 駆動 prompt) は理論的に正しく見えたが、Gemini 出力の体感品質では PINNED_W3 + BOTTOM-LEFT 固定の方が良い結果を出す事が user 評価で確定。教訓: Gemini compositing は prompt の自由度を与えるより固定 pattern の方が安定する可能性。今後の品質改善は別 angle (plate ライブラリ拡張 / user 手動配置 UI 等) で再検討"
+  },
+  {
+    "id": 263,
+    "tag": "W179",
+    "title": "画像合成 検証 loop (W178 後、合成後 overlap/size/legibility 自動検査 + 最大 2 回再生成)",
+    "description": "W178 完了後の効果評価で残課題があれば実施。合成後画像を Vision で検査 (overlap=none / gap >= 4-6% / tag_longest_ratio target±25% / logo_legible) → 不合格なら prompt 強化して再生成、最大 2 回。失敗時は fallback plate or PIL deterministic overlay に切替。コスト: 平均 +$0.015/枚 (Vision 検査 $0.001 + 再生成 30% 想定で $0.05*0.3)。W178 単独で 85 点超えれば本 W は不要",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-27",
+    "completed": null,
+    "source": "Codex GPT-5.5 P4 推奨。W178 完了時に user が実施判断"
+  },
+  {
+    "id": 264,
+    "tag": "W180",
+    "title": "ロゴプレート合成を PIL deterministic 化 (mask-based rectangle scoring)",
+    "description": "W178 実機検証で配置が依然 user 期待と乖離 (HIOKI 横長機器で bbox-driven derive_layout が中央寄り判定 → 左端 x<0.18 で誤って bottom_right を選択)。Codex GPT-5.5 再 consultation で『bbox 派生は irregular 形状で破綻、Vision に直接聞いても 60-80% で外す、PIL deterministic が ground truth』と判定、案 D (mask-based rectangle scoring + PIL paste) 採用。実装: monitor/plate_placer_pil.py 新規 (rembg or alpha channel から商品 mask 取得 → 9 grid × 3 size = 27 候補生成 → mask_overlap/product_distance/canvas_edge_margin/floor_space 4 軸 scoring → 最高候補に PIL alpha_composite + image_renderer.py の shadow/tilt 流用)。image_composer_gemini.py に generate_hero_candidates_pil() 並存、UI で PIL default 化。期待効果: 配置精度 ~100%、コスト -$0.15/枚 (Gemini compose 削除)、速度 ~30 秒短縮、商品 detail 破壊リスク撤廃。残リスク: 写真としての自然さが Gemini 版と同等か要実機検証 (image_renderer の contact/ambient shadow が機能するかは未検証)",
+    "status": "失敗 - rollback",
+    "priority": "高",
+    "created": "2026-05-27",
+    "completed": "2026-05-27",
+    "source": "2026-05-27 user 実機評価『W178 効果薄い』+ Codex GPT-5.5 再 consult で『案 A 却下、案 D (mask scoring + PIL) 推奨』",
+    "completion_note": "PIL deterministic placement 実装完走したが user 実機評価で『影が安っぽい、修正前の方がはるかに良い』と判定。Codex の『Gemini scene unification 価値は限定的』hypothesis が実機で覆る。PIL 計算式の影 vs Gemini 学習済 realism の差が user 評価で明確化。2026-05-27 PM rollback、backend='gemini' default に戻す (PIL は backend='pil' 明示時のみ動作する temporary 状態として温存)。後続: W181 で Gemini 経路維持 + 採点ロジック多軸化 + plate diversity"
+  },
+  {
+    "id": 265,
+    "tag": "W181",
+    "title": "Gemini 経路維持 + 採点ロジック多軸化 + plate diversity (Phase 1)",
+    "description": "W180 rollback 後の品質改善ルート。Codex GPT-5.5 W181 consult 結論で Phase 1 から着手: (1) score_plates を multi-axis 化 (camera_elevation 4.5 + orientation/shape 2.5 + product_facing 1.5 + empty-space 1.0 + surface 0.5、W3 prior は +1.0->+0.5)、(2) top-k に diversity constraint 追加 (同 angle family 最大 2)、(3) Vision field 最小追加 (visible_surface_plane + shadow_direction)、(4) S 系縦置きは user 意向で skip、ACTIVE_PLATE_IDS の W2/W3/W4 構成維持。実装規模 ~200-250 LOC、コスト 0。Phase 1 評価で 80 点未達なら Phase 2 (washi-gray flat plate を 4->12-16 種に拡張、$0.32-0.64 一回コスト) 着手判断。素材 variation は user 意向で skip 確定",
+    "status": "失敗 - rollback",
+    "priority": "高",
+    "created": "2026-05-27",
+    "completed": "2026-05-27",
+    "source": "2026-05-27 PM user 提案『Gemini 合成維持 + 多角度 plate + AI 解析強化』+ Codex GPT-5.5 W181 consult で Phase 1 (採点改善) -> Phase 2 (plate 拡張) の順序確定 + user 意向で素材 1 種 + 直置きのみ scope 確定",
+    "completion_note": "Phase 1 (multi-axis scoring + diversity + shadow_direction prompt 注入) を実装完走したが user 実機評価で『最初のものの方が質高い』と判定 (W178 状態が W181 より良いという結論)。原因仮説: shadow_direction を Gemini に具体指示 (例: right に shadow 落ちる) すると Gemini が無理にそれを描こうとして品質低下する系統 + 多軸 scoring で plate 選定変化が体感品質に逆効果。W181 全要素を revert、W178 + Codex MEDIUM/LOW fix 状態に復帰 (W3 prior 1.0 / 単軸 camera_elevation 採点 / build_compose_prompt の shadow_direction 注入削除 / Vision の visible_surface_plane + shadow_direction field 削除)。pytest 22 件 PASS で無回帰確認。W178 単体での品質改善は今後別 angle で再 attack (Phase 2 plate 拡張 or user 手動配置 UI 等)"
+  },
+  {
+    "id": 266,
+    "tag": "W182",
+    "title": "仕入先候補 sold_out 自動除外 (availability gate + scraper PayPay 強化)",
+    "description": "PayPay 検索 API が sold_out を返す bug の恒久対策。発見ロジック (task_supplier_candidate_search.py + task_supplier_sweep.py) に在庫 gate を追加し、AI 評価前に sold_out / not_found を reject。supplier_candidates テーブルに availability_status / availability_checked_at / availability_signal カラム追加 (migration v54)。PayPay フリマは raw HTML に SoldOut と InStock が混在するため scrapers.py に専用判定追加 (優先: 購入日時 > SoldOut JSON-LD > 関連商品をアプリで探す)。UI (app.py 復活候補表示) でも availability_status=unavailable/not_found は除外。check_supplier_candidates_oos cleanup script に --include-accepted フラグ追加。Codex 2026-05-28 調査で id=1362 が 2025年12月13日購入済 (5 ヶ月前売切) を 確認、即時 6 件 (1360/1354/1362/700/619/467) reject SQL + 恒久対策 6 file 修正。実機 verify: 5 URL (sold_out 3 / 終了 1 / available 1) で期待通り判定確認済。",
+    "status": "implemented",
+    "priority": "高",
+    "created": "2026-05-28",
+    "completed": "2026-05-28",
+    "source": "2026-05-28 user 報告『復活候補にある 3 つはどれも売り切れ』+ Codex GPT-5.5 実機 web fetch 調査で root cause 3 つ (PayPay 検索が sold_out 返す + 判定 layer 不在 + scraper schema.org/InStock 単独誤認) 確定"
   }
 ]

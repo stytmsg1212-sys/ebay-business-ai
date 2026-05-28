@@ -46,6 +46,8 @@ from tasks.task_supplier_candidate_search import (  # noqa: E402
 from calculator import (  # noqa: E402
     check_supplier_candidate_profitable, load_settings,
 )
+# W182 HIGH-2 fix (2026-05-28): module-level import で test monkeypatch 互換
+from monitor.scrapers import check_candidate_availability  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +257,11 @@ def run_supplier_sweep_batch(config: dict) -> dict:
     items_by_eid: dict[str, list] = {}  # eid -> list[(custom_id, hit)]
     batch_items: list[BatchItem] = []
     excluded_self = 0
+    # W182 (2026-05-28): 在庫 gate (sold_out / not_found を AI 評価前に除外)
+    # PayPay 検索 API が sold_out を返す bug の恒久対策 (Codex 2026-05-28 調査).
+    # check_candidate_availability は module-level import (HIGH-2 fix、monkeypatch 互換).
+    excluded_unavailable = 0
+    url_avail_map: dict[str, dict] = {}
     scrape_errors = 0
 
     for eid, sku in targets:
@@ -279,6 +286,20 @@ def run_supplier_sweep_batch(config: dict) -> dict:
             for idx, h in enumerate(hits):
                 if listing_url_norm and _normalize_url(h.url) == listing_url_norm:
                     excluded_self += 1
+                    continue
+                # W182: 在庫 gate (sold_out / not_found は Claude Batch 評価前に reject、コスト削減)
+                # 同 batch 内で同 URL を複数 hit する場合は cache (重複 fetch 削減).
+                if h.url in url_avail_map:
+                    _avail = url_avail_map[h.url]
+                else:
+                    _avail = check_candidate_availability(h.url)
+                    url_avail_map[h.url] = _avail
+                if _avail.get('status') in ('unavailable', 'not_found'):
+                    excluded_unavailable += 1
+                    logger.info(
+                        f"[W94 batch] W182 skip {_avail.get('status')}: "
+                        f"eid={eid} url={h.url} signal={_avail.get('signal')}"
+                    )
                     continue
                 # KB 注入 (動画学習で関連知識があれば prompt に追加)
                 kb_text = ""
@@ -376,6 +397,8 @@ def run_supplier_sweep_batch(config: dict) -> dict:
             if not eval_r.alt_listing_possible and not profitable:
                 continue
 
+            # W182: 在庫 gate で取得した availability を persist
+            _w182_avail = url_avail_map.get(hit.url, {})
             row_id = add_supplier_candidate(
                 sku=sku,
                 candidate_url=hit.url,
@@ -396,6 +419,9 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                     if custom_id in batch_result.fallback_custom_ids
                     else f"{_eval_model}-batch"
                 ),
+                availability_status=_w182_avail.get('status'),
+                availability_checked_at=_w182_avail.get('checked_at'),
+                availability_signal=_w182_avail.get('signal'),
             )
             if row_id:
                 total_persisted += 1

@@ -35,6 +35,11 @@ from monitor.database import (  # noqa: E402
     add_supplier_candidate, get_ebay_listing_by_item_id,
 )
 from monitor.claude_evaluator import evaluate_match, EvaluationResult  # noqa: E402
+# W182 HIGH-2 fix (2026-05-28 code-reviewer): module-level import で既存 test の
+# monkeypatch.setattr(t, "check_candidate_availability", ...) pattern 互換維持.
+# 旧コードは関数内 local import で task module attribute に存在せず monkeypatch 不能、
+# 結果 test_supplier_candidate_self_exclude.py が実 HTTP fetch を発火して壊れていた.
+from monitor.scrapers import check_candidate_availability  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +316,12 @@ def run_supplier_candidate_search(
 
     all_scored: list[ScoredCandidate] = []
     excluded_self = 0
+    # W182 (2026-05-28): 在庫 gate で除外した件数 + URL → availability map.
+    # PayPay 検索 API が sold_out を返す bug の恒久対策。Claude 評価前に弾く
+    # ことで API コストも削減 (Codex 2026-05-28 調査結果)。
+    # check_candidate_availability は module-level import (HIGH-2 fix、monkeypatch 互換).
+    excluded_unavailable = 0
+    url_avail_map: dict[str, dict] = {}
     for plat in platforms:
         hits = search_candidates_on_platform(plat, ebay_title)
         for h in hits:
@@ -319,6 +330,20 @@ def run_supplier_candidate_search(
                 excluded_self += 1
                 logger.info(
                     f"skip self-source candidate: sku={sku} url={h.url}"
+                )
+                continue
+            # W182: 在庫 gate (sold_out / not_found は AI 評価前に reject).
+            # 同 batch 内で同 URL を複数 hit する場合は cache (重複 fetch 削減).
+            if h.url in url_avail_map:
+                _avail = url_avail_map[h.url]
+            else:
+                _avail = check_candidate_availability(h.url)
+                url_avail_map[h.url] = _avail
+            if _avail.get('status') in ('unavailable', 'not_found'):
+                excluded_unavailable += 1
+                logger.info(
+                    f"W182 skip {_avail.get('status')} candidate: sku={sku} "
+                    f"url={h.url} signal={_avail.get('signal')}"
                 )
                 continue
             # ebay_item_id を渡すことで同 listing の過去判断履歴が Claude プロンプトに
@@ -379,6 +404,8 @@ def run_supplier_candidate_search(
 
         # 2026-04-25 Opus 4.7 切替: 評価 model を candidate に記録. UI で識別可能に.
         from monitor.claude_evaluator import CLAUDE_MODEL as _eval_model
+        # W182: 在庫 gate で取得した availability を persist (gate 通過 = available 確定)
+        _w182_avail = url_avail_map.get(sc.hit.url, {})
         row_id = add_supplier_candidate(
             sku=sku,
             candidate_url=sc.hit.url,
@@ -395,6 +422,9 @@ def run_supplier_candidate_search(
             alt_listing_possible=int(sc.alt_listing_possible),
             alt_listing_note=sc.alt_listing_note or None,
             eval_model=_eval_model,
+            availability_status=_w182_avail.get('status'),
+            availability_checked_at=_w182_avail.get('checked_at'),
+            availability_signal=_w182_avail.get('signal'),
         )
         if row_id:
             persisted += 1
@@ -404,7 +434,8 @@ def run_supplier_candidate_search(
     logger.info(
         f"仕入先候補探索: sku={sku} found={len(all_scored)} persisted={persisted} "
         f"alt_listed={alt_listed} skipped_unprofitable={skipped_unprofitable} "
-        f"skipped_low_score={skipped_low_score} excluded_self={excluded_self}"
+        f"skipped_low_score={skipped_low_score} excluded_self={excluded_self} "
+        f"excluded_unavailable={excluded_unavailable}"
     )
 
     # W100 (2026-05-06): リサーチ完了 = grace 待機の役目終了 → yahoo_grace_until クリア
@@ -426,6 +457,7 @@ def run_supplier_candidate_search(
         'skipped_unprofitable': skipped_unprofitable,
         'skipped_low_score': skipped_low_score,
         'excluded_self': excluded_self,
+        'excluded_unavailable': excluded_unavailable,
         'message': (
             f'{persisted}/{len(all_scored)} persisted '
             f'(alt0>={_alt0_threshold}, alt1>={_alt1_threshold}, '

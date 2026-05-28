@@ -150,7 +150,7 @@ def _fetch_all_products() -> list[dict]:
                 el.primary_market, el.rank, el.includes, el.warranty,
                 el.total_sold_count, el.watch_count, el.view_count,
                 el.source, el.source_url, el.source_status, el.source_last_checked,
-                el.source_out_of_stock_since,
+                el.source_out_of_stock_since, el.source_url_manual,
                 -- ③/BC2 修正 (2026-05-18): ebay_listings.competitor_min_price は
                 -- writer (update_ebay_listing_competitor_info) が全コード未呼出の
                 -- dead column = hero「競合最安」が永久に未入力だった。W183
@@ -332,9 +332,9 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
     cols = st.columns([3, 2])
     with cols[0]:
         search = st.text_input(
-            "🔍 商品名 / SKU で検索",
+            "🔍 商品名 / SKU / Item ID で検索",
             key="pm_search",
-            placeholder="部分一致",
+            placeholder="部分一致 (Item ID は 12 桁数字)",
         )
     with cols[1]:
         sort_key = st.selectbox(
@@ -377,6 +377,7 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
             p for p in products
             if s in (p.get("title") or "").lower()
             or s in (p.get("sku") or "").lower()
+            or s in str(p.get("ebay_item_id") or "").lower()
         ]
     if only_missing:
         products = [
@@ -1346,6 +1347,48 @@ def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
 
     if p.get("source_url"):
         st.markdown(f"[🔗 仕入先 URL]({p['source_url']})")
+
+    # ── 🔧 W183 (2026-05-28): Amazon / 楽天 等を直接 URL で無在庫監視 ──
+    # SKU 規則性の無い EC サイトは source_url を手動固定 (source_url_manual=1)。
+    # 固定すると eBay 同期 / SKU 変更で URL が上書きされない
+    # (set_listing_source_url_manual)。識別は ebay_item_id (sku-rules 準拠)。
+    if p.get("source_url_manual"):
+        st.caption("📌 この仕入先 URL は固定中 (eBay 同期 / SKU 変更で上書きされません)")
+    with st.expander("🔧 仕入先 URL を直接指定 (Amazon / 楽天 等)", expanded=False):
+        _u = st.text_input(
+            "仕入先 URL",
+            value=p.get("source_url") or "",
+            key=f"pm_src_url_{eid}",
+            placeholder="https://www.amazon.co.jp/dp/... / https://item.rakuten.co.jp/...",
+        )
+        _m = st.checkbox(
+            "この URL を固定 (eBay 同期・SKU 変更で上書きしない)",
+            value=bool(p.get("source_url_manual")),
+            key=f"pm_src_manual_{eid}",
+            help="Amazon / 楽天 など SKU から URL を生成できない EC サイト向け。",
+        )
+        if st.button("💾 仕入先 URL を保存", key=f"pm_src_save_{eid}"):
+            from monitor.database import (
+                set_listing_source_url_manual, find_site_config_by_url,
+            )
+            _u2 = (_u or "").strip()
+            if _m and not _u2:
+                st.error("固定 ON の場合は URL を入力してください。")
+            elif _u2 and not _u2.startswith(("http://", "https://")):
+                st.error("URL は http:// または https:// で始めてください。")
+            else:
+                if set_listing_source_url_manual(eid, _u2, manual=_m):
+                    if _m and _u2 and find_site_config_by_url(_u2) is None:
+                        st.warning(
+                            "保存しました。ただしこの URL のサイト設定 (site_configs) が"
+                            "未登録のため、在庫判定は unknown になり得ます。"
+                        )
+                    else:
+                        st.success("仕入先 URL を保存しました。")
+                    bump_db_version()
+                    st.rerun()
+                else:
+                    st.error("保存に失敗しました (listing が見つかりません)。")
 
     # 監視 URL 一覧 (折りたたみ、簡潔)
     monitored = _fetch_monitored_items_for_listing(eid)

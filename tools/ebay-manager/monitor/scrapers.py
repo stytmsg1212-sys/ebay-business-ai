@@ -5,6 +5,7 @@ URLに直接アクセスして在庫テキストを検出する方式
 import asyncio
 import logging
 import random
+import re
 from typing import Optional
 
 import httpx
@@ -20,6 +21,40 @@ USER_AGENTS = [
 
 
 # ---- httpx ベースのチェック（高速・軽量） ----
+
+def _detect_rakuten_purchase_status(url: str, html: str) -> Optional[str]:
+    """楽天 HIDDEN_STOCK ショップは在庫数を隠し、購入可能でも quantity:0 +
+    schema.org/OutOfStock を返す。本体 purchaseInfo.purchaseBySellType 直下の
+    purchaseCondition のみが信頼できる在庫信号:
+      enabled                 -> available
+      それ以外 (sold-out 等)  -> unavailable
+
+    ⚠️ displayNormalCartButton は在庫信号にしない: 実 OOS サンプル
+    (data/tmp/ec_direct_url_probe/rakuten_oos_raw.html) で sold-out 品でも true
+    のため、true->available にすると売り切れを在庫ありと誤判定する (受注後仕入れ
+    不能 = eBay Defect 直結。code-review 2026-05-28 CRITICAL-1)。
+
+    本体スコープ限定 (purchaseBySellType アンカー) で、関連商品/レコメンド/
+    バンドルの purchaseCondition 混入による mirror 誤判定を防ぐ (HIGH-1)。
+    """
+    if "item.rakuten" not in url.lower():
+        return None
+
+    m = re.search(
+        r'"purchaseBySellType"\s*:\s*\{\s*"purchaseCondition"\s*:\s*"([^"]+)"',
+        html,
+    )
+    if not m:
+        # 本体 purchaseCondition 不在 -> None で Playwright fallback へ
+        # (silent に在庫あり扱いを作らない / Q0)
+        return None
+    condition = m.group(1)
+    if condition == "enabled":
+        logger.debug(f"Rakuten purchaseCondition enabled -> available: {url}")
+        return "available"
+    logger.debug(f"Rakuten purchaseCondition={condition!r} (not enabled) -> unavailable: {url}")
+    return "unavailable"
+
 
 def _check_with_httpx(
     url: str,
@@ -43,6 +78,22 @@ def _check_with_httpx(
             return None
 
         html = resp.text
+        # W183 (2026-05-28): Amazon 等の anti-bot ページ (Robot Check / CAPTCHA)
+        # は在庫判定不能 = unknown 扱い (None で Playwright fallback)。在庫切れと
+        # 誤認すると不要な値下げ / 出品停止に直結するため必ず unknown に倒す。
+        low = html.lower()
+        if "robot check" in low or "validatecaptcha" in low:
+            logger.debug(f"anti-bot page (captcha) -> unknown: {url}")
+            return None
+        rakuten_status = _detect_rakuten_purchase_status(url, html)
+        if rakuten_status is not None:
+            return rakuten_status
+        if "item.rakuten" in url.lower():
+            rakuten_sold_out_texts = [
+                t for t in sold_out_texts
+                if t != 'itemprop="availability" content="http://schema.org/OutOfStock"'
+            ]
+            return _detect_status_single(html, in_stock_texts, rakuten_sold_out_texts, no_page_texts, strict=True)
         return _detect_status_single(html, in_stock_texts, sold_out_texts, no_page_texts, strict=True)
     except httpx.TimeoutException:
         logger.debug(f"httpx timeout: {url}")
@@ -341,19 +392,38 @@ def check_item_by_config(item: dict, site_config: dict) -> str:
 
 
 def prepare_batch_items(items: list[dict], configs_by_prefix: dict) -> list[dict]:
-    """DB アイテムリストをバッチチェック用の形式に変換"""
+    """DB アイテムリストをバッチチェック用の形式に変換。
+
+    W183 (2026-05-28): SKU prefix に一致しない直接 URL 監視 (source_url_manual=1 の
+    Amazon/楽天 等、SKU 規則性の無い EC) は source_url の url_keyword で site_config を
+    解決する fallback を追加。除外したものは件数と理由をログに残す (Q0 silent-skip 防止)。
+    """
     batch = []
+    dropped_no_url = 0
+    dropped_no_config: list[dict] = []
     for item in items:
         sku = item.get("sku", "")
         source_url = item.get("source_url", "")
         if not source_url:
+            dropped_no_url += 1
             continue
         cfg = None
+        # 1) SKU prefix 一致 (従来の無在庫 ebay**_ SKU)
         for prefix, c in configs_by_prefix.items():
-            if sku.startswith(prefix):
+            if prefix and sku.startswith(prefix):
                 cfg = c
                 break
-        if not cfg:
+        # 2) W183 fallback: prefix 不一致は source_url の url_keyword で site 解決
+        if cfg is None:
+            for c in configs_by_prefix.values():
+                kw = c.get("url_keyword", "")
+                if kw and kw in source_url:
+                    cfg = c
+                    break
+        if cfg is None:
+            dropped_no_config.append(
+                {"id": item.get("id"), "sku": sku, "url": source_url}
+            )
             continue
         batch.append({
             "id": item["id"],
@@ -362,4 +432,142 @@ def prepare_batch_items(items: list[dict], configs_by_prefix: dict) -> list[dict
             "sold_out": [cfg.get("sold_out_text", "")],
             "no_page": [cfg.get("no_page_text", "")],
         })
+    if dropped_no_url or dropped_no_config:
+        logger.info(
+            "[prepare_batch_items] 除外: no_source_url=%d site_config_missing_url=%d (対象 %d 件)",
+            dropped_no_url, len(dropped_no_config), len(items),
+        )
+        for d in dropped_no_config[:20]:
+            logger.warning(
+                "[prepare_batch_items] site_config_missing_url id=%s sku=%r url=%s",
+                d["id"], d["sku"], d["url"],
+            )
     return batch
+
+
+# ============================================================================
+# W182 (2026-05-28): 候補 URL の在庫 gate
+# ============================================================================
+# sold_out 商品を supplier_candidates に登録する bug の恒久対策。
+# task_supplier_candidate_search.py + task_supplier_sweep.py の発見ロジックから
+# 評価 / 登録の前に呼ぶ。raw HTML レベルで sold_out signal を確実に拾うため、
+# PayPay / Yahoo Auctions は専用 logic、他は既存 site_configs を流用。
+#
+# 設計根拠 (Codex 2026-05-28 調査):
+# - PayPay フリマは raw HTML に "InStock" (古い ld+json) と "SoldOut" が混在
+# - 既存 site_configs の `関連商品をアプリで探す` は JS 描画後にしか出ない
+# - raw HTML で確実に検出できる signal: 購入日時 (購入済の確定 signal)、SoldOut
+# 詳細: .company/engineering/migration/codex-supplier-bug-investigation.md
+# ============================================================================
+
+from datetime import datetime, timezone
+
+
+_AVAILABILITY_HTTPX_TIMEOUT = 10
+_AVAILABILITY_HEADERS_BASE = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8",
+}
+
+
+def _avail_headers() -> dict:
+    h = dict(_AVAILABILITY_HEADERS_BASE)
+    h["User-Agent"] = random.choice(USER_AGENTS)
+    return h
+
+
+def check_candidate_availability(url: str, timeout_sec: int = _AVAILABILITY_HTTPX_TIMEOUT) -> dict:
+    """
+    候補 URL の在庫状態を判定し、availability dict を返す。
+
+    Returns: {
+        'status':       'available' | 'unavailable' | 'not_found' | 'unknown',
+        'signal':       検出 signal (debug 用),
+        'checked_at':   ISO8601 UTC,
+    }
+
+    呼び出し側は `status in ('unavailable', 'not_found')` で reject する想定。
+    'unknown' は判定保留 (現状は通過 = 既存挙動と互換、後段の AI 評価でカバー)。
+    """
+    checked_at = datetime.now(timezone.utc).isoformat()
+    if not url:
+        return {'status': 'unknown', 'signal': 'empty url', 'checked_at': checked_at}
+    if 'paypayfleamarket.yahoo.co.jp' in url:
+        return _check_paypay_availability(url, timeout_sec, checked_at)
+    if 'auctions.yahoo.co.jp' in url:
+        return _check_yahoo_auctions_availability(url, timeout_sec, checked_at)
+    # mercari / fril / 他は既存 site_configs ベース
+    return _check_via_site_configs(url, timeout_sec, checked_at)
+
+
+def _check_paypay_availability(url: str, timeout_sec: int, checked_at: str) -> dict:
+    """PayPay フリマ raw HTML 判定 (W182、Codex 2026-05-28 検証ベース)。"""
+    try:
+        resp = httpx.get(url, headers=_avail_headers(), timeout=timeout_sec, follow_redirects=True)
+    except httpx.TimeoutException:
+        return {'status': 'unknown', 'signal': 'httpx timeout', 'checked_at': checked_at}
+    except httpx.HTTPError as e:
+        return {'status': 'unknown', 'signal': f'httpx error: {type(e).__name__}', 'checked_at': checked_at}
+    if resp.status_code == 404:
+        return {'status': 'not_found', 'signal': 'HTTP 404', 'checked_at': checked_at}
+    if resp.status_code != 200:
+        return {'status': 'unknown', 'signal': f'HTTP {resp.status_code}', 'checked_at': checked_at}
+    html = resp.text
+    if 'この商品は存在しません' in html:
+        return {'status': 'not_found', 'signal': 'no_page_text', 'checked_at': checked_at}
+    # sold_out signals (Codex 検証で raw HTML に必ず入る): 優先順
+    if '購入日時' in html:
+        return {'status': 'unavailable', 'signal': '購入日時 in HTML', 'checked_at': checked_at}
+    if '"SoldOut"' in html or "'SoldOut'" in html:
+        return {'status': 'unavailable', 'signal': 'SoldOut JSON-LD', 'checked_at': checked_at}
+    if '関連商品をアプリで探す' in html:
+        return {'status': 'unavailable', 'signal': 'related items text', 'checked_at': checked_at}
+    # in_stock 確認
+    if '購入手続きへ' in html:
+        return {'status': 'available', 'signal': '購入手続きへ', 'checked_at': checked_at}
+    return {'status': 'unknown', 'signal': 'no signal matched', 'checked_at': checked_at}
+
+
+def _check_yahoo_auctions_availability(url: str, timeout_sec: int, checked_at: str) -> dict:
+    """ヤフオク (auctions.yahoo.co.jp) raw HTML 判定 (W182)。"""
+    try:
+        resp = httpx.get(url, headers=_avail_headers(), timeout=timeout_sec, follow_redirects=True)
+    except httpx.TimeoutException:
+        return {'status': 'unknown', 'signal': 'httpx timeout', 'checked_at': checked_at}
+    except httpx.HTTPError as e:
+        return {'status': 'unknown', 'signal': f'httpx error: {type(e).__name__}', 'checked_at': checked_at}
+    if resp.status_code == 404:
+        return {'status': 'not_found', 'signal': 'HTTP 404', 'checked_at': checked_at}
+    if resp.status_code != 200:
+        return {'status': 'unknown', 'signal': f'HTTP {resp.status_code}', 'checked_at': checked_at}
+    html = resp.text
+    if 'このオークションは終了' in html or 'このオークションは存在しません' in html:
+        return {'status': 'not_found', 'signal': 'auction ended/missing', 'checked_at': checked_at}
+    if '入札する' in html or '今すぐ落札' in html:
+        return {'status': 'available', 'signal': 'bid available', 'checked_at': checked_at}
+    return {'status': 'unknown', 'signal': 'no signal matched', 'checked_at': checked_at}
+
+
+def _check_via_site_configs(url: str, timeout_sec: int, checked_at: str) -> dict:
+    """site_configs から URL に一致する site を引いて httpx 判定 (W182、mercari / fril / 他)。"""
+    try:
+        from monitor.database import get_conn
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT site_name, url_keyword, in_stock_text1, in_stock_text2, "
+                "       sold_out_text, no_page_text FROM site_configs"
+            ).fetchall()
+    except Exception as e:
+        return {'status': 'unknown', 'signal': f'site_configs read error: {type(e).__name__}', 'checked_at': checked_at}
+    for r in rows:
+        if r[1] and r[1] in url:
+            in_stock = [x for x in (r[2], r[3]) if x]
+            sold_out = [r[4]] if r[4] else []
+            no_page = [r[5]] if r[5] else []
+            status = _check_with_httpx(url, in_stock, sold_out, no_page)
+            return {
+                'status': status or 'unknown',
+                'signal': f'site_config: {r[0]}',
+                'checked_at': checked_at,
+            }
+    return {'status': 'unknown', 'signal': 'no matching site_config', 'checked_at': checked_at}
