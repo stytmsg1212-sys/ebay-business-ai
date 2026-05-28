@@ -106,7 +106,10 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
         force_model="opus",  # 朝の重点提案は深く考える
         enable_thinking=False,  # cost 抑制 (UI 非表示なので thinking 不要)
         save_history=True,
-        timeout=180,
+        # 2026-05-29: 5/29 朝 03:44 に timeout(180s) 失敗。通常 60-90s で完了 (5/26-28)
+        # だが API 遅延で 180s 超過し得る。off-peak 02:00 実行 + max_budget が cost を
+        # cap するため timeout 延長に cost リスクなし。300s に引上げ。
+        timeout=300,
         max_budget_usd=1.0,
     )
 
