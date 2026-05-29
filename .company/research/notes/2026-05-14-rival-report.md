@@ -48,3 +48,12 @@
 - $87.28 — maxell MXCP-P100 Portable Cassette
 - $87.28 — maxell MXCP-P100 Portable Cassette
 
+
+---
+## ライバル検出 (22:41)
+
+- スキャン: 147セラー
+- 新規検出: 0件
+
+新規ライバルは検出されませんでした。
+

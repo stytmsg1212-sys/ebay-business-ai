@@ -1,0 +1,1405 @@
+[
+  {
+    "title": "Introducing Claude Opus 4.7",
+    "url": "https://www.anthropic.com/news/claude-opus-4-7",
+    "published_at": "Thu, 16 Apr 2026 00:00:00 +0000",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879919"
+  },
+  {
+    "title": "Introducing Claude Design by Anthropic Labs",
+    "url": "https://www.anthropic.com/news/claude-design-anthropic-labs",
+    "published_at": "Fri, 17 Apr 2026 00:00:00 +0000",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879926"
+  },
+  {
+    "title": "Introducing Claude for Small Business",
+    "url": "https://www.anthropic.com/news/claude-for-small-business",
+    "published_at": "Wed, 13 May 2026 00:00:00 +0000",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879928"
+  },
+  {
+    "title": "PwC is deploying Claude to build technology, execute deals, and reinvent enterprise functions for clients",
+    "url": "https://www.anthropic.com/news/pwc-expanded-partnership",
+    "published_at": "Thu, 14 May 2026 00:00:00 +0000",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879929"
+  },
+  {
+    "title": "Cisco and OpenAI redefine enterprise engineering with Codex",
+    "url": "https://openai.com/index/cisco",
+    "published_at": "Wed, 27 May 2026 11:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879931"
+  },
+  {
+    "title": "OpenAI, Grupo Folha and Grupo UOL announce strategic content partnership",
+    "url": "https://openai.com/index/grupo-folha-grupo-uol-partnership",
+    "published_at": "Mon, 25 May 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "announce",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879932"
+  },
+  {
+    "title": "OpenAI named a Leader in enterprise coding agents by Gartner",
+    "url": "https://openai.com/index/gartner-2026-agentic-coding-leader",
+    "published_at": "Fri, 22 May 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879934"
+  },
+  {
+    "title": "Introducing OpenAI for Singapore",
+    "url": "https://openai.com/index/introducing-openai-for-singapore",
+    "published_at": "Tue, 19 May 2026 20:30:00 GMT",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879935"
+  },
+  {
+    "title": "OpenAI and Dell partner to bring Codex to hybrid and on-premise enterprise environments",
+    "url": "https://openai.com/index/dell-codex-enterprise-partnership",
+    "published_at": "Mon, 18 May 2026 10:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879936"
+  },
+  {
+    "title": "Databricks brings GPT-5.5 to enterprise agent workflows",
+    "url": "https://openai.com/index/databricks",
+    "published_at": "Fri, 15 May 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879938"
+  },
+  {
+    "title": "OpenAI launches DeployCo to help businesses build around intelligence",
+    "url": "https://openai.com/index/openai-launches-the-deployment-company",
+    "published_at": "Mon, 11 May 2026 06:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "launch",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879939"
+  },
+  {
+    "title": "Advancing voice intelligence with new models in the API",
+    "url": "https://openai.com/index/advancing-voice-intelligence-with-new-models-in-the-api",
+    "published_at": "Thu, 07 May 2026 10:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "new model",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879941"
+  },
+  {
+    "title": "Introducing Trusted Contact in ChatGPT",
+    "url": "https://openai.com/index/introducing-trusted-contact-in-chatgpt",
+    "published_at": "Thu, 07 May 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879942"
+  },
+  {
+    "title": "Introducing ChatGPT Futures: Class of 2026",
+    "url": "https://openai.com/index/introducing-chatgpt-futures-class-of-2026",
+    "published_at": "Wed, 06 May 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879943"
+  },
+  {
+    "title": "We’re launching the Google DeepMind Accelerator program in Asia Pacific to tackle environmental risks",
+    "url": "https://deepmind.google/blog/were-launching-the-google-deepmind-accelerator-program-in-asia-pacific-to-tackle-environmental-risks/",
+    "published_at": "Thu, 21 May 2026 19:46:42 +0000",
+    "impact": "high",
+    "matched_keyword": "launch",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879945"
+  },
+  {
+    "title": "Introducing Gemini Omni",
+    "url": "https://deepmind.google/blog/introducing-gemini-omni/",
+    "published_at": "Sun, 17 May 2026 19:50:57 +0000",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879946"
+  },
+  {
+    "title": "Introducing Google Antigravity 2.0",
+    "url": "https://deepmind.google/blog/introducing-google-antigravity-2-0/",
+    "published_at": "Sun, 17 May 2026 19:43:45 +0000",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879947"
+  },
+  {
+    "title": "Enabling a new model for healthcare with AI co-clinician",
+    "url": "https://deepmind.google/blog/ai-co-clinician/",
+    "published_at": "Thu, 30 Apr 2026 12:14:15 +0000",
+    "impact": "high",
+    "matched_keyword": "new model",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879949"
+  },
+  {
+    "title": "ITBench-AA: Frontier Models Score Below 50% on the First Benchmark for Agentic Enterprise IT Tasks — by Artificial Analysis and IBM",
+    "url": "https://huggingface.co/blog/ibm-research/itbench-aa",
+    "published_at": "Wed, 27 May 2026 17:20:29 GMT",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.879950"
+  },
+  {
+    "title": "Introducing Storage Buckets on the Hugging Face Hub",
+    "url": "https://huggingface.co/blog/storage-buckets",
+    "published_at": "Tue, 10 Mar 2026 00:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "introducing",
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.879951"
+  },
+  {
+    "title": "Claude Code costs up to $200 a month. Goose does the same thing for free.",
+    "url": "https://venturebeat.com/infrastructure/claude-code-costs-up-to-usd200-a-month-goose-does-the-same-thing-for-free",
+    "published_at": "Mon, 19 Jan 2026 14:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "claude code",
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.879953"
+  },
+  {
+    "title": "Anthropic launches Cowork, a Claude Desktop agent that works in your files — no coding required",
+    "url": "https://venturebeat.com/technology/anthropic-launches-cowork-a-claude-desktop-agent-that-works-in-your-files-no",
+    "published_at": "Mon, 12 Jan 2026 11:30:00 GMT",
+    "impact": "high",
+    "matched_keyword": "launch",
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.879954"
+  },
+  {
+    "title": "Nous Research's NousCoder-14B is an open-source coding model landing right in the Claude Code moment",
+    "url": "https://venturebeat.com/technology/nous-researchs-nouscoder-14b-is-an-open-source-coding-model-landing-right-in",
+    "published_at": "Wed, 07 Jan 2026 20:00:00 GMT",
+    "impact": "high",
+    "matched_keyword": "claude code",
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.879956"
+  },
+  {
+    "title": "Anthropic releases Opus 4.8 with new ‘dynamic workflow’ tool",
+    "url": "https://techcrunch.com/2026/05/28/anthropic-releases-opus-4-8-with-new-dynamic-workflow-tool/",
+    "published_at": "Thu, 28 May 2026 17:00:09 +0000",
+    "impact": "high",
+    "matched_keyword": "release",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879957"
+  },
+  {
+    "title": "Sesame, the conversational AI startup from Oculus founders, launches its iOS app",
+    "url": "https://techcrunch.com/2026/05/28/sesame-the-conversational-ai-startup-from-oculus-founders-launches-its-ios-app/",
+    "published_at": "Thu, 28 May 2026 15:35:43 +0000",
+    "impact": "high",
+    "matched_keyword": "launch",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879958"
+  },
+  {
+    "title": "At TechCrunch Disrupt 2026: Databricks’ co-founder on what kills enterprise AI deals",
+    "url": "https://techcrunch.com/2026/05/28/techcrunch-disrupt-2026-databricks-co-founder-on-what-kills-enterprise-ai-deals/",
+    "published_at": "Thu, 28 May 2026 14:30:00 +0000",
+    "impact": "high",
+    "matched_keyword": "enterprise",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879960"
+  },
+  {
+    "title": "Meta launches Instagram, Facebook, and WhatsApp subscriptions, with more to come, including AI plans",
+    "url": "https://techcrunch.com/2026/05/27/meta-officially-launches-instagram-facebook-and-whatsapp-subscriptions-with-more-to-come-including-ai-plans/",
+    "published_at": "Wed, 27 May 2026 18:00:00 +0000",
+    "impact": "high",
+    "matched_keyword": "launch",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879961"
+  },
+  {
+    "title": "Claude Opus 4.8",
+    "url": "https://www.anthropic.com/news/claude-opus-4-8",
+    "published_at": "2026-05-28T16:49:14Z",
+    "extra_points": 941,
+    "impact": "high",
+    "matched_keyword": "opus 4",
+    "source": "HN: anthropic",
+    "checked_at": "2026-05-29T06:00:25.879963"
+  },
+  {
+    "title": "Claude Opus 4.8",
+    "url": "https://www.anthropic.com/news/claude-opus-4-8",
+    "published_at": "2026-05-28T16:49:14Z",
+    "extra_points": 941,
+    "impact": "high",
+    "matched_keyword": "opus 4",
+    "source": "HN: claude opus",
+    "checked_at": "2026-05-29T06:00:25.879964"
+  },
+  {
+    "title": "Building self-improving tax agents with Codex",
+    "url": "https://openai.com/index/building-self-improving-tax-agents-with-codex",
+    "published_at": "Wed, 27 May 2026 07:00:00 GMT",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879965"
+  },
+  {
+    "title": "Sea's View on the Future of Agentic Software Development with Codex",
+    "url": "https://openai.com/index/sea-david-chen",
+    "published_at": "Thu, 14 May 2026 20:30:00 GMT",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879966"
+  },
+  {
+    "title": "AlphaEvolve: How our Gemini-powered coding agent is scaling impact across fields",
+    "url": "https://deepmind.google/blog/alphaevolve-impact/",
+    "published_at": "Wed, 06 May 2026 10:43:49 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879968"
+  },
+  {
+    "title": "Improved Gemini audio models for powerful voice experiences",
+    "url": "https://deepmind.google/blog/improved-gemini-audio-models-for-powerful-voice-experiences/",
+    "published_at": "Fri, 12 Dec 2025 17:50:50 +0000",
+    "impact": "medium",
+    "matched_keyword": "improved",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879969"
+  },
+  {
+    "title": "Rethinking organizational design in the age of agentic AI",
+    "url": "https://www.technologyreview.com/2026/05/26/1137584/rethinking-organizational-design-in-the-age-of-agentic-ai/",
+    "published_at": "Tue, 26 May 2026 14:54:10 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.879970"
+  },
+  {
+    "title": "Salesforce rolls out new Slackbot AI agent as it battles Microsoft and Google in workplace AI",
+    "url": "https://venturebeat.com/technology/salesforce-rolls-out-new-slackbot-ai-agent-as-it-battles-microsoft-and",
+    "published_at": "Tue, 13 Jan 2026 13:00:00 GMT",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.879972"
+  },
+  {
+    "title": "Asana acquires no-code agent-builder Stack AI",
+    "url": "https://techcrunch.com/2026/05/28/asana-acquires-no-code-agent-builder-stack-ai/",
+    "published_at": "Thu, 28 May 2026 20:06:07 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879973"
+  },
+  {
+    "title": "Visa invests in Replit to power agentic payments for developers",
+    "url": "https://techcrunch.com/2026/05/28/visa-invests-in-replit-to-power-agentic-payments-for-developers/",
+    "published_at": "Thu, 28 May 2026 14:00:00 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.879974"
+  },
+  {
+    "title": "Millions of AI agents imperiled by critical vulnerability in open source package",
+    "url": "https://arstechnica.com/information-technology/2026/05/millions-of-ai-agents-imperiled-by-critical-vulnerability-in-open-source-package/",
+    "published_at": "Tue, 26 May 2026 19:50:33 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.879975"
+  },
+  {
+    "title": "FBI agent explains how easy it is to ID people posting AI porn without consent",
+    "url": "https://arstechnica.com/tech-policy/2026/05/fbi-easily-nabs-man-selling-sexy-deepfakes-who-used-his-own-photo-in-profile/",
+    "published_at": "Tue, 26 May 2026 17:46:01 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.879976"
+  },
+  {
+    "title": "Buckle up: Google is set to remake search with agentic AI in 2026",
+    "url": "https://arstechnica.com/google/2026/05/buckle-up-google-is-set-to-remake-search-with-agentic-ai-in-2026/",
+    "published_at": "Wed, 20 May 2026 17:31:04 +0000",
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.879978"
+  },
+  {
+    "title": "Show HN: Continue? Y/N: A 60-second game about AI agent permission fatigue",
+    "url": "https://llmgame.scalex.dev",
+    "published_at": "2026-05-28T13:02:00Z",
+    "extra_points": 183,
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "HN: llm",
+    "checked_at": "2026-05-29T06:00:25.879979"
+  },
+  {
+    "title": "Show HN: Continue? Y/N: A 60-second game about AI agent permission fatigue",
+    "url": "https://llmgame.scalex.dev",
+    "published_at": "2026-05-28T13:02:00Z",
+    "extra_points": 183,
+    "impact": "medium",
+    "matched_keyword": "agent",
+    "source": "HN: ai agent",
+    "checked_at": "2026-05-29T06:00:25.879980"
+  },
+  {
+    "title": "How NVIDIA engineers and researchers build with Codex",
+    "url": "https://openai.com/index/nvidia",
+    "published_at": "Tue, 12 May 2026 00:00:00 GMT",
+    "impact": "low",
+    "matched_keyword": "research",
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879981"
+  },
+  {
+    "title": "Gemini 3 Deep Think: Advancing science, research and engineering",
+    "url": "https://deepmind.google/blog/gemini-3-deep-think-advancing-science-research-and-engineering/",
+    "published_at": "Thu, 12 Feb 2026 16:15:09 +0000",
+    "impact": "low",
+    "matched_keyword": "research",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879983"
+  },
+  {
+    "title": "Google's year in review: 8 areas with research breakthroughs in 2025",
+    "url": "https://deepmind.google/blog/googles-year-in-review-8-areas-with-research-breakthroughs-in-2025/",
+    "published_at": "Tue, 23 Dec 2025 17:01:02 +0000",
+    "impact": "low",
+    "matched_keyword": "research",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879984"
+  },
+  {
+    "title": "Gemma Scope 2: helping the AI safety community deepen understanding of complex language model behavior",
+    "url": "https://deepmind.google/blog/gemma-scope-2-helping-the-ai-safety-community-deepen-understanding-of-complex-language-model-behavior/",
+    "published_at": "Tue, 16 Dec 2025 10:14:24 +0000",
+    "impact": "low",
+    "matched_keyword": "safety",
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.879985"
+  },
+  {
+    "title": "Claude is a space to think",
+    "url": "https://www.anthropic.com/news/claude-is-a-space-to-think",
+    "published_at": "Wed, 04 Feb 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879987"
+  },
+  {
+    "title": "Higher usage limits for Claude and a compute deal with SpaceX",
+    "url": "https://www.anthropic.com/news/higher-limits-spacex",
+    "published_at": "Wed, 06 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879988"
+  },
+  {
+    "title": "Anthropic forms $200 million partnership with the Gates Foundation",
+    "url": "https://www.anthropic.com/news/gates-foundation-partnership",
+    "published_at": "Thu, 14 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879989"
+  },
+  {
+    "title": "Anthropic acquires Stainless",
+    "url": "https://www.anthropic.com/news/anthropic-acquires-stainless",
+    "published_at": "Mon, 18 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879990"
+  },
+  {
+    "title": "KPMG integrates Claude across its core business and workforce of more than 276,000 in strategic alliance",
+    "url": "https://www.anthropic.com/news/anthropic-kpmg",
+    "published_at": "Tue, 19 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879991"
+  },
+  {
+    "title": "Anthropic co-founder Chris Olah's remarks on Pope Leo XIV's encyclical \"Magnifica humanitas\"",
+    "url": "https://www.anthropic.com/news/chris-olah-pope-leo-encyclical",
+    "published_at": "Mon, 25 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879993"
+  },
+  {
+    "title": "Anthropic appoints KiYoung Choi as Representative Director of Korea ahead of Seoul office opening",
+    "url": "https://www.anthropic.com/news/kiyoung-choi-representative-director-anthropic-korea",
+    "published_at": "Tue, 26 May 2026 00:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Anthropic News",
+    "checked_at": "2026-05-29T06:00:25.879994"
+  },
+  {
+    "title": "OpenAI’s Frontier Governance Framework",
+    "url": "https://openai.com/index/openai-frontier-governance-framework",
+    "published_at": "Thu, 28 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879995"
+  },
+  {
+    "title": "Warp’s big bet on building open source with GPT-5.5",
+    "url": "https://openai.com/index/warp",
+    "published_at": "Wed, 27 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879996"
+  },
+  {
+    "title": "How Virgin Atlantic ships faster with Codex",
+    "url": "https://openai.com/index/virgin-atlantic",
+    "published_at": "Fri, 22 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879998"
+  },
+  {
+    "title": "AdventHealth advances whole-person care with OpenAI",
+    "url": "https://openai.com/index/adventhealth",
+    "published_at": "Thu, 21 May 2026 12:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.879998"
+  },
+  {
+    "title": "An OpenAI model has disproved a central conjecture in discrete geometry",
+    "url": "https://openai.com/index/model-disproves-discrete-geometry-conjecture",
+    "published_at": "Wed, 20 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880000"
+  },
+  {
+    "title": "The next phase of OpenAI’s Education for Countries",
+    "url": "https://openai.com/index/the-next-phase-of-education-for-countries",
+    "published_at": "Wed, 20 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880001"
+  },
+  {
+    "title": "How Ramp engineers accelerate code review with Codex",
+    "url": "https://openai.com/index/ramp",
+    "published_at": "Wed, 20 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880002"
+  },
+  {
+    "title": "OpenAI and Malta partner to bring ChatGPT Plus to all citizens",
+    "url": "https://openai.com/index/malta-chatgpt-plus-partnership",
+    "published_at": "Sat, 16 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880003"
+  },
+  {
+    "title": "How sales teams use Codex",
+    "url": "https://openai.com/academy/codex-for-work/how-sales-teams-use-codex",
+    "published_at": "Fri, 15 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880004"
+  },
+  {
+    "title": "How business operations teams use Codex",
+    "url": "https://openai.com/academy/codex-for-work/how-business-operations-teams-use-codex",
+    "published_at": "Fri, 15 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880005"
+  },
+  {
+    "title": "A new personal finance experience in ChatGPT",
+    "url": "https://openai.com/index/personal-finance-chatgpt",
+    "published_at": "Fri, 15 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880006"
+  },
+  {
+    "title": "How data science teams use Codex",
+    "url": "https://openai.com/academy/codex-for-work/how-data-science-teams-use-codex",
+    "published_at": "Fri, 15 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880007"
+  },
+  {
+    "title": "Work with Codex from anywhere",
+    "url": "https://openai.com/index/work-with-codex-from-anywhere",
+    "published_at": "Thu, 14 May 2026 13:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880009"
+  },
+  {
+    "title": "Helping ChatGPT better recognize context in sensitive conversations",
+    "url": "https://openai.com/index/chatgpt-recognize-context-in-sensitive-conversations",
+    "published_at": "Thu, 14 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880010"
+  },
+  {
+    "title": "Building a safe, effective sandbox to enable Codex on Windows",
+    "url": "https://openai.com/index/building-codex-windows-sandbox",
+    "published_at": "Wed, 13 May 2026 11:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880012"
+  },
+  {
+    "title": "How finance teams use Codex",
+    "url": "https://openai.com/academy/how-finance-teams-use-codex",
+    "published_at": "Tue, 12 May 2026 15:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880013"
+  },
+  {
+    "title": "How ChatGPT adoption broadened in early 2026",
+    "url": "https://openai.com/signals/research/2026q1-update",
+    "published_at": "Mon, 11 May 2026 15:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880014"
+  },
+  {
+    "title": "OpenAI Campus Network: Student club interest form",
+    "url": "https://openai.com/index/openai-campus-network-student-club-interest-form",
+    "published_at": "Mon, 11 May 2026 10:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880015"
+  },
+  {
+    "title": "Running Codex safely at OpenAI",
+    "url": "https://openai.com/index/running-codex-safely",
+    "published_at": "Fri, 08 May 2026 12:30:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880016"
+  },
+  {
+    "title": "Scaling Trusted Access for Cyber with GPT-5.5 and GPT-5.5-Cyber",
+    "url": "https://openai.com/index/gpt-5-5-with-trusted-access-for-cyber",
+    "published_at": "Thu, 07 May 2026 13:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880017"
+  },
+  {
+    "title": "Testing ads in ChatGPT",
+    "url": "https://openai.com/index/testing-ads-in-chatgpt",
+    "published_at": "Thu, 07 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880018"
+  },
+  {
+    "title": "Simplex rethinks software development with Codex",
+    "url": "https://openai.com/index/simplex",
+    "published_at": "Thu, 07 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880020"
+  },
+  {
+    "title": "How ChatGPT learns about the world while protecting privacy",
+    "url": "https://openai.com/index/how-chatgpt-protects-privacy",
+    "published_at": "Wed, 06 May 2026 08:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880021"
+  },
+  {
+    "title": "Uber uses OpenAI to help people earn smarter and book faster",
+    "url": "https://openai.com/index/uber",
+    "published_at": "Wed, 06 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880022"
+  },
+  {
+    "title": "Singular Bank helps bankers move fast with ChatGPT and Codex",
+    "url": "https://openai.com/index/singular-bank",
+    "published_at": "Wed, 06 May 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880024"
+  },
+  {
+    "title": "GPT-5.5 Instant: smarter, clearer, and more personalized",
+    "url": "https://openai.com/index/gpt-5-5-instant",
+    "published_at": "Tue, 05 May 2026 10:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880026"
+  },
+  {
+    "title": "GPT-5.5 Instant System Card",
+    "url": "https://openai.com/index/gpt-5-5-instant-system-card",
+    "published_at": "Tue, 05 May 2026 10:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "OpenAI News",
+    "checked_at": "2026-05-29T06:00:25.880027"
+  },
+  {
+    "title": "Gemini for Science: AI experiments and tools for a new era of discovery",
+    "url": "https://deepmind.google/blog/gemini-for-science-ai-experiments-and-tools-for-a-new-era-of-discovery/",
+    "published_at": "Sun, 17 May 2026 13:50:34 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880028"
+  },
+  {
+    "title": "Gemini 3.5: frontier intelligence with action",
+    "url": "https://deepmind.google/blog/gemini-3-5-frontier-intelligence-with-action/",
+    "published_at": "Fri, 15 May 2026 22:50:12 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880029"
+  },
+  {
+    "title": "Gemini 3.1 Flash TTS: the next generation of expressive AI speech",
+    "url": "https://deepmind.google/blog/gemini-3-1-flash-tts-the-next-generation-of-expressive-ai-speech/",
+    "published_at": "Wed, 15 Apr 2026 16:03:19 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880030"
+  },
+  {
+    "title": "Gemini Robotics-ER 1.6: Powering real-world robotics tasks through enhanced embodied reasoning",
+    "url": "https://deepmind.google/blog/gemini-robotics-er-1-6/",
+    "published_at": "Mon, 13 Apr 2026 15:52:13 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880031"
+  },
+  {
+    "title": "Gemma 4: Byte for byte, the most capable open models",
+    "url": "https://deepmind.google/blog/gemma-4-byte-for-byte-the-most-capable-open-models/",
+    "published_at": "Thu, 02 Apr 2026 16:00:49 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880033"
+  },
+  {
+    "title": "Gemini 3.1 Flash Live: Making audio AI more natural and reliable",
+    "url": "https://deepmind.google/blog/gemini-3-1-flash-live-making-audio-ai-more-natural-and-reliable/",
+    "published_at": "Thu, 26 Mar 2026 15:23:35 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880034"
+  },
+  {
+    "title": "Gemini 3.1 Flash-Lite: Built for intelligence at scale",
+    "url": "https://deepmind.google/blog/gemini-3-1-flash-lite-built-for-intelligence-at-scale/",
+    "published_at": "Tue, 03 Mar 2026 16:35:55 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880035"
+  },
+  {
+    "title": "Gemini 3.1 Pro: A smarter model for your most complex tasks",
+    "url": "https://deepmind.google/blog/gemini-3-1-pro-a-smarter-model-for-your-most-complex-tasks/",
+    "published_at": "Thu, 19 Feb 2026 16:06:14 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880036"
+  },
+  {
+    "title": "A new way to express yourself: Gemini can now create music",
+    "url": "https://deepmind.google/blog/a-new-way-to-express-yourself-gemini-can-now-create-music/",
+    "published_at": "Wed, 18 Feb 2026 16:01:38 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880037"
+  },
+  {
+    "title": "Accelerating Mathematical and Scientific Discovery with Gemini Deep Think",
+    "url": "https://deepmind.google/blog/accelerating-mathematical-and-scientific-discovery-with-gemini-deep-think/",
+    "published_at": "Mon, 09 Feb 2026 16:12:06 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880038"
+  },
+  {
+    "title": "Gemini 3 Flash: frontier intelligence built for speed",
+    "url": "https://deepmind.google/blog/gemini-3-flash-frontier-intelligence-built-for-speed/",
+    "published_at": "Wed, 17 Dec 2025 11:58:17 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880039"
+  },
+  {
+    "title": "FACTS Benchmark Suite: Systematically evaluating the factuality of large language models",
+    "url": "https://deepmind.google/blog/facts-benchmark-suite-systematically-evaluating-the-factuality-of-large-language-models/",
+    "published_at": "Tue, 09 Dec 2025 11:29:03 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Google DeepMind",
+    "checked_at": "2026-05-29T06:00:25.880041"
+  },
+  {
+    "title": "Towards Speed-of-Light Text Generation with Nemotron-Labs Diffusion Language Models",
+    "url": "https://huggingface.co/blog/nvidia/nemotron-labs-diffusion",
+    "published_at": "Sat, 23 May 2026 00:02:03 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880042"
+  },
+  {
+    "title": "OlmoEarth v1.1: A more efficient family of Earth observation models",
+    "url": "https://huggingface.co/blog/allenai/olmoearth-v1-1",
+    "published_at": "Tue, 19 May 2026 18:38:09 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880044"
+  },
+  {
+    "title": "PaddleOCR 3.5: Running OCR and Document Parsing Tasks with a Transformers Backend",
+    "url": "https://huggingface.co/blog/PaddlePaddle/paddleocr-transformers",
+    "published_at": "Mon, 18 May 2026 15:12:46 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880045"
+  },
+  {
+    "title": "Building Blocks for Foundation Model Training and Inference on AWS",
+    "url": "https://huggingface.co/blog/amazon/foundation-model-building-blocks",
+    "published_at": "Mon, 11 May 2026 23:18:26 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880046"
+  },
+  {
+    "title": "vLLM V0 to V1: Correctness Before Corrections in RL",
+    "url": "https://huggingface.co/blog/ServiceNow-AI/correctness-before-corrections",
+    "published_at": "Wed, 06 May 2026 19:06:55 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880047"
+  },
+  {
+    "title": "Granite 4.1 LLMs: How They’re Built",
+    "url": "https://huggingface.co/blog/ibm-granite/granite-4-1",
+    "published_at": "Wed, 29 Apr 2026 15:01:48 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880048"
+  },
+  {
+    "title": "DeepInfra on Hugging Face Inference Providers 🔥",
+    "url": "https://huggingface.co/blog/inference-providers-deepinfra",
+    "published_at": "Wed, 29 Apr 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880050"
+  },
+  {
+    "title": "How to Use Transformers.js in a Chrome Extension",
+    "url": "https://huggingface.co/blog/transformersjs-chrome-extension",
+    "published_at": "Thu, 23 Apr 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880051"
+  },
+  {
+    "title": "QIMMA قِمّة ⛰: A Quality-First Arabic LLM Leaderboard",
+    "url": "https://huggingface.co/blog/tiiuae/qimma-arabic-leaderboard",
+    "published_at": "Tue, 21 Apr 2026 10:09:58 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880052"
+  },
+  {
+    "title": "Training and Finetuning Multimodal Embedding & Reranker Models with Sentence Transformers",
+    "url": "https://huggingface.co/blog/train-multimodal-sentence-transformers",
+    "published_at": "Thu, 16 Apr 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880053"
+  },
+  {
+    "title": "Multimodal Embedding & Reranker Models with Sentence Transformers",
+    "url": "https://huggingface.co/blog/multimodal-sentence-transformers",
+    "published_at": "Thu, 09 Apr 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880054"
+  },
+  {
+    "title": "Training mRNA Language Models Across 25 Species for $165",
+    "url": "https://huggingface.co/blog/OpenMed/training-mrna-models-25-species",
+    "published_at": "Tue, 31 Mar 2026 08:23:44 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880055"
+  },
+  {
+    "title": "Build a Domain-Specific Embedding Model in Under a Day",
+    "url": "https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune",
+    "published_at": "Fri, 20 Mar 2026 19:38:16 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880056"
+  },
+  {
+    "title": "State of Open Source on Hugging Face: Spring 2026",
+    "url": "https://huggingface.co/blog/huggingface/state-of-os-hf-spring-2026",
+    "published_at": "Tue, 17 Mar 2026 16:37:55 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880057"
+  },
+  {
+    "title": "PRX Part 3 — Training a Text-to-Image Model in 24h!",
+    "url": "https://huggingface.co/blog/Photoroom/prx-part3",
+    "published_at": "Tue, 03 Mar 2026 16:50:49 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880058"
+  },
+  {
+    "title": "Mixture of Experts (MoEs) in Transformers",
+    "url": "https://huggingface.co/blog/moe-transformers",
+    "published_at": "Thu, 26 Feb 2026 00:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Hugging Face Blog",
+    "checked_at": "2026-05-29T06:00:25.880060"
+  },
+  {
+    "title": "The AI Hype Index: AI gets booed in graduation season",
+    "url": "https://www.technologyreview.com/2026/05/28/1138053/the-ai-hype-index-ai-gets-booed-in-graduation-season/",
+    "published_at": "Thu, 28 May 2026 09:51:11 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880061"
+  },
+  {
+    "title": "A reality check on the AI jobs hysteria",
+    "url": "https://www.technologyreview.com/2026/05/26/1137855/a-reality-check-on-the-ai-jobs-hysteria/",
+    "published_at": "Tue, 26 May 2026 09:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880062"
+  },
+  {
+    "title": "It’s time to address the looming crisis in entry-level work.",
+    "url": "https://www.technologyreview.com/2026/05/26/1137865/its-time-to-address-the-looming-crisis-in-entry-level-work/",
+    "published_at": "Tue, 26 May 2026 09:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880063"
+  },
+  {
+    "title": "Google I/O showed how the path for AI-driven science is shifting",
+    "url": "https://www.technologyreview.com/2026/05/22/1137813/google-i-o-showed-how-the-path-for-ai-science-is-shifting/",
+    "published_at": "Fri, 22 May 2026 10:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880064"
+  },
+  {
+    "title": "Roundtables: Can AI Learn to Understand the World?",
+    "url": "https://www.technologyreview.com/2026/05/21/1137756/roundtables-can-ai-learn-to-understand-the-world/",
+    "published_at": "Thu, 21 May 2026 20:41:05 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880065"
+  },
+  {
+    "title": "Scaling creativity in the age of AI",
+    "url": "https://www.technologyreview.com/2026/05/21/1137613/scaling-creativity-in-the-age-of-ai/",
+    "published_at": "Thu, 21 May 2026 19:16:43 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880066"
+  },
+  {
+    "title": "Anthropic’s Code with Claude showed off coding’s future—whether you like it or not",
+    "url": "https://www.technologyreview.com/2026/05/21/1137735/anthropics-code-with-claude-showed-off-codings-future-whether-you-like-it-or-not/",
+    "published_at": "Thu, 21 May 2026 14:30:45 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880067"
+  },
+  {
+    "title": "Roundtables: Inside the Musk v. Altman Trial",
+    "url": "https://www.technologyreview.com/2026/05/19/1137454/roundtables-inside-the-musk-v-altman-trial/",
+    "published_at": "Tue, 19 May 2026 20:15:18 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880069"
+  },
+  {
+    "title": "Here’s why Elon Musk lost his suit against OpenAI",
+    "url": "https://www.technologyreview.com/2026/05/18/1137488/elon-musk-suit-openai-verdict/",
+    "published_at": "Tue, 19 May 2026 00:53:10 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "MIT Tech Review AI",
+    "checked_at": "2026-05-29T06:00:25.880070"
+  },
+  {
+    "title": "Google just redesigned the search box for the first time in 25 years — here’s why it matters more than you think.",
+    "url": "https://venturebeat.com/technology/google-just-redesigned-the-search-box-for-the-first-time-in-25-years-heres-why-it-matters-more-than-you-think",
+    "published_at": "Tue, 19 May 2026 17:45:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.880071"
+  },
+  {
+    "title": "Railway secures $100 million to challenge AWS with AI-native cloud infrastructure",
+    "url": "https://venturebeat.com/infrastructure/railway-secures-usd100-million-to-challenge-aws-with-ai-native-cloud",
+    "published_at": "Thu, 22 Jan 2026 14:00:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.880072"
+  },
+  {
+    "title": "Listen Labs raises $69M after viral billboard hiring stunt to scale AI customer interviews",
+    "url": "https://venturebeat.com/technology/listen-labs-raises-usd69m-after-viral-billboard-hiring-stunt-to-scale-ai",
+    "published_at": "Fri, 16 Jan 2026 14:01:00 GMT",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "VentureBeat AI",
+    "checked_at": "2026-05-29T06:00:25.880074"
+  },
+  {
+    "title": "Anthropic raises $65 billion, nears $1T valuation ahead of IPO",
+    "url": "https://techcrunch.com/2026/05/28/anthropic-raises-65-billion-nears-1t-valuation-ahead-of-ipo/",
+    "published_at": "Thu, 28 May 2026 18:52:51 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880075"
+  },
+  {
+    "title": "Just like gold and oil, we’ll soon be able to trade AI token futures",
+    "url": "https://techcrunch.com/2026/05/28/just-like-gold-and-oil-well-soon-be-able-to-trade-ai-token-futures/",
+    "published_at": "Thu, 28 May 2026 18:32:25 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880076"
+  },
+  {
+    "title": "In just 3 weeks, StrictlyVC is coming to Los Angeles",
+    "url": "https://techcrunch.com/2026/05/28/in-just-3-weeks-strictlyvc-is-coming-to-los-angeles/",
+    "published_at": "Thu, 28 May 2026 17:30:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880077"
+  },
+  {
+    "title": "How long is Anthropic’s lease with SpaceX? Opinions vary",
+    "url": "https://techcrunch.com/2026/05/28/how-long-is-anthropics-lease-with-spacex-opinions-vary/",
+    "published_at": "Thu, 28 May 2026 15:36:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880078"
+  },
+  {
+    "title": "Sneak peek at new Siri app reveals Apple’s plans to take on ChatGPT and more",
+    "url": "https://techcrunch.com/2026/05/28/sneak-peek-at-new-siri-app-reveals-apples-plans-to-take-on-chatgpt-and-more/",
+    "published_at": "Thu, 28 May 2026 14:45:13 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880080"
+  },
+  {
+    "title": "RSI is the new AGI — and it’s just as hard to pin down",
+    "url": "https://techcrunch.com/2026/05/28/rsi-is-the-new-agi-and-its-just-as-hard-to-pin-down/",
+    "published_at": "Thu, 28 May 2026 14:30:17 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880081"
+  },
+  {
+    "title": "YouTube adds new podcast features, including an AI recommendation tool and ‘Auto speed’",
+    "url": "https://techcrunch.com/2026/05/28/youtube-adds-new-podcast-features-including-an-ai-recommendation-tool-and-auto-speed/",
+    "published_at": "Thu, 28 May 2026 14:28:47 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880082"
+  },
+  {
+    "title": "2 days left: Lock in ticket savings of up to $410 to TechCrunch Disrupt 2026",
+    "url": "https://techcrunch.com/2026/05/28/2-days-left-lock-in-ticket-savings-of-up-to-410-to-techcrunch-disrupt-2026/",
+    "published_at": "Thu, 28 May 2026 14:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880084"
+  },
+  {
+    "title": "Has the hunt for AI compute uncovered the next Cerebras?",
+    "url": "https://techcrunch.com/2026/05/28/has-the-hunt-for-ai-compute-uncovered-the-next-cerebras/",
+    "published_at": "Thu, 28 May 2026 13:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880085"
+  },
+  {
+    "title": "Vertu wants CEOs to run companies from an AI foldable starting at $6,880",
+    "url": "https://techcrunch.com/2026/05/28/vertu-wants-ceos-to-run-companies-from-an-ai-foldable-starting-at-6880/",
+    "published_at": "Thu, 28 May 2026 07:00:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880087"
+  },
+  {
+    "title": "Why Google’s AI can’t spell Google (or anything else)",
+    "url": "https://techcrunch.com/2026/05/27/why-googles-ai-cant-spell-google-or-anything-else/",
+    "published_at": "Thu, 28 May 2026 00:17:41 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880088"
+  },
+  {
+    "title": "In more good news for Amazon, Snowflake signs $6B deal with AWS for AI CPU chips",
+    "url": "https://techcrunch.com/2026/05/27/in-more-good-news-for-amazon-snowflake-signs-6b-deal-with-aws-for-ai-cpu-chips/",
+    "published_at": "Wed, 27 May 2026 20:10:00 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880089"
+  },
+  {
+    "title": "Payroll startup Remote says it grew revenue 50% per employee without adding headcount",
+    "url": "https://techcrunch.com/2026/05/27/payroll-startup-remote-says-it-grew-revenue-50-per-employee-without-adding-headcount/",
+    "published_at": "Wed, 27 May 2026 19:39:45 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880090"
+  },
+  {
+    "title": "Your SEO strategy is optimized for a search engine that no longer exists.",
+    "url": "https://techcrunch.com/podcast/your-seo-strategy-is-optimized-for-a-search-engine-that-no-longer-exists/",
+    "published_at": "Wed, 27 May 2026 18:39:17 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "TechCrunch AI",
+    "checked_at": "2026-05-29T06:00:25.880091"
+  },
+  {
+    "title": "Fed up with vibe coders, dev sneaks data-nuking prompt injection into their code",
+    "url": "https://arstechnica.com/security/2026/05/fed-up-with-vibe-coders-dev-sneaks-data-nuking-prompt-injection-into-their-code/",
+    "published_at": "Thu, 28 May 2026 20:29:53 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880092"
+  },
+  {
+    "title": "Apple working to cram massive Gemini model into iPhone to power new Siri",
+    "url": "https://arstechnica.com/ai/2026/05/apple-reportedly-trying-to-distill-googles-multi-trillion-parameter-gemini-ai-to-run-on-iphone/",
+    "published_at": "Thu, 28 May 2026 18:30:48 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880093"
+  },
+  {
+    "title": "Trump loses more control over AI regulation as Illinois passes landmark law",
+    "url": "https://arstechnica.com/tech-policy/2026/05/trump-loses-more-control-over-ai-regulation-as-illinois-passes-landmark-law/",
+    "published_at": "Thu, 28 May 2026 17:01:16 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880094"
+  },
+  {
+    "title": "Nvidia bets $150B on Taiwan as Trump's plan to make US an AI hub backfires",
+    "url": "https://arstechnica.com/tech-policy/2026/05/nvidia-ceo-wants-taiwan-to-be-center-of-ai-revolution-not-us/",
+    "published_at": "Wed, 27 May 2026 19:59:40 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880095"
+  },
+  {
+    "title": "YouTube to begin automatically labeling AI videos",
+    "url": "https://arstechnica.com/google/2026/05/youtube-to-begin-automatically-labeling-ai-videos/",
+    "published_at": "Wed, 27 May 2026 17:36:10 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880096"
+  },
+  {
+    "title": "US law enforcement warns of \"anti-tech extremism\" as AI hatred grows",
+    "url": "https://arstechnica.com/ai/2026/05/us-law-enforcement-warns-of-anti-tech-extremism-as-ai-hatred-grows/",
+    "published_at": "Wed, 27 May 2026 10:30:28 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880097"
+  },
+  {
+    "title": "3D-printable humanoid legs let robotics experiments run wild",
+    "url": "https://arstechnica.com/ai/2026/05/3d-printable-humanoid-legs-let-robotics-experiments-run-wild/",
+    "published_at": "Tue, 26 May 2026 17:16:07 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880099"
+  },
+  {
+    "title": "US scrambles to stop Internet users re-creating dead pilots’ voices",
+    "url": "https://arstechnica.com/ai/2026/05/ai-users-re-create-dead-pilots-voices-from-crash-investigation-docs/",
+    "published_at": "Fri, 22 May 2026 19:39:04 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880100"
+  },
+  {
+    "title": "Trump abruptly cancels EO signing event after top AI firm CEOs declined to go",
+    "url": "https://arstechnica.com/tech-policy/2026/05/trump-canceled-ai-safety-testing-eo-after-snub-from-tech-ceos/",
+    "published_at": "Fri, 22 May 2026 16:51:40 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880101"
+  },
+  {
+    "title": "AI put \"synthetic quotes\" in his book. But this author wants to keep using it.",
+    "url": "https://arstechnica.com/ai/2026/05/ai-put-synthetic-quotes-in-his-book-but-this-author-wants-to-keep-using-it/",
+    "published_at": "Fri, 22 May 2026 14:05:56 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880102"
+  },
+  {
+    "title": "As Grok flounders, SpaceX bets future on beating Big Tech at AI",
+    "url": "https://arstechnica.com/ai/2026/05/as-grok-flounders-spacex-bets-future-on-beating-big-tech-at-ai/",
+    "published_at": "Thu, 21 May 2026 21:51:26 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880103"
+  },
+  {
+    "title": "The Internet can't stop watching Figure AI's humanoid robots handling packages",
+    "url": "https://arstechnica.com/ai/2026/05/the-internet-cant-stop-watching-figure-ais-humanoid-robots-handling-packages/",
+    "published_at": "Wed, 20 May 2026 11:00:34 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880104"
+  },
+  {
+    "title": "Two AI-based science assistants succeed with drug-retargeting tasks",
+    "url": "https://arstechnica.com/science/2026/05/two-ai-based-science-assistants-succeed-with-drug-retargeting-tasks/",
+    "published_at": "Tue, 19 May 2026 18:55:56 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880105"
+  },
+  {
+    "title": "Google's SynthID AI watermarking tech is being adopted by OpenAI, Nvidia, and more",
+    "url": "https://arstechnica.com/google/2026/05/googles-synthid-ai-watermarking-tech-is-being-adopted-by-openai-nvidia-and-more/",
+    "published_at": "Tue, 19 May 2026 18:37:02 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880106"
+  },
+  {
+    "title": "Gemini 3.5 Flash might be fast enough for gen AI to make sense",
+    "url": "https://arstechnica.com/google/2026/05/google-announces-agent-optimized-gemini-3-5-flash-and-a-do-anything-model-called-omni/",
+    "published_at": "Tue, 19 May 2026 18:11:50 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880107"
+  },
+  {
+    "title": "Electrical utility megamerger is all about the data centers",
+    "url": "https://arstechnica.com/tech-policy/2026/05/electrical-utility-megamerger-is-all-about-the-data-centers/",
+    "published_at": "Tue, 19 May 2026 13:45:31 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880108"
+  },
+  {
+    "title": "Legal fail: Don’t use AI to sue Facebook users for calling you a bad date",
+    "url": "https://arstechnica.com/tech-policy/2026/05/legal-fail-dont-use-ai-to-sue-facebook-users-for-calling-you-a-bad-date/",
+    "published_at": "Mon, 18 May 2026 20:27:15 +0000",
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "Ars Technica AI",
+    "checked_at": "2026-05-29T06:00:25.880110"
+  },
+  {
+    "title": "I think Anthropic and OpenAI have found product-market fit",
+    "url": "https://simonwillison.net/2026/May/27/product-market-fit/",
+    "published_at": "2026-05-27T16:39:13Z",
+    "extra_points": 1065,
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "HN: anthropic",
+    "checked_at": "2026-05-29T06:00:25.880111"
+  },
+  {
+    "title": "Anthropic raises $65B in Series H funding at $965B post-money valuation",
+    "url": "https://www.anthropic.com/news/series-h",
+    "published_at": "2026-05-28T18:09:44Z",
+    "extra_points": 163,
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "HN: anthropic",
+    "checked_at": "2026-05-29T06:00:25.880112"
+  },
+  {
+    "title": "Disagreement among frontier LLMs on real-world fact-checks",
+    "url": "https://lenz.io/research/llm-disagreement",
+    "published_at": "2026-05-28T12:20:19Z",
+    "extra_points": 472,
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "HN: llm",
+    "checked_at": "2026-05-29T06:00:25.880113"
+  },
+  {
+    "title": "About LLMs at Zig Days",
+    "url": "https://kristoff.it/blog/llms-at-zig-days/",
+    "published_at": "2026-05-28T18:20:34Z",
+    "extra_points": 65,
+    "impact": "none",
+    "matched_keyword": null,
+    "source": "HN: llm",
+    "checked_at": "2026-05-29T06:00:25.880114"
+  }
+]

@@ -1,0 +1,41 @@
+{
+  "date": "2026-05-15",
+  "timestamp": "2026-05-15T22:45:50.262206",
+  "new_sellers": [
+    {
+      "seller": "kahanshin-tigers4545",
+      "feedback_score": 1334,
+      "competing_items": [
+        {
+          "title": "NIB maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan",
+          "price_usd": 101.26,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "366098860697"
+        },
+        {
+          "title": "NIB maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH from Japan",
+          "price_usd": 92.96,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "366098861680"
+        },
+        {
+          "title": "NIB maxell MXCP-P100 Portable Cassette Player Black MXCP-P100BK from Japan",
+          "price_usd": 101.26,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "366098860697"
+        },
+        {
+          "title": "NIB maxell MXCP-P100 Portable Cassette Player White MXCP-P100WH from Japan",
+          "price_usd": 92.96,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "366098861680"
+        }
+      ],
+      "first_seen": "2026-05-15T22:45:40.570510",
+      "is_new": true,
+      "competing_count": 4
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 144
+}

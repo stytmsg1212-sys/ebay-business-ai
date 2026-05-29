@@ -1,0 +1,29 @@
+{
+  "date": "2026-05-20",
+  "timestamp": "2026-05-20T22:32:04.284730",
+  "new_sellers": [
+    {
+      "seller": "hajime_select",
+      "feedback_score": 79,
+      "competing_items": [
+        {
+          "title": "[DDP] maxell MXCP-P100 Portable Cassette Player Bluetooth 5.4 Black Japan New",
+          "price_usd": 81.99,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "357609922915"
+        },
+        {
+          "title": "[DDP] maxell MXCP-P100 Portable Cassette Player Bluetooth 5.4 Black Japan New",
+          "price_usd": 81.99,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "357609922915"
+        }
+      ],
+      "first_seen": "2026-05-20T22:31:57.572232",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 146
+}

@@ -1,0 +1,23 @@
+{
+  "date": "2026-05-22",
+  "timestamp": "2026-05-22T11:31:37.042055",
+  "new_sellers": [
+    {
+      "seller": "lucky-goods-japan",
+      "feedback_score": 261,
+      "competing_items": [
+        {
+          "title": "Sanrio x Ohuhu Marker Pens Brush Type Fine Tip 80 Colors Pastel Marker Set NEW",
+          "price_usd": 141.53,
+          "keyword": "Ohuhu x Sanrio 80",
+          "legacy_item_id": "356606887464"
+        }
+      ],
+      "first_seen": "2026-05-22T11:31:35.701516",
+      "is_new": true,
+      "competing_count": 1
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 148
+}

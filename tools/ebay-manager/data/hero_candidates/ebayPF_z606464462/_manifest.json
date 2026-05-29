@@ -1,0 +1,42 @@
+{
+  "source_url": "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0104/user/b839e038a28086cc685f30f33fcf519b512eebbd26678a78c6d26d601bc09d3a/i-img1200x900-17452015688866m7zngj11795.jpg",
+  "source_sha256": "9317d4c4d7d13c59fede30d85426d00bde4b58fcf2581e645a7a0a0089b7e819",
+  "pipeline_version": "1",
+  "prompt_version": "1",
+  "stage_outputs": {
+    "hero": [
+      "hero_W2.png",
+      "hero_W3.png",
+      "hero_W4.png"
+    ],
+    "hero_meta": [
+      {
+        "filename": "hero_W2.png",
+        "plate_id": "W2",
+        "score": 10.0,
+        "reasoning": "camera=high_angle, angle rank 1/4"
+      },
+      {
+        "filename": "hero_W3.png",
+        "plate_id": "W3",
+        "score": 9.0,
+        "reasoning": "camera=high_angle, angle rank 2/4; W3 weak prior (+1.0)"
+      },
+      {
+        "filename": "hero_W4.png",
+        "plate_id": "W4",
+        "score": 4.0,
+        "reasoning": "camera=high_angle, angle rank 4/4"
+      }
+    ],
+    "additional": [
+      "_additional_00.png",
+      "_additional_01.png"
+    ],
+    "additional_urls": [
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0104/user/b839e038a28086cc685f30f33fcf519b512eebbd26678a78c6d26d601bc09d3a/i-img1200x900-17452015688661qpux7u11795.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0104/user/b839e038a28086cc685f30f33fcf519b512eebbd26678a78c6d26d601bc09d3a/i-img1200x900-17452015689074xm6o8x11795.jpg"
+    ]
+  },
+  "created_at": "2026-05-27T03:13:52.773869+00:00"
+}

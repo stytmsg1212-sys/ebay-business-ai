@@ -1,0 +1,52 @@
+{
+  "source_url": "https://static.mercdn.net/item/detail/orig/photos/m17012242325_1.jpg?1778980979",
+  "source_sha256": "69135f9a22b8440d977586b4bf963ec73da48584a4b0d9b3f9344252fef207a6",
+  "pipeline_version": "1",
+  "prompt_version": "1",
+  "stage_outputs": {
+    "hero": [
+      "hero_W3.png",
+      "hero_W2.png",
+      "hero_W4.png"
+    ],
+    "hero_meta": [
+      {
+        "filename": "hero_W3.png",
+        "plate_id": "W3",
+        "score": 8.0,
+        "reasoning": "PINNED (fixed top candidate); camera=high_angle, angle rank 2/4"
+      },
+      {
+        "filename": "hero_W2.png",
+        "plate_id": "W2",
+        "score": 10.0,
+        "reasoning": "camera=high_angle, angle rank 1/4"
+      },
+      {
+        "filename": "hero_W4.png",
+        "plate_id": "W4",
+        "score": 4.0,
+        "reasoning": "camera=high_angle, angle rank 4/4"
+      }
+    ],
+    "additional": [
+      "_additional_00.png",
+      "_additional_01.png",
+      "_additional_02.png",
+      "_additional_03.png",
+      "_additional_04.png",
+      "_additional_05.png",
+      "_additional_06.png"
+    ],
+    "additional_urls": [
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_2.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_3.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_4.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_5.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_6.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_7.jpg?1778980979",
+      "https://static.mercdn.net/item/detail/orig/photos/m17012242325_8.jpg?1778980979"
+    ]
+  },
+  "created_at": "2026-05-25T21:50:54.885445+00:00"
+}

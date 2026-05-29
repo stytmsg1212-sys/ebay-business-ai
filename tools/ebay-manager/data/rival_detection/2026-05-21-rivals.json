@@ -1,0 +1,29 @@
+{
+  "date": "2026-05-21",
+  "timestamp": "2026-05-21T22:40:27.638512",
+  "new_sellers": [
+    {
+      "seller": "amsterd23",
+      "feedback_score": 1246,
+      "competing_items": [
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player Bluetooth Black MXCP-P100BK in Hand",
+          "price_usd": 110.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "397088271098"
+        },
+        {
+          "title": "Maxell MXCP-P100 Portable Cassette Player Bluetooth Black MXCP-P100BK in Hand",
+          "price_usd": 110.0,
+          "keyword": "maxell MXCP-P100 Portable Cassette",
+          "legacy_item_id": "397088271098"
+        }
+      ],
+      "first_seen": "2026-05-21T22:40:19.519884",
+      "is_new": true,
+      "competing_count": 2
+    }
+  ],
+  "new_count": 1,
+  "total_sellers_scanned": 150
+}
