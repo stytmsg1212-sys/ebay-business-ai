@@ -144,8 +144,10 @@ def scrape_candidates_for_listing(ebay_title: str) -> list[dict]:
 
 # === Cost calc ===
 
+# ⚠️ 訂正 (2026-05-29): opus-4-7 の $15/$75 は誤値。Opus は 4.5 以降ずっと $5/$25。
+#   本 script は 2026-05-01 の frozen 成果物のため当時の出力数値は 3 倍過大 (Opus 側のみ)。
 PRICING = {
-    "claude-opus-4-7":   {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-opus-4-7":   {"input":  5.00, "output": 25.00, "cache_read": 0.50, "cache_write":  6.25},
     "claude-sonnet-4-6": {"input":  3.00, "output": 15.00, "cache_read": 0.30, "cache_write":  3.75},
 }
 

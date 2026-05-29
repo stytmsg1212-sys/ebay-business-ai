@@ -18,13 +18,15 @@ from monitor.database import get_conn
 
 logger = logging.getLogger(__name__)
 
-# モデル別のトークン単価 ($/1M tokens) — 2026-04時点
+# モデル別のトークン単価 ($/1M tokens) — 2026-05時点
 # Anthropic: https://www.anthropic.com/pricing
 # Gemini:    https://ai.google.dev/gemini-api/docs/pricing
+# 注: Opus は 4.5 以降ずっと $5/$25 (4.7 が $15/$75 だったことはない。旧 entry の
+#     誤値で記録された過去 cost_usd は 3 倍過大のまま = 別途遡及補正の要否を判断)。
 _PRICING = {
     # Anthropic Claude
     "claude-opus-4-8": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
-    "claude-opus-4-7": {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-opus-4-7": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
     "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25},

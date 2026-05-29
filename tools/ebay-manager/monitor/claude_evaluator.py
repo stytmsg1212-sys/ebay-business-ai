@@ -51,10 +51,14 @@ logger = logging.getLogger(__name__)
 #   Haiku 4.5 (~$0.007/call、user 一致率 10%) → 精度不足
 #   → Opus 4.7 (~$0.04/call、深い思考) → 採用率 0.6% で過剰、月 ~$391 のコスト
 #   → Sonnet 4.6 (2026-05-05〜、~$0.008/call、Opus と大差なし、user 公認の費用対効果優先).
-# A/B test (W86, 5/1) では Opus / Sonnet の判定差は僅少で、コスト 5x 差を許容できないと user 判断.
+# A/B test (W86, 5/1) では Opus / Sonnet の判定差は僅少で、コスト差を許容できないと user 判断.
 # A/B 評価は supplier_candidates.eval_model で記録継続 → user 一致率追跡.
-# IMPORTANT (2026-05-05 user 要望): 将来 Opus 4.7 等の高精度モデル価格が下がったら即切替検討.
+# IMPORTANT (2026-05-05 user 要望): 将来 Opus 等の高精度モデル価格が下がったら即切替検討.
 #   詳細: feedback_opus_price_watch.md
+# ⚠️ 訂正 (2026-05-29): 上記「月 ~$391」「コスト 5x 差」は誤算定。Opus を $15/$75 と
+#   誤認していたが実際は 4.5 以降ずっと $5/$25 = Sonnet ($3/$15) の ~1.67x のみ。
+#   実 Opus コストは ~$130/月 (3 倍過大だった)。Sonnet 据え置きは user 決定で有効だが、
+#   再評価時は訂正値を使う (新トークナイザで Opus は同一テキスト最大 +35% token も考慮)。
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
 # ────────── Tier 1 Rate Limit 保護 ──────────
