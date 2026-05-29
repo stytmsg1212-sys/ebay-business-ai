@@ -9,6 +9,18 @@ from unittest.mock import MagicMock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _init_customs_schema(_isolate_monitor_db):
+    """conftest が DB_PATH を tmp に隔離した後に customs schema を作成 (W187).
+
+    2026-05-25 の conftest autouse 隔離で空 tmp DB に差し替わり、
+    customs_requests を触る create_draft 系 test が 'no such table' で fail
+    していた回帰の修正。_isolate_monitor_db を要求して順序保証。init_db 冪等。
+    """
+    from monitor.database import init_db
+    init_db()
+
+
 # ─────────────────────────────
 # _build_mime_message (reply 仕様)
 # ─────────────────────────────

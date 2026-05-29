@@ -174,8 +174,14 @@ class TestNullDefense:
 class TestComponentBHealthCheckCoverage:
     """Component B: scheduler health check に統合した監視カバレッジ欠落検知."""
 
-    def test_check_coverage_detects_gaps_no_webhook(self, tmp_db):
+    def test_check_coverage_detects_gaps_no_webhook(self, tmp_db, monkeypatch):
+        import tasks.task_scheduler_health_check as hc
         from tasks.task_scheduler_health_check import _check_coverage
+        # W187: _resolve_webhook_url は config 空時 .env DISCORD_WEBHOOK_URL を
+        # fallback 参照するため、webhook 設定済の dev 環境では実 Discord 送信が
+        # 走り sent=True で fail していた (env 依存 + 実通知副作用)。webhook 無し
+        # 状態を決定的に再現し実送信も防ぐため resolver を空文字に固定する。
+        monkeypatch.setattr(hc, "_resolve_webhook_url", lambda config: "")
         _seed_listing("E_W139_b1", "ebayyh_covb001")        # coverable
         _seed_listing("E_W139_b2", "ebayZZ_dlqb001")        # dlq
         cov = _check_coverage({})  # webhook なし → 送信せず算出のみ

@@ -12,6 +12,18 @@ from monitor.customs_gmail_sender import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _init_customs_schema(_isolate_monitor_db):
+    """conftest が DB_PATH を tmp に隔離した後に customs schema を作成 (W187).
+
+    2026-05-25 の conftest autouse 隔離で空 tmp DB に差し替わり、
+    customs_requests / customs_send_audit を触る test が 'no such table' で
+    fail していた回帰の修正。_isolate_monitor_db を要求して順序保証。init_db 冪等。
+    """
+    from monitor.database import init_db
+    init_db()
+
+
 # ─────────────────────────────
 # allow-list validation (H-1)
 # ─────────────────────────────

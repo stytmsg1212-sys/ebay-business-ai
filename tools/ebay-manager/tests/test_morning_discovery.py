@@ -91,9 +91,17 @@ def test_update_candidate_feedback_returns_false_when_no_row():
         )
 
 
-def test_update_candidate_feedback_returns_true_on_real_update():
+def test_update_candidate_feedback_returns_true_on_real_update(monkeypatch):
     """実 row 存在 + 有効 decision で True 返却."""
     init_db()
+    # W187: update_candidate_feedback は tasks.task_morning_discovery 独自の
+    # module 定数 DB_PATH (実 data/monitor.db) を raw sqlite3.connect する。
+    # conftest 隔離は monitor.database.DB_PATH のみ差し替えるため、seed (get_conn
+    # = tmp) と update (実 DB) が別 DB になり rowcount=0 で fail していた。
+    # 同一 tmp DB に揃える (実 DB 汚染防止 + 決定的化)。
+    import monitor.database as _db
+    import tasks.task_morning_discovery as _tmd
+    monkeypatch.setattr(_tmd, "DB_PATH", _db.DB_PATH)
     test_qa_id = 999998
     with get_conn() as c:
         # cleanup

@@ -17,6 +17,19 @@ from monitor.customs_product_resolver import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _init_customs_schema(_isolate_monitor_db):
+    """conftest が DB_PATH を tmp に隔離した後に customs schema を作成 (W187).
+
+    2026-05-25 の conftest autouse 隔離 (_isolate_monitor_db) で DB_PATH が
+    init_db 未実行の空 tmp DB に差し替わり、customs_kb_pending を触る test が
+    'no such table' で fail していた回帰の修正。_isolate_monitor_db を引数で
+    要求して DB_PATH 差し替えが先に走る順序を保証する。init_db は冪等。
+    """
+    from monitor.database import init_db
+    init_db()
+
+
 # ─────────────────────────────
 # lookup_manufacturer
 # ─────────────────────────────
