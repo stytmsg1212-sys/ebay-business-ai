@@ -1722,5 +1722,40 @@
     "created": "2026-05-28",
     "completed": "2026-05-28",
     "source": "2026-05-28 user 報告『復活候補にある 3 つはどれも売り切れ』+ Codex GPT-5.5 実機 web fetch 調査で root cause 3 つ (PayPay 検索が sold_out 返す + 判定 layer 不在 + scraper schema.org/InStock 単独誤認) 確定"
+  },
+  {
+    "id": 267,
+    "tag": "W185",
+    "title": "supplier_candidates UNIQUE(sku,candidate_url) → ebay_item_id ベース化 (SKU規約違反 H3 是正)",
+    "description": "2026-05-29 Opus 4.8 総チェック H3。supplier_candidates の UNIQUE(sku, candidate_url) と sku キー dedup は SKU 規約 (listing 識別は ebay_item_id、sku を一意/集約キーに使うの禁止) に違反。本番 migration + 設計判断が必要なため Q3 構造化設計フロー (code-architect → 2段レビュー → Q2 6-step one-shot migration → Q1 検証) で実施。READ-ONLY 診断 (scripts/diag_sku_schema_2026_05_29.py) 実測: (a) 773 行のテーブル再生成 (RENAME+INSERT SELECT, v56 想定)、(b) 同一 (ebay_item_id, candidate_url) で sku が異なる衝突 24 グループ = dedup 統合ルール決定要 (案: match_score 最大 / created_at 最新を残す)、(c) add_supplier_candidate の INSERT OR IGNORE upsert ロジック変更、(d) get_supplier_candidates(sku=...) 等 sku キー呼び出し箇所の改修、(e) ebay_item_id NULL/空 行は SQLite で全て distinct = dedup が効かなくなる懸念 (NULL 行の扱い決定要)。H1/H5/H4/H2 は 2026-05-29 完了済 (test + code-reviewer HIGH=0)、H3 のみ user 判断で W 化。",
+    "status": "implemented",
+    "priority": "高",
+    "created": "2026-05-29",
+    "completed": "2026-05-29",
+    "progress": "2026-05-29 本番適用完了。(1) database.py: CREATE TABLE を UNIQUE(ebay_item_id, candidate_url)+ebay_item_id NOT NULL 化、v56 gate は旧 UNIQUE 残存時 warning のみで RECREATE せず (Q2)、add_supplier_candidate は ebay_item_id 必須化 (None/空で ValueError = Q0 silent skip 防止)、get_supplier_candidates(ebay_item_id=) filter 追加。(2) scripts/migrate_supplier_candidates_v56.py one-shot 作成 (v28 前例、RENAME→新table→ROW_NUMBER dedup status優先 applied>accepted>pending>rejected、旧 table backup 保持、dry-run 既定)。(3) tests/test_w185_supplier_candidates_eid_unique.py 11 件 + 回帰 (version assertion 5 file 55→56 + test_w9_e2e ebay_item_id 追加) = フルスイート 1525 PASS。(4) code-reviewer HIGH=0 + Codex 2段 (4 findings 全適用) + 24h retrospective code-reviewer HIGH=0 (100点)。(5) 本番 --apply (Q2 6-step: snapshot data/backups/monitor_pre_w185_20260529_1336.db → 谷間時間帯 atomic 実行 → 773→749 実測 24 dedup、applied-conflict 0、user_version=56、backup table supplier_candidates_old_w185(773行)保持、独立 SELECT で UNIQUE col-set/NOT NULL/dup0 検証)。残: backup table 安定確認後の cleanup one-shot (別 W、retrospective MEDIUM)。",
+    "source": "2026-05-29 Opus 4.8 総チェック (既存ツール再点検) で検出した 5 HIGH のうち H3。user 判断『W番号登録して Q3 設計』で本番 migration を独断実行せず正式設計フローへ。"
+  },
+  {
+    "id": 268,
+    "tag": "W186",
+    "title": "W185 backup table supplier_candidates_old_w185 の cleanup one-shot",
+    "description": "W185 本番 migration (2026-05-29) で rollback 用に残した supplier_candidates_old_w185 (773 行) を、新スキーマ稼働の安定確認後に削除する。Q2 (init_db 内 DROP 禁止) に従い別 one-shot script で DROP TABLE。安定確認の目安: 5/30 02:30 supplier_sweep + 当日 supplier_select が新スキーマで ValueError なく完走し、supplier_candidates 書込が正常 (task_execution_log completed) であること。retrospective code-reviewer MEDIUM 指摘由来。",
+    "status": "未着手",
+    "priority": "低",
+    "created": "2026-05-29",
+    "completed": null,
+    "source": "2026-05-29 W185 24h retrospective code-reviewer MEDIUM 指摘 (backup table 恒久残置は害ないが Q2 別 one-shot で cleanup 推奨)。"
+  },
+  {
+    "id": 269,
+    "tag": "W187",
+    "title": "Opus 4.8 監査で発覚した既存テスト 15 件失敗の修正 (conftest 隔離回帰 + env 依存)",
+    "description": "W185 総チェック中に pytest 既存失敗 15 件を確認 (W185 diff 由来でない pre-existing)。(1) customs テスト 13 件 (test_customs_kb 1 / test_customs_sender 3 / test_customs_w14ext_draft 9): 2026-05-25 追加の conftest autouse fixture が DB_PATH を tmp に隔離するが init_db を呼ばないため空 DB で 'no such table: customs_requests' 全 fail → 3 ファイルに module-level autouse init_db fixture 追加で解決。(2) test_morning_discovery::test_update_candidate_feedback_returns_true_on_real_update: update_candidate_feedback が独自 module DB_PATH (実 data/monitor.db) を raw sqlite3.connect するため conftest 隔離 (monitor.database.DB_PATH のみ) が効かず seed(tmp) と update(実DB) が別DBで rowcount=0 → 失敗テスト内で DB_PATH を tmp に揃えて解決。(3) test_w139_monitor_coverage::test_check_coverage_detects_gaps_no_webhook: _resolve_webhook_url が .env DISCORD_WEBHOOK_URL を fallback 参照するため webhook 設定済環境では実 Discord 送信が走り sent=True で fail (env 依存 + 実通知副作用) → テストで _resolve_webhook_url->'' monkeypatch で解決。いずれも本番コードは正しく、テスト隔離側の修正。",
+    "status": "implemented",
+    "priority": "通常",
+    "created": "2026-05-29",
+    "completed": "2026-05-29",
+    "progress": "2026-05-29 完了。3 経路を全てテスト隔離側で修正 (本番コード変更なし): (1) test_customs_kb / test_customs_sender / test_customs_w14ext_draft の 3 ファイルに module-level autouse `_init_customs_schema(_isolate_monitor_db)` fixture 追加 (conftest の DB_PATH 隔離後に init_db、依存順序保証)。(2) test_morning_discovery の該当 1 件で monkeypatch により _tmd.DB_PATH を _db.DB_PATH (tmp) に揃え seed/update を同一 DB 化。(3) test_w139_monitor_coverage の該当 1 件で _resolve_webhook_url を '' に monkeypatch し実 Discord 送信副作用 + env 依存を除去。検証: 5 ファイル targeted 67 passed → フルスイート tests/ 1540 passed/2 skipped (411s) 回帰ゼロ。code-reviewer HIGH=0 (100点、逃避修正でないこと確認)。残: MEDIUM-1 task_morning_discovery 等 shadow DB_PATH モジュールの get_conn 統一 (別 W) / scripts/test_discord_w126.py が import 時 sys.exit(1) で `pytest -q` 無引数収集をクラッシュさせる件 (別 W、収集除外 or rename 推奨)。",
+    "source": "2026-05-29 W185 (Opus 4.8 総チェック) で pytest 1525 PASS 確認時に判明した pre-existing 15 件失敗。user 指示『修正してください』。"
   }
 ]

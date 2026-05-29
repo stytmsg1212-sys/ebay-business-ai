@@ -1401,5 +1401,121 @@
     "matched_keyword": null,
     "source": "HN: llm",
     "checked_at": "2026-05-29T06:00:25.880114"
+  },
+  {
+    "title": "Engineering: Claude Code performance update",
+    "source": "Anthropic Engineering Blog",
+    "impact": "medium",
+    "matched_keyword": "performance",
+    "url": "https://www.anthropic.com/engineering/cc-perf",
+    "checked_at": "2026-05-29T13:11:27.072704"
+  },
+  {
+    "title": "New API: batch processing GA",
+    "source": "Anthropic News",
+    "impact": "high",
+    "matched_keyword": "ga release",
+    "url": "https://www.anthropic.com/news/batch-ga",
+    "checked_at": "2026-05-29T13:11:27.072715"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/ClaudeAI",
+    "checked_at": "2026-05-29T13:11:27.415017"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/MachineLearning",
+    "checked_at": "2026-05-29T13:11:27.415032"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/LocalLLaMA",
+    "checked_at": "2026-05-29T13:11:27.415036"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/OpenAI",
+    "checked_at": "2026-05-29T13:11:27.415038"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/Flipping",
+    "checked_at": "2026-05-29T13:11:27.415041"
+  },
+  {
+    "title": "Discussion: new agent SDK",
+    "url": "https://reddit/x",
+    "published_at": "",
+    "extra_score": 100,
+    "impact": "high",
+    "matched_keyword": "agent sdk",
+    "source": "r/Ebay",
+    "checked_at": "2026-05-29T13:11:27.415043"
+  },
+  {
+    "title": "Anthropic announces enterprise tier",
+    "url": "https://hn/x",
+    "published_at": "",
+    "extra_points": 200,
+    "impact": "high",
+    "matched_keyword": "announce",
+    "source": "HN: anthropic",
+    "checked_at": "2026-05-29T13:11:27.415045"
+  },
+  {
+    "title": "Anthropic announces enterprise tier",
+    "url": "https://hn/x",
+    "published_at": "",
+    "extra_points": 200,
+    "impact": "high",
+    "matched_keyword": "announce",
+    "source": "HN: claude opus",
+    "checked_at": "2026-05-29T13:11:27.415047"
+  },
+  {
+    "title": "Anthropic announces enterprise tier",
+    "url": "https://hn/x",
+    "published_at": "",
+    "extra_points": 200,
+    "impact": "high",
+    "matched_keyword": "announce",
+    "source": "HN: llm",
+    "checked_at": "2026-05-29T13:11:27.415049"
+  },
+  {
+    "title": "Anthropic announces enterprise tier",
+    "url": "https://hn/x",
+    "published_at": "",
+    "extra_points": 200,
+    "impact": "high",
+    "matched_keyword": "announce",
+    "source": "HN: ai agent",
+    "checked_at": "2026-05-29T13:11:27.415051"
   }
 ]
