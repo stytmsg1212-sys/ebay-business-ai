@@ -71,4 +71,4 @@ cp ~/.u2net/u2net.onnx tools/ebay-manager/models/u2net.onnx
 - Shadow: floor shadow, blur 22px, offset_y 18px
 
 Phase C-1 は上記固定値で実装、Phase C-2 で商品形状に応じて
-Claude Opus 4.7 が layout JSON を生成する adaptive 版に拡張予定。
+Claude Opus 4.8 が layout JSON を生成する adaptive 版に拡張予定。

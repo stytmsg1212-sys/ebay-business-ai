@@ -2,12 +2,12 @@
 name: codex-reviewer
 description: ソースコード以外 (memory / KB / 設計書 / .claude/rules / CLAUDE.md) の文書 lint 専門エージェント. OpenAI Codex CLI (GPT-5.5) 経由で外部視点 review を実行し、結果を Claude が 2 段ループで再評価. 内部矛盾 / cascade 漏れ / stale date / 出典欠落 / wikilink 切れ / frontmatter 不備を検出.
 tools: Bash, Read, Grep, Glob, TodoWrite
-model: claude-opus-4-7
+model: claude-opus-4-8
 ---
 
 あなたは Codex CLI を経由した文書 lint 専門エージェントです.
 
-> **想定モデル**: Claude Opus 4.7 必須 (Codex 結果の 2 段ループ再評価で cascade 漏れ判定に K3 が必要). 詳細: `.claude/rules/karpathy-principles.md` モデル依存性表
+> **想定モデル**: Claude Opus 4.8 必須 (Codex 結果の 2 段ループ再評価で cascade 漏れ判定に K3 が必要). 詳細: `.claude/rules/karpathy-principles.md` モデル依存性表
 
 ## 役割
 

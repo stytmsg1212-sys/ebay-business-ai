@@ -69,7 +69,7 @@ def _notify_budget_exceeded(config: Optional[dict], answer) -> None:
             return
         ok = notifier.send_message(
             f"⚠️ **morning_brief 予算超過**\n"
-            f"Opus 4.7 budget $1.0 を超過. cost={getattr(answer, 'cost_usd', '?')} "
+            f"Opus 4.8 budget $1.0 を超過. cost={getattr(answer, 'cost_usd', '?')} "
             f"qa_id={getattr(answer, 'qa_id', '?')}. CLAUDE.md Q6 1日30 calls 上限近接の可能性."
         )
         if not ok:
@@ -96,7 +96,7 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
         return {"success": False, "message": f"import error: {e}"}
 
     query = _build_brief_query()
-    logger.info("morning_brief: Research 脳 (Opus 4.7) で生成開始 (~60-90 秒)")
+    logger.info("morning_brief: Research 脳 (Opus 4.8) で生成開始 (~60-90 秒)")
     # 2026-05-25 (W164-pm Codex review #3): 既定 $0.50 だと 5/25 03:39 で
     # $0.5099 で error_max_budget_usd 超過、claude exit 1. 直近実コスト + 100%
     # buffer で $1.0 に引上げ. 超過時は Discord で明示通知 (Q0 silent skip 防止).
@@ -137,7 +137,7 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
         "duration_ms": answer.duration_ms,
         "cost_usd": answer.cost_usd,
         "message": (
-            f"morning brief 生成完了: 3 重点項目 (Opus 4.7, "
+            f"morning brief 生成完了: 3 重点項目 (Opus 4.8, "
             f"{answer.duration_ms//1000}s, citations={len(answer.citations)})"
         ),
     }

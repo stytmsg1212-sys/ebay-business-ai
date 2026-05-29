@@ -3,14 +3,14 @@
 """W119 Step 3: Anthropic Messages Batches API で全 listing の検索ワードを一括生成.
 
 設計核心:
-  - **Opus 4.7 batch** で 50% off + 1 回限りの cost (~$3/580 listings).
+  - **Opus 4.8 batch** で 50% off + 1 回限りの cost (~$3/580 listings).
   - **未生成 listing のみ対象** (search_keyword IS NULL). 再生成は force_all=True.
   - **errored は NULL のまま** (DLQ 不要). UI で user が手動編集可能.
   - **prompt template は user 編集可能** (file 上部の SEARCH_KEYWORD_PROMPT 定数).
 
 呼出経路:
   - MonoDeck 最安値チェックタブ → 商品リサーチ wizard Step 3
-    → "🔑 検索ワード一括生成 (Opus 4.7 batch)" ボタン
+    → "🔑 検索ワード一括生成 (Opus 4.8 batch)" ボタン
 
 詳細: `data/system_improvements.json` id=203 / W119 entry.
 """
@@ -29,8 +29,8 @@ from monitor.database import get_conn
 logger = logging.getLogger(__name__)
 
 
-# Opus 4.7 model ID (1M context). batch API は別枠で 1 日 30 calls 制約に該当しない.
-KEYWORD_MODEL = "claude-opus-4-7"
+# Opus 4.8 model ID (1M context). batch API は別枠で 1 日 30 calls 制約に該当しない.
+KEYWORD_MODEL = "claude-opus-4-8"
 
 # Batch API SLA: 公式 24h、実測大半 1h 以内.
 _DEFAULT_POLL_INTERVAL_SEC = 60
@@ -217,7 +217,7 @@ def run_generate_search_keywords(
         force_all: True なら全 listing 再生成 (cost 注意 ~$3 for 580 listings).
         poll_interval_sec: poll 間隔.
         hard_timeout_sec: 超過時 timeout 扱い (未完了 listing は NULL のまま).
-        model: モデル ID. None で KEYWORD_MODEL (claude-opus-4-7).
+        model: モデル ID. None で KEYWORD_MODEL (claude-opus-4-8).
 
     Returns: KeywordBatchResult.
 

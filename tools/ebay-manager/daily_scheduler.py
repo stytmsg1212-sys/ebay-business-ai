@@ -581,7 +581,7 @@ def execute_daily_tasks(config, scheduled_hour=None):
 
     # ──────────────────────────────────────
     # Step 4g: W24 Research 脳 morning brief (朝 02:30 のみ)
-    # 朝バッチで本日の重点 3 項目を Opus 4.7 で生成 → DASHBOARD 表示
+    # 朝バッチで本日の重点 3 項目を Opus 4.8 で生成 → DASHBOARD 表示
     # ──────────────────────────────────────
     if should_task_run('research_morning_brief', config):
         from tasks.task_research_morning_brief import run_research_morning_brief
@@ -915,7 +915,7 @@ def setup_scheduler():
     )
 
     # ── W122 朝の新商品発掘 (2026-05-13 追加) ──
-    # 毎朝 07:00 JST に Opus 4.7 が 5 階層構造で 3 件発掘.
+    # 毎朝 07:00 JST に Opus 4.8 が 5 階層構造で 3 件発掘.
     # 主 batch (02:30/11/15/18/22) との衝突を避けるため独立 cron.
     # 既存 morning_brief (W24, 02:30) とは別役割で並設.
     scheduler.add_job(
@@ -1076,7 +1076,7 @@ def _run_rival_pricing_refresh(config: dict, scheduled_hour: int):
 
 
 def _run_morning_discovery(config: dict, scheduled_hour: int = 7):
-    """W122 朝の新商品発掘 — 1 日 1 回 Opus 4.7 で 3 件発掘 (07:00 JST)."""
+    """W122 朝の新商品発掘 — 1 日 1 回 Opus 4.8 で 3 件発掘 (07:00 JST)."""
     try:
         from tasks.task_morning_discovery import run_morning_discovery
     except ImportError as e:

@@ -1,7 +1,7 @@
-"""Opus 4.7 動画学習深掘り (W22 ハイブリッド方式の Phase B).
+"""Opus 4.8 動画学習深掘り (W22 ハイブリッド方式の Phase B).
 
 Gemini 2.5 Flash が抽出した構造化 JSON (videos_learned.gemini_response_raw) を
-Opus 4.7 が MonoHonpo (eBay 越境EC) の業務目線で深く再解釈し、
+Opus 4.8 が MonoHonpo (eBay 越境EC) の業務目線で深く再解釈し、
 - core_lesson: 最重要な学び (1-2 文)
 - applicable_to_us: 弊社業務 (eBay 出品/仕入/価格/通関/システム開発) への適用案
 - cross_video_links: 他の videos_learned との関連トピック
@@ -33,11 +33,11 @@ try:
 except ImportError:
     pass
 
-OPUS_MODEL = "claude-opus-4-7"
+OPUS_MODEL = "claude-opus-4-8"
 
-# Opus 4.7 への深掘り指示プロンプト. MonoHonpo (eBay 越境EC) の業務文脈を明示.
+# Opus 4.8 への深掘り指示プロンプト. MonoHonpo (eBay 越境EC) の業務文脈を明示.
 ENRICH_PROMPT = """\
-あなたは MonoHonpo (eBay 越境EC セラー) の Research 脳です. Opus 4.7 として深く考察してください.
+あなたは MonoHonpo (eBay 越境EC セラー) の Research 脳です. Opus 4.8 として深く考察してください.
 
 以下は Gemini 2.5 Flash が動画から抽出した構造化結果です. これを読み、
 MonoHonpo の実際の業務 (eBay 出品 / 仕入 / 価格設定 / 通関対応 / システム開発自動化) に
@@ -97,7 +97,7 @@ def enrich_video(
     db_path: str = "data/monitor.db",
     save_to_db: bool = True,
 ) -> Optional[dict]:
-    """指定 video_id の Gemini 抽出結果を Opus 4.7 で深掘り、enriched JSON を返す.
+    """指定 video_id の Gemini 抽出結果を Opus 4.8 で深掘り、enriched JSON を返す.
 
     save_to_db=True なら videos_learned 該当行に書き戻す.
     """
@@ -179,8 +179,8 @@ def enrich_video(
     usage = msg.usage
     input_tokens = getattr(usage, "input_tokens", 0)
     output_tokens = getattr(usage, "output_tokens", 0)
-    # Opus 4.7 pricing: input $15/Mtok, output $75/Mtok
-    cost_usd = (input_tokens / 1_000_000) * 15.0 + (output_tokens / 1_000_000) * 75.0
+    # Opus 4.8 pricing: input $5/Mtok, output $25/Mtok
+    cost_usd = (input_tokens / 1_000_000) * 5.0 + (output_tokens / 1_000_000) * 25.0
 
     enriched["_meta"] = {
         "model": OPUS_MODEL,

@@ -69,9 +69,10 @@ K0-K2 は普遍的だが **K3 Goal-Driven はモデル依存度が高い** (出�
 
 | モデル | 状態 (Zenn) | 適用方針 |
 |---|---|---|
+| Opus 4.8 | (Zenn 未掲載 / 4.7 後継 = 同等以上想定、2026-05-28 リリース) | 全 K 原則前提、全 task 対応 |
 | Opus 4.7 | 本領発揮 | 全 K 原則前提、全 task 対応 |
 | Opus 4.6 | 推測でショートカット | K0 仮定明示を重点警戒 |
 | Sonnet 4.6 | 複雑ゴールで迷子 | K3 measurable goal を分割して渡す |
 | Haiku 4.5 | K3 ほぼ非機能 | bulk / 短文限定、K3 不要 task のみ |
 
-**本 project の対応モデル**: Opus 4.7 (CLAUDE.md 冒頭明記). 違反検知時は `feedback_model_selection_policy.md` Q6 と併せて参照.
+**本 project の対応モデル**: Opus 4.8 (CLAUDE.md 冒頭明記). 違反検知時は `feedback_model_selection_policy.md` Q6 と併せて参照.

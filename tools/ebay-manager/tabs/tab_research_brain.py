@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """W24: MonoDeck リサーチ脳タブ.
 
-Streamlit チャット UI で Research 脳 (Opus 4.7) に質問できる.
+Streamlit チャット UI で Research 脳 (Opus 4.8) に質問できる.
 過去 Q&A 履歴を sidebar 表示 + 1-5 星 rating (W26 の基礎).
 
 設計方針 (feedback_ui_design.md 遵守):
@@ -134,10 +134,10 @@ def _render_qa_card(qa: dict) -> None:
 
 def render_tab() -> None:
     """メインタブエントリポイント. app.py の `with tab_research_brain:` から呼ばれる."""
-    st.subheader("リサーチ脳 (Opus 4.7)")
+    st.subheader("リサーチ脳 (Opus 4.8)")
     st.caption(
         "MonoHonpo の eBay 業務 / 新システム開発 への問いに、動画学習 KB 30 件 + "
-        "memory feedback + 既存 listing 統計を踏まえて Opus 4.7 が深く回答します。"
+        "memory feedback + 既存 listing 統計を踏まえて Opus 4.8 が深く回答します。"
         "1 回 30-90 秒、Method A (Max plan 内、API 課金 $0)。"
     )
 
@@ -153,7 +153,7 @@ def render_tab() -> None:
     pending = st.session_state.pop(f"{_SS}_pending_query", None)
     if pending:
         with st.status(
-            f"Research 脳 (Opus 4.7) が思考中... (30-90 秒、動画 KB 30 件 + memory 参照)",
+            f"Research 脳 (Opus 4.8) が思考中... (30-90 秒、動画 KB 30 件 + memory 参照)",
             expanded=True,
         ) as status:
             try:

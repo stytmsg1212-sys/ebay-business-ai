@@ -5,7 +5,7 @@
 最安値チェックタブの前段に統合し、user 主導で 4 step を順次実行:
   Step 1: 物理属性一括取得 (重量推定 Haiku + Trading API GetItem)
   Step 2: 損益分岐価格一括計算 (compute_breakeven_price_usd → lp_breakeven_usd)
-  Step 3: 検索ワード一括生成 (Opus 4.7 batch → search_keyword)
+  Step 3: 検索ワード一括生成 (Opus 4.8 batch → search_keyword)
   Step 4: 競合検索 (Browse API + client-side sort) → checkbox 選択 → 競合 DB 登録
 
 UI 設計核心:
@@ -435,9 +435,9 @@ def _render_step2(config: dict, counts: dict) -> None:
 # =============================================================================
 
 def _render_step3(config: dict, counts: dict) -> None:
-    st.markdown("#### Step 3: 検索ワード一括生成 (Opus 4.7)")
+    st.markdown("#### Step 3: 検索ワード一括生成 (Opus 4.8)")
     st.caption(
-        f"全 listing の title から検索ワードを Opus 4.7 で抽出. "
+        f"全 listing の title から検索ワードを Opus 4.8 で抽出. "
         f"対象 {counts['total']} 件中、生成済 {counts['with_keyword']} 件. "
         f"未生成のみが対象 (force_all=True で全件再生成)."
     )
@@ -474,7 +474,7 @@ def _render_step3(config: dict, counts: dict) -> None:
             )
         elif batch_btn:
             with st.spinner(
-                "Opus 4.7 batch submit + poll 中... (通常 30 分前後、長くて 4h)"
+                "Opus 4.8 batch submit + poll 中... (通常 30 分前後、長くて 4h)"
             ):
                 try:
                     result = run_generate_search_keywords(force_all=force_all)

@@ -1,7 +1,7 @@
-"""W23 Research 脳 中核 — Opus 4.7 ベース相談役エンドポイント.
+"""W23 Research 脳 中核 — Opus 4.8 ベース相談役エンドポイント.
 
 設計 (Method A): Claude Code subagent + subprocess 呼出
-  - `.claude/agents/research-brain.md` を Opus 4.7 subagent として登録
+  - `.claude/agents/research-brain.md` を Opus 4.8 subagent として登録
   - Streamlit / 他モジュールから ask() を呼ぶ
   - 内部で `claude -p --agent research-brain --model opus -p "<query>" ...`
   - Max plan で完結 → API 追加課金 $0

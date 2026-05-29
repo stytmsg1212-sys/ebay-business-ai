@@ -292,7 +292,7 @@ def render_morning_discovery_tab() -> None:
         if st.button("今すぐ生成 (手動)", use_container_width=True):
             # H-1 fix: webhook_url 取得のために settings を渡す
             settings = st.session_state.get("settings") or {}
-            with st.spinner("Opus 4.7 が分析中... (60-120 秒)"):
+            with st.spinner("Opus 4.8 が分析中... (60-120 秒)"):
                 result = run_morning_discovery(config=settings)
             if result.get("success"):
                 msg = result.get("message", "完了")

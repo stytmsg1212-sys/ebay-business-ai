@@ -57,7 +57,8 @@ DB: `alt_listing_possible=1` + `alt_listing_note` に具体提案を格納。
 
 - 判定ロジック: `monitor/claude_evaluator.py::STABLE_PROMPT_TEMPLATE`
 - DB schema: `supplier_candidates` テーブル (migration v5 で追加) の `alt_listing_possible` / `alt_listing_note` / `junk_likely_untested` カラム
-- W25 で Opus 4.7 escalation (supplier_evaluate Opus 全置換) 運用中。ヒアリング日程・最新状況は `feedback_w25_supplier_opus_review_pending.md` 参照
+- **現状 (2026-05-29〜)**: `supplier_evaluate` は **Sonnet 4.6** で運用 (`claude_evaluator.py::CLAUDE_MODEL = "claude-sonnet-4-6"` が真実)。2026-05-29 Opus 4.8 移行時も user 判断で Sonnet 据え置き (コスト対効果)。
+- **過去 (〜2026-05-05)**: W25 で「Opus escalation = supplier_evaluate Opus 全置換」を検討したが、2026-05-02 W94 + 2026-05-05 Sonnet 切替で解消済。`feedback_w25_supplier_opus_review_pending.md` は ⛔ SUPERSEDED (historical only)。
 
 ## 未確定項目 (次回ヒアリング候補)
 

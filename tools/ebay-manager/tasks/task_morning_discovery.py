@@ -1,4 +1,4 @@
-"""W122: 朝 07:00 に Opus 4.7 が新商品候補 3 件を発掘.
+"""W122: 朝 07:00 に Opus 4.8 が新商品候補 3 件を発掘.
 
 5 階層構造のうち Phase 1 では階層 1+2+3 を実装:
 - 階層 1 (horizontal_pattern): 自社売れ筋の兄弟製品・季節新色・上位機
@@ -89,7 +89,7 @@ def _build_discovery_query(
     known_jp_sellers: list[str],
     is_monday: bool,
 ) -> str:
-    """Opus 4.7 への query 構築 (5 階層構造 Phase 1)."""
+    """Opus 4.8 への query 構築 (5 階層構造 Phase 1)."""
     sellers_md = "| 商品名 | 価格 | Watch | Sold(30d) | Rank |\n|---|---|---|---|---|\n"
     for s in top_sellers:
         sellers_md += (
@@ -297,7 +297,7 @@ def _send_discord(
     if warning:
         lines.append(warning)
     if not candidates:
-        lines.append("発掘候補なし (Opus 4.7 は今朝 0 件を返答)")
+        lines.append("発掘候補なし (Opus 4.8 は今朝 0 件を返答)")
     else:
         for c in candidates[:3]:
             name = (c.get('product_name') or '(no name)')[:60]
@@ -376,7 +376,7 @@ def run_morning_discovery(
         return {"success": False, "message": f"import error: {e}"}
 
     logger.info(
-        f"morning_discovery: Opus 4.7 リサーチ開始 "
+        f"morning_discovery: Opus 4.8 リサーチ開始 "
         f"(sellers={len(top_sellers)}, decisions={len(user_decisions)}, "
         f"monday={is_monday})"
     )
@@ -467,7 +467,7 @@ def run_morning_discovery(
     fallback_warning = ""
     if "haiku" in (answer.model_used or "").lower():
         fallback_warning = (
-            f"Opus 4.7 quota over で Haiku fallback. "
+            f"Opus 4.8 quota over で Haiku fallback. "
             f"発掘品質が低下している可能性 (model={answer.model_used})."
         )
         logger.warning(f"morning_discovery: {fallback_warning}")

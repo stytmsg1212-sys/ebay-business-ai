@@ -231,7 +231,7 @@ def process_single_video(url: str) -> dict:
     kw_count = _save_knowledge_index(video_id, extracted)
     _notify_secretary(video_id, meta.get("title", video_id), extracted.get("summary_ja", ""))
 
-    # 2026-04-26 W22 ハイブリッド: Gemini 成功直後に Opus 4.7 深掘りも実施.
+    # 2026-04-26 W22 ハイブリッド: Gemini 成功直後に Opus 4.8 深掘りも実施.
     # eBay 業務適用視点で MonoHonpo 用に深く再解釈する.
     # 失敗しても Gemini 段階は成功扱い (Opus は別途リトライ可能).
     opus_status = "skipped"
@@ -245,7 +245,7 @@ def process_single_video(url: str) -> dict:
         else:
             opus_status = "failed"
     except Exception as _opus_e:  # noqa: BLE001
-        logger.warning(f"Opus 4.7 enrichment 失敗 ({video_id}): {_opus_e}")
+        logger.warning(f"Opus 4.8 enrichment 失敗 ({video_id}): {_opus_e}")
         opus_status = "error"
 
     return {

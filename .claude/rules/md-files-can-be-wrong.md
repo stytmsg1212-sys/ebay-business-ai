@@ -6,7 +6,7 @@
 
 ## 適用対象 (調査・設計・実装するエージェント全て)
 
-- `research-brain` (Opus 4.7 業務判断)
+- `research-brain` (Opus 4.8 業務判断)
 - `code-architect` (機能設計)
 - `code-reviewer` (レビュー)
 - `generator` (コード実装)

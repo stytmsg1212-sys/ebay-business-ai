@@ -19,7 +19,7 @@
 - **Q3** 新機能 / 外部 API / 不確実変更は構造化設計フロー必須 (Clarify → 設計 → 2 段 review → 実装 → Q1)
 - **Q4** コード変更後 code-reviewer agent で HIGH=0 まで修正ループ
 - **Q5** 完了報告: 「使用したモデル」明示、未実施フェーズ明記、Phase 0 発見併記
-- **Q6** モデル選定: Opus 4.7 (業務判断・Research 1日30) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk・デフォルト)
+- **Q6** モデル選定: Opus 4.8 (業務判断・Research 1日30) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk・デフォルト)
 - **Q7** 知識利用順序 (LLM Wiki): compiled wiki を read-first、ゼロ再導出禁止 → `.claude/rule-snippets/llm-wiki-compilation.md`
 
 ## 金銭直結 rule (常時 always-load、違反 = 品質事故)
@@ -50,7 +50,7 @@
 ## 完了報告 4 行テンプレ (Q5)
 
 ```
-- 使用モデル: <Gemini 2.5 Flash / Opus 4.7 / Sonnet 4.6 / Haiku 4.5 等>
+- 使用モデル: <Gemini 2.5 Flash / Opus 4.8 / Sonnet 4.6 / Haiku 4.5 等>
 - 検証経路: <pytest unit / Playwright UI / eBay VerifyAdd XML / DB SELECT>
 - 実機ログ: <scheduler.log の抜粋 or "確認不要">
 - 残リスク: <文章 or "なし">

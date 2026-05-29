@@ -1,7 +1,7 @@
 """W23 Research 脳 — 軽量 vs 深思考のルーティング判定.
 
 軽い問い (light): 単純な事実確認・カテゴリ ID 検索・短い計算 → Haiku で済ませる
-重い問い (heavy): 戦略・設計・妥当性判断・複数文脈統合 → Opus 4.7 + extended thinking
+重い問い (heavy): 戦略・設計・妥当性判断・複数文脈統合 → Opus 4.8 + extended thinking
 
 設計方針 (Karpathy K1):
 - パターンマッチで決め打ち、ML は使わない
@@ -36,12 +36,12 @@ HEAVY_PATTERNS = [
 # Source 別のデフォルト model
 SOURCE_MODEL_DEFAULTS = {
     "ui_chat": None,  # auto
-    "morning_brief": "claude-opus-4-7",  # 朝の重点提案は深く考える
-    "supplier_escalation": "claude-opus-4-7",  # 仕入判断 = 金銭損失リスク
-    "feature_dev": "claude-opus-4-7",  # 設計判断 = 後続コスト大
-    "listing_review": "claude-opus-4-7",  # 出品レビュー = eBay ポリシー責任
-    "news_deep_dive": "claude-opus-4-7",  # ニュース深掘り = 業務影響評価
-    "morning_discovery": "claude-opus-4-7",  # W122 朝の新商品発掘 = 5 階層深掘り
+    "morning_brief": "claude-opus-4-8",  # 朝の重点提案は深く考える
+    "supplier_escalation": "claude-opus-4-8",  # 仕入判断 = 金銭損失リスク
+    "feature_dev": "claude-opus-4-8",  # 設計判断 = 後続コスト大
+    "listing_review": "claude-opus-4-8",  # 出品レビュー = eBay ポリシー責任
+    "news_deep_dive": "claude-opus-4-8",  # ニュース深掘り = 業務影響評価
+    "morning_discovery": "claude-opus-4-8",  # W122 朝の新商品発掘 = 5 階層深掘り
 }
 
 
@@ -61,13 +61,13 @@ def choose_model(
       6. デフォルト → Opus (安全側、品質低下を避ける)
     """
     if force == "opus":
-        return "claude-opus-4-7", True
+        return "claude-opus-4-8", True
     if force == "haiku":
         return "claude-haiku-4-5-20251001", False
 
     # Source 別デフォルト
     src_model = SOURCE_MODEL_DEFAULTS.get(source)
-    if src_model == "claude-opus-4-7":
+    if src_model == "claude-opus-4-8":
         # ただし HEAVY_PATTERN でなければ thinking 不要 (cost 削減)
         is_heavy = any(re.search(p, query, re.IGNORECASE) for p in HEAVY_PATTERNS)
         return src_model, is_heavy
@@ -75,14 +75,14 @@ def choose_model(
     # Pattern based
     is_heavy = any(re.search(p, query, re.IGNORECASE) for p in HEAVY_PATTERNS)
     if is_heavy:
-        return "claude-opus-4-7", True
+        return "claude-opus-4-8", True
 
     is_light = any(re.search(p, query, re.IGNORECASE) for p in LIGHT_PATTERNS)
     if is_light and len(query) < 100:
         return "claude-haiku-4-5-20251001", False
 
     # デフォルト Opus (Karpathy K0 の "Don't hide confusion" — 不確実なら深く考える)
-    return "claude-opus-4-7", False  # thinking off (cost 抑制)
+    return "claude-opus-4-8", False  # thinking off (cost 抑制)
 
 
 if __name__ == "__main__":
