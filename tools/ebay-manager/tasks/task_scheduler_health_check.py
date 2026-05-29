@@ -389,7 +389,9 @@ def _check_phase_c_health(config: dict) -> dict:
                 (cutoff_24h,),
             ).fetchall()
             findings["subprocess_errors"] = [
-                {"task_key": r[0], "started_at": r[1], "message": (r[2] or "")[:200]}
+                # message は Tier2 修正案 prompt の根本原因特定に使うため余裕を持って保持。
+                # Discord 表示側 (_build_health_embed) で 80 字に再 truncate するので肥大化なし。
+                {"task_key": r[0], "started_at": r[1], "message": (r[2] or "")[:2000]}
                 for r in rows
             ]
     except Exception as e:  # noqa: BLE001 — 検査自体の失敗を silent にしない

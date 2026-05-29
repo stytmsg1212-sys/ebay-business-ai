@@ -2681,6 +2681,74 @@ def init_db():
                     "を実行して UNIQUE(ebay_item_id, candidate_url) へ張り替えてください。"
                 )
 
+        # ---- v57: health-check auto-fix system (監査ログ + DB書込提案) ----
+        # 健康チェックが検知した異常を自動対処する仕組み (task_health_autofix) の基盤。
+        # autofix_attempt_log: 全自動対処の痕跡 (Q0 silent skip 防止) + 当日試行回数追跡
+        #   (ループガード。finding_hash 単位で count して N 回超で打ち止め)。
+        # autofix_db_proposal: Tier3 (DB 書込を伴う修正) の修正案。自動実行せず user 承認
+        #   待ち (Q2 本番DB直接書込は原則禁止)。
+        # CREATE TABLE IF NOT EXISTS のみ (DROP/DELETE/ALTER 不使用 = 冪等)。
+        # gate は `== 56` (`< 57` ではない): v56 は旧 UNIQUE 残存時に bump せず 55 据え置きで
+        # 手動移行を強制するガード。`< 57` だと 55 から v57 へ leapfrog して v56 ガードを
+        # 無効化するため、v56 完了 (=56) を確認してからのみ進む。fresh DB は同一 init_db 内で
+        # v56 block が 56 に bump 済 → 直後に本 block が 57 へ進む (cascade 成立)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 56:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS autofix_attempt_log (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    attempt_date    TEXT    NOT NULL,
+                    finding_hash    TEXT    NOT NULL,
+                    tier            TEXT    NOT NULL,
+                    kind            TEXT    NOT NULL,
+                    target_task_key TEXT,
+                    action          TEXT    NOT NULL,
+                    status          TEXT    NOT NULL,
+                    commit_hash     TEXT,
+                    gate_report     TEXT,
+                    cost_usd        REAL    DEFAULT 0.0,
+                    detail          TEXT,
+                    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_autofix_date_hash
+                    ON autofix_attempt_log(attempt_date, finding_hash)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS autofix_db_proposal (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    finding_hash      TEXT    NOT NULL,
+                    kind              TEXT    NOT NULL,
+                    diagnosis_sql     TEXT,
+                    diagnosis_result  TEXT,
+                    proposed_sql      TEXT    NOT NULL,
+                    affected_rows_est INTEGER,
+                    status            TEXT    NOT NULL DEFAULT 'pending',
+                    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_action_at    TIMESTAMP,
+                    auto_rejected     INTEGER DEFAULT 0
+                )
+                """
+            )
+            # 全テーブル実在を確認後でのみ bump (部分適用で bump しない、冪等性: v55 流儀)。
+            _v57_tables = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name IN ('autofix_attempt_log', 'autofix_db_proposal')"
+                ).fetchall()
+            }
+            if {"autofix_attempt_log", "autofix_db_proposal"}.issubset(_v57_tables):
+                conn.execute("PRAGMA user_version = 57")
+                logger.info(
+                    "[init_db v57] autofix tables created, schema_ver bumped to 57"
+                )
+
 
 # ---- サイト設定 ----
 

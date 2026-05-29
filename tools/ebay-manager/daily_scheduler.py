@@ -1253,15 +1253,27 @@ def _run_health_check(config: dict, scheduled_hour: int = 4):
     """健康チェック cron — 本日 expected vs executed を照合し、欠落があれば Discord 即時通知.
 
     各 batch 終了後 (例: 02:30 batch は 03:25 頃完了 → 04:00 起動) に走らせる.
+    検知後はそのまま autofix orchestrator へ **同じ結果 object を渡し** (再度
+    ヘルスチェックを呼ばない = 非 dedupe alert の二重発火を防ぐ) Tier 別自動対処する。
     """
     try:
         from tasks.task_scheduler_health_check import run_scheduler_health_check
     except Exception as e:  # noqa: BLE001
         logger.error(f"health_check import 失敗: {e}")
         return
+
+    def _runner():
+        health = run_scheduler_health_check(config)
+        try:
+            from tasks.task_health_autofix import run_health_autofix
+            health["autofix"] = run_health_autofix(config, health)
+        except Exception as e:  # noqa: BLE001 — autofix 失敗で検知結果を失わない
+            logger.error(f"health autofix 失敗: {e}", exc_info=True)
+            health["autofix"] = {"error": str(e)}
+        return health
+
     _run_isolated_task('scheduler_health_check', '定時実行ヘルスチェック',
-                       lambda: run_scheduler_health_check(config),
-                       scheduled_hour=scheduled_hour)
+                       _runner, scheduled_hour=scheduled_hour)
 
 
 SCHEDULER_LOCK_FILE = Path(__file__).parent / 'data' / 'scheduler.lock'

@@ -87,6 +87,9 @@ tools/ebay-manager/data/w*_bulk_results.json
 tools/ebay-manager/data/w*_results.json
 tools/ebay-manager/data/EbayFeeRates.csv
 
+# === Health auto-fix 生成物 (Tier2 修正案 diff、レビュー用一時生成、commit 不要) ===
+tools/ebay-manager/data/health_fixes/
+
 # === Sample HTML (yahoo_auction_sample 等、再取得可) ===
 tools/ebay-manager/yahoo_auction_sample.html
 tools/ebay-manager/yahoo_auctions_retest_results.csv
