@@ -48,6 +48,7 @@ def test_w182_add_supplier_candidate_with_availability():
         sku=test_sku,
         candidate_url=test_url,
         source_platform="test_platform",
+        ebay_item_id="test_w182_eid_12345",
         availability_status="available",
         availability_checked_at="2026-05-28T12:00:00+00:00",
         availability_signal="test signal",
@@ -75,6 +76,7 @@ def test_w182_add_supplier_candidate_backward_compat():
         sku="bc_test_sku",
         candidate_url=test_url,
         source_platform="bc_platform",
+        ebay_item_id="test_w182_bc_eid_67890",
     )
     assert row_id is not None
     with get_conn() as c:

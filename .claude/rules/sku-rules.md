@@ -86,6 +86,7 @@ assistant が将来このルールに違反したら:
 | 2026-04-29 | W7-A SKU 主キー崩壊 (設計時に SKU を listing 主キー扱い) | Phase 3 / migration v26 で `ebay_item_id` 単位化 |
 | 2026-04-30 | SKU 一意性誤推論 (CLAUDE.md `(一意キー)` 記述を無批判参照) | CLAUDE.md / rules / memory 5 か所鏡像更新 + 本 rule 制定 |
 | 2026-05-19 | W139-fix: `find_coverage_gaps` が監視カバレッジを `NOT EXISTS m.sku=l.sku` (JOIN ON sku) で判定 → user の SKU 編集で monitored が旧 sku に取り残され phantom gap 誤検知 (非dedupe Discord 爆発 + 履行不能リスク)。upsert_item は ebay_item_id 識別なのに検知側だけ SKU 結合の内部矛盾 | `m.ebay_item_id=l.ebay_item_id AND COALESCE(is_active,1)=1` キー化 + SKU編集の monitored 追従 (_sync_monitored_items_sku、2汚染源結線) + ebay_item_id backfill(183)/孤立cleanup(17) + 商品管理 raw UPDATE→update_ebay_listing_sku 統一。code-reviewer 3周 HIGH=0 + Codex 2段で計4 HIGH 捕捉。pytest 1295 |
+| 2026-05-29 | W185 (Opus 4.8 総チェック H3): `supplier_candidates` の dedup 制約が `UNIQUE(sku, candidate_url)` → 同一 listing が SKU 編集で別 sku を持つと同一仕入先 URL を重複登録、逆に別 listing が同 sku を共有すると誤集約。listing 識別が ebay_item_id なのに候補 table の一意キーだけ sku の内部矛盾 | `UNIQUE(ebay_item_id, candidate_url)` へ張り替え + `ebay_item_id NOT NULL` 化 (migration v56)。`add_supplier_candidate` は ebay_item_id 必須化 (None/空で ValueError、Q0 silent skip 防止)、`get_supplier_candidates(ebay_item_id=...)` filter 追加。本番張り替えは `scripts/migrate_supplier_candidates_v56.py` one-shot (v28 前例、RENAME→新 table→ROW_NUMBER dedup、旧 table backup 保持)。dry-run 773→749 (24 重複 dedup、applied-conflict 0)。code-reviewer HIGH=0 |
 
 ## 関連 rule
 

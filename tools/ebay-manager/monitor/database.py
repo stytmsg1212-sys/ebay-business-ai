@@ -425,8 +425,12 @@ def init_db():
                 last_synced_at TIMESTAMP,
                 source_status TEXT DEFAULT 'unknown',
                 rank TEXT DEFAULT 'C',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (sku) REFERENCES monitored_items(sku)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                -- FK(sku)->monitored_items(sku) 撤廃 (2026-05-29 Opus 4.8 総チェック H2):
+                -- sku は listing 識別子ではない (stock**/ebay** を多数 listing が共有) ため
+                -- FK は意味論的に誤り. v28 で参照先 monitored_items.UNIQUE(sku) も撤廃済
+                -- = 既に無効FK. FK は未強制 (get_conn が PRAGMA foreign_keys=ON しない) ため
+                -- 本撤廃は機能変化なし. listing 識別は ebay_item_id (上記 UNIQUE). sku-rules.md 準拠.
             );
 
             CREATE INDEX IF NOT EXISTS idx_ebay_listings_sku
@@ -619,7 +623,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS supplier_candidates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sku TEXT NOT NULL,
-                ebay_item_id TEXT,
+                ebay_item_id TEXT NOT NULL,
                 source_platform TEXT,
                 candidate_url TEXT NOT NULL,
                 candidate_price_jpy INTEGER,
@@ -632,7 +636,12 @@ def init_db():
                 user_action_at TIMESTAMP,
                 discovered_via TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(sku, candidate_url)
+                -- UNIQUE(ebay_item_id, candidate_url): listing 識別は ebay_item_id (sku-rules.md).
+                -- W185 (2026-05-29 Opus 4.8 総チェック H3) で UNIQUE(sku, candidate_url) から変更.
+                -- sku は有/無在庫 prefix 判定 + 仕入先 URL 変換用に残す (集約/一意キーには使わない).
+                -- ebay_item_id NOT NULL: NULL は SQLite で UNIQUE 上 distinct 扱い = dedup 無効化のため.
+                -- 旧 DB は scripts/migrate_supplier_candidates_v56.py one-shot で RECREATE (init_db 内 DROP 禁止 Q2).
+                UNIQUE(ebay_item_id, candidate_url)
             )
         """)
         conn.execute("""
@@ -1063,23 +1072,12 @@ def init_db():
     # 注: SQLite GLOB は `_` を literal 扱い、`?` が single-char wildcard.
     # LIKE は `_` が single-char wildcard. ISO date 形式強制には LIKE '____-__-__' を使用.
     with get_conn() as conn:
-        # v18 初期実装で GLOB vs LIKE バグがあり、修正のため一度だけ DROP/RECREATE が必要.
-        # ただし init_db は app/scheduler 起動毎に呼ばれるため、
-        # **既に正しい LIKE constraint で作成されていれば DROP しない** (本番データ保護).
-        _need_recreate = True
-        try:
-            _row = conn.execute(
-                "SELECT sql FROM sqlite_master WHERE type='table' "
-                "AND name='customs_requests'"
-            ).fetchone()
-            if _row and _row[0] and "deadline LIKE" in _row[0]:
-                # 既に修正版 (LIKE) で作成済 → DROP しない (データ保護)
-                _need_recreate = False
-        except sqlite3.Error:
-            pass
-        if _need_recreate:
-            for _tbl in ("customs_send_audit", "customs_kb_pending", "customs_requests"):
-                conn.execute(f"DROP TABLE IF EXISTS {_tbl}")
+        # v18 初期実装に GLOB vs LIKE バグがあったが、修正用の DROP/RECREATE は撤廃
+        # (Q2 規定: init_db 内 DROP TABLE 禁止. 旧コードは schema 文字列に "deadline LIKE"
+        #  を含むかの脆弱判定で、文字列が変わると本番 DROP = v18 95 件消失クラス再発リスク).
+        # 旧 GLOB 制約の DB は必ず v19 status set ('drafted_in_gmail') を欠くため、後続 v19
+        # migration (L1196-) のデータ保持 RENAME+INSERT SELECT が LIKE 制約へ自動再構築する.
+        # 新規環境は下記 CREATE TABLE IF NOT EXISTS が LIKE 制約で作成.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS customs_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2652,6 +2650,37 @@ def init_db():
                 conn.execute("PRAGMA user_version = 55")
                 logger.info("[init_db v55] schema_ver bumped to 55")
 
+        # ---- v56: supplier_candidates UNIQUE(sku,candidate_url) → UNIQUE(ebay_item_id,candidate_url) ----
+        # W185 (2026-05-29 Opus 4.8 総チェック H3): sku は listing 一意キーに使えない (sku-rules.md)。
+        # init_db 内で RECREATE しない (Q2: DROP/DELETE 禁止)。旧 UNIQUE が残っていれば warning のみ出し、
+        # 実際の張り替えは scripts/migrate_supplier_candidates_v56.py one-shot で行う (v28 前例に倣う)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver < 56:
+            _has_old_sku_unique = False
+            for _idx in conn.execute(
+                "PRAGMA index_list(supplier_candidates)"
+            ).fetchall():
+                # index_list: (seq, name, unique, origin, partial). origin 'u' = UNIQUE 制約由来。
+                if str(_idx[1]).startswith("sqlite_autoindex") and _idx[3] == "u":
+                    _cols = [
+                        r[2]
+                        for r in conn.execute(
+                            f"PRAGMA index_info({_idx[1]})"
+                        ).fetchall()
+                    ]
+                    # 厳密な列セット一致で旧 UNIQUE(sku, candidate_url) を判定 (先頭列のみ一致の誤検知回避)。
+                    if _cols == ["sku", "candidate_url"]:
+                        _has_old_sku_unique = True
+            if not _has_old_sku_unique:
+                conn.execute("PRAGMA user_version = 56")
+                logger.info("[init_db v56] schema_ver bumped to 56")
+            else:
+                logger.warning(
+                    "[init_db v56] migration pending: supplier_candidates に "
+                    "UNIQUE(sku, candidate_url) 残存。scripts/migrate_supplier_candidates_v56.py "
+                    "を実行して UNIQUE(ebay_item_id, candidate_url) へ張り替えてください。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4164,12 +4193,21 @@ def add_supplier_candidate(
     availability_signal: Optional[str] = None,
 ) -> Optional[int]:
     """
-    仕入先候補を登録（同一 sku + candidate_url の重複は無視）。
+    仕入先候補を登録（同一 ebay_item_id + candidate_url の重複は無視）。
     eval_model: AI 評価に使った model (claude-opus-4-7 / claude-haiku-4-5 等).
     availability_*: W182 (2026-05-28) 在庫 gate を通過した時点の判定結果.
         - status='available' 以外は呼び出し側で reject 済の想定 (二重防御として記録).
     Returns: 挿入された行のid、重複なら None
+
+    W185 (2026-05-29): dedup キーが ebay_item_id ベースになったため (sku-rules.md)、
+    ebay_item_id 必須。None/空は UNIQUE 上 distinct 扱いで dedup 無効化 = sold_out 候補の
+    重複登録に繋がるため、silent NULL 挿入せず ValueError を送出 (Q0 偽装成功防止)。
     """
+    if not ebay_item_id or not ebay_item_id.strip():
+        raise ValueError(
+            "add_supplier_candidate: ebay_item_id は必須です (W185 dedup キー)。"
+            f"sku={sku!r} candidate_url={candidate_url!r}"
+        )
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT OR IGNORE INTO supplier_candidates
@@ -4194,14 +4232,21 @@ def get_supplier_candidates(
     sku: Optional[str] = None,
     status: Optional[str] = None,
     min_score: Optional[int] = None,
+    ebay_item_id: Optional[str] = None,
 ) -> list[dict]:
     """
     仕入先候補を取得。
     2026-04-23 ソート変更: profit_jpy DESC → match_score DESC → created_at DESC
     (利益額大の候補を最優先、同利益なら一致度、同一致度なら新しいもの)
+
+    ebay_item_id: listing 単位で候補を取得 (W185, sku-rules.md = listing 識別は ebay_item_id)。
+    sku: 有/無在庫 prefix フィルタ等の UI 用途で残置 (listing 一意特定には ebay_item_id を使う)。
     """
     clauses: list[str] = []
     params: list = []
+    if ebay_item_id is not None:
+        clauses.append("ebay_item_id = ?")
+        params.append(ebay_item_id)
     if sku is not None:
         clauses.append("sku = ?")
         params.append(sku)

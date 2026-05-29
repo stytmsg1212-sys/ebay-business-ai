@@ -1527,15 +1527,15 @@ class TestW9HighFixRegressions:
             # pending 候補を兄弟で 2つ (片方が ended 親、もう片方が active 親)
             conn.execute(
                 """INSERT INTO supplier_candidates
-                   (sku, candidate_url, status, match_score)
-                   VALUES (?, ?, 'pending', 80)""",
-                ("sku_ended", "https://a.example.com/1"),
+                   (sku, ebay_item_id, candidate_url, status, match_score)
+                   VALUES (?, ?, ?, 'pending', 80)""",
+                ("sku_ended", "ITEM_ENDED", "https://a.example.com/1"),
             )
             conn.execute(
                 """INSERT INTO supplier_candidates
-                   (sku, candidate_url, status, match_score)
-                   VALUES (?, ?, 'pending', 90)""",
-                ("sku_active", "https://a.example.com/2"),
+                   (sku, ebay_item_id, candidate_url, status, match_score)
+                   VALUES (?, ?, ?, 'pending', 90)""",
+                ("sku_active", "ITEM_ACTIVE", "https://a.example.com/2"),
             )
 
         # cleanup 実行
