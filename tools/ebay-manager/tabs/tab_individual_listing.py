@@ -42,7 +42,9 @@ from monitor.database import (
     save_listing_draft,
     update_listing_draft,
     update_listing_draft_status,
+    upsert_ebay_listing,
 )
+from ui_cache import bump_db_version
 from monitor.ebay_lister import (
     add_fixed_price_item_draft,
     build_draft_params_from_phase3,
@@ -1427,7 +1429,7 @@ def _do_research_brain_review() -> None:
 """
 
     with st.status(
-        "Research 脳 (Opus 4.7) で監修中... (60-90 秒)",
+        "Research 脳 (Opus 4.8) で監修中... (60-90 秒)",
         expanded=True,
     ) as status:
         try:
@@ -1496,7 +1498,7 @@ def _render_step4_generation_preview() -> None:
         if st.button(
             "Research 脳監修" if not _research_review else "再監修",
             key=f"{_SS}btn_research_review",
-            help="Opus 4.7 が動画 KB + memory feedback を踏まえて出品ドラフトを最終レビュー (60-90 秒、$0 Method A)",
+            help="Opus 4.8 が動画 KB + memory feedback を踏まえて出品ドラフトを最終レビュー (60-90 秒、$0 Method A)",
         ):
             _do_research_brain_review()
             st.rerun()
@@ -1514,7 +1516,7 @@ def _render_step4_generation_preview() -> None:
     # Research 脳監修コメント表示
     if _research_review:
         with st.container(border=True):
-            st.markdown("**Research 脳 監修コメント (Opus 4.7)**")
+            st.markdown("**Research 脳 監修コメント (Opus 4.8)**")
             st.markdown(_research_review.get("answer_md") or "(回答無し)")
 
     # タイトル (編集可, 80字カウンタ)
@@ -2019,6 +2021,39 @@ def _do_add(draft_params: dict, settings: dict) -> None:
                 update_listing_draft(draft_id, {
                     "scheduled_time": result.get("scheduled_time"),
                 })
+                # W176 (2026-05-27): ebay_listings に即時 upsert + UI cache 無効化。
+                # 旧: 次回 ebay_sync (5回/日) まで商品管理タブに反映されず、出品直後
+                # にライバル登録できない gap があった。失敗しても Add 本体は成功扱い
+                # (次回 ebay_sync が拾うため correctness 違反にならない)。
+                # HIGH-1 fix: SKU 空での upsert は monitored_items を空 SKU に追従
+                # させ W139-fix 整合性を崩すため skip (二重 submit / retry 防御)。
+                # HIGH-2 fix: listing_price_usd は eBay XML の <StartPrice> 値 =
+                # ebay_sync の current_price (GetMyeBaySelling) と同義 = 商品本体価格
+                # (USD、送料別、ただし US_only 区分のみ DDP 包含 = CLAUDE.md 規約準拠)。
+                _w176_sku = str(draft_params.get("sku") or "").strip()
+                _w176_item_id = result.get("ebay_item_id")
+                if not _w176_sku:
+                    logger.warning(
+                        "W176 sku empty, skip immediate upsert "
+                        "(item_id=%s, will be picked up by next ebay_sync)",
+                        _w176_item_id,
+                    )
+                else:
+                    try:
+                        upsert_ebay_listing(
+                            ebay_item_id=str(_w176_item_id),
+                            sku=_w176_sku,
+                            title=str(draft_params.get("ebay_title") or ""),
+                            current_price=float(draft_params.get("listing_price_usd") or 0.0),
+                            quantity_ebay=1,
+                        )
+                        bump_db_version()
+                    except Exception as _e:  # noqa: BLE001
+                        logger.exception(
+                            "W176 ebay_listings upsert failed "
+                            "(item_id=%s, deferred to next ebay_sync): %s",
+                            _w176_item_id, _e,
+                        )
                 _sched = result.get('scheduled_time')
                 if _sched:
                     st.write(

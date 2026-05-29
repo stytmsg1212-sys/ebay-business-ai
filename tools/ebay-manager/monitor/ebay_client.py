@@ -329,6 +329,136 @@ def get_item_details_batch(
     return results
 
 
+def get_single_listing(
+    item_id: str,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> Optional[dict]:
+    """W176-followup (2026-05-27): 単一 ItemID で GetItem を 1 回呼び、
+    get_active_listings と同じ field set (item_id, title, sku, quantity,
+    current_price, shipping_cost, watch_count, view_count, sales_count_30d)
+    を返す。Not found / API error / parse 失敗時は None.
+
+    用途: eBay連携タブの「1 件のみ同期」ボタン (~3 秒で完了)。
+    パーサは get_active_listings の Item 要素解析と同 schema (eBay GetItem と
+    GetMyeBaySelling の Item は共通スキーマ)。
+    """
+    if not item_id:
+        return None
+
+    user_token = _resolve_active_token(user_token)
+    xml_body = _build_get_item_xml(item_id).replace("{USER_TOKEN}", user_token)
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "GetItem",
+        "X-EBAY-API-APP-NAME": app_id,
+        "X-EBAY-API-DEV-NAME": dev_id,
+        "X-EBAY-API-CERT-NAME": cert_id,
+        "Content-Type": "text/xml",
+    }
+
+    try:
+        resp = httpx.post(TRADING_API_URL, content=xml_body.encode("utf-8"),
+                          headers=headers, timeout=30)
+        resp.raise_for_status()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"GetItem {item_id} HTTP error: {e}")
+        return None
+
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        logger.warning(f"GetItem {item_id} XML parse error: {e}")
+        return None
+
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    ack = root.findtext("ns:Ack", namespaces=ns)
+    if ack not in ("Success", "Warning"):
+        errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+        msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+        logger.warning(f"GetItem {item_id} API error: {msg}")
+        return None
+
+    item = root.find(".//ns:Item", namespaces=ns)
+    if item is None:
+        return None
+
+    title = item.findtext("ns:Title", namespaces=ns) or ""
+    sku = item.findtext("ns:SKU", namespaces=ns) or ""
+    qty_text = item.findtext("ns:QuantityAvailable", namespaces=ns) or "0"
+
+    # 価格: GetItem schema は SellingStatus.CurrentPrice が正
+    # (get_active_listings は GetMyeBaySelling 経由で Item 直下 CurrentPrice に
+    #  flatten される別 schema、本関数とは API が違うため位置が異なる)。
+    # 最終 fallback は BuyItNowPrice (Fixed-Price 出品の主要 field)。
+    selling_status = item.find("ns:SellingStatus", namespaces=ns)
+    price_text = "0"
+    if selling_status is not None:
+        price_text = selling_status.findtext("ns:CurrentPrice", namespaces=ns) or "0"
+    if price_text == "0":
+        price_text = item.findtext("ns:BuyItNowPrice", namespaces=ns) or "0"
+
+    # 送料: get_active_listings と同じ 3 段階 fallback
+    shipping_cost = 0.0
+    shipping_details = item.find(".//ns:ShippingDetails", namespaces=ns)
+    if shipping_details is not None:
+        cost_text = shipping_details.findtext(
+            "ns:ShippingServiceOptions/ns:ShippingServiceCost", namespaces=ns
+        )
+        if cost_text:
+            try:
+                shipping_cost = float(cost_text)
+            except ValueError:
+                shipping_cost = 0.0
+        if shipping_cost == 0.0:
+            service_options = shipping_details.findall(
+                ".//ns:ShippingServiceOption", namespaces=ns
+            )
+            if service_options:
+                cost_text = service_options[0].findtext(
+                    "ns:ShippingServiceCost", namespaces=ns
+                ) or "0"
+                try:
+                    shipping_cost = float(cost_text)
+                except ValueError:
+                    shipping_cost = 0.0
+        if shipping_cost == 0.0:
+            for intl in shipping_details.findall(
+                ".//ns:InternationalShippingServiceOption", namespaces=ns
+            ):
+                ships_to = intl.findtext("ns:ShipsTo", namespaces=ns) or ""
+                if "US" in ships_to.upper():
+                    cost_text = intl.findtext(
+                        "ns:ShippingServiceCost", namespaces=ns
+                    ) or "0"
+                    try:
+                        shipping_cost = float(cost_text)
+                        break
+                    except ValueError:
+                        pass
+
+    watch_count = _safe_int(item.findtext("ns:WatchCount", namespaces=ns))
+    view_count = _safe_int(item.findtext("ns:HitCount", namespaces=ns))
+    sales_count = _safe_int(
+        selling_status.findtext("ns:QuantitySold", namespaces=ns)
+    ) if selling_status is not None else 0
+
+    return {
+        "item_id": item_id,
+        "title": title,
+        "sku": sku,
+        "quantity": _safe_int(qty_text),
+        "current_price": _safe_float(price_text),
+        "shipping_cost": shipping_cost,
+        "watch_count": watch_count,
+        "view_count": view_count,
+        "sales_count_30d": sales_count,
+    }
+
+
 def enrich_listings_with_metrics(
     listings: list[dict],
     app_id: str,

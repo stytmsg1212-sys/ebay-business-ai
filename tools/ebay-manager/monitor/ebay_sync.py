@@ -3,9 +3,13 @@ eBay出品と仕入元在庫を同期
 Get active listings from eBay Trading API and sync with source inventory
 """
 import logging
+import sqlite3
 from typing import Optional
 
-from .ebay_client import get_active_listings, filter_items_with_sku, enrich_listings_with_metrics
+from .ebay_client import (
+    get_active_listings, filter_items_with_sku, enrich_listings_with_metrics,
+    get_single_listing,
+)
 from .database import (
     init_db, upsert_ebay_listing, get_ebay_listings, get_active_items,
     get_prev_status, update_ebay_listing_status, update_ebay_listing_quantity,
@@ -251,6 +255,110 @@ def match_source_status_to_ebay() -> int:
         logger.debug(f"{sku} -> {source_status}")
 
     return matched
+
+
+def sync_single_listing(
+    ebay_item_id: str,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> dict:
+    """W176-followup (2026-05-27): 1 ItemID のみ GetItem → ebay_listings upsert +
+    metrics 更新を実行する高速 sync。eBay連携タブの「1 件のみ同期」ボタンから呼ぶ。
+
+    Returns: {
+        success: bool,
+        ebay_item_id: str,
+        sku: str,
+        title: str,
+        current_price: float,
+        message: str,
+    }
+
+    HIGH-1 ガード: SKU 空での upsert は monitored_items 整合性を崩すため warning +
+    skip (tab_individual_listing.py W176 patch と同 semantic)。
+    """
+    init_db()
+    out = {
+        "success": False,
+        "ebay_item_id": ebay_item_id,
+        "sku": "",
+        "title": "",
+        "current_price": 0.0,
+        "message": "",
+    }
+
+    if not all([app_id, dev_id, cert_id, user_token]):
+        out["message"] = "eBay credentials not configured"
+        return out
+    if not ebay_item_id or not str(ebay_item_id).strip():
+        out["message"] = "ebay_item_id is empty"
+        return out
+
+    listing = get_single_listing(
+        str(ebay_item_id).strip(), app_id, dev_id, cert_id, user_token
+    )
+    if listing is None:
+        out["message"] = (
+            f"GetItem returned no item (not found / API error / parse fail). "
+            f"item_id={ebay_item_id}"
+        )
+        return out
+
+    sku = listing.get("sku") or ""
+    title = listing.get("title") or ""
+    price = float(listing.get("current_price") or 0.0)
+    qty = int(listing.get("quantity") or 0)
+    shipping = float(listing.get("shipping_cost") or 0.0)
+
+    out["sku"] = sku
+    out["title"] = title
+    out["current_price"] = price
+
+    if not sku.strip():
+        out["message"] = (
+            "SKU が空のため upsert skip (monitored_items 整合性保護)。"
+            f"title='{title[:60]}' price=${price:.2f}"
+        )
+        logger.warning(
+            f"sync_single_listing skip empty SKU: item_id={ebay_item_id} title='{title[:60]}'"
+        )
+        return out
+
+    try:
+        upsert_ebay_listing(
+            ebay_item_id=str(ebay_item_id),
+            sku=sku,
+            title=title,
+            current_price=price,
+            quantity_ebay=qty,
+            shipping_cost=shipping,
+        )
+        update_ebay_listing_metrics(str(ebay_item_id), {
+            "watch_count": listing.get("watch_count", 0),
+            "view_count": listing.get("view_count", 0),
+            "sales_count_30d": listing.get("sales_count_30d", 0),
+        })
+        out["success"] = True
+        out["message"] = (
+            f"OK: sku={sku}, qty={qty}, price=${price:.2f}, shipping=${shipping:.2f}"
+        )
+        logger.info(f"sync_single_listing success: {ebay_item_id} sku={sku}")
+    except sqlite3.OperationalError as e:
+        # HIGH-2 fix: scheduler の全体同期と競合した時の friendly message
+        out["message"] = (
+            f"DB ロック競合 (scheduler の全体同期中の可能性)。"
+            f"数秒後に再試行してください。詳細: {e}"
+        )
+        logger.warning(
+            f"sync_single_listing SQLite locked: {ebay_item_id} ({e})"
+        )
+    except Exception as e:  # noqa: BLE001
+        out["message"] = f"DB upsert error: {e}"
+        logger.exception(f"sync_single_listing DB error: {ebay_item_id}")
+
+    return out
 
 
 def get_sync_report() -> dict:

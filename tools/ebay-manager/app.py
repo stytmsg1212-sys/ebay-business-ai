@@ -17,7 +17,10 @@ from monitor.database import (
 )
 from monitor.scrapers import check_item_by_config, prepare_batch_items, check_items_batch
 from monitor.notifier import send_test_notification, send_unavailable_alert
-from monitor.ebay_sync import sync_listings_from_ebay, get_sync_report, auto_rank_all_listings_in_db
+from monitor.ebay_sync import (
+    sync_listings_from_ebay, get_sync_report, auto_rank_all_listings_in_db,
+    sync_single_listing,
+)
 from monitor.database import (
     get_ebay_listings, update_ebay_listing_quantity, update_ebay_listing_sku,
     update_ebay_listing_rank, set_ebay_listing_risk_confirmed,
@@ -225,37 +228,73 @@ if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 s = st.session_state.settings
 
-# Add new tabs for Dashboard and Manual Execution
-# W134 Phase 1 Step 1: st.tabs は全タブ本体を毎回実行する (単一巨大 app.py で
-# 操作毎に全タブの DB/API 処理が走り激重)。最上位ナビを st.radio 化し、
-# 選択タブの本体だけを実行する (各 with tab_X: → if _w134_sel == "<ラベル>": 機械置換)。
-_W134_TABS = [
-    "DASHBOARD",
-    "商品管理",      # W119 (2026-05-11) 1 商品の全情報統合 (物理属性/仕入先/在庫/利益/競合)
-    "リサーチ脳",     # W24 (2026-04-26) Research 脳 Opus 4.7 チャット UI
-    "今日の発掘",     # W122 (2026-05-13) 朝 07:00 Opus 4.7 で 3 件発掘
-    "入荷確認",      # W133 (2026-05-16) 有在庫の入荷 → 在庫加算 + eBay 反映
-    "利益計算",
-    "在庫監視",
-    "eBay連携",
-    "最安値チェック",   # W98 (2026-05-05) ライバル価格追随で SEO ブースト
-    "仕入先候補",
-    "キーワード新着監視",  # W148 (2026-05-21) AlertCrawler 移植 メルカリ/ヤフオク 攻めの市場ディスカバリ
-    "モデル比較",    # W86 (2026-05-01) Opus 4.7 vs Sonnet 4.6 supplier A/B test
-    "個別出品",
-    "通関対応",      # W14 (2026-04-24)
-    "市場戦略",      # W7-A (2026-04-27) Buyer Location 別運用
-    "動画学習",
-    "エージェント監視",
-    "SKU変換",
-    "手動実行",
-    "定時実行",      # 2026-04-25 hour ドリフト事故対応
-    "設定"
-]
-_w134_sel = st.radio(
-    "ページ", _W134_TABS, key="_w134_nav",
-    horizontal=True, label_visibility="collapsed",
-)
+# Sidebar nav (2026-05-26): 21 タブが horizontal radio で視認困難になったため
+# st.sidebar 内のグループ別 button 群に再構成。
+# W134 contract (downstream 21 箇所 `if _w134_sel == "<ラベル>":` 機械置換) は
+# 変数 _w134_sel を維持することで保つ。各タブ本体への影響なし。
+_W134_GROUPS = {
+    "★ 毎日": [
+        "DASHBOARD",
+        "商品管理",         # W119 (2026-05-11)
+        "在庫監視",
+        "仕入先候補",
+        "入荷確認",         # W133 (2026-05-16)
+    ],
+    "⚲ リサーチ": [
+        "リサーチ脳",       # W24 (2026-04-26)
+        "今日の発掘",       # W122 (2026-05-13)
+        "キーワード新着監視",  # W148 (2026-05-21)
+        "最安値チェック",   # W98 (2026-05-05)
+        "利益計算",
+    ],
+    "⏺ 出品・関連": [
+        "個別出品",
+        "eBay連携",
+        "市場戦略",         # W7-A (2026-04-27)
+        "通関対応",         # W14 (2026-04-24)
+    ],
+    "⛭ 設定・ops": [
+        "手動実行",
+        "定時実行",         # 2026-04-25
+        "SKU変換",
+        "動画学習",
+        "モデル比較",       # W86 (2026-05-01)
+        "エージェント監視",
+        "設定",
+    ],
+}
+_W134_TABS = [page for pages in _W134_GROUPS.values() for page in pages]
+
+# session_state migration: 旧 horizontal radio key (_w134_nav) があれば値を継承。
+if "_w134_sel" not in st.session_state:
+    _legacy = st.session_state.get("_w134_nav")
+    st.session_state._w134_sel = _legacy if _legacy in _W134_TABS else "DASHBOARD"
+
+with st.sidebar:
+    st.markdown(
+        '<div style="font-family:var(--f-mono,monospace);font-size:14px;'
+        'font-weight:600;letter-spacing:3px;margin:4px 0 12px 0;">'
+        '◯ &nbsp; MONO &nbsp; DECK</div>',
+        unsafe_allow_html=True,
+    )
+    for _grp_label, _grp_pages in _W134_GROUPS.items():
+        st.markdown(
+            f'<div style="font-size:11px;color:#a89d8a;letter-spacing:2px;'
+            f'margin:10px 0 4px 0;">{_grp_label}</div>',
+            unsafe_allow_html=True,
+        )
+        for _page in _grp_pages:
+            _is_active = (st.session_state._w134_sel == _page)
+            if st.button(
+                _page,
+                key=f"_w134_navbtn_{_page}",
+                use_container_width=True,
+                type=("primary" if _is_active else "secondary"),
+            ):
+                st.session_state._w134_sel = _page
+                st.rerun()
+
+_w134_sel = st.session_state._w134_sel
 # 2026-04-22: MAIL タブを削除 (ダッシュボードに統合)。
 # DASHBOARD には緊急メール (urgent/buyer_message/sale/offer/return) を常時表示し、
 # その下の expander 代替セクションで「非緊急・参考メール」を表示する。
@@ -276,7 +315,7 @@ if _w134_sel == "DASHBOARD":
                 st.markdown(
                     '<div style="font-size:11px;color:#a89d8a;letter-spacing:2px;'
                     'margin-bottom:6px;">M O R N I N G &nbsp; B R I E F &nbsp; — &nbsp; '
-                    'Research 脳 (Opus 4.7)</div>',
+                    'Research 脳 (Opus 4.8)</div>',
                     unsafe_allow_html=True,
                 )
                 st.markdown(_today_brief.get("answer_md") or "(空)")
@@ -3337,6 +3376,72 @@ if _w134_sel == "eBay連携":
             except Exception as e:
                 st.error(f"レポート生成エラー: {e}")
 
+    # W176-followup (2026-05-27): 単一 listing 同期 (Item ID 指定)
+    # 用途: 個別出品直後の確認 / 特定 listing の即時 metrics 更新 (~3 秒)。
+    # 全体同期 (~1-2 分) を回さずに 1 件だけ最新化したい時用。
+    st.markdown("---")
+    st.markdown("**🎯 単一 listing 同期** (Item ID 指定で 1 件だけ最速 sync、~3 秒)")
+    single_col1, single_col2 = st.columns([3, 1])
+    with single_col1:
+        target_item_id = st.text_input(
+            "Item ID",
+            key="ebay_sync_single_id",
+            placeholder="358602711505 等の 12 桁数字",
+            label_visibility="collapsed",
+        )
+    with single_col2:
+        # HIGH-3 fix: button 連打防御 (eBay Trading API 5000 calls/day 保護)。
+        # session_state flag で実行中は disabled、完了時に解除。
+        _busy = st.session_state.get("_ebay_sync_single_busy", False)
+        if st.button("1件のみ同期", type="secondary", width="stretch",
+                     key="ebay_sync_single_btn", disabled=_busy):
+            st.session_state["_ebay_sync_single_busy"] = True
+            app_id = s.get("ebay_app_id", "")
+            dev_id = s.get("ebay_dev_id", "")
+            cert_id = s.get("ebay_cert_id", "")
+            user_token = s.get("ebay_user_token", "")
+            target = (target_item_id or "").strip()
+            try:
+                if not all([app_id, dev_id, cert_id, user_token]):
+                    st.error("eBay API認証情報が未設定です（設定タブ参照）")
+                elif not target:
+                    st.warning("Item ID を入力してください")
+                else:
+                    with st.status(f"単一同期実行中... item_id={target}",
+                                   expanded=True) as status:
+                        try:
+                            result = sync_single_listing(
+                                target, app_id, dev_id, cert_id, user_token
+                            )
+                            st.write(f"▸ {result.get('message', '')}")
+                            if result.get("success"):
+                                st.write(
+                                    f"▸ Title: {result.get('title', '')[:80]}"
+                                )
+                                bump_db_version()
+                                status.update(
+                                    label=f"同期成功 — {target}",
+                                    state="complete",
+                                )
+                                # LOW fix: 連打防御 flag を解除してから rerun
+                                st.session_state["_ebay_sync_single_busy"] = False
+                                st.rerun()
+                            else:
+                                status.update(
+                                    label=f"同期失敗 — {result.get('message', '')[:80]}",
+                                    state="error",
+                                )
+                        except Exception as e:  # noqa: BLE001
+                            logger.exception(
+                                "sync_single_listing UI exception"
+                            )
+                            status.update(label=f"例外発生: {e}", state="error")
+                            st.error(f"エラー: {e}")
+            finally:
+                # 失敗 / 例外 path も含めて必ず flag 解除 (st.rerun 通過時は
+                # rerun 前に解除済のため重複代入のみ、害なし)。
+                st.session_state["_ebay_sync_single_busy"] = False
+
     st.divider()
     st.subheader("eBay出品一覧")
 
@@ -3548,14 +3653,15 @@ if _w134_sel == "商品管理":
         st.error(f"商品管理タブ 描画エラー: {_e}")
 
 
-# ========== 最安値チェック タブ (W98) ==========
-# 自分の商品ごとに監視したいライバルを登録し、ライバルより 0.01 USD 安く出して
-# eBay 検索順位ブースト (SEO) を狙う。実際の価格巡回・値下げ実行は別タスク (G2-G4) で実装。
+# ========== 最安値チェック タブ (W98 登録 UI + W183 自動値下げ) ==========
+# 自分の商品ごとに監視したいライバルを登録し、6 時間ごとにライバル最安より
+# 0.01 USD 安く ReviseFixedPriceItem で自動値下げする (W183, task_rival_pricing.py)。
 if _w134_sel == "最安値チェック":
     st.title("最安値チェック")
     st.caption(
-        "商品ごとに最大 10 ライバルを登録し、ライバルより 1 セント安く出して "
-        "eBay 検索の最安値表示を維持します。値下げ実行は次フェーズ (G2-G4) で実装予定。"
+        "商品ごとに最大 10 ライバルを登録し、6 時間ごと (00:45 / 06:45 / 12:45 / 18:45 JST) に "
+        "ライバル最安より 1 セント安く自動値下げします。1 listing につき 1 日 4 回まで、"
+        "min_price (未設定時は損益分岐) を下回る場合は skip します。"
     )
 
     from monitor.lowest_price import (
@@ -4913,12 +5019,20 @@ if _w134_sel == "仕入先候補":
     # W115 v2 (2026-05-10): _sup_all の rejected/applied は skip (履歴は独立 fetch).
     # status filter='rejected'/'applied' 時に _sup_all と _sup_history_raw が重複しないよう
     # actionable loop は明示 status guard で history を除外.
+    # W182 (2026-05-28): 在庫 gate 結果が 'unavailable' / 'not_found' の候補は
+    # actionable 3 tab から除外 (sold_out 商品の誤提案を防ぐ恒久対策).
+    # 旧 candidate (v54 migration 前) は availability_status=NULL なので影響なし.
+    _w182_excluded = 0
     for _r in _sup_all:
         _qty_r = _sup_parent_qty.get(_r.get("ebay_item_id") or "", -1)
         _is_alt_r = bool(_r.get("alt_listing_possible"))
         _st_r = (_r.get("status") or "pending").lower()
         if _st_r in ("rejected", "applied"):
             continue  # 履歴は _sup_history_raw から独立 populate
+        _avail_st_r = (_r.get("availability_status") or "").lower()
+        if _avail_st_r in ("unavailable", "not_found"):
+            _w182_excluded += 1
+            continue
         if _is_alt_r:
             _sup_altlist.append(_r)
         elif _qty_r == 0:
