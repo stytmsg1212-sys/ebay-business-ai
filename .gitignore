@@ -181,3 +181,18 @@ tools/ebay-manager/.pytest_cache/
 
 # === backup ディレクトリ (Phase 0 で作成、移行非対象) ===
 C--backup_*/
+
+# === Codex CLI 作業ディレクトリ / prompt scratch (commit 不要) ===
+.codex/
+.company/engineering/migration/_codex_*.txt
+scripts/c*-impl.diff
+scripts/c*-codex-out.txt
+scripts/message_to_user.txt
+
+# === data/tmp 一時 scratch (snapshot / probe / 作業中設計書、commit 不要・ディスクには残る) ===
+tools/ebay-manager/data/tmp/
+
+# === リポジトリ root に誤出力された Playwright snapshot / tab dump (commit 不要) ===
+/w[0-9]*_*.md
+/w[0-9]*.yml
+/商品管理*.yml
