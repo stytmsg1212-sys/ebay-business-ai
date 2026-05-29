@@ -76,7 +76,8 @@ HAS_PASS=$(python -c "
 import sys, re
 src = sys.stdin.read()
 # 'except Exception' の次行 'pass' のみ (logger.exception 等が無い)
-if re.search(r'except[\t ]+Exception[^:]*:[\t ]*\n[\t ]+pass[\t ]*(?:\n|\$)', src):
+# 'as _e' 等の binding と trailing comment ('pass  # ...') も握り潰しとして検出
+if re.search(r'except[\t ]+Exception[^:]*:[\t ]*\n[\t ]+pass[\t ]*(?:#[^\n]*)?(?:\n|\$)', src):
     print('1')
 " <<< "$CONTENT" 2>/dev/null)
 if [ "$HAS_PASS" = "1" ]; then

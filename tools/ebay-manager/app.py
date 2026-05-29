@@ -578,8 +578,8 @@ if _w134_sel == "DASHBOARD":
         try:
             _mission_epoch_file.parent.mkdir(exist_ok=True, parents=True)
             _mission_epoch_file.write_text(str(_mission_start))
-        except Exception:
-            pass
+        except Exception as _epoch_e:
+            logger.debug("mission epoch file write skipped: %s", _epoch_e)
     _elapsed = int(_t_mod.time() - _mission_start)
     _mission_days = _elapsed // 86400
     _mission_h = (_elapsed % 86400) // 3600
@@ -1991,7 +1991,7 @@ if _w134_sel == "在庫監視":
             else:
                 st.caption("**最終チェック**: データなし")
         except Exception as _e:
-            pass  # logger 未定義なので silent fail (UI 表示は破綻させない)
+            logger.warning("在庫リスク 最終チェック表示 失敗: %s", _e)
 
         # W100 (2026-05-06): ヤフオク再出品待ち listing 表示
         # ヤフオクで落札者なし終了 → 1日後の再出品慣行を待ってからリサーチする listing
@@ -4475,8 +4475,8 @@ if _w134_sel == "手動実行":
                             # 'sales': 'sales_tracking' は W160 で削除
                         }
                         _qroute({_rkey_map.get(_qkey, _qkey): _qresult})
-                    except Exception:
-                        pass
+                    except Exception as _route_e:
+                        logger.warning("手動実行 組織ルーティング失敗 (%s): %s", _qkey, _route_e)
 
                     # 実行ログ記録
                     try:
@@ -4485,8 +4485,8 @@ if _w134_sel == "手動実行":
                             _qkey, "success", f"{_qdisplay} 完了",
                             details=_qdetails, execution_time_sec=_qelapsed)
                         save_execution_history(_qkey, result_data)
-                    except Exception:
-                        pass
+                    except Exception as _hist_e:
+                        logger.warning("手動実行 履歴記録失敗 (%s): %s", _qkey, _hist_e)
 
                 except Exception as _qe:
                     _qelapsed = time.time() - _qstart
@@ -4494,8 +4494,8 @@ if _w134_sel == "手動実行":
                     st.error(f"エラー: {_qe}")
                     try:
                         log_execution_result(_qkey, "failed", str(_qe), execution_time_sec=_qelapsed)
-                    except Exception:
-                        pass
+                    except Exception as _logfail_e:
+                        logger.warning("手動実行 失敗ログ記録失敗 (%s): %s", _qkey, _logfail_e)
 
     st.divider()
 
@@ -4847,7 +4847,7 @@ if _w134_sel == "仕入先候補":
         else:
             st.caption("**最終実行**: データなし")
     except Exception as _e:
-        pass  # logger 未定義なので silent fail
+        logger.warning("仕入先候補 最終実行表示 失敗: %s", _e)
 
     # ── 閾値調整 (T6: Q5=C 手動ボタン、Q6=B タブ上部配置) ──
     import json as _th_json
@@ -6169,8 +6169,8 @@ if _w134_sel == "通関対応":
                         f"/ HTS: {_kb.get('hts') or '(未解決)'} "
                         f"/ テンプレ: {_req.get('template_used') or '(なし)'}"
                     )
-                except Exception:
-                    pass
+                except Exception as _kb_e:
+                    logger.debug("通関 KB 表示 skip: %s", _kb_e)
 
                 # ── W14ext (2026-04-25): 「送信準備」= Gmail 下書き作成 ──
                 # フロー:

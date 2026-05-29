@@ -25,6 +25,8 @@ from monitor.database import get_conn
 # ──────────────────────────────────────────────────────────────────────
 TASK_SCHEDULE: list[dict[str, Any]] = [
     # main batch (02,11,15,18,22 の execution_schedule.times)
+    # company_secretary は is_morning (= min(times) = 02) 限定で execute_daily_tasks 先頭に走る.
+    {"key": "company_secretary", "display": "秘書ルーティン (朝: email+TODO繰越+research)", "hours": [2], "weekdays": None, "owner": "main"},
     {"key": "ebay_sync", "display": "eBay連携同期", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "ensure_monitor_coverage", "display": "監視台帳カバレッジ自動補完 (W139)", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "inventory_check", "display": "在庫チェック", "hours": None, "weekdays": None, "owner": "main"},
@@ -52,6 +54,8 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "news_check", "display": "W154 AI ニュース取得", "hours": [6], "weekdays": None, "owner": "news"},
     {"key": "customs_check", "display": "W14 通関対応", "hours": [6], "weekdays": None, "owner": "customs"},
     {"key": "budget_alert", "display": "予算アラート", "hours": [6, 12, 19], "weekdays": None, "owner": "budget"},
+    {"key": "video_learning_resume", "display": "動画学習 quota reset 後再開 (16:30)", "hours": [16], "weekdays": None, "owner": "video_resume"},
+    {"key": "scheduler_health_check", "display": "定時実行ヘルスチェック", "hours": [4, 12, 16, 19, 23], "weekdays": None, "owner": "health"},
     {"key": "market_analysis_refresh", "display": "W7-A 市場戦略 refresh", "hours": [2], "weekdays": [6], "owner": "market_analysis"},
     {"key": "daily_codex_lint", "display": "W125 Codex 文書 lint (毎日 03:00)", "hours": [3], "weekdays": None, "owner": "codex_lint"},
     # Codex Round 1 fix MEDIUM-4 (2026-05-16): kind=interval で main batch slot 期待から除外.
