@@ -27,7 +27,7 @@ placeholder_syntax: "{{name}}"  # 二重波括弧。CSS braces と衝突しな�
 | `{{product_name}}` | 商品名（英語タイトル、SEO最適化） | `Sony WH-1000XM5 Wireless Noise Cancelling Headphones` |
 | `{{product_sub}}` | 商品サブタイトル（italic） | `Black · Flagship model · Tested and documented` |
 | `{{rank}}` | ランク記号 | `A` / `S` / `As-Is` 等 |
-| `{{rank_label}}` | ランク英語ラベル | `Excellent` / `Like New` |
+| `{{rank_label}}` | ランク英語ラベル | `Excellent` / `Open Box` |
 | `{{rank_jp}}` | ランク日本語説明 | `Tested · Minor Wear` |
 | `{{quick_notes}}` | 個別商品の状態メモ（Claude 生成） | `Tested working. Minor scuffs on headband underside; ANC and Bluetooth 5.2 verified.` |
 | `{{includes_rows}}` | 付属品リスト（事前フォーマット済み HTML） | `<div class="inc"><strong>Headphones</strong>Sony WH-1000XM5 (Black)</div>` ... |
@@ -45,7 +45,7 @@ placeholder_syntax: "{{name}}"  # 二重波括弧。CSS braces と衝突しな�
 | Rank | EN Label | JP Hint | eBay Cond ID |
 |---|---|---|---|
 | N | New (Unopened) | Brand New Sealed | 1000 |
-| S | Like New | Opened · No Wear | 1500 |
+| S | Open Box | Opened · No Wear | 1500 |
 | A | Excellent | Tested · Minor Wear | 3000 |
 | B | Good | Tested · Visible Wear | 3000 |
 | C | Fair | Tested · Heavy Wear | 3000 |
@@ -284,7 +284,7 @@ Phase 3 listing_generator.py が `re.sub(r'\{\{(\w+)\}\}', replace, html)` で�
       <h3 style="margin-bottom:12px;">Condition Rank Definitions</h3>
       <table>
         <tr><td>N</td><td>New (Unopened) &mdash; Brand new, factory sealed</td></tr>
-        <tr><td>S</td><td>Like New &mdash; Opened but unused, no visible wear</td></tr>
+        <tr><td>S</td><td>Open Box &mdash; Opened but unused, no visible wear</td></tr>
         <tr><td>A</td><td>Excellent &mdash; Minor wear, tested and fully working</td></tr>
         <tr><td>B</td><td>Good &mdash; Visible use marks, tested and fully working</td></tr>
         <tr><td>C</td><td>Fair &mdash; Heavy use marks, tested and fully working</td></tr>

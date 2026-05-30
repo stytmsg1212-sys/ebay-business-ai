@@ -138,6 +138,10 @@ def load_config():
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             config = json.load(f)
         logger.info("設定ファイルを読み込みました")
+        # 2026-05-25 .env 移行 (commit 8473103) で空になった webhook を in-memory 復元.
+        # 同 config dict は全 cron job に参照渡しされるため通知ガードを 1 箇所で一括復活.
+        from notifiers.discord_notifier import inject_webhook_into_config
+        inject_webhook_into_config(config)
         return config
     except Exception as e:
         logger.error(f"設定ファイル読み込みエラー: {e}")
@@ -714,30 +718,9 @@ def _send_discord_notifications(config, results):
         if news and news.get('high_impact_count', 0) > 0:
             notifier.send_news_summary(news.get('news', []))
 
-        # 4. 新規ライバル検出（あれば通知）
-        rival = results.get('rival_detection', {})
-        if rival and rival.get('new_sellers_count', 0) > 0:
-            sellers = rival.get('sellers', [])
-            embed = {
-                'title': '🔍 新規ライバルセラー検出',
-                'color': 16753920,  # Orange
-                'timestamp': datetime.now().isoformat(),
-                'fields': [
-                    {
-                        'name': '新規検出',
-                        'value': f"{rival['new_sellers_count']}件 / {rival.get('total_scanned', 0)}件スキャン",
-                        'inline': True
-                    },
-                ] + [
-                    {
-                        'name': f"📌 {s.get('seller', '?')}",
-                        'value': f"FB: {s.get('feedback_score', 0)} / 競合: {s.get('competing_count', 0)}商品",
-                        'inline': True
-                    }
-                    for s in sellers[:5]
-                ]
-            }
-            notifier.send_message("🔍 新規ライバル検出", embed)
+        # 新規ライバル検出の通知は task_rival_detection._send_discord_aggregate
+        # ("🎯 W153 新規ライバル検出", listing 別明細) が担う. ここで旧 embed を
+        # 送ると同一トリガーで二重通知になる (sellers=[] で退化していた) ため削除.
 
         logger.info("Discord 通知を送信しました")
 

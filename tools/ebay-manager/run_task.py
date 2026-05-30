@@ -65,8 +65,13 @@ def load_config():
     config_file = BASE_DIR / 'config' / 'schedule_config.json'
     if config_file.exists():
         with open(config_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+            config = json.load(f)
+    else:
+        config = {}
+    # 2026-05-25 .env 移行 (commit 8473103) で空になった webhook を in-memory で復元
+    # (手動実行時も通知ガードを通すため、ディスク非書込).
+    from notifiers.discord_notifier import inject_webhook_into_config
+    return inject_webhook_into_config(config)
 
 
 def run_single_task(task_key, config):

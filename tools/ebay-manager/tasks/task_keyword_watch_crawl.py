@@ -112,9 +112,12 @@ def _send_discord_site_health(webhook: str, site: str, msg: str) -> bool:
 
 def _load_config() -> dict:
     cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
-    if cfg_path.exists():
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
-    return {}
+    config = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+    # subprocess 起動 (daily_scheduler._run_keyword_watch_crawl) のため親の注入済 config を
+    # 引き継げない。2026-05-25 .env 移行 (commit 8473103) で空になった webhook をここでも
+    # in-memory 復元しないと通知ガードが silent skip する (code-reviewer HIGH-1 2026-05-29)。
+    from notifiers.discord_notifier import inject_webhook_into_config
+    return inject_webhook_into_config(config)
 
 
 def run_keyword_watch_crawl(config: dict) -> dict:

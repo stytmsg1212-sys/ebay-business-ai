@@ -59,7 +59,7 @@ WebSearch で以下を調べる:
 | Rank | EN ラベル | eBay ConditionID | 備考 |
 |---|---|---|---|
 | N | New (Unopened) | 1000 | 未開封 / シュリンク |
-| S | Like New | 1500 (※) | 未使用 / 開封済 |
+| S | Open Box | 1500 (※) | 未使用 / 開封済 |
 | A | Excellent | 3000 (Used) | 美品、ConditionDescription で詳細 |
 | B | Good | 3000 (Used) | 並品、ConditionDescription で詳細 |
 | C | Fair | 3000 (Used) | 使用感、ConditionDescription で詳細 |

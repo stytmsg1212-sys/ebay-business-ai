@@ -29,6 +29,29 @@ if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
 logger = logging.getLogger(__name__)
 
 
+def inject_webhook_into_config(config: dict) -> dict:
+    """`.env` の DISCORD_WEBHOOK_URL を config['discord']['webhook_url'] に in-memory 注入.
+
+    2026-05-25 の .env 移行 (commit 8473103) で schedule_config.json から webhook_url を
+    撤去した結果、config['discord']['webhook_url'] が空になり、DiscordNotifier を
+    construct する前に `if not config[...]['webhook_url']: return` で early return する
+    各タスクの通知ガードが silent skip していた (Q0). 各エントリポイント
+    (daily_scheduler / run_task / subprocess task の _load_config) でこれを呼んで空ガードを
+    通す. config はディスクに書き戻さないため webhook 再露出なし. 既存値があれば尊重
+    (idempotent). 連鎖できるよう同 dict を返す.
+
+    本 module の import 時に module-level load_dotenv が走り .env を os.environ へ展開済の
+    ため、呼び側で load_dotenv は不要.
+    """
+    env_wh = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
+    if not env_wh:
+        return config
+    disc = config.setdefault('discord', {})
+    if not (disc.get('webhook_url') or '').strip():
+        disc['webhook_url'] = env_wh
+    return config
+
+
 class DiscordNotifier:
     """Discord Webhook 通知クラス"""
 

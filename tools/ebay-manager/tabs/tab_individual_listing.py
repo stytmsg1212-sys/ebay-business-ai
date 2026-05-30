@@ -83,7 +83,7 @@ _RANK_LABEL_HINTS: dict[str, str] = {
 # eBay Condition ID の既知値 (手動 override 用ラベル)
 _CONDITION_LABELS: dict[str, str] = {
     "1000": "New (1000)",
-    "1500": "New Other / Like New (1500)",
+    "1500": "New Other / Open Box (1500)",
     "2000": "Manufacturer Refurbished (2000)",
     "2500": "Seller Refurbished (2500)",
     "3000": "Used (3000)",
@@ -92,6 +92,26 @@ _CONDITION_LABELS: dict[str, str] = {
     "6000": "Acceptable (6000)",
     "7000": "For parts or not working / As-Is (7000)",
 }
+
+
+# W191 (2026-05-30): 個別出品の新規出品時に user が選ぶ出品区分 (販売先).
+# 区分で価格 / 送料への DDP 関税上乗せが変わる (money-direct).
+# 4 区分の意味と価格設計は reference_shipping_tariff_logic.md v1.0 と一致.
+_PRIMARY_MARKET_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("us_only", "米国のみ向け — 商品価格に関税を含める"),
+    ("mixed_global", "米国＋他国向け — 送料に関税の概算を上乗せ"),
+    ("global_only", "米国以外向け — 関税の上乗せなし"),
+    ("unknown", "販売先が未定 — 米国＋他国向けと同じ安全側で計算"),
+)
+
+
+def _validate_primary_market(saved: Optional[str]) -> Optional[str]:
+    """保存済みの出品区分が選択肢に存在すれば返す。無効値 / 未保存は None (強制再選択)。
+
+    選択肢に無い値 (旧データ等) を selectbox に渡すと Streamlit が例外を投げるため、
+    ドラフト読込時の防護として None に倒す。money-direct フォームの保護。
+    """
+    return saved if saved in {c for c, _lbl in _PRIMARY_MARKET_OPTIONS} else None
 
 
 # =========================================================================
@@ -124,6 +144,9 @@ def _init_session_state() -> None:
         f"{_SS}selected_category_id": "",
         f"{_SS}selected_condition_id": "",
         f"{_SS}edited_title": "",
+        # W190: VerifyAdd 失敗時に編集する Description 本文 / Item Specifics
+        f"{_SS}edited_description": "",        # str (HTML 本文 編集後)
+        f"{_SS}edited_item_specifics": None,   # dict or None (None = 未編集)
         # Step 5 (shipping / verify / add)
         f"{_SS}shipping_policy_id": "",
         f"{_SS}shipping_policy_label": "",
@@ -178,6 +201,8 @@ def _clear_from_step(step: int) -> None:
         f"{_SS}rank_classification", f"{_SS}generated_listing",
         f"{_SS}selected_category_id", f"{_SS}selected_condition_id",
         f"{_SS}edited_title",
+        # W190: VerifyAdd 失敗時の編集フィールドも生成結果と同時にクリア
+        f"{_SS}edited_description", f"{_SS}edited_item_specifics",
     ]
     step5_keys = [
         f"{_SS}shipping_policy_id", f"{_SS}shipping_policy_label",
@@ -199,7 +224,13 @@ def _clear_from_step(step: int) -> None:
         for k in step4_keys:
             st.session_state[k] = None if k in (
                 f"{_SS}rank_classification", f"{_SS}generated_listing",
+                f"{_SS}edited_item_specifics",  # None = 未編集
             ) else ""
+        # W190/W191: session_state 値だけでなく編集系 widget の widget-state も破棄.
+        # Streamlit の selectbox / data_editor / text_area は widget key 経由で前回入力を
+        # 独立保持するため、上記の値クリアだけでは別商品に前商品の本文・項目・出品区分が
+        # 残留する。出品区分は money-direct (価格/送料の関税上乗せ) なので残留は価格事故。
+        _reset_step4_edit_widgets()
     if step <= 4:
         for k in step5_keys:
             st.session_state[k] = None if k in (
@@ -223,12 +254,44 @@ def _dataclass_to_dict(obj: Any) -> Optional[dict]:
 # load from saved draft (保存済みドラフト → 新規出品フォームに展開)
 # =========================================================================
 
+def _reset_step4_edit_widgets() -> None:
+    """生成結果に連動する編集系 widget の widget-state を破棄する。
+
+    生成結果が差し替わる (再生成 / ドラフト読込) 際、Streamlit が前回入力を
+    widget key 経由で保持し続けて古い本文 / 項目 / タイトル / 区分 / 確認状態が
+    残るのを防ぐ。
+      - W190: Description text_area / Item Specifics data_editor
+      - W191: 出品区分 (primary_market) selectbox (再生成時は強制再選択)
+      - タイトル text_area / 本番出品の最終確認 checkbox も生成結果に連動する
+        ため、商品が切り替わる際は破棄して前商品の値が残らないようにする
+        (前商品のタイトルで出品 / 前商品の確認チェックのまま即時公開 を防止)。
+    """
+    for _wk in (
+        f"{_SS}input_edited_description",
+        f"{_SS}dataeditor_item_specifics",
+        f"{_SS}input_edited_title",
+        f"{_SS}chk_confirm_production",
+        f"{_SS}sel_primary_market",
+        # 区分のドラフト復元シード (widget key ではない。再生成 / URL 変更 / クリア時に
+        # 前商品の区分が誤って復元されないよう、ここでも破棄しておく)。
+        f"{_SS}pending_primary_market",
+        # タイトルのドラフト復元シード (同上。前商品のタイトルが残らないよう破棄)。
+        f"{_SS}pending_edited_title",
+    ):
+        st.session_state.pop(_wk, None)
+
+
 def _load_draft_into_form(draft: dict) -> None:
     """listing_drafts の 1行を新規出品フォームに展開する。"""
-    _clear_from_step(1)
+    _clear_from_step(1)  # step<=3 分岐で編集系 widget-state も破棄される
 
     st.session_state[f"{_SS}supplier_url"] = draft.get("supplier_url") or ""
     st.session_state[f"{_SS}reference_url"] = draft.get("reference_ebay_url") or ""
+    # URL を STEP1 の widget へ pending seed 経由で渡す (il_pending_primary_market と同方式)。
+    # widget 生成後の本関数からは widget key を直接代入できないため seed に積み、次 run の
+    # _render_step1_urls 冒頭 (widget 生成前) で widget key へ反映させる。
+    st.session_state[f"{_SS}pending_supplier_url"] = draft.get("supplier_url") or ""
+    st.session_state[f"{_SS}pending_reference_url"] = draft.get("reference_ebay_url") or ""
 
     # 仕入れスクレイプ相当のダミー dict (再スクレイプは不要、再編集用)
     st.session_state[f"{_SS}scraped_product"] = {
@@ -293,10 +356,21 @@ def _load_draft_into_form(draft: dict) -> None:
             "generate_error": None,
         }
         st.session_state[f"{_SS}edited_title"] = draft.get("ebay_title") or ""
+        # タイトル欄も STEP4 描画後の「保存済みドラフト」タブから呼ばれ得るため、
+        # widget key への直接代入を避け pending に退避 (STEP4 描画冒頭で消費)。
+        st.session_state[f"{_SS}pending_edited_title"] = draft.get("ebay_title") or ""
         st.session_state[f"{_SS}selected_category_id"] = draft.get("ebay_category_id") or ""
         st.session_state[f"{_SS}selected_condition_id"] = draft.get("ebay_condition_id") or ""
 
     st.session_state[f"{_SS}shipping_policy_id"] = draft.get("shipping_policy_id") or ""
+    # W191: 保存済みの出品区分を復元する。ただしドラフト読込は STEP5 (区分 selectbox)
+    # 描画後の「保存済みドラフト」タブから呼ばれ得るため、widget key を直接代入すると
+    # 「生成済み widget の値は変更不可」エラーになる。pending キーに退避し、STEP5 描画の
+    # 冒頭 (selectbox 生成前) で index へ反映する (W190 の本文編集と同じ二段構成)。
+    # 未保存 (旧ドラフト) / 選択肢に無い不正値は None = 強制再選択。
+    st.session_state[f"{_SS}pending_primary_market"] = _validate_primary_market(
+        draft.get("primary_market")
+    )
     st.session_state[f"{_SS}current_draft_id"] = draft.get("id")
     st.session_state[f"{_SS}last_info"] = (
         f"ドラフト #{draft.get('id')} をフォームに読み込みました。"
@@ -313,11 +387,21 @@ def _render_step1_urls() -> None:
         'margin:4px 0 6px;">S T E P &nbsp; 1 &nbsp; — &nbsp; S O U R C E &nbsp; U R L</div>',
         unsafe_allow_html=True,
     )
+    # load / クリア からの programmatic 設定を widget 生成前に widget key へ反映する。
+    # Streamlit は widget 生成後の key 代入を禁止するため pending seed を介す。
+    # value= 併用は無関係な再実行時に widget が空値を返し URL 変更検知を誤発火させる
+    # (読込済ドラフトを全消去する) 事故を起こすため、value= は使わず widget key を唯一の源とする。
+    for _wkey, _pendkey in (
+        (f"{_SS}input_supplier_url", f"{_SS}pending_supplier_url"),
+        (f"{_SS}input_reference_url", f"{_SS}pending_reference_url"),
+    ):
+        if _pendkey in st.session_state:
+            st.session_state[_wkey] = st.session_state.pop(_pendkey)
+
     _c1, _c2 = st.columns([3, 3])
     with _c1:
         supplier = st.text_input(
             "仕入先URL (必須)",
-            value=st.session_state[f"{_SS}supplier_url"],
             placeholder="https://auctions.yahoo.co.jp/jp/auction/xxxxx",
             key=f"{_SS}input_supplier_url",
             help="ヤフオク / メルカリ / PayPayフリマ の商品ページURL",
@@ -325,7 +409,6 @@ def _render_step1_urls() -> None:
     with _c2:
         reference = st.text_input(
             "参考eBay URL / ItemID (任意・推奨)",
-            value=st.session_state[f"{_SS}reference_url"],
             placeholder="https://www.ebay.com/itm/358463512773 または 358463512773",
             key=f"{_SS}input_reference_url",
             help="参考 listing の CategoryID と Item Specifics Keys を自動取得 (Description / 画像 / 価格 はコピーしません)",
@@ -347,12 +430,11 @@ def _render_step1_urls() -> None:
         scrape_clicked = st.button("スクレイプ", key=f"{_SS}btn_scrape", type="primary")
     with _b2:
         if st.button("クリア", key=f"{_SS}btn_clear_all"):
-            _clear_from_step(1)
-            # M1 対策: widget key の内部 state も pop (ウィジェット再描画で初期値取得)
+            _clear_from_step(1)  # 本文/項目/タイトル/区分/本番確認 checkbox はここで破棄
+            # M1 対策: URL 入力等の widget key も pop (ウィジェット再描画で初期値取得)
             for _popkey in [
                 f"{_SS}supplier_url", f"{_SS}reference_url",
                 f"{_SS}input_supplier_url", f"{_SS}input_reference_url",
-                f"{_SS}chk_confirm_production",  # M6: 本番確認 checkbox もリセット
                 f"{_SS}add_result", f"{_SS}verify_result",
                 f"{_SS}current_draft_id",
             ]:
@@ -1351,6 +1433,12 @@ def _do_generate() -> None:
         st.session_state[f"{_SS}selected_category_id"] = final_cat
         st.session_state[f"{_SS}selected_condition_id"] = rank.ebay_condition_id
         st.session_state[f"{_SS}edited_title"] = listing.ebay_title
+        # W190: 新しい生成結果に差し替わったので失敗時編集フィールドを初期化
+        st.session_state[f"{_SS}edited_description"] = ""
+        st.session_state[f"{_SS}edited_item_specifics"] = None
+        _reset_step4_edit_widgets()
+        # reset 後に新タイトルを pending へ仕込む (STEP4 描画冒頭で widget key へ反映)
+        st.session_state[f"{_SS}pending_edited_title"] = listing.ebay_title
 
         # 参考URL がある場合の condition 上書き判定はユーザーに委ねるため表示のみ
         st.write(
@@ -1520,12 +1608,19 @@ def _render_step4_generation_preview() -> None:
             st.markdown(_research_review.get("answer_md") or "(回答無し)")
 
     # タイトル (編集可, 80字カウンタ)
+    _title_widget = f"{_SS}input_edited_title"
+    _title_pend = f"{_SS}pending_edited_title"
+    if _title_pend in st.session_state:
+        st.session_state[_title_widget] = st.session_state.pop(_title_pend)
+    elif _title_widget not in st.session_state:
+        st.session_state[_title_widget] = (
+            st.session_state.get(f"{_SS}edited_title") or listing.get("ebay_title") or ""
+        )
     edited = st.text_area(
         "英語タイトル (80字以内 SEO)",
-        value=st.session_state.get(f"{_SS}edited_title") or listing.get("ebay_title") or "",
         height=80,
         max_chars=80,
-        key=f"{_SS}input_edited_title",
+        key=_title_widget,
     )
     st.session_state[f"{_SS}edited_title"] = edited
     st.caption(f"{len(edited)} / 80 字")
@@ -1538,26 +1633,55 @@ def _render_step4_generation_preview() -> None:
     # コンディションID
     _render_condition_selector(rank)
 
-    # Item Specifics
-    specifics = listing.get("item_specifics") or {}
-    if specifics:
-        st.markdown("**Item Specifics**")
-        with st.container(border=True):
-            rows_html = "".join(
-                f'<tr><td style="padding:3px 8px;font-family:monospace;font-size:11px;'
-                f'color:rgba(160,220,255,0.75);letter-spacing:1px;">{html.escape(k)}</td>'
-                f'<td style="padding:3px 8px;font-size:12px;color:rgba(220,235,250,0.95);">'
-                f'{html.escape(str(v))}</td></tr>'
-                for k, v in specifics.items()
-            )
-            st.markdown(
-                f'<table style="border-collapse:collapse;width:100%;">{rows_html}</table>',
-                unsafe_allow_html=True,
-            )
+    # Item Specifics (W190: 編集可 — VerifyAdd 失敗時に項目を追加/修正/削除できる)
+    gen_specifics = listing.get("item_specifics") or {}
+    _ed_spec = st.session_state.get(f"{_SS}edited_item_specifics")
+    base_specifics = _ed_spec if isinstance(_ed_spec, dict) else gen_specifics
+    st.markdown("**Item Specifics** (編集可)")
+    _spec_rows = [{"項目名": str(k), "値": str(v)} for k, v in base_specifics.items()]
+    _edited_rows = st.data_editor(
+        _spec_rows,
+        column_config={
+            "項目名": st.column_config.TextColumn("項目名", width="medium"),
+            "値": st.column_config.TextColumn("値", width="large"),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        key=f"{_SS}dataeditor_item_specifics",
+    )
+    # data_editor の返却 (list[dict]) を dict 化。空項目名は除外、同名は後勝ち。
+    _new_specifics: dict = {}
+    for _r in _edited_rows:
+        _name = str(_r.get("項目名") or "").strip()
+        if not _name:
+            continue
+        _new_specifics[_name] = str(_r.get("値") or "").strip()
+    # 生成結果と一致するなら未編集 (None)、差異があれば編集済みとして保持
+    _gen_norm = {str(k): str(v) for k, v in gen_specifics.items()}
+    st.session_state[f"{_SS}edited_item_specifics"] = (
+        None if _new_specifics == _gen_norm else _new_specifics
+    )
+    st.caption(f"{len(_new_specifics)} 項目 (行を追加/削除して編集可)")
 
-    # description プレビュー (iframe でレンダリング)
-    desc_html = listing.get("ebay_description") or ""
-    if desc_html:
+    # Description 本文 (W190: 編集可 — VerifyAdd 失敗時に禁止語句などを直接修正できる)
+    gen_desc = listing.get("ebay_description") or ""
+    _ed_desc = st.session_state.get(f"{_SS}edited_description") or ""
+    with st.expander("Description 本文 (HTML) を編集", expanded=False):
+        _desc_input = st.text_area(
+            "Description HTML",
+            value=_ed_desc or gen_desc,
+            height=400,
+            key=f"{_SS}input_edited_description",
+            help="VerifyAdd で弾かれた場合、ここで禁止語句などを直接修正して再検証できます。",
+        )
+        # 生成結果と同じなら未編集 ("")、差異があれば保持
+        st.session_state[f"{_SS}edited_description"] = (
+            "" if _desc_input == gen_desc else _desc_input
+        )
+
+    effective_desc = st.session_state.get(f"{_SS}edited_description") or gen_desc
+    if effective_desc:
         show_preview = st.checkbox(
             "Description プレビューを表示 (HTML レンダリング)",
             value=False,
@@ -1566,17 +1690,17 @@ def _render_step4_generation_preview() -> None:
         if show_preview:
             import streamlit.components.v1 as _components
             try:
-                _components.html(desc_html, height=600, scrolling=True)
+                _components.html(effective_desc, height=600, scrolling=True)
             except Exception as e:  # noqa: BLE001
                 st.error(f"プレビュー描画失敗: {e}")
 
         show_src = st.checkbox(
-            f"Description ソース HTML を表示 (長さ {len(desc_html)} 文字)",
+            f"Description ソース HTML を表示 (長さ {len(effective_desc)} 文字)",
             value=False,
             key=f"{_SS}chk_show_desc_src",
         )
         if show_src:
-            st.code(desc_html, language="html")
+            st.code(effective_desc, language="html")
     else:
         st.warning("Description が空です。テンプレ本文 / Claude 生成結果を確認してください。")
 
@@ -1734,6 +1858,34 @@ def _render_step5_verify_add(settings: dict) -> None:
     if not effective_shipping:
         st.error("Shipping Policy ID が決定していません。Verify / Add は実行できません。")
 
+    # W191: 出品区分 (販売先) を毎回選択させる (既定なし = 強制選択)。
+    # 区分で価格 / 送料への DDP 関税上乗せが変わる (money-direct) ため、
+    # 未選択のうちは Verify / Add を無効化する。
+    _market_codes = [c for c, _lbl in _PRIMARY_MARKET_OPTIONS]
+    _market_label = dict(_PRIMARY_MARKET_OPTIONS)
+    # ドラフト読込で退避した区分 (pending) を selectbox 生成前に消費する (毎回 pop)。
+    # selectbox の値が既にあれば Streamlit が復元する (index 無視) ので pending は捨てるだけ。
+    # 無ければ pending の区分を初期 index に反映 (無効 / 無しなら未選択=強制選択)。
+    _pending_market = st.session_state.pop(f"{_SS}pending_primary_market", None)
+    if f"{_SS}sel_primary_market" in st.session_state:
+        _market_index = None
+    elif _pending_market in _market_codes:
+        _market_index = _market_codes.index(_pending_market)
+    else:
+        _market_index = None
+    selected_market = st.selectbox(
+        "出品区分 (販売先) — 必須",
+        options=_market_codes,
+        format_func=lambda c: _market_label.get(c, c),
+        index=_market_index,
+        placeholder="(販売先の区分を選択してください)",
+        key=f"{_SS}sel_primary_market",
+        help="米国向けは関税 (DDP) を売主が負担するため、区分で価格・送料の計算が変わります。",
+    )
+    market_selected = selected_market is not None
+    if not market_selected:
+        st.info("出品区分を選択すると Verify / Add が有効になります。")
+
     # draft_params 構築
     draft_params = _build_current_draft_params(effective_shipping, settings)
     if not draft_params:
@@ -1744,7 +1896,7 @@ def _render_step5_verify_add(settings: dict) -> None:
     with _b1:
         verify_clicked = st.button(
             "VerifyAdd (dry-run)", key=f"{_SS}btn_verify", type="secondary",
-            disabled=not effective_shipping,
+            disabled=(not effective_shipping) or (not market_selected),
         )
     with _b2:
         # 二重送信ガード (HIGH-1 対策): 直前の Add が成功していれば再押下禁止。
@@ -1758,13 +1910,16 @@ def _render_step5_verify_add(settings: dict) -> None:
         confirmed = st.checkbox(
             "最終確認: eBay に Active 出品 (即時公開)",
             key=confirm_key, value=False,
-            disabled=has_errors or already_submitted or (not effective_shipping),
+            disabled=has_errors or already_submitted or (not effective_shipping) or (not market_selected),
             help="チェック後に「ドラフト保存 & eBay登録」ボタンが有効化されます",
         )
         add_disabled = (
-            (not effective_shipping) or has_errors or already_submitted or (not confirmed)
+            (not effective_shipping) or (not market_selected)
+            or has_errors or already_submitted or (not confirmed)
         )
-        if already_submitted:
+        if not market_selected:
+            add_help = "先に「出品区分 (販売先)」を選択してください。"
+        elif already_submitted:
             add_help = (
                 f"既に ItemID={prev_add.get('ebay_item_id')} で登録済。"
                 "再出品するには『クリア』で新規開始。"
@@ -1828,6 +1983,13 @@ def _build_current_draft_params(shipping_policy_id: str, settings: dict) -> Opti
     listing_edited = dict(listing_dict)
     listing_edited["ebay_title"] = st.session_state.get(f"{_SS}edited_title") or listing_dict.get("ebay_title") or ""
     listing_edited["ebay_category_id"] = st.session_state.get(f"{_SS}selected_category_id") or listing_dict.get("ebay_category_id") or ""
+    # W190: Description 本文 / Item Specifics の UI 編集結果を反映 (VerifyAdd 失敗時の再試行用)
+    _ed_desc = st.session_state.get(f"{_SS}edited_description")
+    if _ed_desc:
+        listing_edited["ebay_description"] = _ed_desc
+    _ed_spec = st.session_state.get(f"{_SS}edited_item_specifics")
+    if isinstance(_ed_spec, dict):
+        listing_edited["item_specifics"] = _ed_spec
     # rank も condition 選択を反映
     rank_edited = dict(rank_dict)
     rank_edited["ebay_condition_id"] = st.session_state.get(f"{_SS}selected_condition_id") or rank_dict.get("ebay_condition_id") or "3000"
@@ -1837,9 +1999,10 @@ def _build_current_draft_params(shipping_policy_id: str, settings: dict) -> Opti
     price = float(st.session_state.get(f"{_SS}price_usd") or 0.0)
 
     # W84 (2026-05-02): 個別 UI 出品で primary_market / hs_code を明示伝搬.
-    # 新規 W9 listing は Terapeak 未分析のため "unknown" default = mixed_global 等価
-    # 動作 (商品代 + 送料欄に DDP 関税近似値). user UI override は別 W で検討.
-    primary_market_val = listing_dict.get("primary_market") or "unknown"
+    # W191 (2026-05-30): primary_market は STEP5 で user が選択 (既定なし=強制選択).
+    # 未選択時は preview のため "unknown" (商品代 + 送料に DDP 関税近似 = 安全側)
+    # で計算するが、Verify/Add は STEP5 で無効化済のため未選択のまま出品されない.
+    primary_market_val = st.session_state.get(f"{_SS}sel_primary_market") or "unknown"
     hs_code_val = listing_dict.get("hs_code")
 
     try:
@@ -1944,6 +2107,12 @@ def _render_verify_result() -> None:
             st.error("**エラー** (出品は実行できません):")
             for e in errors:
                 st.markdown(f"- {html.escape(str(e))}")
+            # W190: 失敗時は STEP4 で内容を直して再 VerifyAdd できることを案内
+            st.caption(
+                "↑ STEP4 でタイトル / Item Specifics / Description 本文 / カテゴリ / "
+                "コンディションを修正し、もう一度 VerifyAdd を押すと再チェックできます "
+                "(禁止語句が原因の場合は該当箇所を編集してください)。"
+            )
 
         warnings = result.get("warnings") or []
         if warnings:
@@ -2203,12 +2372,13 @@ def _compose_draft_record(draft_params: dict, status: str = "submitted") -> dict
         "rank_label": rank.get("rank_label"),
         "quick_notes": None,  # Phase 5 では保持しない (Claude 生成の中間データ)
         "ebay_title": draft_params.get("ebay_title"),
-        "ebay_description": listing.get("ebay_description"),
+        "ebay_description": draft_params.get("ebay_description") or listing.get("ebay_description"),
         "ebay_category_id": draft_params.get("ebay_category_id"),
         "ebay_category_name": listing.get("ebay_category_name"),
         "ebay_condition_id": draft_params.get("ebay_condition_id"),
         "item_specifics": dict(draft_params.get("item_specifics") or {}),
         "listing_price_usd": float(draft_params.get("listing_price_usd") or 0.0),
+        "primary_market": draft_params.get("primary_market"),
         "weight_g": int(st.session_state.get(f"{_SS}weight_g") or 0),
         "in_stock": 1 if st.session_state.get(f"{_SS}in_stock") else 0,
         "shipping_policy_id": draft_params.get("shipping_policy_id"),
