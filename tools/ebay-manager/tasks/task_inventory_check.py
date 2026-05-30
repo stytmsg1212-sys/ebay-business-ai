@@ -538,12 +538,12 @@ def run_inventory_check(config):
             logger.warning(f"last_status 更新失敗 sku={r.get('sku')}: {e}")
     logger.info(f"monitored_items.last_status 更新: {updated}/{len(results)} 件")
 
-    # ステップ5b: W120+W121 — Amazon/楽天 SKU の価格 fetch + baseline / surge / drop 評価.
+    # ステップ5b: W120+W121+W192+W193 — Amazon/楽天/Yahoo の価格 fetch + baseline 評価 + Discord 通知.
     # 既存 check_items_batch は status のみ返すため、価格抽出は別経路で httpx fetch.
     # 16 件規模なので per-item 2 度 fetch は許容 (~1-2 分追加).
-    n_price = _fetch_and_store_prices(results)
+    n_price = _fetch_and_store_prices(results, config)
     if n_price > 0:
-        logger.info(f"[price] 価格更新: {n_price} 件 (Amazon/楽天)")
+        logger.info(f"[price] 価格更新: {n_price} 件 (Amazon/楽天/Yahoo)")
 
     logger.info(f"在庫チェック完了: {len(results)}件")
 
@@ -571,14 +571,18 @@ def run_inventory_check(config):
 
 # =============================================================================
 # W120 + W121 (2026-05-12): 仕入先 価格変動検知
-# Amazon (ebayAM_) / 楽天市場 (ebayRT_) の商品ページから価格を抽出し、
-# baseline (初回値) からの ±3% 変動を検知して price_alert_state を更新.
+# Amazon (ebayAM_) / 楽天市場 (ebayRT_) / Yahoo!ショッピング (ebayYS_) の商品ページから
+# 価格を抽出し、baseline (初回値) からの ±5% 変動を検知して price_alert_state を更新.
+# W192+W193 (2026-05-30): Yahoo 追加 + 閾値 ±5% 統一 + 遷移時 Discord 通知 (基準=最初の価格).
 # 詳細設計: code-architect ブループリント参照 / `reference_shipping_method_vs_ddu_taxonomy.md`.
 # =============================================================================
 
-_PRICE_THRESHOLD = 0.03  # ±3% (user 確定要件, K1 hard-code: 3 回出てから column 化)
+_PRICE_THRESHOLD = 0.05  # ±5% (user 確定要件 W193, dashboard と統一. K1 hard-code: 3 回出てから column 化)
 _PRICE_FETCH_TIMEOUT_SEC = 15
-_PRICE_TARGET_PREFIXES = ("ebayAM_", "ebayRT_")  # Amazon / 楽天
+_PRICE_TARGET_PREFIXES = ("ebayAM_", "ebayRT_", "ebayYS_")  # Amazon / 楽天 / Yahoo
+# W183 手動 URL 仕入先 (元 SKU を保持し prefix が ebayXX_ にならない) も価格追跡するため、
+# source_url のドメイン部分一致でも価格対象に含める (extract_price_by_url で振り分け).
+_PRICE_TARGET_URL_DOMAINS = ("amazon.co.jp", "item.rakuten", "shopping.yahoo.co.jp")
 
 
 def _evaluate_restock_alerts(results: list) -> int:
@@ -624,43 +628,57 @@ def _evaluate_restock_alerts(results: list) -> int:
     return n_restock
 
 
-def _fetch_and_store_prices(results: list) -> int:
-    """Amazon / 楽天 SKU のみ価格 fetch + baseline / surge / drop 評価.
+def _fetch_and_store_prices(results: list, config: dict) -> int:
+    """Amazon / 楽天 / Yahoo の商品ページ価格を fetch + baseline / surge / drop 評価.
 
     既存 check_items_batch は status のみ返すため、価格抽出は別経路で httpx fetch.
     対象 listing 数が少ない (~16 件) ので per-item 2 度 fetch でも許容コスト.
+
+    W192 (2026-05-30): 対象選定を 2 経路化 — (a) SKU prefix が ebayAM_/RT_/YS_、または
+    (b) source_url ドメインが amazon.co.jp / item.rakuten / shopping.yahoo.co.jp.
+    後者は W183 手動 URL 仕入先 (元 SKU 保持で prefix が ebayXX_ にならない) も追跡するため.
+
+    W193 (2026-05-30): normal/restock → surge/drop へ遷移した item のみ集めて、
+    バッチ末尾で 1 メッセージにまとめ Discord 通知 (基準=最初の価格、圏内復帰まで再通知なし).
+    Q0: Discord 送信の成否に関わらず DB の state は評価関数内で確定済 = 送信失敗で sticky 化しない.
 
     Returns: 価格更新できた件数 (fetch 失敗 / 抽出 None は除外).
     """
     import random
     import httpx
     from monitor.database import get_conn
-    from monitor.price_extractor import extract_price
+    from monitor.price_extractor import extract_price, extract_price_by_url
     from monitor.scrapers import USER_AGENTS
 
-    # 対象 listing 抽出
+    # 対象 listing 抽出 (2 経路: SKU prefix または source_url ドメイン)
     targets = []
     with get_conn() as conn:
         for r in results:
             item_id = r.get("id")
             sku = r.get("sku") or ""
-            if not sku.startswith(_PRICE_TARGET_PREFIXES):
-                continue
-            # 元 monitored_items.source_url を取得
             row = conn.execute(
-                "SELECT source_url FROM monitored_items WHERE id=?",
+                "SELECT source_url, title, ebay_item_id FROM monitored_items WHERE id=?",
                 (item_id,),
             ).fetchone()
-            if row and row["source_url"]:
-                targets.append({
-                    "id": item_id, "sku": sku, "url": row["source_url"],
-                })
+            if not (row and row["source_url"]):
+                continue
+            url = row["source_url"]
+            url_l = url.lower()
+            is_prefix = sku.startswith(_PRICE_TARGET_PREFIXES)
+            is_domain = any(d in url_l for d in _PRICE_TARGET_URL_DOMAINS)
+            if not (is_prefix or is_domain):
+                continue
+            targets.append({
+                "id": item_id, "sku": sku, "url": url,
+                "title": row["title"] or "",
+            })
 
     if not targets:
         return 0
 
     import time
     updated = 0
+    crossings = []  # W193: normal/restock → surge/drop 遷移 item を収集
     for idx, it in enumerate(targets):
         # H9 fix (2026-05-12): bot 検知緩和の jitter sleep.
         # Amazon は同 IP 連続 GET に厳しく、scrapers.check_items_batch の数秒後に
@@ -684,15 +702,37 @@ def _fetch_and_store_prices(results: list) -> int:
                     f"status={resp.status_code}"
                 )
                 continue
-            price = extract_price(resp.text, it["sku"])
+            # anti-bot ページ (Amazon Robot Check / CAPTCHA) は価格抽出させない.
+            # scrapers._check_with_httpx と同じガード. これが無いと CAPTCHA HTML の
+            # stray price を baseline に固定 → 以降の正常値で永続 surge/drop 誤通知
+            # (baseline は再記録しない要件のため自己回復しない / 金銭直結 W193).
+            low = resp.text.lower()
+            if "robot check" in low or "validatecaptcha" in low:
+                logger.debug(
+                    f"[price] anti-bot page detected, skip: id={it['id']} sku={it['sku']}"
+                )
+                continue
+            # SKU prefix で振り分け、未対応 prefix (W183 手動 URL) は URL ドメインで振り分け
+            price = extract_price(resp.text, it["sku"]) \
+                or extract_price_by_url(resp.text, it["url"])
             if price is None:
                 logger.debug(
                     f"[price] extraction miss: id={it['id']} sku={it['sku']} "
                     f"(selector miss or bot trap)"
                 )
                 continue
-            _update_price_and_evaluate_alert(it["id"], price)
+            evald = _update_price_and_evaluate_alert(it["id"], price)
             updated += 1
+            # W193: 圏内 (normal/restock) → 圏外 (surge/drop) へ遷移した瞬間のみ収集.
+            # 基準確立 (None→normal) や surge/drop 継続中は再通知しない.
+            if evald:
+                old_state, new_state, baseline = evald
+                if new_state in ("surge", "drop") \
+                        and old_state not in ("surge", "drop"):
+                    crossings.append({
+                        "title": it["title"], "sku": it["sku"], "url": it["url"],
+                        "state": new_state, "current": price, "baseline": baseline,
+                    })
         except httpx.TimeoutException:
             logger.debug(f"[price] fetch timeout: id={it['id']} sku={it['sku']}")
         except (httpx.RequestError, httpx.HTTPError, ValueError) as e:
@@ -700,10 +740,82 @@ def _fetch_and_store_prices(results: list) -> int:
                 f"[price] fetch error: id={it['id']} sku={it['sku']}: "
                 f"{type(e).__name__}: {e}"
             )
+
+    # Q0: per-item の失敗は debug (noise 抑制) だが、対象に対する fetch 成功率は INFO で
+    # 集約記録. Yahoo 等 1 サイトの selector が壊れて「全件 0 fetched」になった構造的
+    # 劣化を scheduler.log で検知可能にする (debug のみだと本番 INFO level で観測不能).
+    logger.info(
+        f"[price] 価格 fetch: 対象 {len(targets)} 件中 {updated} 件取得 "
+        f"(失敗/抽出 miss {len(targets) - updated} 件, 価格変動遷移 {len(crossings)} 件)"
+    )
+
+    # W193: 遷移を 1 メッセージにまとめて Discord 通知 (DB state は更新済 = 送信失敗でも整合)
+    if crossings:
+        from notifiers.discord_notifier import inject_webhook_into_config
+        webhook = (inject_webhook_into_config(config or {})
+                   .get("discord", {}).get("webhook_url") or "").strip()
+        if webhook:
+            ok = _send_price_alert_discord(webhook, crossings)
+            if ok:
+                logger.info(
+                    f"[price] 価格変動 Discord 通知: {len(crossings)} 件 送信成功"
+                )
+            else:
+                # DB state=surge/drop は反映済 = ダッシュボードには表示される. ただし同 state の
+                # ままでは次回 batch で再通知しない設計 (圏内復帰まで 1 回通知) = この crossing の
+                # Discord 送達はこの回で失われる. 「次回再評価」と誤記せず WARNING で観測可能化 (Q0).
+                logger.warning(
+                    f"[price] 価格変動 Discord 通知 {len(crossings)} 件 送信失敗 "
+                    f"(DB state は反映済・ダッシュボード表示あり、同 state では再通知しないため本通知は未送達)"
+                )
+        else:
+            logger.warning(
+                f"[price] 価格変動 {len(crossings)} 件あるが Discord webhook 未設定 = 通知 skip"
+            )
     return updated
 
 
-def _update_price_and_evaluate_alert(item_id: int, current_price: int) -> None:
+def _send_price_alert_discord(webhook: str, crossings: list) -> bool:
+    """仕入先 価格変動 (surge/drop 遷移) を 1 embed にまとめ Discord 送信.
+
+    W148 _send_discord_for_hit と同じ堅牢化: 1 回失敗 → 1s backoff → 1 回 retry.
+    webhook は呼び側で存在チェック済 (URL は print しない = security.md 順守).
+    """
+    if not webhook or not crossings:
+        return False
+    try:
+        from notifiers.discord_notifier import DiscordNotifier
+        notifier = DiscordNotifier(webhook)
+        lines = []
+        for c in crossings[:20]:
+            base = c["baseline"] or 0
+            cur = c["current"]
+            pct = ((cur - base) / base * 100) if base > 0 else 0
+            arrow = "📈 値上がり" if c["state"] == "surge" else "📉 値下がり"
+            title = (c["title"] or "(無題)")[:60]
+            lines.append(
+                f"{arrow}  {title}\n"
+                f"　¥{base:,} → ¥{cur:,}  ({pct:+.1f}%)  | {c['sku']}\n{c['url']}"
+            )
+        if len(crossings) > 20:
+            lines.append(f"…他 {len(crossings) - 20} 件")
+        embed = {
+            "title": f"💰 仕入先 価格変動 {len(crossings)} 件 (基準から ±5% 超)",
+            "description": "\n\n".join(lines)[:4000],
+            "color": 15844367,  # amber
+        }
+        content = "🔔 仕入先の販売価格が基準から ±5% を超えて変動しました"
+        if notifier.send_message(content, embed=embed):
+            return True
+        import time
+        time.sleep(1.0)  # backoff
+        return bool(notifier.send_message(content, embed=embed))
+    except Exception:
+        logger.exception("W193 価格変動 Discord 送信失敗")
+        return False
+
+
+def _update_price_and_evaluate_alert(item_id: int, current_price: int):
     """価格更新 + 状態遷移評価.
 
     - baseline=NULL なら初回値で固定 (state='normal')
@@ -712,6 +824,10 @@ def _update_price_and_evaluate_alert(item_id: int, current_price: int) -> None:
     H3 fix (2026-05-12): 現在 state='restock' のときは price 評価で state を上書きしない.
     旧実装は `_evaluate_restock_alerts` が立てた restock を `_fetch_and_store_prices` が
     上書きする論理事故あり (Amazon/楽天 SKU で在庫復活 alert が消える).
+
+    W193 (2026-05-30): Discord 通知判定のため (旧 state, 新 state, baseline) を返す.
+    baseline は初回のみ記録し以降一切上書きしない = user 要件「最初の価格から±5%」を満たす.
+    Returns: (old_state, new_state, baseline) | None (行が無い等で更新不能時).
     """
     from monitor.database import get_conn
 
@@ -721,20 +837,35 @@ def _update_price_and_evaluate_alert(item_id: int, current_price: int) -> None:
             (item_id,),
         ).fetchone()
         if not row:
-            return
+            return None
 
         baseline = row["baseline_price_jpy"]
         current_state = row["price_alert_state"]
         if baseline is None:
-            # 初回取得 → baseline 確定
-            conn.execute(
+            # 初回取得 → baseline 確定 (基準確立は通知対象外 = 新 state を normal で返す).
+            # WHERE baseline_price_jpy IS NULL で「最初に書いた値を上書きしない」を保証.
+            # 手動 UI 在庫チェックと 02:30 batch が同時実行されると baseline が二重確定する
+            # race があり (両経路に mutex なし)、後発 writer が user 確定要件「最初の価格」を
+            # 壊す。単一 UPDATE 文は atomic = 後発は 0 行更新 → 既存 baseline 経路へ fall through.
+            cur = conn.execute(
                 """UPDATE monitored_items
                    SET baseline_price_jpy=?, current_price_jpy=?,
                        baseline_at=CURRENT_TIMESTAMP, price_alert_state='normal'
-                   WHERE id=?""",
+                   WHERE id=? AND baseline_price_jpy IS NULL""",
                 (current_price, current_price, item_id),
             )
-            return
+            if cur.rowcount > 0:
+                return (current_state, "normal", current_price)
+            # 別経路が先に baseline を確定済 → 確定値を読み直し、既存 baseline 評価へ続行
+            # (current_price は下の restock / 閾値評価ブロックが記録する).
+            row = conn.execute(
+                "SELECT baseline_price_jpy, price_alert_state FROM monitored_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+            if not row or row["baseline_price_jpy"] is None:
+                return None
+            baseline = row["baseline_price_jpy"]
+            current_state = row["price_alert_state"]
 
         # H3: state='restock' は保持 (24h 後に自動降格は _evaluate_restock_alerts 側で実施)
         if current_state == "restock":
@@ -742,7 +873,7 @@ def _update_price_and_evaluate_alert(item_id: int, current_price: int) -> None:
                 "UPDATE monitored_items SET current_price_jpy=? WHERE id=?",
                 (current_price, item_id),
             )
-            return
+            return (current_state, "restock", baseline)
 
         # ±_PRICE_THRESHOLD 判定
         if baseline <= 0:
@@ -762,3 +893,4 @@ def _update_price_and_evaluate_alert(item_id: int, current_price: int) -> None:
                WHERE id=?""",
             (current_price, new_state, item_id),
         )
+        return (current_state, new_state, baseline)

@@ -1,9 +1,13 @@
-"""仕入元サイトの価格抽出 (W120 / 2026-05-12).
+"""仕入元サイトの価格抽出 (W120 / 2026-05-12, W192 で Yahoo 追加).
 
 HTML 文字列を入力に JPY int を返す. 抽出不能なら None (silent skip でなく明示).
 SKU prefix で site 振り分け:
   - ebayAM_*  → Amazon.co.jp
   - ebayRT_*  → 楽天市場
+  - ebayYS_*  → Yahoo!ショッピング (W192 / 2026-05-30)
+
+W183 の手動 URL 仕入先 (元 SKU を保持し prefix が ebayAM_/RT_/YS_ にならない) でも
+価格取得できるよう、URL ドメインで振り分ける extract_price_by_url も提供.
 
 ロジック分離理由:
   - K2 Surgical: 既存 scrapers.py (3 段 fallback) を 1 行も触らない
@@ -91,6 +95,42 @@ def extract_price_amazon(html: str) -> Optional[int]:
     return None
 
 
+# Yahoo!ショッピング (store.shopping.yahoo.co.jp / shopping.yahoo.co.jp) の価格抽出.
+# W192 (2026-05-30) 実機検証: CSS class は React ハッシュ化 (styles_xxx__hash) で不安定。
+# meta[property="product:price:amount"] が最も安定、meta[itemprop="price"] / JSON-LD も併存。
+_YAHOO_OG_PRICE = re.compile(
+    r'property="product:price:amount"\s+content="([\d,]+)"',
+    re.IGNORECASE,
+)
+_YAHOO_ITEMPROP_PRICE = re.compile(
+    r'itemprop="price"\s+content="([\d,]+)"',
+    re.IGNORECASE,
+)
+_YAHOO_JSONLD_PRICE = re.compile(
+    r'"price"\s*:\s*"?(\d+(?:\.\d+)?)"?',
+    re.IGNORECASE,
+)
+
+
+def extract_price_yahoo_shopping(html: str) -> Optional[int]:
+    """Yahoo!ショッピング 商品ページ HTML から税込価格 (JPY int) を抽出.
+
+    優先: meta[property="product:price:amount"] > meta[itemprop="price"] > JSON-LD "price"
+    抽出不能なら None.
+    value > 0 ガード (0 を baseline 確定すると永久 sticky silent skip、H2 と同方針).
+    """
+    for pat in (_YAHOO_OG_PRICE, _YAHOO_ITEMPROP_PRICE, _YAHOO_JSONLD_PRICE):
+        m = pat.search(html)
+        if m:
+            try:
+                value = float(m.group(1).replace(",", ""))
+                if value > 0:
+                    return int(value)
+            except ValueError:
+                continue
+    return None
+
+
 def extract_price(html: str, sku: str) -> Optional[int]:
     """SKU prefix で site 振り分け. 対象外 site は None (= 既存挙動維持)."""
     if not html or not sku:
@@ -99,4 +139,25 @@ def extract_price(html: str, sku: str) -> Optional[int]:
         return extract_price_amazon(html)
     if sku.startswith("ebayRT_"):
         return extract_price_rakuten(html)
-    return None  # Amazon / 楽天 以外は対象外
+    if sku.startswith("ebayYS_"):
+        return extract_price_yahoo_shopping(html)
+    return None  # Amazon / 楽天 / Yahoo 以外は対象外
+
+
+def extract_price_by_url(html: str, url: str) -> Optional[int]:
+    """URL ドメインで site 振り分け (W192 / 2026-05-30).
+
+    W183 の手動 URL 仕入先は元 SKU を保持し prefix が ebayAM_/RT_/YS_ にならないため、
+    SKU prefix では振り分けられない. URL ドメインで Amazon / 楽天(item) / Yahoo を判定する.
+    対象外ドメインは None (= 価格追跡対象外).
+    """
+    if not html or not url:
+        return None
+    u = url.lower()
+    if "amazon.co.jp" in u:
+        return extract_price_amazon(html)
+    if "item.rakuten" in u:
+        return extract_price_rakuten(html)
+    if "shopping.yahoo.co.jp" in u:
+        return extract_price_yahoo_shopping(html)
+    return None

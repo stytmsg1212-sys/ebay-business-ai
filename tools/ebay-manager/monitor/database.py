@@ -89,10 +89,14 @@ DEFAULT_SITE_CONFIGS = [
     },
     {
         "site_name": "Yahoo!ショッピング",
-        "url_keyword": "yahoo shopping",
-        "in_stock_text1": "カートに入れる",
-        "in_stock_text2": "お届け先の商品をカートに",
-        "sold_out_text": "",
+        "url_keyword": "shopping.yahoo.co.jp",
+        # W192 (2026-05-30): 実 HTML 検証で「在庫有」だけの clean な marker が無い
+        # (「カートに入れる」「数量」は売切ページにも残り誤判定 = strict で unknown 化)。
+        # よって在庫有 signal は空にして、売切 (「在庫がありません」) と消滅 (HTTP 404) のみ
+        # 確実に拾う。在庫有は unknown 扱い (false-OOS を出さない安全方向)。価格は別経路で取得。
+        "in_stock_text1": "",
+        "in_stock_text2": "",
+        "sold_out_text": "在庫がありません",
         "no_page_text": "",
         "common_url": "https://store.shopping.yahoo.co.jp/",
         "convert_url": "ebayYS_",
@@ -923,6 +927,7 @@ def init_db():
                 status TEXT DEFAULT 'draft',
                 api_error_message TEXT,
                 processed_image_urls TEXT,
+                primary_market TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (template_id) REFERENCES description_templates(id)
@@ -940,6 +945,13 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_listing_drafts_ebay_item "
             "ON listing_drafts (ebay_item_id)"
         )
+        # W191 (2026-05-30): 個別出品 UI で出品時に選んだ出品区分 (primary_market) を
+        # 下書きにも永続化し、再編集で復元できるようにする。公開済 listing の継続的な
+        # 区分判定は従来どおり market-analysis (ebay_listings 側) が担う。
+        try:
+            conn.execute("ALTER TABLE listing_drafts ADD COLUMN primary_market TEXT")
+        except sqlite3.OperationalError:
+            pass  # カラム既存 (冪等性)
 
     # マイグレーション v11: API呼出ログ (モデル稼働状況・コスト追跡)
     # 全マイグレーションの末尾に配置（他テーブルに依存しない独立テーブル）
@@ -2748,6 +2760,35 @@ def init_db():
                 logger.info(
                     "[init_db v57] autofix tables created, schema_ver bumped to 57"
                 )
+
+        # ---- v58: Yahoo!ショッピング site_config を実 HTML 一致値へ修正 (W192) ----
+        # 2026-05-30 実機検証: 旧設定は url_keyword='yahoo shopping' (URL に出ない語) で
+        # 在庫監視が全件 unmatch、in_stock_text='カートに入れる' は売切ページにも残り誤判定。
+        # 実態に合わせ url_keyword=ドメイン部分一致 / sold_out='在庫がありません' / 在庫有 signal 空
+        # (clean marker 不在のため、売切と HTTP 404 のみで判定し在庫有は unknown=false-OOS 回避)。
+        # v55 の楽天/Amazon UPDATE と同じ冪等 UPDATE パターン (DEFAULT_SITE_CONFIGS も cascade 済)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 57:
+            try:
+                conn.execute(
+                    "UPDATE site_configs SET "
+                    "url_keyword=?, in_stock_text1='', in_stock_text2='', "
+                    "sold_out_text=?, no_page_text='' "
+                    "WHERE convert_url='ebayYS_'",
+                    ("shopping.yahoo.co.jp", "在庫がありません"),
+                )
+                logger.info("[init_db v58] Yahoo!ショッピング site_config signal 更新")
+            except sqlite3.OperationalError:
+                pass
+            # UPDATE が反映されたことを確認後でのみ bump (部分適用で bump しない、v55 流儀)。
+            _v58_row = conn.execute(
+                "SELECT url_keyword, sold_out_text FROM site_configs "
+                "WHERE convert_url='ebayYS_'"
+            ).fetchone()
+            if _v58_row and _v58_row[0] == "shopping.yahoo.co.jp" \
+                    and _v58_row[1] == "在庫がありません":
+                conn.execute("PRAGMA user_version = 58")
+                logger.info("[init_db v58] schema_ver bumped to 58")
 
 
 # ---- サイト設定 ----
@@ -4868,6 +4909,7 @@ _LISTING_DRAFT_WRITABLE_COLUMNS = (
     "status",
     "api_error_message",
     "processed_image_urls",
+    "primary_market",
 )
 
 

@@ -176,31 +176,31 @@ def test_update_price_baseline_first_record(tmp_db):
     assert row["price_alert_state"] == "normal"
 
 
-def test_update_price_surge_at_plus_3_percent(tmp_db):
-    """ちょうど +3% で surge."""
+def test_update_price_surge_at_plus_5_percent(tmp_db):
+    """ちょうど +5% で surge (W193: ±5% に統一)."""
     from tasks.task_inventory_check import _update_price_and_evaluate_alert
     from monitor.database import get_conn
 
     item_id = _insert_mi("ebayRT_test", "https://item.rakuten/test",
                          baseline=10000, current=10000, alert_state="normal")
-    _update_price_and_evaluate_alert(item_id, 10300)  # +3.0%
+    _update_price_and_evaluate_alert(item_id, 10500)  # +5.0%
     with get_conn() as c:
         row = c.execute(
             "SELECT current_price_jpy, price_alert_state FROM monitored_items WHERE id=?",
             (item_id,)
         ).fetchone()
-    assert row["current_price_jpy"] == 10300
+    assert row["current_price_jpy"] == 10500
     assert row["price_alert_state"] == "surge"
 
 
-def test_update_price_drop_at_minus_3_percent(tmp_db):
-    """ちょうど -3% で drop."""
+def test_update_price_drop_at_minus_5_percent(tmp_db):
+    """ちょうど -5% で drop (W193: ±5% に統一)."""
     from tasks.task_inventory_check import _update_price_and_evaluate_alert
     from monitor.database import get_conn
 
     item_id = _insert_mi("ebayAM_test", "https://amzn/test",
                          baseline=10000, current=10000, alert_state="normal")
-    _update_price_and_evaluate_alert(item_id, 9700)  # -3.0%
+    _update_price_and_evaluate_alert(item_id, 9500)  # -5.0%
     with get_conn() as c:
         row = c.execute(
             "SELECT price_alert_state FROM monitored_items WHERE id=?", (item_id,)
@@ -209,13 +209,13 @@ def test_update_price_drop_at_minus_3_percent(tmp_db):
 
 
 def test_update_price_normal_within_threshold(tmp_db):
-    """±3% 未満 (例 +2%) は normal."""
+    """±5% 未満 (例 +4%、旧 3% 閾値なら surge になる値) は normal."""
     from tasks.task_inventory_check import _update_price_and_evaluate_alert
     from monitor.database import get_conn
 
     item_id = _insert_mi("ebayAM_test", "https://amzn/test",
                          baseline=10000, current=10000, alert_state="normal")
-    _update_price_and_evaluate_alert(item_id, 10200)  # +2.0% (閾値内)
+    _update_price_and_evaluate_alert(item_id, 10400)  # +4.0% (新閾値内、旧閾値超)
     with get_conn() as c:
         row = c.execute(
             "SELECT price_alert_state FROM monitored_items WHERE id=?", (item_id,)
@@ -397,7 +397,7 @@ def test_h9_fetch_and_store_prices_has_jitter_sleep(tmp_db, monkeypatch):
         {"id": 2, "sku": "ebayRT_b"},
     ]
     # 失敗するが sleep call は記録される (httpx は invalid URL で例外)
-    tic._fetch_and_store_prices(results)
+    tic._fetch_and_store_prices(results, {})  # W193: config 引数追加
     # 2 件 target → 1 回 sleep (idx>0 のときのみ)
     assert len(sleep_calls) >= 1, "_fetch_and_store_prices に sleep が無い (H9)"
     # 値域確認 (1.5-3.5s)

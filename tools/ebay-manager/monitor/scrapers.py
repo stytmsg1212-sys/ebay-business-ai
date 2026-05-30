@@ -122,7 +122,11 @@ def _detect_status_single(
 
     found_np = any(t in content for t in active_np)
     found_so = any(t in content for t in active_so)
-    found_is = active_is and any(t in content for t in active_is)
+    # W192 (2026-05-30): bool() で包む. active_is が空 (Yahoo!ショッピングは在庫有 clean
+    # marker 不在で in_stock_text='') の場合 `[] and ...` が空リストを返し、後段
+    # sum([found_np, found_so, found_is]) が int+list で TypeError → クラッシュしていた.
+    # 既存設定は全て in_stock_text 非空でこの経路を踏まなかったため latent だった.
+    found_is = bool(active_is) and any(t in content for t in active_is)
 
     # SPA対策: 在庫有・在庫無・ページなしが全て見つかる場合はJSテンプレート混入
     if strict and sum([found_np, found_so, found_is]) >= 2:

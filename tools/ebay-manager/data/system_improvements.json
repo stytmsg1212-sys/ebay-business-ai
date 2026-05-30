@@ -1757,5 +1757,82 @@
     "completed": "2026-05-29",
     "progress": "2026-05-29 完了。3 経路を全てテスト隔離側で修正 (本番コード変更なし): (1) test_customs_kb / test_customs_sender / test_customs_w14ext_draft の 3 ファイルに module-level autouse `_init_customs_schema(_isolate_monitor_db)` fixture 追加 (conftest の DB_PATH 隔離後に init_db、依存順序保証)。(2) test_morning_discovery の該当 1 件で monkeypatch により _tmd.DB_PATH を _db.DB_PATH (tmp) に揃え seed/update を同一 DB 化。(3) test_w139_monitor_coverage の該当 1 件で _resolve_webhook_url を '' に monkeypatch し実 Discord 送信副作用 + env 依存を除去。検証: 5 ファイル targeted 67 passed → フルスイート tests/ 1540 passed/2 skipped (411s) 回帰ゼロ。code-reviewer HIGH=0 (100点、逃避修正でないこと確認)。残: MEDIUM-1 task_morning_discovery 等 shadow DB_PATH モジュールの get_conn 統一 (別 W) / scripts/test_discord_w126.py が import 時 sys.exit(1) で `pytest -q` 無引数収集をクラッシュさせる件 (別 W、収集除外 or rename 推奨)。",
     "source": "2026-05-29 W185 (Opus 4.8 総チェック) で pytest 1525 PASS 確認時に判明した pre-existing 15 件失敗。user 指示『修正してください』。"
+  },
+  {
+    "id": 270,
+    "tag": "W188",
+    "title": "ダッシュボード整理 — その日やるべき作業が一目で分かるよう不要情報を削除/再構成",
+    "description": "現在のダッシュボードが情報過多で、その日に実施すべき作業が埋もれている。トップを開いた瞬間に『今日やること』(承認待ち出品 / 値下げ候補 / 在庫切れ対応 / 注文対応 / 仕入先候補レビュー / 失敗タスク等のアクション要件) が一覧で分かるレイアウトへ再構成する。参考情報・統計・履歴系は下部または別タブへ退避し、アクション項目を最上部に集約。各項目はクリックで該当タブ/対象に遷移できること。Q3 構造化設計フロー対象 (どの項目を『今日の作業』と定義するか要 Clarify)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-05-29",
+    "completed": null,
+    "source": "2026-05-29 user 依頼『dashbordが不要な情報であふれている。整理してかつその日実施すべき作業はdashbordを見ればいいようにしたい』。"
+  },
+  {
+    "id": 271,
+    "tag": "W189",
+    "title": "設定タブに各処理ごとの Discord 通知 ON/OFF トグルを追加",
+    "description": "定時実行の処理ごと (ライバル検出 / 在庫切れ / 注文アラート / 予算 / キーワード新着監視 / 朝のリサーチ / 市場分析 / デイリーレポート / ヘルスチェック等) に、Discord 通知を個別に ON/OFF できるトグルを設定タブに追加する。現状は通知を個別に止める UI がなく、不要な通知を黙らせるにはコード/設定ファイル直接編集が必要。config (schedule_config.json) に per-task 通知フラグを持たせ、各タスクの通知ガードがそのフラグを参照する形にする。2026-05-29 の通知漏れ修正 (空 webhook で全通知が silent skip していた件) の延長で、user が個別制御を求めたもの。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-05-29",
+    "completed": null,
+    "source": "2026-05-29 user 依頼『設定タブに各処理ごとのdiscord通知のON/OFFを追加』。通知漏れ修正時に『個別に止めたい通知があれば対応する』と提案した流れを受けたもの。"
+  },
+  {
+    "id": 272,
+    "tag": "W190",
+    "title": "eBay アップロード失敗時に description / 各設定値を画面上で修正して再試行できるようにする (個別出品タブ)",
+    "description": "出品 description を eBay にアップロード (VerifyAdd / AddFixedPriceItem) した際、Ack=Failure でエラーになることがある。現状その場で description やタイトル・コンディション・カテゴリ等の設定値を画面上で直せず、エラーが行き止まりになる (再生成し直すしかない)。失敗時にエラー本文を見ながら該当フィールドを編集し、そのまま再試行できる導線を用意する。今回の実例: VerifyAdd Ack=Failure『The item cannot be listed or modified. The title and/or description may contain improper words, or the listing or seller may be in violation of eBay policy.』。確定スコープ (2026-05-29 user clarify): 個別出品タブ (tab_individual_listing.py) のみに実装。STEP4 で従来からのタイトル / カテゴリ / コンディションに加え、Description 本文 (HTML text_area) と Item Specifics (data_editor で行の追加/修正/削除) を編集可能化し、編集→再 VerifyAdd→出品の再試行フローを実現。関連: rank S の英語ラベルを 'Like New'→'Open Box' に変更済 (本エラーの誘因と推定、cascade で関連ファイル一括更新)。コンディション 'Like New/Open Box' (Cond ID 1500) はカテゴリ依存で eBay が拒否する場合があり、CLAUDE.md には不可カテゴリで 1000 / 3000+Open box へ降格する規定があるが ebay_lister.py に自動フォールバックが未実装 (要切り分け、別 W 候補)。",
+    "status": "実装中",
+    "priority": "高",
+    "created": "2026-05-29",
+    "completed": null,
+    "source": "2026-05-29 user 依頼『エラーになった際にこちらでdiscriptionや各設定値を修正できない。修正できるようにしてほしい』。VerifyAdd Ack=Failure (improper words / policy) の実例報告つき。"
+  },
+  {
+    "id": 273,
+    "tag": "W191",
+    "title": "個別出品の新規出品時に primary_market 区分 (US_only 等) を画面で設定できるようにする",
+    "description": "個別出品タブで新規出品する際、現状 primary_market 区分は 'unknown' 固定 (ebay_lister.build_draft_params_from_phase3 の呼出側 tab_individual_listing._build_current_draft_params で listing_dict.get('primary_market') or 'unknown' を渡すだけ、UI からの指定手段なし)。この区分は出品価格・米国向け送料 (DDP 関税近似) の計算を左右する (US_only=価格に関税包含+送料$0 / global_only=価格のみ+送料$0 / mixed_global・unknown=価格のみ+US送料欄に関税近似)。STEP3 出品設定に 4 区分 (US_only / mixed_global / global_only / unknown) の選択 UI を追加し、選択値を _build_current_draft_params が primary_market として伝搬する。永続化の深さ (出品時計算のみ / listing_drafts 列追加 / 出品後 ebay_listings へ反映) は user clarify 待ち。既存コメント (tab_individual_listing.py L1900 'user UI override は別 W で検討') の積み残しを解消するもの。",
+    "status": "実装中",
+    "priority": "高",
+    "created": "2026-05-29",
+    "completed": null,
+    "source": "2026-05-29 user 依頼『個別出品などで新規出品する際に区分（US_Only）などを設定できるようにしてください』。W190 (失敗時編集) と同 session の追加依頼。"
+  },
+  {
+    "id": 274,
+    "tag": "W192",
+    "title": "仕入れ候補ソースに Yahoo!ショッピングを追加 (Amazon/楽天に続く3つ目のEC直URL対応)",
+    "description": "現状の仕入先在庫追跡 (W204 Amazon.co.jp + 楽天市場、W182/W183 EC直URL無在庫監視/availability gate) に Yahoo!ショッピング (通販モール、固定価格) を3つ目のEC直URLソースとして追加する。※ヤフオク(オークション)は対象外 (2026-05-30 user clarify)。対応範囲: (1) 仕入れ候補URLの検出・正規化 (supplier candidate 経路)、(2) 在庫(購入可否)スクレイプ、(3) 既存 availability gate / supplier sweep への組込み。clarify残=検出粒度(ショップ単位/商品単位)、anti-bot対策、スクレイパ実装方式。",
+    "status": "完了",
+    "priority": "通常",
+    "created": "2026-05-30",
+    "completed": "2026-05-30",
+    "source": "2026-05-30 user 依頼『仕入れ候補にAmazon、楽天だけでなくヤフーショップも追加』。W193(価格変動通知)と同時依頼。 / 2026-05-30 clarify: ヤフーショッピング(通販モール)を指す、ヤフオクは対象外。"
+  },
+  {
+    "id": 275,
+    "tag": "W193",
+    "title": "仕入れ候補 (Amazon/楽天/Yahoo!ショッピング) の販売価格が変動したら Discord 通知",
+    "description": "仕入れ候補EC直URL (Amazon/楽天/Yahoo!ショッピング) の販売価格 (=仕入れ値) が前回監視時から±5%以上変動したら通知する (値上がり・値下がり両方、2026-05-30 user clarify)。既存の在庫(availability)監視 sweep に価格追跡を載せ、候補ごとに last-known price を保持→各 sweep で前回値と比較→5%以上の変動時に旧→新価格 + 該当 listing タイトル + ebay_item_id を Discord 通知 (R-11 user実視認 verify)。仕入れ値変動は利益率/再値付け判断に直結 (money-direct)。clarify残=dedup方針、監視頻度(既存 sweep 便乗か)、5%未満の微変動は last-known を更新するか据え置くか。",
+    "status": "完了",
+    "priority": "通常",
+    "created": "2026-05-30",
+    "completed": "2026-05-30",
+    "source": "2026-05-30 user 依頼『Amazon、楽天、ヤフーショップについては販売価格が変更になった場合は通知が来るように』。W192と同時依頼。 / 2026-05-30 clarify: しきい値±5%以上、値上がり値下がり両方通知。"
+  },
+  {
+    "id": 276,
+    "tag": "W194",
+    "title": "仕入先価格アラート (W193) の堅牢化: restock×価格変動の相互作用 / restock降格TZ / anti-botガード拡張 / 通知重複race",
+    "description": "W193 (id 275) 実装の Codex 外部レビュー (2026-05-30、2段ループで実コード照合済) で検出し、K2 Surgical / 影響度の観点で本機能スコープ外として保留した堅牢化 4 件。いずれも money-direct (価格アラートは利益率・再値付け判断に直結)。 [F1] restock 24h 自動降格の JST/UTC 比較ズレ: tasks/task_inventory_check.py の _evaluate_restock_alerts が last_check < datetime('now','-24 hours') で比較するが、last_check は monitor/database.py update_item_status が Python datetime.now() (JST naive) で書込むため、SQLite datetime('now') (UTC) との 9h ズレで実質約33hで降格 (W121 H4 由来の既存バグ、本変更未関与)。sqlite-timezone.md の例外カラム規約に沿って DATE/JST 比較へ統一が必要。 [F2] restock 期間中は価格 crossing 通知が抑止される: price_alert_state が restock / surge / drop / normal を単一列で共有する設計 (W121 H3) のため、在庫復活直後(≤24h)に価格が±5%を超えても通知されず、圏内復帰すると crossing を取り逃す。restock と価格状態の列分離 (schema 変更) が必要。 [F3] crossing 二重通知 race: 手動UI在庫チェック (app.py:4565 run_inventory_check) と 02:30 batch が mutex 無しで重複実行可能。同一 item を両経路が同時に normal→surge と評価すると Discord が2通飛ぶ。影響は重複通知1通 (金銭損失なし)・jitter sleep 下でサブ秒衝突は極低確率のため保留。状態遷移 UPDATE を conditional (WHERE price_alert_state NOT IN ('surge','drop')) 化 + rowcount で送信判定すれば atomic 化可。 [F4] anti-bot ガードが Amazon 特化で狭い: _fetch_and_store_prices の 200応答 CAPTCHA 判定が 'robot check'/'validatecaptcha' のみ (scrapers.py と parity)。Cloudflare challenge / recaptcha / 'enter the characters' / 楽天・Yahoo の block ページが stray price を持つと baseline を誤確立し永続誤通知 (baseline 再記録しない要件のため自己回復しない)。ただし広げると正規ページ誤skip (silent under-monitoring) のリスク + scrapers.py との cascade が必要なため保留。baseline の二重確定 race は W193 内で conditional UPDATE 済 (WHERE baseline_price_jpy IS NULL) だが、poison そのものの防止は本 W で扱う。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-05-30",
+    "completed": null,
+    "source": "2026-05-30 W193 実装の Codex (GPT-5.5) 外部レビュー由来。code-reviewer (Opus) は HIGH=0 だったが Codex が並行性 (baseline/通知 race) と restock 相互作用を追加検出。2段ループで valid 確認し、core (baseline race) は W193 内で即修正、残 4 件を本 W へ。feedback_codex_review_usage.md 『money/account 直結コードは Codex を第二眼』実証例。"
   }
 ]

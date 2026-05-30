@@ -448,8 +448,9 @@ if _w134_sel == "DASHBOARD":
         import logging as _cel
         _cel.getLogger(__name__).warning(f"通関対応 metric 描画失敗: {_ce}")
 
-    # ── W120+W121 (2026-05-12): 仕入先 価格変動 alert ──
-    # ±3% 急騰/急落 + 在庫切れ→復活 を別 metric で表示. Discord 通知なし (DASHBOARD only).
+    # ── W120+W121 (2026-05-12) + W193 (2026-05-30): 仕入先 価格変動 alert ──
+    # ±5% 急騰/急落 + 在庫切れ→復活 を別 metric で表示. 急騰/急落は基準 (最初の価格) から
+    # ±5% 超で遷移した瞬間に inventory_check が Discord 通知も送る (W193、圏内復帰まで再通知なし).
     # H5 fix: monitored_items.ebay_item_id は非 UNIQUE のため GROUP BY mi.id で row 増殖防御.
     # H6 fix: LIMIT 件数 + 別 COUNT クエリで「他 N 件」表示 (旧実装は全件 fetch + Python slice).
     try:
@@ -498,11 +499,11 @@ if _w134_sel == "DASHBOARD":
                 st.markdown("### 💰 仕入先 価格変動")
                 _pcols = st.columns(3)
                 with _pcols[0]:
-                    st.metric("📈 急騰 (+3%以上)", _surge_total,
-                              help="販売停止 / 価格改定リスク。商品価格見直し推奨.")
+                    st.metric("📈 急騰 (+5%以上)", _surge_total,
+                              help="販売停止 / 価格改定リスク。商品価格見直し推奨. 遷移時 Discord 通知あり.")
                 with _pcols[1]:
-                    st.metric("📉 急落 (-3%以下)", _drop_total,
-                              help="仕入チャンス。即発注検討.")
+                    st.metric("📉 急落 (-5%以下)", _drop_total,
+                              help="仕入チャンス。即発注検討. 遷移時 Discord 通知あり.")
                 with _pcols[2]:
                     st.metric("🔄 在庫復活", _restock_total,
                               help="在庫切れ → 在庫有 遷移 (24h 経過で自動 normal 降格).")
