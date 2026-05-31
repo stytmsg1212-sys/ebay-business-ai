@@ -218,8 +218,13 @@ class CalcInput:
     width_cm: float = 0.0        # 幅（cm）
     height_cm: float = 0.0       # 高さ（cm）
     category_id: int = 0         # eBayカテゴリID
-    is_ddu: bool = False         # DDUモード（チェックでTrue）
+    is_ddu: bool = False         # DDUモード（チェックでTrue）/ duty_pattern=None 時の解決根拠（後方互換）
     country_code: str = "US"     # 送付先国コード
+    # 関税パターン: None=is_ddu由来(後方互換) / "included"(①商品価格内包) /
+    #             "shipping"(②③送料に乗せる) / "ddu"(④US以外DDU)
+    duty_pattern: Optional[str] = None
+    # ②③専用: バイヤー徴収送料(=関税)を手動指定。None なら item_price × duty_rate で自動算出
+    shipping_usd_override: Optional[float] = None
 
 @dataclass
 class ServiceResult:
@@ -278,17 +283,47 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
     fuel_fedex = settings["fuel_surcharge_fedex"] / 100
     fuel_dhl = settings["fuel_surcharge_dhl"] / 100
 
-    # 送料代（DDUなら0、DDPなら item_price × duty_rate）
-    if inp.is_ddu:
+    # 関税パターン解決（duty_pattern 明示 > is_ddu 由来、後方互換）
+    pattern = inp.duty_pattern
+    if pattern is None:
+        pattern = "ddu" if inp.is_ddu else "shipping"
+
+    # 金銭直結の contract 検証: 未知パターンは silent な過少計上を生むため拒否
+    # (typo 等で else→shipping 扱いになるが pattern=="shipping" gate を外れ
+    #  CPaSS関税処理費が0に落ちて profit が過大化する。Q0: fail loud)
+    if pattern not in ("included", "shipping", "ddu"):
+        raise ValueError(
+            f"duty_pattern must be one of included/shipping/ddu, got {pattern!r}"
+        )
+
+    # 金銭直結の contract 検証: 手入力送料(関税)の負値は revenue/FVF を壊すため拒否
+    if inp.shipping_usd_override is not None and inp.shipping_usd_override < 0:
+        raise ValueError(
+            f"shipping_usd_override must be >= 0, got {inp.shipping_usd_override}"
+        )
+
+    # パターン別: バイヤー徴収送料(shipping_usd) と seller実負担関税(duty_cost_jpy)
+    if pattern == "ddu":
+        # ④ US以外DDU: 関税はバイヤーが現地で支払い、seller負担なし
         shipping_usd = 0.0
-    else:
-        shipping_usd = inp.item_price_usd * duty_rate
+        duty_cost_jpy = 0.0
+    elif pattern == "included":
+        # ① US向けDDP・US_Only: 関税を商品価格に内包。送料$0(Free)、関税はseller実負担
+        shipping_usd = 0.0
+        duty_cost_jpy = inp.item_price_usd * duty_rate * fx
+    else:  # "shipping" (②③ US向けDDP 関税を送料に乗せる = US_only/US_only以外 共通)
+        if inp.shipping_usd_override is not None:
+            shipping_usd = inp.shipping_usd_override
+        else:
+            shipping_usd = inp.item_price_usd * duty_rate
+        # バイヤー徴収送料=通関支払で相殺（profit上は washed）
+        duty_cost_jpy = 0.0
 
     # 売上
     revenue = (inp.item_price_usd + shipping_usd) * fx
-    revenue_net = inp.item_price_usd * fx  # 関税分を除いた純売上
+    revenue_net = inp.item_price_usd * fx  # 関税分(送料)を除いた純売上
 
-    # eBay手数料
+    # eBay手数料（FVF は item+shipping の合計に課金）
     total_usd = inp.item_price_usd + shipping_usd
     fvf_rate = get_ebay_fvf_rate(inp.category_id, total_usd, store_plan)
     fvf = revenue * fvf_rate
@@ -301,8 +336,10 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
     point_return = inp.purchase_yen * point_rate
 
     ebay_cost_subtotal = fvf + intl_payment + txn_fee + ad_fee + payoneer
-    if not inp.is_ddu:
-        ebay_cost_subtotal += shipping_usd * fx  # DDP関税コストを合計に含める
+    if pattern == "shipping":
+        ebay_cost_subtotal += shipping_usd * fx  # ②③: 送料経由でバイヤー徴収した関税コスト
+    elif pattern == "included":
+        ebay_cost_subtotal += duty_cost_jpy      # ①: 商品価格内包の seller 実負担関税
 
     # 消費税還付: 仕入価格は税込み前提なので、税込÷(1+税率)×税率で内税額を算出
     # 例) 税込10万円、税率10% → 10万 × 10/110 ≒ 9,091円
@@ -359,8 +396,14 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
         # 追加費用（AdditionalFees.csv）: FIXED と PER_KG の両方を計算
         add_total_csv, add_details_csv = get_additional_fees(svc_id, inp.country_code, charged_kg)
 
-        # CPaSS専用追加費用（関税額JPY = shipping_usd × fx）
-        duty_jpy = shipping_usd * fx
+        # CPaSS専用追加費用（米国関税処理手数料の基準となる関税額JPY）
+        # ①=商品価格内包の関税, ②③=送料経由の徴収関税, ④=0
+        if pattern == "included":
+            duty_jpy = duty_cost_jpy
+        elif pattern == "shipping":
+            duty_jpy = shipping_usd * fx
+        else:
+            duty_jpy = 0.0
         cpass_total, cpass_details = get_cpass_additional_fees(svc_name, fx, settings, duty_jpy)
 
         additional_fees = {**add_details_csv, **cpass_details}
@@ -369,9 +412,10 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
         total_shipping = shipping_display + additional_total
 
         # 利益計算
-        # profit = revenue_net - purchase - eBay費用（関税除く） - 実際の送料
+        # profit = revenue_net - purchase - eBay費用（関税除く） - 実送料 - seller実負担関税
+        # duty_cost_jpy は ①(商品価格内包)のみ非ゼロ。②③④は0（後方互換）
         ebay_fees_no_duty = fvf + intl_payment + txn_fee + ad_fee + payoneer
-        profit = revenue_net - inp.purchase_yen - ebay_fees_no_duty - total_shipping
+        profit = revenue_net - inp.purchase_yen - ebay_fees_no_duty - total_shipping - duty_cost_jpy
         profit_rate = profit / revenue if revenue > 0 else 0.0
 
         profit_with_refund = profit + tax_refund + point_return

@@ -1841,18 +1841,52 @@ if _w134_sel == "DASHBOARD":
 if _w134_sel == "利益計算":
     col1, col2, col3 = st.columns([1.2, 1, 1.2])
 
+    # col3（レート・設定）を先に評価 = 関税率の live 値を col1 の関税プレビュー /
+    # ②③送料prefill で参照可能にする（settings 既定値ではなく画面入力を真値化、UI内不整合を防ぐ）
+    with col3:
+        st.subheader("レート・設定")
+        fx = st.number_input("為替レート（JPY/USD）", min_value=1.0, value=float(s["exchange_rate"]), step=1.0)
+        duty_rate_input = st.number_input("関税率（%）", min_value=0.0, value=float(s["duty_rate"]), step=1.0)
+        pl_rate = st.number_input("PL広告費（%）", min_value=0.0, value=float(s["promoted_listing_rate"]), step=0.5)
+        tax_rate = st.number_input("消費税（%）", min_value=0.0, value=float(s["consumption_tax_rate"]), step=1.0)
+        point_rate = st.number_input("ポイント付与（%）", min_value=0.0, value=float(s["point_reward_rate"]), step=0.5)
+
     with col1:
         st.subheader("商品・コスト情報")
         purchase = st.number_input("仕入れ値（円）", min_value=0, value=52400, step=100)
         item_price = st.number_input("販売価格（USD）", min_value=0.0, value=500.0, step=1.0, format="%.2f")
         category_id = st.number_input("カテゴリーID", min_value=0, value=58248, step=1)
-        is_ddu = st.checkbox("DDUモード（関税バイヤー負担）", value=False)
-        if not is_ddu:
-            duty_rate = s.get("duty_rate", 20.0)
-            shipping_usd_preview = item_price * duty_rate / 100
-            st.info(f"送料代（関税）: ${shipping_usd_preview:.2f}　（商品価格 × {duty_rate:.0f}%）")
-        else:
-            st.info("送料代: $0.00（DDUモード）")
+        duty_pattern_label = st.selectbox(
+            "関税パターン",
+            [
+                "① US向けDDP・US_Only（関税を商品価格に含む）",
+                "②③ US向けDDP（関税を送料に乗せる）",
+                "④ US以外DDU（バイヤーが現地で関税負担）",
+            ],
+            index=1,
+        )
+        shipping_override = None
+        if duty_pattern_label.startswith("①"):
+            duty_pattern = "included"
+            duty_cost_preview = item_price * duty_rate_input / 100
+            st.info(
+                f"送料: $0.00（Free）／関税は実費計上: ${duty_cost_preview:.2f}"
+                f"（商品価格 × {duty_rate_input:.0f}%）"
+            )
+        elif duty_pattern_label.startswith("④"):
+            duty_pattern = "ddu"
+            st.info("送料: $0.00／関税: バイヤー負担（seller負担なし）")
+        else:  # ②③
+            duty_pattern = "shipping"
+            _prefill = round(item_price * duty_rate_input / 100, 2)
+            shipping_override = st.number_input(
+                "送料＝バイヤー徴収関税（USD・手入力）",
+                min_value=0.0, value=float(_prefill), step=1.0, format="%.2f",
+                help="初期値=商品価格×関税率。実際にバイヤーから徴収する送料(関税)に微調整できます。",
+                # 販売価格 or 関税率を変えたら prefill を再計算（widget state の古い値固定を防ぐ）
+                key=f"calc_ship_ovr_{item_price}_{duty_rate_input}",
+            )
+            st.caption(f"自動算出値: ${_prefill:.2f}（商品価格 × {duty_rate_input:.0f}%）")
 
     with col2:
         st.subheader("発送情報")
@@ -1874,14 +1908,6 @@ if _w134_sel == "利益計算":
         else:
             st.caption(f"実重量のみ: {weight_g/1000:.2f}kg（サイズ未入力）")
 
-    with col3:
-        st.subheader("レート・設定")
-        fx = st.number_input("為替レート（JPY/USD）", min_value=1.0, value=float(s["exchange_rate"]), step=1.0)
-        duty_rate_input = st.number_input("関税率（%）", min_value=0.0, value=float(s["duty_rate"]), step=1.0)
-        pl_rate = st.number_input("PL広告費（%）", min_value=0.0, value=float(s["promoted_listing_rate"]), step=0.5)
-        tax_rate = st.number_input("消費税（%）", min_value=0.0, value=float(s["consumption_tax_rate"]), step=1.0)
-        point_rate = st.number_input("ポイント付与（%）", min_value=0.0, value=float(s["point_reward_rate"]), step=0.5)
-
     st.divider()
     if st.button("▶ 計算実行", type="primary", width="stretch"):
         calc_settings = dict(s)
@@ -1893,7 +1919,8 @@ if _w134_sel == "利益計算":
         inp = CalcInput(
             purchase_yen=purchase, item_price_usd=item_price,
             weight_g=weight_g, length_cm=length, width_cm=width, height_cm=height,
-            category_id=int(category_id), is_ddu=is_ddu, country_code="US",
+            category_id=int(category_id), country_code="US",
+            duty_pattern=duty_pattern, shipping_usd_override=shipping_override,
         )
         result = calculate(inp, calc_settings)
 
