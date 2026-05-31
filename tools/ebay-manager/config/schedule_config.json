@@ -206,7 +206,7 @@
     },
     "fuel_surcharge_check": {
       "enabled": true,
-      "description": "FedEx/DHL公式サイトから燃料サーチャージ取得、settings.json反映",
+      "description": "CPaSS燃油サーチャージ週次手動更新リマインダー（通知専用、settings.jsonは読むだけ）",
       "priority": 12,
       "execution_times": [
         2
@@ -214,7 +214,7 @@
       "execution_weekday": [
         0
       ],
-      "note": "毎週月曜02:30のみ実行。取得失敗時はDiscord通知。週次更新なのでこれで十分"
+      "note": "毎週月曜02:30のみ実行。CPaSS手動更新を促すDiscordリマインダーを送るだけ（小売値≠CPaSS値の誤上書き防止で2026-05-31に通知専用化）"
     },
     "_x_news_check_removed": {
       "_note": "W154 (2026-05-22 PM) で W13 x_news_check は news_check に統合, 削除済. X (Grok) のリストラ + RSS 8 source 化. monitor/x_news_*.py + monitor/xai_wrapper.py + tasks/task_x_news_check.py + tests/test_x_news.py 物理削除."

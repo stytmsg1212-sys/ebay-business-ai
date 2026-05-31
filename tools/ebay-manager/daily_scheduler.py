@@ -661,12 +661,12 @@ def execute_daily_tasks(config, scheduled_hour=None):
     # ここの分岐を物理削除. config の "news_check" entry も併せて削除済.
 
     # ──────────────────────────────────────
-    # Step 12: 燃料サーチャージ自動取得（週次、月曜朝のみ）
+    # Step 12: 燃料サーチャージ週次更新リマインダー（通知専用、月曜朝のみ）
     # ──────────────────────────────────────
     if should_task_run('fuel_surcharge_check', config):
         from tasks.task_fuel_surcharge_check import run_fuel_surcharge_check
         results['fuel_surcharge_check'] = run_task(
-            '燃料サーチャージ取得',
+            '燃料サーチャージ更新リマインダー',
             lambda: run_fuel_surcharge_check(config),
             task_key='fuel_surcharge_check')
 

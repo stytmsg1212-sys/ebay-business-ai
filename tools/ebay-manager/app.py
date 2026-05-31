@@ -7228,6 +7228,14 @@ if _w134_sel == "設定":
     if st.button("設定を保存", type="primary"):
         with st.status("設定を保存中...", expanded=True) as status:
             st.write("▸ 設定値を更新中...")
+            # 燃料サーチャージは「手動更新の鮮度」を fuel_surcharge_last_updated で追跡する
+            # (週次リマインダー task_fuel_surcharge_check と app.py 鮮度警告が参照)。
+            # ここで値が変わった時だけ最終更新日時を打ち直す (無関係な設定保存で時計を
+            # リセットしないため、変更検知してから更新)。
+            _fuel_changed = (
+                float(s.get("fuel_surcharge_fedex", 0)) != float(new_fuel_fedex)
+                or float(s.get("fuel_surcharge_dhl", 0)) != float(new_fuel_dhl)
+            )
             s.update({
                 "exchange_rate": new_fx, "duty_rate": new_duty,
                 "promoted_listing_rate": new_pl, "consumption_tax_rate": new_tax,
@@ -7240,6 +7248,9 @@ if _w134_sel == "設定":
                 "ebay_app_id": new_app_id, "ebay_dev_id": new_dev_id,
                 "ebay_cert_id": new_cert_id, "ebay_user_token": new_user_token,
             })
+            if _fuel_changed:
+                from datetime import datetime as _dt_fuel
+                s["fuel_surcharge_last_updated"] = _dt_fuel.now().isoformat(timespec="seconds")
             save_settings(s)
             st.session_state.settings = s
             st.write("▸ 保存完了")
