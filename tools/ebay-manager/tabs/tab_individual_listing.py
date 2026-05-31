@@ -2209,12 +2209,18 @@ def _do_add(draft_params: dict, settings: dict) -> None:
                     )
                 else:
                     try:
+                        # W191 (2026-05-30): user が STEP5 で選んだ出品区分を
+                        # ebay_listings.primary_market へ永続化 (ebay_item_id キー).
+                        # 商品管理タブの区分表示 / 4 区分送料計算が出品直後から正しく
+                        # 効く (旧: 次回 Terapeak 解析まで '-' のままだった). DB 側で
+                        # canonical 化 ('us_only' → 'US_only') される.
                         upsert_ebay_listing(
                             ebay_item_id=str(_w176_item_id),
                             sku=_w176_sku,
                             title=str(draft_params.get("ebay_title") or ""),
                             current_price=float(draft_params.get("listing_price_usd") or 0.0),
                             quantity_ebay=1,
+                            primary_market=draft_params.get("primary_market"),
                         )
                         bump_db_version()
                     except Exception as _e:  # noqa: BLE001

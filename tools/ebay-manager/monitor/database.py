@@ -3079,9 +3079,33 @@ def prune_old_logs(days: int = 30):
 
 # ---- eBay出品管理 ----
 
+# W191 (2026-05-30): 4 区分 primary_market の canonical 表記.
+# 個別出品 UI は lowercase 'us_only' を使うが、Terapeak 経路 (_judge_primary_market)
+# と codex_lint_runner の語彙は 'US_only' (US 大文字). 保存値を 1 つに揃えるため
+# UI の 'us_only' を 'US_only' に寄せる (他 3 区分は両経路とも lowercase で一致).
+_PRIMARY_MARKET_CANONICAL: dict[str, str] = {
+    "us_only": "US_only",
+}
+
+
+def _normalize_primary_market(value: Optional[str]) -> Optional[str]:
+    """primary_market を canonical 表記に正規化する。None / 空文字は None (列に触れない)。
+
+    'us_only' (UI lowercase) → 'US_only' (Terapeak / lint 語彙). 既に 'US_only' の場合や
+    mixed_global / global_only / unknown はそのまま返す (未知値も素通し = 上位の責務)。
+    """
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    return _PRIMARY_MARKET_CANONICAL.get(v.lower(), v)
+
+
 def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                         current_price: float = 0.0, quantity_ebay: int = 0,
-                        shipping_cost: float = 0.0) -> int:
+                        shipping_cost: float = 0.0,
+                        primary_market: Optional[str] = None) -> int:
     """eBay出品を挿入または更新。
 
     重要: eBay 側で SKU が変更された場合 (既存 vs 今回のSKUが異なる):
@@ -3090,7 +3114,15 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
       - `source_status` を 'unknown' にリセット (inventory_check が再評価する)
       - `risk_confirmed` を 0 にリセット (古い確認フラグは新SKUに無効)
     これがないと「古いSKU時代のOOS状態」が居座り続ける。
+
+    W191 (2026-05-30): primary_market を指定すると ebay_listings.primary_market に
+    反映する (個別出品 UI で user が選んだ出品区分の永続化). None / 空文字 のときは
+    primary_market 列に一切触れない (Terapeak 解析 / 承認 UI が確定した既存値を
+    upsert で踏み潰さないため). 値は _normalize_primary_market で canonical 化
+    ('us_only' → 'US_only' 等) してから保存し、Terapeak 経路 (_judge_primary_market)
+    や lowest_price 表示層と表記を揃える.
     """
+    pm_norm = _normalize_primary_market(primary_market)
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id, sku FROM ebay_listings WHERE ebay_item_id=?", (ebay_item_id,)
@@ -3128,10 +3160,11 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                           source_url=COALESCE(?, source_url),
                           source_status='unknown',
                           source_last_checked=NULL,
-                          risk_confirmed=0
+                          risk_confirmed=0,
+                          primary_market=COALESCE(?, primary_market)
                        WHERE ebay_item_id=?""",
                     (sku, title, current_price, quantity_ebay, shipping_cost, now,
-                     new_source_url, ebay_item_id),
+                     new_source_url, pm_norm, ebay_item_id),
                 )
                 # W139-fix (2026-05-18): eBay 側 SKU 変更検知時も monitored_items
                 # を追従 (同一 conn 原子的)。汚染源 2 経路目 (user 承認済)。
@@ -3145,24 +3178,28 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                 conn.execute(
                     """UPDATE ebay_listings SET
                           sku=?, title=?, current_price=?, quantity_ebay=?,
-                          shipping_cost=?, last_synced_at=?
+                          shipping_cost=?, last_synced_at=?,
+                          primary_market=COALESCE(?, primary_market)
                        WHERE ebay_item_id=?""",
                     (sku, title, current_price, quantity_ebay, shipping_cost, now,
-                     ebay_item_id),
+                     pm_norm, ebay_item_id),
                 )
                 _sync_monitored_items_sku(conn, ebay_item_id, sku)
             else:
                 conn.execute(
                     """UPDATE ebay_listings SET title=?, current_price=?, quantity_ebay=?,
-                       shipping_cost=?, last_synced_at=? WHERE ebay_item_id=?""",
-                    (title, current_price, quantity_ebay, shipping_cost, now, ebay_item_id),
+                       shipping_cost=?, last_synced_at=?,
+                       primary_market=COALESCE(?, primary_market)
+                       WHERE ebay_item_id=?""",
+                    (title, current_price, quantity_ebay, shipping_cost, now,
+                     pm_norm, ebay_item_id),
                 )
             return existing["id"]
 
         conn.execute(
-            """INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, last_synced_at)
-               VALUES (?,?,?,?,?,?,?)""",
-            (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, now),
+            """INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, last_synced_at, primary_market)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, now, pm_norm),
         )
         return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
