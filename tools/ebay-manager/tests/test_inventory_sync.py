@@ -278,3 +278,142 @@ def test_get_credentials_none_when_any_field_blank():
     with patch("monitor.credentials.get_ebay_credentials",
                return_value=fake):
         assert inventory_sync._get_credentials() is None
+
+
+# =============================================================================
+# W205 (2026-05-31): explicit_quantity 経路 (無在庫 listing の手動数量編集)
+#   無在庫 (ebay* SKU) は inventory_count=NULL のため、UI 入力値を直接 eBay へ
+#   送る。sync_listing_quantity(eid, explicit_quantity=N) で一般化。
+# =============================================================================
+
+def _insert_supplier_listing(ebay_item_id, sku, quantity_ebay=0, title="T"):
+    """無在庫 (ebay* SKU) listing。inventory_count は NULL のまま。"""
+    from monitor.database import get_conn
+    with get_conn() as c:
+        c.execute(
+            """INSERT INTO ebay_listings
+               (ebay_item_id, sku, title, is_ended, quantity_ebay)
+               VALUES (?, ?, ?, 0, ?)""",
+            (ebay_item_id, sku, title, quantity_ebay),
+        )
+
+
+def test_explicit_quantity_no_stock_listing_sets_value(tmp_db):
+    """無在庫 (inventory_count=NULL) でも explicit_quantity で eBay 反映できる."""
+    _insert_supplier_listing("W205A", "ebayyh_p123", quantity_ebay=0)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.revise_inventory_quantity",
+               return_value={"success": True, "message": "ok"}) as m:
+        res = inventory_sync.sync_listing_quantity("W205A", explicit_quantity=3)
+    assert res["success"] is True
+    assert res["target_quantity"] == 3
+    # eBay へ数量3 で revise を呼んだ (inventory_count=NULL でも skip しない)
+    assert m.call_args[0][1] == 3
+    from monitor.database import get_conn
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT quantity_ebay, last_synced_quantity, last_qty_sync_at, "
+            "qty_sync_error FROM ebay_listings WHERE ebay_item_id='W205A'"
+        ).fetchone()
+    assert row["quantity_ebay"] == 3
+    assert row["last_synced_quantity"] == 3
+    assert row["last_qty_sync_at"] is not None
+    assert row["qty_sync_error"] is None
+
+
+def test_explicit_quantity_uses_ebay_item_id_not_sku(tmp_db):
+    """同 sku を共有する 2 listing で ebay_item_id 指定分だけ反映される (sku-rules)."""
+    _insert_supplier_listing("W205B1", "ebayyh_shared", quantity_ebay=0)
+    _insert_supplier_listing("W205B2", "ebayyh_shared", quantity_ebay=0)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.revise_inventory_quantity",
+               return_value={"success": True, "message": "ok"}) as m:
+        res = inventory_sync.sync_listing_quantity("W205B1", explicit_quantity=5)
+    assert res["success"] is True
+    # revise は対象 ebay_item_id でのみ呼ばれる
+    assert m.call_args[0][0] == "W205B1"
+    from monitor.database import get_conn
+    with get_conn() as c:
+        rows = {
+            r["ebay_item_id"]: r["quantity_ebay"]
+            for r in c.execute(
+                "SELECT ebay_item_id, quantity_ebay FROM ebay_listings "
+                "WHERE sku='ebayyh_shared'"
+            ).fetchall()
+        }
+    assert rows["W205B1"] == 5, "対象 listing が更新されていない"
+    assert rows["W205B2"] == 0, "同 sku の別 listing まで巻き込んで更新された (SKU 集約バグ)"
+
+
+def test_explicit_quantity_positive_skips_oos_gate(tmp_db):
+    """explicit_quantity>0 は OOS Control を問い合わせずに revise (0化ゲートと別)."""
+    _insert_supplier_listing("W205C", "ebayyh_p999", quantity_ebay=0)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.get_out_of_stock_control_enabled") as oos, \
+         patch("monitor.ebay_client.revise_inventory_quantity",
+               return_value={"success": True, "message": "ok"}):
+        res = inventory_sync.sync_listing_quantity("W205C", explicit_quantity=10)
+    assert res["success"] is True
+    oos.assert_not_called()  # 正の数量なので OOS 確認は不要
+
+
+def test_explicit_quantity_zero_oos_unknown_suppresses(tmp_db):
+    """explicit_quantity=0 でも OOS 未確認なら抑止 (Defect 防止ゲートは共通)."""
+    _insert_supplier_listing("W205D", "ebayyh_p000", quantity_ebay=1)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.get_out_of_stock_control_enabled",
+               return_value=None), \
+         patch("monitor.ebay_client.revise_inventory_quantity") as m:
+        res = inventory_sync.sync_listing_quantity("W205D", explicit_quantity=0)
+    assert res["success"] is False
+    assert res["skipped_zero_unsafe"] is True
+    m.assert_not_called()
+
+
+def test_explicit_quantity_api_failure_records_error(tmp_db):
+    """explicit_quantity 経路でも API 失敗は qty_sync_error に痕跡 (Q0 偽装成功禁止)."""
+    _insert_supplier_listing("W205E", "ebayyh_pfail", quantity_ebay=0)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.revise_inventory_quantity",
+               return_value={"success": False, "message": "API エラー: nope"}):
+        res = inventory_sync.sync_listing_quantity("W205E", explicit_quantity=2)
+    assert res["success"] is False
+    assert "nope" in res["message"]
+    from monitor.database import get_conn
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT quantity_ebay, qty_sync_error, last_qty_sync_at "
+            "FROM ebay_listings WHERE ebay_item_id='W205E'"
+        ).fetchone()
+    assert row["qty_sync_error"] is not None and "nope" in row["qty_sync_error"]
+    assert row["quantity_ebay"] == 0, "失敗時に数量を更新してはいけない"
+    assert row["last_qty_sync_at"] is None
+
+
+def test_explicit_quantity_negative_rejected(tmp_db):
+    """負の数量は eBay へ送らず弾く (UI min_value=0 の二重防御)."""
+    _insert_supplier_listing("W205F", "ebayyh_pneg", quantity_ebay=0)
+    from monitor import inventory_sync
+    with patch.object(inventory_sync, "_get_credentials",
+                      return_value=_FAKE_CREDS), \
+         patch("monitor.ebay_client.revise_inventory_quantity") as m:
+        res = inventory_sync.sync_listing_quantity("W205F", explicit_quantity=-1)
+    assert res["success"] is False
+    m.assert_not_called()
+
+
+def test_explicit_quantity_missing_listing(tmp_db):
+    from monitor import inventory_sync
+    res = inventory_sync.sync_listing_quantity("NOPE205", explicit_quantity=3)
+    assert res["success"] is False
+    assert "ebay_listings に無い" in res["message"]

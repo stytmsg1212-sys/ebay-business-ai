@@ -985,8 +985,37 @@ def _render_left_basic_and_physical(
                         f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
                     )
         else:
-            st.caption("無在庫 SKU (在庫数管理対象外)")
+            # W205 (2026-05-31): 無在庫 (ebay* SKU) は物理在庫を持たないが、
+            # eBay 出品数量 (quantity_ebay) は手動で持ち上げられる。
+            # 無在庫は Amazon/楽天/Yahoo から無限調達可 = 売れて0になり販売
+            # 機会を逃すのを防ぐため、任意の数量を eBay へ即反映する。
+            # 自動補充は対象外 (手動編集のみ / K1)。
             editing["inventory_count"] = None
+            sku_is_supplier = current_sku.startswith("ebay")
+            if sku_is_supplier:
+                _cur_qty = p.get("quantity_ebay")
+                editing["quantity_ebay_manual"] = st.number_input(
+                    "eBay 出品数量 (無在庫)",
+                    min_value=0,
+                    value=int(_cur_qty) if _cur_qty is not None else 0,
+                    step=1,
+                    key=f"pm_qtyebay_{eid}",
+                    help="無在庫 listing の eBay 出品数量。保存で eBay へ即反映 "
+                         "(Amazon/楽天/Yahoo から調達可なので0切れ防止に持ち上げる)。",
+                )
+                # 痕跡層 (Q0): eBay 数量 sync の最終状態を表示。
+                _sync_err = p.get("qty_sync_error")
+                if _sync_err:
+                    st.caption(f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}")
+                else:
+                    _sync_at = p.get("last_qty_sync_at")
+                    _sync_qty = p.get("last_synced_quantity")
+                    if _sync_at:
+                        st.caption(
+                            f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
+                        )
+            else:
+                st.caption("在庫数管理対象外 (stock*/ebay* 以外の SKU)")
 
     # ── 📦 物理属性 ──
     st.markdown('<div class="pm-section-label">📦 物理属性 (送料計算 + breakeven に必須)</div>',
@@ -2045,6 +2074,42 @@ def _save_product_data(
                 st.warning(
                     "在庫数は DB 保存しましたが eBay 数量反映に失敗しました: "
                     f"{_sync.get('message') or '不明'}"
+                )
+
+    # W205 (2026-05-31): 無在庫 (ebay* SKU) の eBay 出品数量を手動編集 → eBay 即反映.
+    # listing 識別は ebay_item_id (SKU 不使用)。inventory_count を持たないので
+    # explicit_quantity 経路で UI 入力値を直接 eBay へ送る。quantity_ebay 列・痕跡層
+    # (last_qty_sync_at/last_synced_quantity/qty_sync_error) は sync_listing_quantity
+    # 内で一元更新。成功時のみ「反映済」、失敗は握り潰さず st.warning + qty_sync_error
+    # に痕跡 (Q0)。現在の eBay 数量と異なる時のみ反映 (無駄な API call / 同値書込回避)。
+    _qty_manual = editing.get("quantity_ebay_manual")
+    if _qty_manual is not None:
+        with get_conn() as conn:
+            _qrow = conn.execute(
+                "SELECT quantity_ebay FROM ebay_listings WHERE ebay_item_id=?",
+                (ebay_item_id,),
+            ).fetchone()
+        _cur_qty = (_qrow[0] if _qrow else None)
+        if _cur_qty is None or int(_cur_qty) != int(_qty_manual):
+            from monitor import inventory_sync
+            _qsync = inventory_sync.sync_listing_quantity(
+                ebay_item_id, explicit_quantity=int(_qty_manual)
+            )
+            if _qsync.get("success"):
+                st.success(
+                    f"📤 eBay 出品数量を {int(_qty_manual)} に反映しました "
+                    "(GetItem で実反映の最終 verify 推奨)"
+                )
+            elif _qsync.get("skipped_zero_unsafe"):
+                st.warning(
+                    "数量0 ですが eBay 反映を抑止しました "
+                    "(Out-of-Stock Control 未確認 = listing 自動 End 防止)。"
+                    f" {_qsync.get('message') or ''}"
+                )
+            else:
+                st.warning(
+                    "eBay 出品数量の反映に失敗しました: "
+                    f"{_qsync.get('message') or '不明'}"
                 )
 
     pyen = editing.get("purchase_yen")

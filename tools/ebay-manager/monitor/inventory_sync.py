@@ -91,16 +91,25 @@ def _record_sync_error(ebay_item_id: str, message: str) -> None:
         )
 
 
-def sync_listing_quantity(ebay_item_id: str) -> dict:
-    """ebay_listings.inventory_count を eBay の出品数量へ反映する.
+def sync_listing_quantity(
+    ebay_item_id: str, explicit_quantity: Optional[int] = None
+) -> dict:
+    """ebay_listings の出品数量を eBay へ反映する.
 
     Args:
         ebay_item_id: listing 識別 (eBay 一意 ID). SKU は使わない.
+        explicit_quantity: 反映する数量を明示指定する場合に渡す.
+            None の時は **有在庫の inventory_count を読んで反映** (従来動作).
+            非 None の時は inventory_count を読まず、その値をそのまま反映する
+            (W205 2026-05-31: 無在庫 listing は inventory_count=NULL のため、
+             user が UI で入力した quantity_ebay を直接 eBay へ送る経路に使う).
+            無在庫は Amazon/楽天/Yahoo から無限調達可能なので、売れて0になり
+            販売機会を逃すのを防ぐ目的で手動で数量を持ち上げる.
 
     Returns dict:
         success           : bool
         ebay_item_id       : str
-        target_quantity    : int | None  (反映しようとした数量 = inventory_count)
+        target_quantity    : int | None  (反映しようとした数量)
         skipped_zero_unsafe: bool        (在庫0 だが OOS 未確認で抑止した)
         message            : str
     """
@@ -126,12 +135,21 @@ def sync_listing_quantity(ebay_item_id: str) -> dict:
         base["message"] = msg
         return base
 
-    target = row["inventory_count"]
-    if target is None:
-        msg = "inventory_count=NULL (在庫数未入力) のため sync skip"
-        logger.info(f"[inventory_sync] {ebay_item_id}: {msg}")
-        base["message"] = msg
-        return base
+    if explicit_quantity is not None:
+        # W205: 明示数量モード (無在庫 listing 等、inventory_count を読まない).
+        target = explicit_quantity
+        if target < 0:
+            msg = f"explicit_quantity={target} が負 (0 以上が必須)"
+            logger.warning(f"[inventory_sync] {ebay_item_id}: {msg}")
+            base["message"] = msg
+            return base
+    else:
+        target = row["inventory_count"]
+        if target is None:
+            msg = "inventory_count=NULL (在庫数未入力) のため sync skip"
+            logger.info(f"[inventory_sync] {ebay_item_id}: {msg}")
+            base["message"] = msg
+            return base
 
     target = int(target)
     base["target_quantity"] = target
