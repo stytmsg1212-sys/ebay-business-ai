@@ -854,25 +854,27 @@ def test_compute_watch_update_includes_ebay_item_id():
     assert fields_clear["ebay_item_id"] is None
 
 
-def test_get_ebay_prices_batch(tmp_db):
-    """get_ebay_prices_for_item_ids: ebay_listings から batch 取得 (N+1 回避)。
-    None / 欠落 / 空リストの境界条件を網羅。"""
-    from monitor.keyword_watch_db import get_ebay_prices_for_item_ids
+def test_get_ebay_meta_batch(tmp_db):
+    """W207: get_ebay_meta_for_item_ids — title + current_price を ebay_item_id IN (...)
+    で 1 query 取得 (N+1 回避)。None / 欠落 / 空リスト / NULL price の境界条件を網羅。
+
+    W207 で旧 get_ebay_prices_for_item_ids を本 helper に一本化 (title も必要なため)。"""
+    from monitor.keyword_watch_db import get_ebay_meta_for_item_ids
     from monitor.database import get_conn
 
-    # 2 件 listing を直接挿入 (W206 で扱う最小カラムのみ)
+    # 3 件 listing を直接挿入
     with get_conn() as c:
         c.execute(
             "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
             "VALUES (?,?,?,?)",
-            ("AAA111", "stock:01", "Item A", 99.99),
+            ("AAA111", "stock:01", "Item A title", 99.99),
         )
         c.execute(
             "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
             "VALUES (?,?,?,?)",
-            ("BBB222", "stock:02", "Item B", 1234.50),
+            ("BBB222", "stock:02", "Item B title", 1234.50),
         )
-        # current_price NULL は dict から除外
+        # current_price NULL でも row は返る (title は使える)
         c.execute(
             "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
             "VALUES (?,?,?,?)",
@@ -880,18 +882,22 @@ def test_get_ebay_prices_batch(tmp_db):
         )
 
     # 空リスト → {}
-    assert get_ebay_prices_for_item_ids([]) == {}
-    # None のみ → {}
-    assert get_ebay_prices_for_item_ids([None, ""]) == {}
+    assert get_ebay_meta_for_item_ids([]) == {}
+    # None / 空文字列のみ → {}
+    assert get_ebay_meta_for_item_ids([None, ""]) == {}
 
-    # 2 件取得 + 欠落 ID + None 混在 + NULL price は除外
-    prices = get_ebay_prices_for_item_ids(
+    # 3 件取得 + 欠落 ID + None 混在
+    meta = get_ebay_meta_for_item_ids(
         ["AAA111", "BBB222", "ZZZ_missing", None, "CCC333"]
     )
-    assert prices == {"AAA111": 99.99, "BBB222": 1234.50}
-    # CCC333 は current_price NULL なので除外
-    assert "CCC333" not in prices
-    assert "ZZZ_missing" not in prices
+    assert set(meta.keys()) == {"AAA111", "BBB222", "CCC333"}
+    assert meta["AAA111"] == {"title": "Item A title", "current_price": 99.99}
+    assert meta["BBB222"] == {"title": "Item B title", "current_price": 1234.50}
+    # CCC333 は current_price NULL でも row は返る (title 取得可)
+    assert meta["CCC333"]["title"] == "Item C (no price)"
+    assert meta["CCC333"]["current_price"] is None
+    # 欠落 ID は dict にない
+    assert "ZZZ_missing" not in meta
 
 
 def test_inherit_relist_follows_keyword_watch(tmp_db):
@@ -1061,16 +1067,27 @@ def test_crawl_loop_injects_ebay_price(tmp_db, monkeypatch):
 
     monkeypatch.setattr(mod, "_send_discord_for_hit", fake_send)
 
+    # W207: ebay_item_id 付き watch では AI 判定が走るため、API 実 call を避けるべく
+    # evaluate_match を mock して必ず通知する score を返す (この test の主旨は AI 判定
+    # ではなく batch helper 注入の verify)。
+    from monitor import claude_evaluator as ce
+    from monitor.claude_evaluator import EvaluationResult
+    monkeypatch.setattr(
+        ce, "evaluate_match",
+        lambda **kw: EvaluationResult(match_score=80, reasoning="test"),
+    )
+
     # batch helper 呼出回数 = 1 (resend pass 含めて run 内 2 回でも OK だが、
     # main loop 前に 1 回確実に呼ばれることを check)
+    # W207: get_ebay_prices_for_item_ids → get_ebay_meta_for_item_ids にリネーム.
     call_count = {"n": 0}
-    real_fn = mod.get_ebay_prices_for_item_ids
+    real_fn = mod.get_ebay_meta_for_item_ids
 
     def counted(item_ids):
         call_count["n"] += 1
         return real_fn(item_ids)
 
-    monkeypatch.setattr(mod, "get_ebay_prices_for_item_ids", counted)
+    monkeypatch.setattr(mod, "get_ebay_meta_for_item_ids", counted)
 
     r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
     assert r["success"] is True
@@ -1081,3 +1098,511 @@ def test_crawl_loop_injects_ebay_price(tmp_db, monkeypatch):
     # batch helper が main loop 前に呼ばれている (件数は 1 or 2、in-range hit があれば
     # resend pass も走るが detected_at >= now-7d で discord_sent=1 になるため 0 件)
     assert call_count["n"] >= 1
+
+
+# ---------- W207 (2026-06-01): キーワード通知 専用 Discord チャンネル + AI 同一性判定 ----------
+
+
+def test_inject_keyword_webhook_into_config(monkeypatch):
+    """W207 Part1: DISCORD_KEYWORD_WEBHOOK_URL が config['discord']['keyword_webhook_url']
+    に注入される (env 設定時のみ key 出現)。"""
+    from notifiers.discord_notifier import inject_webhook_into_config
+    kw_url = "https://discord.com/api/webhooks/777777/keyword-channel"
+    monkeypatch.setenv("DISCORD_KEYWORD_WEBHOOK_URL", kw_url)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    cfg = inject_webhook_into_config({})
+    assert cfg["discord"]["keyword_webhook_url"] == kw_url
+
+
+def test_inject_keyword_webhook_absent_skips_key(monkeypatch):
+    """W207 Part1: env 未設定なら keyword_webhook_url key 自体を作らない
+    (caller の fallback to DISCORD_WEBHOOK_URL を効かせる)。"""
+    from notifiers.discord_notifier import inject_webhook_into_config
+    monkeypatch.delenv("DISCORD_KEYWORD_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/x")
+    cfg = inject_webhook_into_config({})
+    assert "keyword_webhook_url" not in cfg["discord"]
+
+
+def test_inject_keyword_webhook_idempotent(monkeypatch):
+    """W207 Part1: 既存値があれば env で上書きしない (idempotent)。"""
+    from notifiers.discord_notifier import inject_webhook_into_config
+    monkeypatch.setenv("DISCORD_KEYWORD_WEBHOOK_URL", "https://discord.com/api/webhooks/env/x")
+    existing = "https://discord.com/api/webhooks/existing/y"
+    cfg = inject_webhook_into_config(
+        {"discord": {"keyword_webhook_url": existing}}
+    )
+    assert cfg["discord"]["keyword_webhook_url"] == existing
+
+
+def test_keyword_webhook_routing_uses_dedicated_when_set(tmp_db, monkeypatch):
+    """W207 Part1: keyword_webhook_url が config にあれば hit 通知がそちらへ送信される
+    (DOM rot / orphan / resend 警告も同様に専用 webhook)。"""
+    from monitor.keyword_watch_db import add_watch
+    import tasks.task_keyword_watch_crawl as mod
+
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=route",
+        keyword="route", price_min_jpy=1000, price_max_jpy=50000,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/RouteTest"
+        title = "route hit"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr(
+        "monitor.mercari_search.search_mercari",
+        MagicMock(return_value=[_Hit()]),
+    )
+    sent_to = []
+    monkeypatch.setattr(
+        mod, "_send_discord_for_hit",
+        lambda webhook, watch, hit, hit_id: sent_to.append(webhook) or True,
+    )
+
+    KW_WH = "https://example/keyword-channel"
+    GEN_WH = "https://example/general-channel"
+    r = mod.run_keyword_watch_crawl({
+        "discord": {"webhook_url": GEN_WH, "keyword_webhook_url": KW_WH},
+    })
+    assert r["success"] is True
+    # hit 通知は専用キーワード webhook へ
+    assert sent_to and all(w == KW_WH for w in sent_to), \
+        f"hit 通知が専用 keyword webhook に向いていない: {sent_to}"
+
+
+def test_keyword_webhook_routing_falls_back_when_unset(tmp_db, monkeypatch):
+    """W207 Part1: keyword_webhook_url 未設定なら既定 webhook にフォールバック
+    (通知先消失を防ぐ / Q0)。"""
+    from monitor.keyword_watch_db import add_watch
+    import tasks.task_keyword_watch_crawl as mod
+
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=fallback",
+        keyword="fallback", price_min_jpy=1000, price_max_jpy=50000,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/FbTest"
+        title = "fb hit"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr(
+        "monitor.mercari_search.search_mercari",
+        MagicMock(return_value=[_Hit()]),
+    )
+    sent_to = []
+    monkeypatch.setattr(
+        mod, "_send_discord_for_hit",
+        lambda webhook, watch, hit, hit_id: sent_to.append(webhook) or True,
+    )
+
+    GEN_WH = "https://example/general-channel"
+    # discord に keyword_webhook_url 無し
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": GEN_WH}})
+    assert r["success"] is True
+    assert sent_to and all(w == GEN_WH for w in sent_to), \
+        "fallback 失敗: 既定 webhook に向いていない"
+
+
+def test_keyword_webhook_dom_rot_uses_dedicated(tmp_db, monkeypatch):
+    """W207 Part1: DOM rot 警告も専用 keyword webhook へ送信
+    (keyword crawl task 内の全送信は専用チャンネル)。"""
+    from monitor.keyword_watch_db import init_default_sentinels
+    init_default_sentinels()
+    import tasks.task_keyword_watch_crawl as mod
+
+    # 両 search を空 hits = 全 sentinel zero
+    monkeypatch.setattr("monitor.mercari_search.search_mercari", MagicMock(return_value=[]))
+    monkeypatch.setattr("monitor.yahoo_search.search_yahoo", MagicMock(return_value=[]))
+
+    sent_to = []
+    monkeypatch.setattr(
+        mod, "_send_discord_site_health",
+        lambda webhook, site, msg: sent_to.append((webhook, site)) or True,
+    )
+
+    KW_WH = "https://example/kw-channel"
+    GEN_WH = "https://example/general-channel"
+    r = mod.run_keyword_watch_crawl({
+        "discord": {"webhook_url": GEN_WH, "keyword_webhook_url": KW_WH},
+    })
+    assert r["success"] is True
+    # site_health (DOM rot) も専用 webhook
+    assert sent_to, "DOM rot Discord 未送信"
+    for wh, _site in sent_to:
+        assert wh == KW_WH, f"site_health が専用 webhook でない: {wh}"
+
+
+# ---------- W207 Part2: AI 同一性判定 ----------
+
+
+def _stub_evaluate(score: int, error: str | None = None):
+    """evaluate_match を mock するための EvaluationResult スタブ生成 helper."""
+    from monitor.claude_evaluator import EvaluationResult
+    return EvaluationResult(match_score=score, reasoning="stub", error=error)
+
+
+def test_ai_match_below_threshold_suppresses(tmp_db, monkeypatch, caplog):
+    """W207 Part2: match_score < 40 → 通知抑制 + 履歴 (hit row) は残る + log 痕跡 (Q0)."""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+    import logging
+
+    iid = "AI_SUPPRESS_001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Sony WH-1000XM5 Black", 199.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=sony",
+        keyword="sony", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/Different"
+        title = "Bose QC45 Black (全く別商品)"
+        price_jpy = 12000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    # AI 判定 = match_score=30 < 40 → suppress
+    monkeypatch.setattr(mod, "evaluate_match", lambda **kw: _stub_evaluate(30),
+                        raising=False)
+    # 重要: import 経路は _should_suppress_by_ai 内で `from monitor.claude_evaluator
+    # import evaluate_match` するため module patch が必要
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", lambda **kw: _stub_evaluate(30))
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    caplog.set_level(logging.INFO, logger="tasks.task_keyword_watch_crawl")
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+
+    assert r["success"] is True
+    # 通知抑制 = discord_sent カウンタ 0
+    assert r["discord_sent"] == 0
+    assert r["ai_suppressed"] == 1
+    assert sent == [], f"AI 抑制対象が通知された: {sent}"
+
+    # 履歴は残る (hit row 1 件)
+    with get_conn() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM keyword_watch_hits "
+            "WHERE found_item_url=?", (_Hit.url,),
+        ).fetchone()[0]
+        sent_flag = c.execute(
+            "SELECT discord_sent FROM keyword_watch_hits WHERE found_item_url=?",
+            (_Hit.url,),
+        ).fetchone()[0]
+    assert n == 1, "AI 抑制 hit が DB に残っていない"
+    # AI 抑制 = discord_sent=1 (resend 対象外化)
+    assert sent_flag == 1, "AI 抑制 hit が discord_sent=0 のままなら resend が拾ってしまう"
+
+    # log 痕跡 (Q0 silent skip 防止)
+    suppress_logs = [r for r in caplog.records if "通知スキップ" in r.getMessage()]
+    assert suppress_logs, "AI 抑制の log 痕跡が無い (Q0 silent skip)"
+
+
+def test_ai_match_above_threshold_notifies(tmp_db, monkeypatch):
+    """W207 Part2: match_score >= 40 → 従来通り通知される。"""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+
+    iid = "AI_NOTIFY_001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Sony WH-1000XM5 Black", 199.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=sony",
+        keyword="sony", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/SonyMatch"
+        title = "Sony WH-1000XM5 Black 美品"
+        price_jpy = 30000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", lambda **kw: _stub_evaluate(70))
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+    assert r["discord_sent"] == 1, "match_score>=40 の hit が通知されていない"
+    assert r["ai_suppressed"] == 0
+    assert len(sent) == 1
+
+
+def test_ai_match_error_fail_open(tmp_db, monkeypatch, caplog):
+    """W207 Part2: evaluate_match.error (API 未設定 / API 失敗) → fail-open 通知 (Q0)."""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+    import logging
+
+    iid = "AI_FAIL_OPEN_001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Item title", 99.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=fo",
+        keyword="fo", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/FailOpen"
+        title = "something"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(
+        ce, "evaluate_match",
+        lambda **kw: _stub_evaluate(0, error="ANTHROPIC_API_KEY not set"),
+    )
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    caplog.set_level(logging.WARNING, logger="tasks.task_keyword_watch_crawl")
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+    # fail-open: 通知される (機会を握り潰さない)
+    assert r["discord_sent"] == 1, "fail-open でも通知されていない (機会喪失 = Q0)"
+    assert r["ai_suppressed"] == 0
+    # 痕跡 log
+    api_err_logs = [r for r in caplog.records if "fail-open" in r.getMessage()]
+    assert api_err_logs, "API error fail-open の log 痕跡が無い (Q0)"
+
+
+def test_ai_match_unexpected_exception_fail_open(tmp_db, monkeypatch, caplog):
+    """W207 Part2: evaluate_match が想定外の例外を吐いた時も fail-open 通知 (Q0)."""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+    import logging
+
+    iid = "AI_EXC_001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "T", 99.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=exc",
+        keyword="exc", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/Exc"
+        title = "x"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+
+    def boom(**kw):
+        raise RuntimeError("simulated network outage")
+
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", boom)
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    caplog.set_level(logging.WARNING, logger="tasks.task_keyword_watch_crawl")
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+    assert r["discord_sent"] == 1, "例外 fail-open 通知が動いていない"
+    fo_logs = [r for r in caplog.records if "fail-open" in r.getMessage()]
+    assert fo_logs, "想定外例外の fail-open log 痕跡なし (Q0)"
+
+
+def test_ai_match_skipped_without_item_id(tmp_db, monkeypatch):
+    """W207 Part2: ebay_item_id 無 watch (= _ebay_title 取得不可) → AI 判定スキップ、
+    従来通り通知される。"""
+    from monitor.keyword_watch_db import add_watch
+    import tasks.task_keyword_watch_crawl as mod
+
+    # ebay_item_id 無し
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=noiid",
+        keyword="noiid", price_min_jpy=1000, price_max_jpy=50000,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/NoIID"
+        title = "random thing"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    # evaluate_match が呼ばれたら fail (= AI 判定スキップしていない signal)
+    eval_called = {"n": 0}
+
+    def should_not_be_called(**kw):
+        eval_called["n"] += 1
+        return _stub_evaluate(30)
+
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", should_not_be_called)
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+    assert r["discord_sent"] == 1, "ebay_item_id 無 watch で通知されない (従来動作回帰)"
+    assert eval_called["n"] == 0, "ebay_item_id 無で AI 判定が走っている (無駄 API call)"
+
+
+def test_ai_match_suppressed_hit_not_resent_by_resend_pass(tmp_db, monkeypatch):
+    """W207 Part2 核心: AI 抑制 hit が discord_sent=1 で記録されるため、
+    次回 crawl の resend pass が拾わない (抑制無効化を防ぐ)。"""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+
+    iid = "AI_RESEND_GUARD"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Pinpoint title", 99.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=guard",
+        keyword="guard", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/Guard"
+        title = "totally unrelated thing"
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    # AI: score=20 < 40 で抑制
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", lambda **kw: _stub_evaluate(20))
+    # _send_discord_for_hit は呼ばれない想定
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    # 1 回目 crawl: AI 抑制
+    r1 = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r1["ai_suppressed"] == 1
+    assert r1["discord_sent"] == 0
+    assert sent == []
+
+    # resend pass が拾わないことを確認: 同 row が discord_sent=1 なので
+    # get_unnotified_in_range_hits の WHERE discord_sent=0 で除外される
+    with get_conn() as c:
+        unsent = c.execute(
+            "SELECT COUNT(*) FROM keyword_watch_hits "
+            "WHERE discord_sent=0 AND in_price_range=1"
+        ).fetchone()[0]
+    assert unsent == 0, \
+        "AI 抑制 hit が discord_sent=0 のまま残存 → resend pass で抑制が無効化される"
+
+    # 2 回目 crawl: 同じ hit (URL dedupe で record_hit_claim=None) + resend pass も拾わない
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    r2 = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r2["discord_sent"] == 0, "2 回目 crawl で resend pass が AI 抑制 hit を送信した"
+    assert sent == []
+
+
+def test_ai_match_empty_candidate_title_skips_ai(tmp_db, monkeypatch):
+    """W207 Part2 edge case: candidate_title が空なら AI 判定不能 → 通知側に倒す (Q0)."""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+
+    iid = "AI_EMPTY_TITLE"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Real eBay listing", 99.99),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=empty",
+        keyword="empty", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/EmptyTitle"
+        title = ""  # 空タイトル
+        price_jpy = 5000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    # AI が呼ばれたら fail (= 空 title でも判定試みている signal)
+    eval_called = {"n": 0}
+
+    def fail(**kw):
+        eval_called["n"] += 1
+        return _stub_evaluate(0)
+
+    from monitor import claude_evaluator as ce
+    monkeypatch.setattr(ce, "evaluate_match", fail)
+
+    sent = []
+    monkeypatch.setattr(mod, "_send_discord_for_hit",
+                        lambda webhook, watch, hit, hit_id: sent.append(hit_id) or True)
+
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+    assert r["discord_sent"] == 1, "空 candidate title で通知されない (Q0)"
+    assert eval_called["n"] == 0, "空 candidate title で AI 判定が走った (無駄 call)"
+

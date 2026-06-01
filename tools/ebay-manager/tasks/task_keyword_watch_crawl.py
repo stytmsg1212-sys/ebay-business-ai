@@ -27,10 +27,21 @@ from monitor.keyword_watch_db import (
     get_unnotified_in_range_hits,
     claim_hit_for_resend,
     release_hit_resend_claim,
-    get_ebay_prices_for_item_ids,
+    get_ebay_meta_for_item_ids,
 )
 
 logger = logging.getLogger(__name__)
+
+# W207 (2026-06-01): AI 同一性判定 (claude_evaluator.evaluate_match) の通知抑制閾値.
+# 仕入先候補の 60 (採用閾値) より低く 40 を採用 = キーワード新着は「機会発掘」が主目的で、
+# 完全同一物でなくとも近縁の機会 (互換品 / 別 SKU 出品候補) を user に届けたい.
+# match_score >= 40 → 通知 / < 40 → 通知抑制 (DB は discord_sent=1 で resend pass 対象外化).
+KEYWORD_MATCH_THRESHOLD = 40
+
+# 安さ優先 = Haiku (Tier 1 50K input tokens/min、~$0.007/call).
+# user 承認 2026-06-01: 仕入先候補評価 (Sonnet) より精度要求が低く、運用は新着 hit 頻度が
+# 多いため安価モデル優先.
+_KW_MATCH_MODEL = "claude-haiku-4-5-20251001"
 
 
 def _check_price_range(
@@ -61,6 +72,82 @@ def _format_range(pmin: Optional[int], pmax: Optional[int]) -> str:
     return f"{lo}〜{hi}"
 
 
+def _should_suppress_by_ai(watch: dict, hit) -> bool:
+    """W207: AI 同一性判定 (Claude Haiku) で hit を抑制するか判定.
+
+    判定対象:
+      watch に紐付け listing の title (`_ebay_title`) が取得できている場合のみ判定.
+      無ければ False を返す (= 従来通り通知) — 比較対象なし.
+
+    戻り値:
+      True  = 通知抑制 (match_score < KEYWORD_MATCH_THRESHOLD).
+              呼出側は mark_hit_notified(hit_id) で resend pass 対象外化する責任を持つ.
+      False = 通知する.
+              - API 未設定 / API 失敗 → fail-open (一時障害で本物の機会を握り潰さない / Q0).
+              - match_score >= KEYWORD_MATCH_THRESHOLD.
+              - 比較対象 title なし (= AI 判定スキップ).
+
+    Q0 silent skip 防止:
+      抑制した場合は logger.info で `match_score=X < 40 でスキップ` を必ず記録する.
+      API 失敗の fail-open は logger.warning で痕跡化する.
+    """
+    ebay_title = (watch.get('_ebay_title') or '').strip()
+    if not ebay_title:
+        # 比較対象 title が無い → AI 判定スキップ (従来通り通知)
+        return False
+    candidate_title = (getattr(hit, 'title', None) or '').strip()
+    if not candidate_title:
+        # 候補側 title 空 → 判定不能、通知側に倒す (Q0: false negative の方が安全)
+        logger.info(
+            "W207 AI 判定: candidate_title 空のため判定 skip (watch_id=%s, hit url=%s) → 通知",
+            watch.get('id'), getattr(hit, 'url', ''),
+        )
+        return False
+    try:
+        from monitor.claude_evaluator import evaluate_match
+        res = evaluate_match(
+            ebay_title=ebay_title,
+            candidate_title=candidate_title,
+            platform=watch.get('site') or '',
+            price_jpy=getattr(hit, 'price_jpy', None),
+            url=getattr(hit, 'url', '') or '',
+            ebay_image_url=None,  # ebay_listings に画像列なし
+            candidate_image_url=getattr(hit, 'image_url', None),
+            ebay_item_id=watch.get('ebay_item_id'),
+            model=_KW_MATCH_MODEL,
+        )
+    except Exception as e:
+        # 想定外の例外 → fail-open (機会を握り潰さない / Q0)
+        logger.warning(
+            "W207 AI 判定: evaluate_match で例外 → fail-open 通知 "
+            "(watch_id=%s, error=%s: %s)",
+            watch.get('id'), type(e).__name__, e,
+        )
+        return False
+    if res.error:
+        # API 未設定 / API failure → fail-open 通知
+        logger.warning(
+            "W207 AI 判定: API error → fail-open 通知 "
+            "(watch_id=%s, error=%s)",
+            watch.get('id'), res.error,
+        )
+        return False
+    if res.match_score < KEYWORD_MATCH_THRESHOLD:
+        # Q0: 抑制した痕跡を必ず log に残す (silent skip 禁止)
+        logger.info(
+            "W207 AI 判定: match_score=%s < %s で通知スキップ "
+            "(watch_id=%s, ebay_title=%s, candidate=%s)",
+            res.match_score, KEYWORD_MATCH_THRESHOLD,
+            watch.get('id'), ebay_title[:60], candidate_title[:60],
+        )
+        return True
+    logger.debug(
+        "W207 AI 判定: match_score=%s >= %s で通知 (watch_id=%s)",
+        res.match_score, KEYWORD_MATCH_THRESHOLD, watch.get('id'),
+    )
+    return False
+
+
 def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
     """価格レンジ合致 hit を Discord webhook へ送信。
 
@@ -72,7 +159,7 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
         return False
     try:
         from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook)
+        notifier = DiscordNotifier(webhook, bypass_env=True)  # W207: 専用ch webhook を env で握り潰さない
         site_label = '🛒 メルカリ' if watch['site'] == 'mercari' else '🔨 ヤフオク'
         price_str = f"¥{hit.price_jpy:,}" if hit.price_jpy else "(価格不明)"
         range_str = _format_range(watch.get('price_min_jpy'), watch.get('price_max_jpy'))
@@ -122,7 +209,7 @@ def _send_discord_site_health(webhook: str, site: str, msg: str) -> bool:
         return False
     try:
         from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook)
+        notifier = DiscordNotifier(webhook, bypass_env=True)  # W207: 専用ch webhook を env で握り潰さない
         return bool(notifier.send_message(msg))
     except Exception:
         logger.exception(f"W148 site_health Discord send failed (site={site})")
@@ -155,6 +242,8 @@ def run_keyword_watch_crawl(config: dict) -> dict:
         "in_range_hits": 0,
         "errors": 0,
         "discord_sent": 0,
+        # W207: AI 同一性判定 (match_score < 40) で抑制した hit 数 (履歴は DB に残る).
+        "ai_suppressed": 0,
         "dom_rot_suspected": 0,
         "dom_rot_orphan_sites": [],
     }
@@ -163,7 +252,13 @@ def run_keyword_watch_crawl(config: dict) -> dict:
         if not cfg.get('enabled', True):
             return {**summary, "success": True, "message": "disabled"}
 
-        webhook = (config.get('discord', {}) or {}).get('webhook_url') or ""
+        # W207: 既定 webhook (ヘルスチェック / DOM rot / orphan / resend 警告 等) と
+        # 専用キーワード webhook (新着 hit 通知) を分離.
+        # 専用 webhook 未設定時は既定にフォールバック (Q0: 通知先消失を防ぐ).
+        disc = config.get('discord', {}) or {}
+        webhook = disc.get('webhook_url') or ""
+        kw_webhook = (disc.get('keyword_webhook_url') or "").strip() or webhook
+
         watches = list_watches(active_only=True)
         max_per_run = int(cfg.get('max_watches_per_run', 30))
         sleep_sec = float(cfg.get('sleep_between_watches_sec', 4))
@@ -173,24 +268,29 @@ def run_keyword_watch_crawl(config: dict) -> dict:
         non_sent = [w for w in watches if not w.get('is_sentinel')]
         watches = sentinels + non_sent[:max(0, max_per_run - len(sentinels))]
 
-        # W206: 紐付け済 eBay listing の current_price を batch 取得 (N+1 回避)。
-        # 各 watch dict に `_ebay_price` (Optional[float]) を注入し、
-        # _send_discord_for_hit が embed に USD 価格を併記する。
-        # ebay_item_id 未設定の watch は dict に key 自体が入らない (= embed 省略)。
+        # W206 → W207: 紐付け済 eBay listing の title + current_price を batch 取得 (N+1 回避)。
+        # 各 watch dict に `_ebay_price` (Optional[float]) と `_ebay_title` (Optional[str]) を注入し、
+        # _send_discord_for_hit が embed に USD 価格を併記し、AI 同一性判定で ebay_title を使う。
+        # ebay_item_id 未設定の watch は dict に key 自体が入らない (= embed 省略 / AI 判定 skip)。
         try:
-            _ebay_prices = get_ebay_prices_for_item_ids(
+            _ebay_meta = get_ebay_meta_for_item_ids(
                 [w.get('ebay_item_id') for w in watches]
             )
         except Exception:
-            # 価格取得失敗は通知 embed の付加情報なので主処理続行 (Q0: logger 痕跡化)
+            # メタ取得失敗は通知 embed / AI 判定の付加情報なので主処理続行 (Q0: logger 痕跡化)
             logger.exception(
-                "W148 get_ebay_prices_for_item_ids failed (embed の eBay 販売価格を省略)"
+                "W148 get_ebay_meta_for_item_ids failed "
+                "(embed の eBay 販売価格 + AI 同一性判定を省略)"
             )
-            _ebay_prices = {}
+            _ebay_meta = {}
         for w in watches:
             iid = w.get('ebay_item_id')
-            if iid and iid in _ebay_prices:
-                w['_ebay_price'] = _ebay_prices[iid]
+            if iid and iid in _ebay_meta:
+                m = _ebay_meta[iid]
+                if m.get('current_price') is not None:
+                    w['_ebay_price'] = m['current_price']
+                if m.get('title'):
+                    w['_ebay_title'] = m['title']
 
         # サイト別 sentinel 集計 (v2.1 HIGH-B: per-watch 連続0件は alert fatigue)
         site_health: dict[str, dict[str, int]] = {}
@@ -261,7 +361,17 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                 summary["new_hits"] += 1
                 if in_range:
                     summary["in_range_hits"] += 1
-                    ok = _send_discord_for_hit(webhook, w, h, hit_id)
+                    # W207: AI 同一性判定でノイズ除去.
+                    # watch に紐付け listing title が無ければ AI 判定スキップ (従来通り通知).
+                    # API error は fail-open (機会を握り潰さない / Q0).
+                    # match_score < KEYWORD_MATCH_THRESHOLD は通知抑制 + discord_sent=1
+                    # で記録 (resend pass 対象外化、Q0: log 痕跡必須).
+                    if _should_suppress_by_ai(w, h):
+                        # AI 抑制 = "送らないと決めた" → discord_sent=1 と扱い resend 対象外化
+                        mark_hit_notified(hit_id)
+                        summary["ai_suppressed"] = summary.get("ai_suppressed", 0) + 1
+                        continue
+                    ok = _send_discord_for_hit(kw_webhook, w, h, hit_id)
                     if ok:
                         mark_hit_notified(hit_id)
                         summary["discord_sent"] += 1
@@ -288,7 +398,8 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                     "DOM 変更 or bot ban の可能性。selector / user_agent / IP を点検してください。"
                 )
                 logger.warning(msg)
-                _send_discord_site_health(webhook, site, msg)
+                # W207: keyword crawl task の全 Discord 送信は専用 webhook へ
+                _send_discord_site_health(kw_webhook, site, msg)
                 summary["dom_rot_suspected"] += 1
 
         # sentinel 未登録サイトの silent gap 防止 (Codex 3回目 MEDIUM + 4回目 HIGH-2)
@@ -304,7 +415,8 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                 )
                 logger.warning(msg)
                 for site in orphan_sites:
-                    _send_discord_site_health(webhook, site, msg)
+                    # W207: keyword crawl task の全 Discord 送信は専用 webhook へ
+                    _send_discord_site_health(kw_webhook, site, msg)
                 summary["dom_rot_orphan_sites"] = orphan_sites
 
         # Codex HIGH-3 (b): resend pass.
@@ -325,23 +437,26 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                 logger.exception("W148 resend pass: get_unnotified_in_range_hits failed")
                 summary["errors"] += 1
                 resend_pass_failed = True
+                # W207: keyword crawl task の全 Discord 送信は専用 webhook へ
                 _send_discord_site_health(
-                    webhook, "resend_pass",
+                    kw_webhook, "resend_pass",
                     f"[W148 警告] resend pass DB error: {type(e).__name__}: {e} "
                     "= webhook 救済機構停止. monitor.db / migration v46 状態を点検."
                 )
                 unsent = []
-            # W206: resend pass も batch で eBay 価格取得 (N+1 回避)。
+            # W206 → W207: resend pass も batch で eBay meta (price のみ) 取得 (N+1 回避)。
+            # resend は初回 crawl で AI 判定済 (AI 抑制 hit は discord_sent=1 で外れる) ため
+            # title は不要、価格 embed 用のみ取得.
             try:
-                _resend_prices = get_ebay_prices_for_item_ids(
+                _resend_meta = get_ebay_meta_for_item_ids(
                     [u.get('ebay_item_id') for u in unsent]
                 )
             except Exception:
                 logger.exception(
-                    "W148 resend pass: get_ebay_prices_for_item_ids failed "
+                    "W148 resend pass: get_ebay_meta_for_item_ids failed "
                     "(embed の eBay 販売価格を省略)"
                 )
-                _resend_prices = {}
+                _resend_meta = {}
             resent = 0
             for u in unsent:
                 # Codex 2 周目 HIGH-B: UI 巡回 + cron 巡回 並行で同 hit が
@@ -366,9 +481,12 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                     'ebay_item_id': u.get('ebay_item_id'),
                 }
                 _u_iid = u.get('ebay_item_id')
-                if _u_iid and _u_iid in _resend_prices:
-                    watch_view['_ebay_price'] = _resend_prices[_u_iid]
-                if _send_discord_for_hit(webhook, watch_view, rh, u['hit_id']):
+                if _u_iid and _u_iid in _resend_meta:
+                    _m = _resend_meta[_u_iid]
+                    if _m.get('current_price') is not None:
+                        watch_view['_ebay_price'] = _m['current_price']
+                # W207: resend pass は専用キーワード webhook (新着 hit 通知) を使う
+                if _send_discord_for_hit(kw_webhook, watch_view, rh, u['hit_id']):
                     summary['discord_sent'] += 1
                     resent += 1
                 else:
@@ -386,6 +504,7 @@ def run_keyword_watch_crawl(config: dict) -> dict:
             f"crawled={summary['watches_crawled']} new={summary['new_hits']} "
             f"in_range={summary['in_range_hits']} discord={summary['discord_sent']} "
             f"resent={summary.get('discord_resent', 0)} "
+            f"ai_suppressed={summary['ai_suppressed']} "
             f"err={summary['errors']} dom_rot={summary['dom_rot_suspected']} "
             f"orphan={len(summary['dom_rot_orphan_sites'])}"
             + (" RESEND_PASS_FAILED" if resend_pass_failed else "")

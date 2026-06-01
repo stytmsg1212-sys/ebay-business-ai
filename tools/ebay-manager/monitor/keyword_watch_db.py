@@ -210,15 +210,22 @@ def get_unnotified_in_range_hits(days: int = 7, limit: int = 200) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_ebay_prices_for_item_ids(item_ids: list[str]) -> dict[str, float]:
-    """W206: ebay_listings.current_price を ebay_item_id IN (...) で一括取得 (N+1回避).
+def get_ebay_meta_for_item_ids(item_ids: list[str]) -> dict[str, dict]:
+    """W207 (W206 を拡張): ebay_listings から title + current_price を ebay_item_id IN (...)
+    で一括取得 (N+1回避).
 
     Args:
         item_ids: ebay_item_id のリスト。None / 空文字列は除外する。
 
     Returns:
-        {ebay_item_id: current_price} の dict。current_price が NULL の listing は
-        含めない (= 価格不明は通知 embed で表示しない方針)。空リスト/全 None なら {}。
+        {ebay_item_id: {'title': str | None, 'current_price': float | None}} の dict。
+        - row が見つかった listing は title (None 可) と current_price (None 可) を含む。
+        - 見つからなかった ebay_item_id は dict に含めない。
+        - 空リスト/全 None なら {}。
+
+    W207 用途:
+      - title: AI 同一性判定 (claude_evaluator.evaluate_match) に渡す ebay_title.
+      - current_price: Discord embed の「eBay 販売価格」表示 (USD only).
 
     sku-rules.md: listing 識別は ebay_item_id (SKU ではない)。
     """
@@ -228,12 +235,19 @@ def get_ebay_prices_for_item_ids(item_ids: list[str]) -> dict[str, float]:
     placeholders = ",".join("?" for _ in valid)
     with get_conn() as conn:
         rows = conn.execute(
-            f"SELECT ebay_item_id, current_price FROM ebay_listings "
-            f"WHERE ebay_item_id IN ({placeholders}) "
-            f"  AND current_price IS NOT NULL",
+            f"SELECT ebay_item_id, title, current_price FROM ebay_listings "
+            f"WHERE ebay_item_id IN ({placeholders})",
             valid,
         ).fetchall()
-    return {r["ebay_item_id"]: float(r["current_price"]) for r in rows}
+    result: dict[str, dict] = {}
+    for r in rows:
+        result[r["ebay_item_id"]] = {
+            "title": r["title"],
+            "current_price": float(r["current_price"]) if r["current_price"] is not None else None,
+        }
+    return result
+
+
 
 
 def get_recent_hits(watch_id: int, limit: int = 20) -> list[dict]:

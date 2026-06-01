@@ -845,3 +845,75 @@ keyword_watch_rows = cur_kw.rowcount
 
 - `WHERE sku=...` / `GROUP BY sku` / `JOIN ON sku` は使わない。
 - listing 識別は `ebay_item_id`。`WHERE ebay_item_id IN (...)` は OK (集合クエリ)。
+
+---
+
+## 21. W207 (2026-06-01): Discord チャンネル分離 + AI 同一性判定
+
+W148 → W206 で「キーワード新着監視 + ebay_item_id 紐付け + USD 価格 embed」が完成. 次ステップとして **(1) 通知チャンネルの分離** と **(2) AI ノイズ除去** を追加.
+
+### 21.1 専用 Discord チャンネル分離
+
+**問題**: keyword crawl の新着通知は 2h 毎 + 5K hit/月 規模で多く、既定の `#bot通知` チャンネルがヘルスチェック / 予算アラート / 在庫切れ通知に紛れる.
+
+**解決**: keyword crawl task が出す **全 Discord 送信** を専用 webhook (`DISCORD_KEYWORD_WEBHOOK_URL`) に切り替え.
+
+| 項目 | 設計 |
+|---|---|
+| env 変数名 | `DISCORD_KEYWORD_WEBHOOK_URL` (`.env`、git 管理外) |
+| config 注入先 | `config['discord']['keyword_webhook_url']` |
+| 注入 helper | `notifiers.discord_notifier.inject_webhook_into_config` 拡張 (W148 設計 §5.4 と同じ呼び方、subprocess `_load_config` でも自動注入) |
+| fallback | env / config 未設定なら `DISCORD_WEBHOOK_URL` に自動フォールバック (Q0: 通知先消失防止) |
+| 切替対象 | `_send_discord_for_hit` (hit 通知) / `_send_discord_site_health` (DOM rot / orphan / resend pass DB error) |
+| 切替対象外 | scheduler health check / 予算アラート / 在庫切れ等 keyword crawl 外の通知 (K2 surgical、本変更 scope 外) |
+
+### 21.2 AI 同一性判定でノイズ除去
+
+**問題**: 価格レンジ内 hit でも、watch の keyword だけでは「全く別物」を拾うケースが多い (例: Sony WH-1000XM5 keyword で「Sony ヘッドホン用ケース」 hit).
+
+**解決**: watch に紐付け済 listing がある場合のみ、**Claude Haiku で eBay listing title と候補 title の同一性を 0-100 で評価** し、低スコアを通知抑制.
+
+| 項目 | 設計 |
+|---|---|
+| モデル | `claude-haiku-4-5-20251001` (安さ優先、Tier 1 50K input tokens/min) |
+| 閾値 | `KEYWORD_MATCH_THRESHOLD = 40` (仕入先候補の 60 より低い。キーワード新着は「機会発掘」目的で互換品も拾いたい) |
+| 判定対象 | `watch.ebay_item_id` が設定 + `_ebay_title` (`get_ebay_meta_for_item_ids` で取得) が空でない hit のみ |
+| 抑制条件 | `match_score < 40` → 通知抑制 |
+| fail-open | `evaluate_match.error` / 例外 → **通知する** (一時障害で機会を握り潰さない / Q0) |
+| 痕跡 | 抑制時 `logger.info("match_score=X < 40 で通知スキップ ...")`、fail-open 時 `logger.warning("fail-open ...")` |
+
+### 21.3 batch helper の拡張: `get_ebay_meta_for_item_ids`
+
+W206 で導入した `get_ebay_prices_for_item_ids` を **title + current_price 両方** を返す `get_ebay_meta_for_item_ids(item_ids) -> dict[str, dict]` に**一本化** (旧 helper は削除、SKU 不使用の `WHERE ebay_item_id IN (...)` 維持).
+
+返り値: `{ebay_item_id: {'title': str | None, 'current_price': float | None}}`
+
+呼出側 (`run_keyword_watch_crawl`) は各 watch に `_ebay_title` / `_ebay_price` を注入. resend pass も同じ helper を使う (price 用途のみ).
+
+### 21.4 resend × AI 抑制の相互作用 (核心設計判断)
+
+**問題**: AI 抑制した hit は `record_hit_claim(in_price_range=True)` で DB に残るが、`discord_sent=0` のままだと resend pass (`get_unnotified_in_range_hits` WHERE `discord_sent=0 AND in_price_range=1`) が拾って「初回 crawl では AI suppress、resend では AI 再判定スキップ」になり**抑制が無効化**する.
+
+**解決**: AI 抑制時に `mark_hit_notified(hit_id)` を呼んで `discord_sent=1` をセット = 「送らないと決めた = 送信不要」と意味的に等価. resend pass の WHERE 条件で除外され、initial AI suppress が永続化する.
+
+**DB 列追加不要** (既存 `discord_sent` 列の意味を「送信済 OR 送信不要」に拡張、migration なし).
+
+`summary["ai_suppressed"]` カウンタを追加して観測可能化 (R-11 視認可能性).
+
+### 21.5 resend pass は AI 再判定しない
+
+- resend pass は「webhook 5xx 等で discord_sent=0 のまま残った in-range hit を救済送信」する経路.
+- 既に **初回 crawl で AI 判定済 + 通知すべきと判断済** の hit のみが対象になる (AI 抑制 hit は §21.4 で除外済).
+- → resend pass で AI 再判定すると二重 API call で無駄. **スキップが正しい**.
+
+### 21.6 DoD (受け入れ基準)
+
+- [x] `inject_webhook_into_config` が `DISCORD_KEYWORD_WEBHOOK_URL` を `config['discord']['keyword_webhook_url']` に注入
+- [x] env 未設定なら `keyword_webhook_url` key を作らず caller 側 fallback を効かせる
+- [x] `run_keyword_watch_crawl` 内の全 `_send_discord_for_hit` / `_send_discord_site_health` 呼出が `kw_webhook = keyword_webhook_url or webhook` を使う
+- [x] `get_ebay_meta_for_item_ids` が title + price を 1 query で返す (旧 `get_ebay_prices_for_item_ids` は削除)
+- [x] `_should_suppress_by_ai`: AI 判定対象 (ebay_item_id + _ebay_title あり) のみ判定、無ければ従来通り通知
+- [x] match_score < 40 → 通知抑制 + `mark_hit_notified` で resend 対象外 + log 痕跡 (Q0)
+- [x] API error / 例外 → fail-open 通知 + log 痕跡 (Q0)
+- [x] resend pass は AI 再判定しない (初回判定済前提)
+- [x] cascade-update: `.claude/rule-snippets/discord-notification.md` に専用キーワードチャンネル追記

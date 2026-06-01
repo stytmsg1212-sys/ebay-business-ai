@@ -50,3 +50,39 @@ def test_keyword_watch_load_config_injects_env_webhook(monkeypatch):
     cfg = _load_config()
     wh = (cfg.get("discord") or {}).get("webhook_url") or ""
     assert wh.strip(), "subprocess _load_config が env webhook を注入していない (HIGH-1 silent skip 残存)"
+
+
+# ---------- W207: 専用チャンネル webhook の bypass_env (2026-06-01) ----------
+
+_DEDICATED_WH = "https://discord.com/api/webhooks/222222/dedicated-keyword-token"
+
+
+def test_notifier_bypass_env_uses_passed_url(monkeypatch):
+    """W207 MEDIUM-2 回帰: env DISCORD_WEBHOOK_URL があっても bypass_env=True なら
+    渡した専用 webhook を使う (これが無いと専用チャンネル分離が env 上書きで無効化)."""
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", _FAKE_WH)
+    from notifiers.discord_notifier import DiscordNotifier
+    n = DiscordNotifier(_DEDICATED_WH, bypass_env=True)
+    assert n.webhook_url == _DEDICATED_WH, "bypass_env 指定でも env に握り潰された (専用ch分離が無効)"
+
+
+def test_notifier_default_still_prefers_env(monkeypatch):
+    """既存挙動保全: bypass_env 未指定なら従来通り env DISCORD_WEBHOOK_URL を最優先 (K2)."""
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", _FAKE_WH)
+    from notifiers.discord_notifier import DiscordNotifier
+    n = DiscordNotifier(_DEDICATED_WH)  # bypass_env=False (default)
+    assert n.webhook_url == _FAKE_WH, "既定挙動 (env 最優先) が壊れた"
+
+
+def test_inject_keyword_webhook_into_config(monkeypatch):
+    """W207: DISCORD_KEYWORD_WEBHOOK_URL が config['discord']['keyword_webhook_url'] に注入される."""
+    monkeypatch.setenv("DISCORD_KEYWORD_WEBHOOK_URL", _DEDICATED_WH)
+    cfg = inject_webhook_into_config({})
+    assert cfg["discord"].get("keyword_webhook_url") == _DEDICATED_WH
+
+
+def test_inject_keyword_webhook_absent_no_key(monkeypatch):
+    """env 未設定なら keyword_webhook_url を作らない (caller fallback を効かせる)."""
+    monkeypatch.delenv("DISCORD_KEYWORD_WEBHOOK_URL", raising=False)
+    cfg = inject_webhook_into_config({"discord": {}})
+    assert not (cfg.get("discord") or {}).get("keyword_webhook_url")

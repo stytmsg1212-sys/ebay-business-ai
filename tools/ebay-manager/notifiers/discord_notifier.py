@@ -42,28 +42,47 @@ def inject_webhook_into_config(config: dict) -> dict:
 
     本 module の import 時に module-level load_dotenv が走り .env を os.environ へ展開済の
     ため、呼び側で load_dotenv は不要.
+
+    W207 (2026-06-01): `DISCORD_KEYWORD_WEBHOOK_URL` (任意) も同じ dict の
+    `config['discord']['keyword_webhook_url']` に注入する. キーワード新着監視 (W148)
+    の通知を専用チャンネルに分離するため. env 未設定なら key 自体を作らず (= caller 側
+    で fallback to DISCORD_WEBHOOK_URL).
     """
     env_wh = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
-    if not env_wh:
+    env_kw = (os.environ.get('DISCORD_KEYWORD_WEBHOOK_URL') or '').strip()
+    if not env_wh and not env_kw:
         return config
     disc = config.setdefault('discord', {})
-    if not (disc.get('webhook_url') or '').strip():
+    if env_wh and not (disc.get('webhook_url') or '').strip():
         disc['webhook_url'] = env_wh
+    # W207: 専用キーワード webhook (env 設定時のみ). 既存値があれば尊重 (idempotent).
+    if env_kw and not (disc.get('keyword_webhook_url') or '').strip():
+        disc['keyword_webhook_url'] = env_kw
     return config
 
 
 class DiscordNotifier:
     """Discord Webhook 通知クラス"""
 
-    def __init__(self, webhook_url: str):
+    def __init__(self, webhook_url: str, *, bypass_env: bool = False):
         """
         Args:
             webhook_url: Discord Webhook URL (後方互換 fallback only)
+            bypass_env: True の時、env DISCORD_WEBHOOK_URL の上書きを無効化し
+                webhook_url を直接使用する (W207 2026-06-01)。キーワード新着監視が
+                専用チャンネル webhook (DISCORD_KEYWORD_WEBHOOK_URL 由来) へ送る用途。
+                既定 False = 従来通り env DISCORD_WEBHOOK_URL を最優先 (他通知は不変)。
 
         2026-05-25 改訂: .env DISCORD_WEBHOOK_URL を最優先.
         schedule_config.json から渡される webhook_url は legacy fallback で,
         .env が無い時のみ使用. 本来は schedule_config から URL を完全撤去.
         """
+        if bypass_env and webhook_url:
+            # W207: 呼出側が明示的に渡した webhook (専用チャンネル等) を env で
+            # 握り潰さない。これが無いと専用チャンネル分離が env 上書きで無効化される。
+            self.webhook_url = webhook_url
+            self.timeout = 10
+            return
         env_url = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
         if env_url:
             self.webhook_url = env_url

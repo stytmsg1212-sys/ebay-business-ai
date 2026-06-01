@@ -12,7 +12,19 @@ eBay Manager の scheduler / health check / 注文アラート / 予算アラー
 | Server ID (guild_id) | `1492273038782238881` |
 | Channel ID | `1492273557277774005` |
 | Channel 名 (人間可読) | `#bot通知` 付近 (user の主 Discord server 内、正確名は要再確認) |
-| webhook URL 保存先 | `tools/ebay-manager/config/schedule_config.json` の `discord.webhook_url` |
+| webhook URL 保存先 | `.env` の `DISCORD_WEBHOOK_URL` (2026-05-25 移行、`schedule_config.json` 旧記録は legacy fallback) |
+
+### W207 専用キーワードチャンネル (2026-06-01〜)
+
+キーワード新着監視 (W148 task) の通知だけを分離する用に、**専用 webhook** が `.env` に追加されている。
+
+| 項目 | 値 |
+|---|---|
+| env 変数名 | `DISCORD_KEYWORD_WEBHOOK_URL` |
+| 用途 | W148 keyword crawl task の **全 Discord 送信** (hit 通知 / DOM rot / orphan / resend pass DB error) |
+| 注入先 | `config['discord']['keyword_webhook_url']` (`inject_webhook_into_config` で自動注入) |
+| fallback | env / config 未設定なら `DISCORD_WEBHOOK_URL` (既定 webhook) に自動フォールバック (Q0: 通知先消失を防ぐ) |
+| 他通知 | ヘルスチェック / 予算アラート / 在庫切れ等は引き続き `DISCORD_WEBHOOK_URL` (既定 webhook) のまま |
 
 ## user 視認確認の前提 (R-11 / 2026-05-14 事故から)
 
