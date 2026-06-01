@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
@@ -49,17 +50,78 @@ def _to_jst_str(ts: Optional[str]) -> str:
         return ts
 
 
-def _build_search_url(site: str, keyword: str) -> str:
-    """site + keyword から検索 URL を構築。"""
+def _build_search_url(
+    site: str,
+    keyword: str,
+    price_min_jpy: Optional[int] = None,
+    price_max_jpy: Optional[int] = None,
+) -> str:
+    """site + keyword (+ 価格レンジ) から検索 URL を構築。
+
+    価格 param 名 (2026-06-01 実サイト live 検証で裏取り):
+      - mercari: price_min / price_max
+      - yahoo_auctions: aucminprice / aucmaxprice
+    price_min/max が None または 0 の時のみ該当 param を省略 (0 = 未設定扱い)。
+    """
     kw = quote_plus(keyword.strip())
     if site == "mercari":
-        return (
+        url = (
             f"https://jp.mercari.com/search?keyword={kw}"
             "&status=on_sale&sort=created_time&order=desc"
         )
+        if price_min_jpy:
+            url += f"&price_min={int(price_min_jpy)}"
+        if price_max_jpy:
+            url += f"&price_max={int(price_max_jpy)}"
+        return url
     if site == "yahoo_auctions":
-        return f"https://auctions.yahoo.co.jp/search/search?p={kw}&s1=new&o1=d"
+        url = f"https://auctions.yahoo.co.jp/search/search?p={kw}&s1=new&o1=d"
+        if price_min_jpy:
+            url += f"&aucminprice={int(price_min_jpy)}"
+        if price_max_jpy:
+            url += f"&aucmaxprice={int(price_max_jpy)}"
+        return url
     raise ValueError(f"unsupported site: {site}")
+
+
+def _compute_watch_update(
+    target: dict,
+    kw_new: str,
+    pmin_val: Optional[int],
+    pmax_val: Optional[int],
+    memo: str,
+    is_active: bool,
+) -> dict:
+    """編集保存時の update_fields を計算する純関数 (UI から分離してテスト可能化)。
+
+    - keyword / 価格レンジが変わったら search_url を再生成して含める
+      (巡回 URL が古い filter のまま残る既存バグの修正)。
+    - sentinel watch は search_url を固定保護する設計のため、keyword / 価格の
+      変更は禁止 (ValueError)。黙ってドロップすると user の編集意図を silent skip
+      するため (Q0)、明示的に例外を投げて UI 側で error 表示させる。memo / active
+      のみ変更可。
+    """
+    changed = (
+        kw_new != target["keyword"]
+        or pmin_val != target.get("price_min_jpy")
+        or pmax_val != target.get("price_max_jpy")
+    )
+    if target.get("is_sentinel") and changed:
+        raise ValueError(
+            "sentinel watch はキーワード/価格を編集できません (メモ・active のみ変更可)"
+        )
+    fields = dict(
+        keyword=kw_new,
+        price_min_jpy=pmin_val,
+        price_max_jpy=pmax_val,
+        memo=memo,
+        is_active=1 if is_active else 0,
+    )
+    if changed:
+        fields["search_url"] = _build_search_url(
+            target["site"], kw_new, pmin_val, pmax_val
+        )
+    return fields
 
 
 def _render_summary_section() -> None:
@@ -204,14 +266,35 @@ def _render_watch_list() -> None:
         cc1, cc2 = st.columns(2)
         with cc1:
             if st.button("💾 保存", key=f"kw_save_{sel_id}"):
-                update_watch(
-                    sel_id,
-                    keyword=new_keyword.strip(),
-                    price_min_jpy=None if pmin_unset else int(new_pmin),
-                    price_max_jpy=None if pmax_unset else int(new_pmax),
-                    memo=new_memo,
-                    is_active=1 if new_active else 0,
-                )
+                kw_new = new_keyword.strip()
+                # 0 は「下限/上限なし」と同義 (_build_search_url が 0 を param 省略する
+                # ため、DB 表現も None に揃えて URL と整合させる)。
+                pmin_val = None if (pmin_unset or int(new_pmin) == 0) else int(new_pmin)
+                pmax_val = None if (pmax_unset or int(new_pmax) == 0) else int(new_pmax)
+                if not kw_new:
+                    st.error("キーワードは必須です")
+                    return
+                try:
+                    update_fields = _compute_watch_update(
+                        target, kw_new, pmin_val, pmax_val, new_memo, new_active
+                    )
+                except ValueError as e:
+                    # sentinel の keyword/価格編集禁止、または未対応 site
+                    st.error(str(e))
+                    return
+                try:
+                    update_watch(sel_id, **update_fields)
+                except sqlite3.IntegrityError:
+                    # UNIQUE(site, search_url) 衝突 = 同 site で同条件の watch が既存
+                    st.error(
+                        "更新失敗: 同じサイトで同じ検索条件 (キーワード・価格) の "
+                        "watch が既に存在します"
+                    )
+                    return
+                except Exception as e:
+                    # DB ロック等の別原因まで「重複」と誤誘導しない (Q0)
+                    st.error(f"更新失敗: {type(e).__name__}: {e}")
+                    return
                 bump_db_version()
                 st.success(f"#{sel_id} を更新しました")
                 st.rerun()
@@ -271,8 +354,10 @@ def _render_add_form() -> None:
             if not kw:
                 st.error("キーワードは必須です")
                 return
+            pmin_val = None if pmin_unset else int(pmin)
+            pmax_val = None if pmax_unset else int(pmax)
             try:
-                url = _build_search_url(site, kw)
+                url = _build_search_url(site, kw, pmin_val, pmax_val)
             except ValueError as e:
                 st.error(str(e))
                 return
@@ -280,8 +365,8 @@ def _render_add_form() -> None:
                 site=site,
                 search_url=url,
                 keyword=kw,
-                price_min_jpy=None if pmin_unset else int(pmin),
-                price_max_jpy=None if pmax_unset else int(pmax),
+                price_min_jpy=pmin_val,
+                price_max_jpy=pmax_val,
                 memo=memo,
                 source="manual",
             )

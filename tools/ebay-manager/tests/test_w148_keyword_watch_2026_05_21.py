@@ -97,7 +97,8 @@ def test_add_watch_unique_dedupe(tmp_db):
 
 
 def test_update_watch_only_safe_fields(tmp_db):
-    """search_url / site は不変、is_active / price / memo / keyword のみ更新可。"""
+    """site は不変、is_active / price / memo / keyword / search_url のみ更新可。
+    (W148-fix 2026-06-01: search_url を updatable に追加 — 編集時 URL 再生成のため)。"""
     from monitor.keyword_watch_db import add_watch, update_watch, list_watches
     wid, _ = add_watch(
         site="mercari",
@@ -105,8 +106,8 @@ def test_update_watch_only_safe_fields(tmp_db):
         keyword="x",
     )
     assert update_watch(wid, keyword="y", price_min_jpy=100, is_active=0) is True
-    # 不正フィールドは無視 (rowcount=0 でない、安全 fields のみ反映)
-    assert update_watch(wid, site="yahoo_auctions", search_url="bad") is False
+    # site のみ (許可フィールドなし) は無視 = rowcount=0 で False
+    assert update_watch(wid, site="yahoo_auctions") is False
     rows = list_watches(active_only=False)
     target = next(r for r in rows if r["id"] == wid)
     assert target["keyword"] == "y"
@@ -572,6 +573,131 @@ def test_resend_atomic_claim_prevents_double_send(tmp_db, monkeypatch):
     release_hit_resend_claim(hit_id)
     ok3 = claim_hit_for_resend(hit_id)
     assert ok3 is True, "release 後の re-claim が失敗 = recovery 経路死亡"
+
+
+# ---------- W148-fix (2026-06-01): _build_search_url 価格フィルタ込み URL 生成 ----------
+
+def test_build_search_url_mercari_with_price():
+    """mercari は price_min / price_max param を付与 (live 検証 2026-06-01)。"""
+    from tabs.tab_keyword_watch import _build_search_url
+    url = _build_search_url("mercari", "テスト", 1000, 5000)
+    assert "price_min=1000" in url
+    assert "price_max=5000" in url
+    assert "keyword=" in url
+
+
+def test_build_search_url_yahoo_with_price():
+    """yahoo_auctions は aucminprice / aucmaxprice param を付与 (live 検証 2026-06-01)。"""
+    from tabs.tab_keyword_watch import _build_search_url
+    url = _build_search_url("yahoo_auctions", "テスト", 1000, 5000)
+    assert "aucminprice=1000" in url
+    assert "aucmaxprice=5000" in url
+    assert "p=" in url
+
+
+def test_build_search_url_omits_unset_price():
+    """price が None / 0 の時は該当 param を URL に付けない (0 = 未設定扱い)。"""
+    from tabs.tab_keyword_watch import _build_search_url
+    # 両方 None
+    u_none = _build_search_url("mercari", "x")
+    assert "price_min" not in u_none and "price_max" not in u_none
+    # 両方 0 (UI の未設定 fallback) = 省略
+    u_zero = _build_search_url("mercari", "x", 0, 0)
+    assert "price_min" not in u_zero and "price_max" not in u_zero
+    # min のみ
+    u_min = _build_search_url("yahoo_auctions", "x", 1000, None)
+    assert "aucminprice=1000" in u_min and "aucmaxprice" not in u_min
+    # max のみ
+    u_max = _build_search_url("mercari", "x", None, 5000)
+    assert "price_max=5000" in u_max and "price_min" not in u_max
+
+
+def test_build_search_url_unsupported_site():
+    from tabs.tab_keyword_watch import _build_search_url
+    with pytest.raises(ValueError):
+        _build_search_url("rakuten", "x", 1000, 5000)
+
+
+def test_update_watch_accepts_search_url(tmp_db):
+    """編集保存フロー: keyword/価格変更時に再生成した search_url で巡回 URL を更新できる。"""
+    from monitor.keyword_watch_db import add_watch, update_watch, list_watches
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=old&status=on_sale",
+        keyword="old",
+    )
+    new_url = "https://jp.mercari.com/search?keyword=new&status=on_sale&price_min=1000"
+    assert update_watch(wid, keyword="new", price_min_jpy=1000,
+                        search_url=new_url) is True
+    target = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert target["search_url"] == new_url
+    assert target["keyword"] == "new"
+    assert target["price_min_jpy"] == 1000
+
+
+def test_update_watch_search_url_unique_collision_propagates(tmp_db):
+    """別 watch と同 (site, search_url) になる更新は IntegrityError を握りつぶさず伝播 (Q0)。"""
+    import sqlite3
+    from monitor.keyword_watch_db import add_watch, update_watch
+    url_a = "https://jp.mercari.com/search?keyword=a&status=on_sale"
+    url_b = "https://jp.mercari.com/search?keyword=b&status=on_sale"
+    add_watch(site="mercari", search_url=url_a, keyword="a")
+    wid_b, _ = add_watch(site="mercari", search_url=url_b, keyword="b")
+    # wid_b を url_a に書き換え → UNIQUE(site, search_url) 衝突
+    with pytest.raises(sqlite3.IntegrityError):
+        update_watch(wid_b, search_url=url_a)
+
+
+# ---------- W148-fix (2026-06-01): _compute_watch_update 保存ロジック ----------
+
+def test_compute_watch_update_regenerates_search_url_on_change():
+    """keyword / 価格が変わったら search_url を再生成して含める (核心バグ修正)。"""
+    from tabs.tab_keyword_watch import _compute_watch_update
+    target = {
+        "site": "mercari", "keyword": "old",
+        "price_min_jpy": None, "price_max_jpy": None, "is_sentinel": 0,
+    }
+    fields = _compute_watch_update(target, "new", 1000, None, "memo", True)
+    assert "search_url" in fields
+    assert "keyword=new" in fields["search_url"]
+    assert "price_min=1000" in fields["search_url"]
+
+
+def test_compute_watch_update_no_url_when_unchanged():
+    """keyword / 価格が同じなら search_url を再生成しない (memo/active のみ変更)。"""
+    from tabs.tab_keyword_watch import _compute_watch_update
+    target = {
+        "site": "mercari", "keyword": "same",
+        "price_min_jpy": 1000, "price_max_jpy": None, "is_sentinel": 0,
+    }
+    fields = _compute_watch_update(target, "same", 1000, None, "new memo", False)
+    assert "search_url" not in fields
+    assert fields["memo"] == "new memo"
+    assert fields["is_active"] == 0
+
+
+def test_compute_watch_update_sentinel_keyword_edit_blocked():
+    """HIGH-1: sentinel の keyword 変更は黙ってドロップせず ValueError (Q0)。"""
+    from tabs.tab_keyword_watch import _compute_watch_update
+    target = {
+        "site": "mercari", "keyword": "iPhone",
+        "price_min_jpy": None, "price_max_jpy": None, "is_sentinel": 1,
+    }
+    with pytest.raises(ValueError):
+        _compute_watch_update(target, "Android", None, None, "", True)
+
+
+def test_compute_watch_update_sentinel_memo_active_allowed():
+    """sentinel でも keyword/価格を変えなければ memo / active 変更は通る。"""
+    from tabs.tab_keyword_watch import _compute_watch_update
+    target = {
+        "site": "mercari", "keyword": "iPhone",
+        "price_min_jpy": None, "price_max_jpy": None, "is_sentinel": 1,
+    }
+    fields = _compute_watch_update(target, "iPhone", None, None, "checked", False)
+    assert "search_url" not in fields  # URL 不変 (固定保護)
+    assert fields["memo"] == "checked"
+    assert fields["is_active"] == 0
 
 
 def test_resend_pass_uses_atomic_claim_in_loop(tmp_db, monkeypatch):

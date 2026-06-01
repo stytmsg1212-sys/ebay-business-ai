@@ -72,12 +72,18 @@ def list_watches(active_only: bool = True) -> list[dict]:
         return [dict(r) for r in conn.execute(sql).fetchall()]
 
 
-_UPDATABLE_FIELDS = {"is_active", "price_min_jpy", "price_max_jpy", "memo", "keyword"}
+# search_url は keyword/価格レンジ変更時に UI が再生成して渡せる (W148-fix 2026-06-01)。
+# site は不変 (変更したい場合は delete + add で別 watch 化)。
+_UPDATABLE_FIELDS = {
+    "is_active", "price_min_jpy", "price_max_jpy", "memo", "keyword", "search_url",
+}
 
 
 def update_watch(watch_id: int, **fields) -> bool:
-    """is_active / price_min_jpy / price_max_jpy / memo / keyword のみ更新可。
-    search_url / site は不変 (変更したい場合は delete + add で別 watch 化)。"""
+    """is_active / price_min_jpy / price_max_jpy / memo / keyword / search_url のみ更新可。
+    site は不変。search_url は UNIQUE(site, search_url) 制約があるため、別 watch と
+    衝突する値への更新は IntegrityError を握りつぶさず呼び出し元に伝播させる
+    (Q0: silent skip 禁止。UI 側で error 表示する)。"""
     safe = {k: v for k, v in fields.items() if k in _UPDATABLE_FIELDS}
     if not safe:
         return False
