@@ -27,6 +27,7 @@ from monitor.keyword_watch_db import (
     get_unnotified_in_range_hits,
     claim_hit_for_resend,
     release_hit_resend_claim,
+    get_ebay_prices_for_item_ids,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,15 +77,33 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
         price_str = f"¥{hit.price_jpy:,}" if hit.price_jpy else "(価格不明)"
         range_str = _format_range(watch.get('price_min_jpy'), watch.get('price_max_jpy'))
         title = (hit.title or "")[:80]
+        fields = [
+            {'name': '価格', 'value': f"{price_str}  (希望 {range_str})", 'inline': True},
+            {'name': 'キーワード', 'value': (watch.get('keyword') or '')[:80], 'inline': True},
+            {'name': 'メモ', 'value': (watch.get('memo') or '—')[:200], 'inline': False},
+        ]
+        # W206: watch に紐付け済 eBay Item ID / 販売価格 (USD) を embed に追加。
+        # ebay_item_id / _ebay_price は呼出側 (run_keyword_watch_crawl) が
+        # batch helper で事前注入する (N+1 回避)。USD のみ表示 (JPY 併記しない)。
+        ebay_item_id = watch.get('ebay_item_id')
+        if ebay_item_id:
+            fields.append({
+                'name': 'eBay Item ID',
+                'value': str(ebay_item_id),
+                'inline': True,
+            })
+        ebay_price = watch.get('_ebay_price')
+        if ebay_price is not None:
+            fields.append({
+                'name': 'eBay 販売価格',
+                'value': f"${ebay_price:,.2f}",
+                'inline': True,
+            })
         embed = {
             'title': f"{site_label} 新着: {title}",
             'url': hit.url,
             'color': 3066993 if watch['site'] == 'mercari' else 15105570,
-            'fields': [
-                {'name': '価格', 'value': f"{price_str}  (希望 {range_str})", 'inline': True},
-                {'name': 'キーワード', 'value': (watch.get('keyword') or '')[:80], 'inline': True},
-                {'name': 'メモ', 'value': (watch.get('memo') or '—')[:200], 'inline': False},
-            ],
+            'fields': fields,
         }
         if hit.image_url:
             embed['image'] = {'url': hit.image_url}
@@ -153,6 +172,25 @@ def run_keyword_watch_crawl(config: dict) -> dict:
         sentinels = [w for w in watches if w.get('is_sentinel')]
         non_sent = [w for w in watches if not w.get('is_sentinel')]
         watches = sentinels + non_sent[:max(0, max_per_run - len(sentinels))]
+
+        # W206: 紐付け済 eBay listing の current_price を batch 取得 (N+1 回避)。
+        # 各 watch dict に `_ebay_price` (Optional[float]) を注入し、
+        # _send_discord_for_hit が embed に USD 価格を併記する。
+        # ebay_item_id 未設定の watch は dict に key 自体が入らない (= embed 省略)。
+        try:
+            _ebay_prices = get_ebay_prices_for_item_ids(
+                [w.get('ebay_item_id') for w in watches]
+            )
+        except Exception:
+            # 価格取得失敗は通知 embed の付加情報なので主処理続行 (Q0: logger 痕跡化)
+            logger.exception(
+                "W148 get_ebay_prices_for_item_ids failed (embed の eBay 販売価格を省略)"
+            )
+            _ebay_prices = {}
+        for w in watches:
+            iid = w.get('ebay_item_id')
+            if iid and iid in _ebay_prices:
+                w['_ebay_price'] = _ebay_prices[iid]
 
         # サイト別 sentinel 集計 (v2.1 HIGH-B: per-watch 連続0件は alert fatigue)
         site_health: dict[str, dict[str, int]] = {}
@@ -293,6 +331,17 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                     "= webhook 救済機構停止. monitor.db / migration v46 状態を点検."
                 )
                 unsent = []
+            # W206: resend pass も batch で eBay 価格取得 (N+1 回避)。
+            try:
+                _resend_prices = get_ebay_prices_for_item_ids(
+                    [u.get('ebay_item_id') for u in unsent]
+                )
+            except Exception:
+                logger.exception(
+                    "W148 resend pass: get_ebay_prices_for_item_ids failed "
+                    "(embed の eBay 販売価格を省略)"
+                )
+                _resend_prices = {}
             resent = 0
             for u in unsent:
                 # Codex 2 周目 HIGH-B: UI 巡回 + cron 巡回 並行で同 hit が
@@ -314,7 +363,11 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                     'memo': u.get('memo') or '',
                     'price_min_jpy': u.get('price_min_jpy'),
                     'price_max_jpy': u.get('price_max_jpy'),
+                    'ebay_item_id': u.get('ebay_item_id'),
                 }
+                _u_iid = u.get('ebay_item_id')
+                if _u_iid and _u_iid in _resend_prices:
+                    watch_view['_ebay_price'] = _resend_prices[_u_iid]
                 if _send_discord_for_hit(webhook, watch_view, rh, u['hit_id']):
                     summary['discord_sent'] += 1
                     resent += 1

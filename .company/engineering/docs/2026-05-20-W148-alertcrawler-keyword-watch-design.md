@@ -753,3 +753,95 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
 - 着手時は本書 §7 のビルドシーケンス順に進める
 - 各 step で **K3 Goal-Driven** の検証 (DoD §9 表) を必ず通す
 - 完了報告は Q5 4 行テンプレに従う
+
+---
+
+## 20. W206 拡張 (2026-06-01)
+
+W148 本体 (v2.2) クローズ後の機能拡張。user 承認済 (2026-06-01)。
+
+### 20.1 要件 (確定事項、変更不可)
+
+| # | 確定事項 | 備考 |
+|---|---|---|
+| ① | 上限価格は通知ゲート (`_check_price_range`) に残す。MonoDeck 側に上限切替の専用 UI は作らない | `watch.price_max_jpy` をそのまま使う |
+| ② | `max_results=10` は変更しない | 現状維持 |
+| ③ | Discord 通知の eBay 販売価格表示は **USD のみ** | `$X,XXX.XX` 形式、JPY 併記しない |
+
+### 20.2 価格フィルタ二段化 (URL 取得 vs 通知ゲート)
+
+- **下限 (price_min)**: 引き続き URL に焼く (`mercari: price_min` / `yahoo: aucminprice`)。
+  「明らかに対象外の安物」を取得段階で物理排除し巡回効率を保つ。
+- **上限 (price_max)**: **URL に焼かない**。`_check_price_range` で通知ゲートにのみ作用させる。
+  - 理由: 取得段階で上限 filter すると `keyword_watch_hits` に上限超過品の記録が残らず、
+    後で「相場の上振れ」「価格レンジ設定の妥当性」を見返せなくなる (履歴保持優先)。
+  - `_build_search_url(site, kw, pmin, pmax)` の `pmax` 引数はシグネチャに残すが本関数では参照しない
+    (呼出側互換性のため)。新着順ソート (`mercari: sort=created_time&order=desc` /
+    `yahoo: s1=new&o1=d`) は維持必須。
+
+### 20.3 keyword_watches.ebay_item_id (任意メタ列)
+
+- migration v59 (`monitor/database.py`): `ALTER TABLE keyword_watches ADD COLUMN ebay_item_id TEXT`。
+  v55/v58 と同じ「ALTER 試行 → table_info で列存在確認 → bump」冪等パターン (Q2)。
+- 任意紐付け (NULL 可)。**SKU ではない** (sku-rules.md: listing 識別は `ebay_item_id`)。
+- UI:
+  - `_render_add_form`: `st.text_input("eBay Item ID (任意)")`、空文字は None。
+  - `_render_watch_list` 編集: `value=target.get("ebay_item_id") or ""`、空文字でクリア。
+  - dataframe rows に `item_id` 列を追加 (一覧の可視化)。
+- `_compute_watch_update`: `ebay_item_id` 引数を末尾 kwarg 追加、fields に含める
+  (None クリア可)。**ebay_item_id 変更は URL 不変** なので changed 判定 (URL 再生成トリガ)
+  に含めない。
+- DB: `add_watch` / `_UPDATABLE_FIELDS` に `ebay_item_id` 追加。
+
+### 20.4 Discord 通知 embed 拡充
+
+`_send_discord_for_hit` の embed `fields` を拡充:
+- (既存) 価格 / キーワード / メモ
+- (W206) **eBay Item ID**: `watch.ebay_item_id` があれば追加
+- (W206) **eBay 販売価格**: `watch._ebay_price` (USD float) があれば `${X,XXX.XX}` 形式で追加
+
+`_ebay_price` の供給: `run_keyword_watch_crawl` の crawl loop 前 / resend pass 前で
+`get_ebay_prices_for_item_ids([w.ebay_item_id for w in watches])` を **1 回だけ呼んで**
+各 watch dict に `w['_ebay_price'] = prices.get(iid)` を注入 (N+1 回避)。
+
+新規 helper `monitor.keyword_watch_db.get_ebay_prices_for_item_ids(item_ids: list[str]) -> dict[str, float]`:
+- `WHERE ebay_item_id IN (...)` で batch SELECT (SKU は使わない、sku-rules.md)。
+- `current_price IS NULL` の listing は dict から除外 (= 価格不明は embed 省略)。
+- 空リスト / 全 None なら `{}` 返す。
+
+### 20.5 resend pass の embed 拡充
+
+`get_unnotified_in_range_hits` の SELECT に `w.ebay_item_id` を JOIN 追加。
+resend pass loop 前にも `get_ebay_prices_for_item_ids` を 1 回呼んで、watch_view dict に
+`ebay_item_id` / `_ebay_price` を含める。
+
+### 20.6 relist 追従 (W190 / W191 と同じ作法)
+
+`tasks/task_daily_relist.py::inherit_listing_on_relist` の競合追従ブロック直後に
+`keyword_watches.ebay_item_id` の追従 UPDATE を追加:
+
+```python
+cur_kw = conn.execute(
+    "UPDATE keyword_watches SET ebay_item_id=? WHERE ebay_item_id=?",
+    (new_item_id, old_item_id),
+)
+keyword_watch_rows = cur_kw.rowcount
+```
+
+戻り値 dict に `keyword_watch_rows` を追加。docstring の追従テーブル一覧に
+`keyword_watches` を追記。
+
+### 20.7 DoD (受け入れ基準)
+
+- [x] `init_db()` 2 回連続でデータ保持 + `PRAGMA user_version == 59`
+- [x] `_build_search_url` の URL に `price_max` / `aucmaxprice` が出ない (新着順ソートは維持)
+- [x] `add_watch` / `update_watch` で `ebay_item_id` を設定・クリアできる
+- [x] `get_ebay_prices_for_item_ids` が batch (N+1 でなく 1 query) で取得
+- [x] Discord embed に `watch.ebay_item_id` / `_ebay_price` がある時のみ field 表示、USD のみ
+- [x] relist 後 `keyword_watches.ebay_item_id` が新 ItemID に追従
+- [x] cascade-update (本書 §20 を含む)
+
+### 20.8 SKU 禁止 (sku-rules.md 準拠)
+
+- `WHERE sku=...` / `GROUP BY sku` / `JOIN ON sku` は使わない。
+- listing 識別は `ebay_item_id`。`WHERE ebay_item_id IN (...)` は OK (集合クエリ)。

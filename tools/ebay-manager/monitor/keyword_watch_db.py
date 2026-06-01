@@ -1,10 +1,18 @@
 """W148 — キーワード新着監視 DB helpers (検索 URL : N 商品 hits 軸)。
 
 設計書: .company/engineering/docs/2026-05-20-W148-alertcrawler-keyword-watch-design.md
-DB schema: monitor/database.py v46 (keyword_watches / keyword_watch_hits)
+DB schema: monitor/database.py v46 (keyword_watches / keyword_watch_hits) +
+           v59 (W206: keyword_watches.ebay_item_id)
 
 sku-rules 適合: SKU を一切扱わない (検索キーワードと商品 URL のみ)。
 claim-then-act dedupe = UNIQUE(watch_id, found_item_url) で物理排除。
+
+W206 (2026-06-01): keyword_watches.ebay_item_id 列を追加。
+  - **任意メタ** (NULL 可): この watch が紐づく自社 eBay 出品の listing ID。
+  - **SKU ではない**: listing 識別は ebay_item_id 単位 (sku-rules.md)。
+    UI から「相場上限の自社 listing と比較したい watch」に手動で紐付ける用途。
+  - relist (Sell Similar) で旧 ItemID が新 ItemID に切替わる時は
+    `tasks/task_daily_relist.py::inherit_listing_on_relist` が追従更新する。
 """
 from __future__ import annotations
 
@@ -41,16 +49,22 @@ def add_watch(
     memo: str = "",
     source: str = "manual",
     is_sentinel: bool = False,
+    ebay_item_id: Optional[str] = None,
 ) -> tuple[int, bool]:
     """INSERT OR IGNORE で UNIQUE(site, search_url) 重複は静かに skip。
-    Returns: (watch_id, inserted_new) — inserted_new=True なら新規 / False なら既存。"""
+    Returns: (watch_id, inserted_new) — inserted_new=True なら新規 / False なら既存。
+
+    ebay_item_id (W206): この watch を自社の eBay listing と紐付ける任意メタ。
+    Discord 通知 embed に「eBay Item ID」「eBay 販売価格」を併記する用途。
+    NULL 可。SKU ではなく listing 単位の ID (sku-rules.md)。
+    """
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT OR IGNORE INTO keyword_watches "
             "(site, search_url, keyword, price_min_jpy, price_max_jpy, memo, "
-            " source, is_sentinel) VALUES (?,?,?,?,?,?,?,?)",
+            " source, is_sentinel, ebay_item_id) VALUES (?,?,?,?,?,?,?,?,?)",
             (site, search_url, keyword, price_min_jpy, price_max_jpy, memo or "",
-             source, 1 if is_sentinel else 0),
+             source, 1 if is_sentinel else 0, ebay_item_id),
         )
         if cur.rowcount == 1:
             return (cur.lastrowid, True)
@@ -74,13 +88,16 @@ def list_watches(active_only: bool = True) -> list[dict]:
 
 # search_url は keyword/価格レンジ変更時に UI が再生成して渡せる (W148-fix 2026-06-01)。
 # site は不変 (変更したい場合は delete + add で別 watch 化)。
+# ebay_item_id は W206 で追加 (任意メタ、None クリアも許可)。
 _UPDATABLE_FIELDS = {
     "is_active", "price_min_jpy", "price_max_jpy", "memo", "keyword", "search_url",
+    "ebay_item_id",
 }
 
 
 def update_watch(watch_id: int, **fields) -> bool:
-    """is_active / price_min_jpy / price_max_jpy / memo / keyword / search_url のみ更新可。
+    """is_active / price_min_jpy / price_max_jpy / memo / keyword / search_url /
+    ebay_item_id (W206、任意メタ・None クリア可) のみ更新可。
     site は不変。search_url は UNIQUE(site, search_url) 制約があるため、別 watch と
     衝突する値への更新は IntegrityError を握りつぶさず呼び出し元に伝播させる
     (Q0: silent skip 禁止。UI 側で error 表示する)。"""
@@ -175,13 +192,13 @@ def get_unnotified_in_range_hits(days: int = 7, limit: int = 200) -> list[dict]:
     crawl 末尾で resend するための一覧取得.
 
     7 日以内に detect された in-range で discord_sent=0 のものを最大 limit 件返す.
-    watch info (site/keyword/memo/price_min/price_max) を JOIN して返却し、
-    Discord embed 生成に必要な情報を一括で渡せる形にする."""
+    watch info (site/keyword/memo/price_min/price_max/ebay_item_id) を JOIN して
+    返却し、Discord embed 生成 (W206 拡張 embed 含む) に必要な情報を一括で渡せる形にする."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT h.id AS hit_id, h.watch_id, h.found_item_url, h.title, "
             "       h.price_jpy, h.image_url, w.site, w.keyword, w.memo, "
-            "       w.price_min_jpy, w.price_max_jpy "
+            "       w.price_min_jpy, w.price_max_jpy, w.ebay_item_id "
             "FROM keyword_watch_hits h "
             "INNER JOIN keyword_watches w ON w.id = h.watch_id "
             "WHERE h.in_price_range = 1 AND h.discord_sent = 0 "
@@ -191,6 +208,32 @@ def get_unnotified_in_range_hits(days: int = 7, limit: int = 200) -> list[dict]:
             (f"-{days} days", limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_ebay_prices_for_item_ids(item_ids: list[str]) -> dict[str, float]:
+    """W206: ebay_listings.current_price を ebay_item_id IN (...) で一括取得 (N+1回避).
+
+    Args:
+        item_ids: ebay_item_id のリスト。None / 空文字列は除外する。
+
+    Returns:
+        {ebay_item_id: current_price} の dict。current_price が NULL の listing は
+        含めない (= 価格不明は通知 embed で表示しない方針)。空リスト/全 None なら {}。
+
+    sku-rules.md: listing 識別は ebay_item_id (SKU ではない)。
+    """
+    valid = [iid for iid in (item_ids or []) if iid]
+    if not valid:
+        return {}
+    placeholders = ",".join("?" for _ in valid)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT ebay_item_id, current_price FROM ebay_listings "
+            f"WHERE ebay_item_id IN ({placeholders}) "
+            f"  AND current_price IS NOT NULL",
+            valid,
+        ).fetchall()
+    return {r["ebay_item_id"]: float(r["current_price"]) for r in rows}
 
 
 def get_recent_hits(watch_id: int, limit: int = 20) -> list[dict]:

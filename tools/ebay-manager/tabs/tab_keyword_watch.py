@@ -56,13 +56,23 @@ def _build_search_url(
     price_min_jpy: Optional[int] = None,
     price_max_jpy: Optional[int] = None,
 ) -> str:
-    """site + keyword (+ 価格レンジ) から検索 URL を構築。
+    """site + keyword (+ 価格下限) から検索 URL を構築。新着順ソート固定。
 
     価格 param 名 (2026-06-01 実サイト live 検証で裏取り):
-      - mercari: price_min / price_max
-      - yahoo_auctions: aucminprice / aucmaxprice
-    price_min/max が None または 0 の時のみ該当 param を省略 (0 = 未設定扱い)。
+      - mercari: price_min / (price_max は焼かない)
+      - yahoo_auctions: aucminprice / (aucmaxprice は焼かない)
+
+    W206 (2026-06-01): **上限は URL に焼かない (通知ゲート専用)**。
+      取得段階で上限を URL filter すると履歴 (`keyword_watch_hits`) に
+      上限超過品の記録が残らず後で見返せない。下限は「明らかに対象外の安物」
+      を取得段階で物理排除する一方、上限は `_check_price_range` で通知ゲート
+      にのみ作用させる方針 (watch.price_max_jpy をそのまま使う)。
+    sort=created_time&order=desc / s1=new&o1=d (新着順) は維持必須。
+
+    price_min_jpy が None または 0 の時のみ price_min param を省略 (0 = 未設定扱い)。
+    price_max_jpy はシグネチャに残すが本関数では参照しない (呼出側互換性のため)。
     """
+    _ = price_max_jpy  # 通知ゲート専用、URL には焼かない (W206)
     kw = quote_plus(keyword.strip())
     if site == "mercari":
         url = (
@@ -71,15 +81,11 @@ def _build_search_url(
         )
         if price_min_jpy:
             url += f"&price_min={int(price_min_jpy)}"
-        if price_max_jpy:
-            url += f"&price_max={int(price_max_jpy)}"
         return url
     if site == "yahoo_auctions":
         url = f"https://auctions.yahoo.co.jp/search/search?p={kw}&s1=new&o1=d"
         if price_min_jpy:
             url += f"&aucminprice={int(price_min_jpy)}"
-        if price_max_jpy:
-            url += f"&aucmaxprice={int(price_max_jpy)}"
         return url
     raise ValueError(f"unsupported site: {site}")
 
@@ -91,6 +97,7 @@ def _compute_watch_update(
     pmax_val: Optional[int],
     memo: str,
     is_active: bool,
+    ebay_item_id: Optional[str] = None,
 ) -> dict:
     """編集保存時の update_fields を計算する純関数 (UI から分離してテスト可能化)。
 
@@ -100,6 +107,8 @@ def _compute_watch_update(
       変更は禁止 (ValueError)。黙ってドロップすると user の編集意図を silent skip
       するため (Q0)、明示的に例外を投げて UI 側で error 表示させる。memo / active
       のみ変更可。
+    - W206: ebay_item_id は任意メタ (None クリア可)。URL に影響しないため
+      changed 判定 (URL 再生成トリガ) には含めない。
     """
     changed = (
         kw_new != target["keyword"]
@@ -116,6 +125,7 @@ def _compute_watch_update(
         price_max_jpy=pmax_val,
         memo=memo,
         is_active=1 if is_active else 0,
+        ebay_item_id=ebay_item_id,
     )
     if changed:
         fields["search_url"] = _build_search_url(
@@ -217,6 +227,7 @@ def _render_watch_list() -> None:
             "site": w["site"],
             "keyword": w["keyword"],
             "price": price_str,
+            "item_id": w.get("ebay_item_id") or "",
             "sentinel": "🛡️" if w.get("is_sentinel") else "",
             "active": "✅" if w["is_active"] else "❌",
             "last_crawl": _to_jst_str(w.get("last_crawled_at")),
@@ -262,6 +273,13 @@ def _render_watch_list() -> None:
                                  key=f"kw_memo_{sel_id}", height=80)
         new_active = st.checkbox("active", value=bool(target["is_active"]),
                                   key=f"kw_active_{sel_id}")
+        # W206: 任意 eBay Item ID 紐付け (Discord 通知 embed 拡充用)
+        new_item_id_raw = st.text_input(
+            "eBay Item ID (任意)",
+            value=target.get("ebay_item_id") or "",
+            key=f"kw_iid_{sel_id}",
+            help="紐づく自社 eBay 出品の Item ID。空欄でクリア。",
+        )
 
         cc1, cc2 = st.columns(2)
         with cc1:
@@ -271,12 +289,14 @@ def _render_watch_list() -> None:
                 # ため、DB 表現も None に揃えて URL と整合させる)。
                 pmin_val = None if (pmin_unset or int(new_pmin) == 0) else int(new_pmin)
                 pmax_val = None if (pmax_unset or int(new_pmax) == 0) else int(new_pmax)
+                new_item_id = new_item_id_raw.strip() or None
                 if not kw_new:
                     st.error("キーワードは必須です")
                     return
                 try:
                     update_fields = _compute_watch_update(
-                        target, kw_new, pmin_val, pmax_val, new_memo, new_active
+                        target, kw_new, pmin_val, pmax_val, new_memo, new_active,
+                        ebay_item_id=new_item_id,
                     )
                 except ValueError as e:
                     # sentinel の keyword/価格編集禁止、または未対応 site
@@ -347,6 +367,12 @@ def _render_add_form() -> None:
             st.caption("注: 両方なしだと通知無効 (履歴のみ)")
 
         memo = st.text_area("メモ (任意)", placeholder="採用後のアクション、注意点 等", height=80)
+        # W206: 任意 eBay Item ID 紐付け (Discord 通知 embed 拡充用)
+        item_id_raw = st.text_input(
+            "eBay Item ID (任意)",
+            placeholder="例: 358505733121",
+            help="紐づく自社 eBay 出品の Item ID。通知時に eBay 販売価格を併記。",
+        )
 
         submitted = st.form_submit_button("追加")
         if submitted:
@@ -356,6 +382,7 @@ def _render_add_form() -> None:
                 return
             pmin_val = None if pmin_unset else int(pmin)
             pmax_val = None if pmax_unset else int(pmax)
+            iid_val = item_id_raw.strip() or None
             try:
                 url = _build_search_url(site, kw, pmin_val, pmax_val)
             except ValueError as e:
@@ -369,6 +396,7 @@ def _render_add_form() -> None:
                 price_max_jpy=pmax_val,
                 memo=memo,
                 source="manual",
+                ebay_item_id=iid_val,
             )
             bump_db_version()
             if new:

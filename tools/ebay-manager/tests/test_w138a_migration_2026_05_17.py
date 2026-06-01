@@ -40,7 +40,7 @@ def test_v41_columns_exist_and_version(tmp_db):
         assert "shipping_profile_id" in cols
         assert "shipping_profile_fetched_at" in cols
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 58, f"user_version={ver} (期待 58 = HEAD: ...→ v56 W185 supplier_candidates eid unique → v57 health autofix → v58 W192 Yahoo site_config)"
+        assert ver == 59, f"user_version={ver} (期待 59 = HEAD: ...→ v57 health autofix → v58 W192 Yahoo site_config → v59 W206 keyword_watches.ebay_item_id)"
 
 
 def test_v41_idempotent_data_preserved(tmp_db):
@@ -57,7 +57,7 @@ def test_v41_idempotent_data_preserved(tmp_db):
     init_db()  # 2 回目
     with get_conn() as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 58, f"version drift: {ver}"
+        assert ver == 59, f"version drift: {ver}"
         row = c.execute(
             "SELECT shipping_profile_id, shipping_profile_fetched_at "
             "FROM ebay_listings WHERE ebay_item_id='ITEM_W138A'"
@@ -79,7 +79,7 @@ def test_v41_alter_idempotent_no_crash_on_repeat(tmp_path, monkeypatch):
     db_mod.init_db()  # v41 block 再突入 (ALTER 重複) → 落ちないこと
     with sqlite3.connect(db_path) as c:
         ver = c.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 58  # v41→...→v56(W185 eid unique)→v57(health autofix)→v58(W192 Yahoo site_config) まで到達 (canonical HEAD)
+        assert ver == 59  # v41→...→v58(W192 Yahoo site_config)→v59(W206 keyword_watches.ebay_item_id) まで到達 (canonical HEAD)
         cols = {r[1] for r in c.execute(
             "PRAGMA table_info(ebay_listings)").fetchall()}
         assert "shipping_profile_id" in cols

@@ -80,7 +80,7 @@ def test_v46_self_heals_when_tables_missing(tmp_db):
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
             "AND name IN ('keyword_watches','keyword_watch_hits')"
         ).fetchone()[0]
-    assert ver == 58  # cascade: init_db で v46→...→v58 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」、v58 = W192 Yahoo site_config canonical HEAD)
+    assert ver == 59  # cascade: init_db で v46→...→v59 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」、v59 = W206 keyword_watches.ebay_item_id canonical HEAD)
     assert n == 2
 
 
@@ -578,25 +578,30 @@ def test_resend_atomic_claim_prevents_double_send(tmp_db, monkeypatch):
 # ---------- W148-fix (2026-06-01): _build_search_url 価格フィルタ込み URL 生成 ----------
 
 def test_build_search_url_mercari_with_price():
-    """mercari は price_min / price_max param を付与 (live 検証 2026-06-01)。"""
+    """mercari は price_min のみ URL に焼く。price_max は通知ゲート専用 (W206)。"""
     from tabs.tab_keyword_watch import _build_search_url
     url = _build_search_url("mercari", "テスト", 1000, 5000)
     assert "price_min=1000" in url
-    assert "price_max=5000" in url
+    assert "price_max" not in url  # W206: 上限は URL に焼かない
     assert "keyword=" in url
+    # 新着順ソートは維持必須 (W206 でも変更不可)
+    assert "sort=created_time" in url and "order=desc" in url
 
 
 def test_build_search_url_yahoo_with_price():
-    """yahoo_auctions は aucminprice / aucmaxprice param を付与 (live 検証 2026-06-01)。"""
+    """yahoo_auctions は aucminprice のみ URL に焼く。aucmaxprice は通知ゲート専用 (W206)。"""
     from tabs.tab_keyword_watch import _build_search_url
     url = _build_search_url("yahoo_auctions", "テスト", 1000, 5000)
     assert "aucminprice=1000" in url
-    assert "aucmaxprice=5000" in url
+    assert "aucmaxprice" not in url  # W206: 上限は URL に焼かない
     assert "p=" in url
+    # 新着順ソートは維持必須 (W206 でも変更不可)
+    assert "s1=new" in url and "o1=d" in url
 
 
 def test_build_search_url_omits_unset_price():
-    """price が None / 0 の時は該当 param を URL に付けない (0 = 未設定扱い)。"""
+    """price_min が None / 0 の時は param を URL に付けない (0 = 未設定扱い)。
+    price_max は W206 以降そもそも URL に焼かない (通知ゲート専用)。"""
     from tabs.tab_keyword_watch import _build_search_url
     # 両方 None
     u_none = _build_search_url("mercari", "x")
@@ -607,9 +612,9 @@ def test_build_search_url_omits_unset_price():
     # min のみ
     u_min = _build_search_url("yahoo_auctions", "x", 1000, None)
     assert "aucminprice=1000" in u_min and "aucmaxprice" not in u_min
-    # max のみ
+    # max 指定でも URL には出ない (W206 通知ゲート専用)
     u_max = _build_search_url("mercari", "x", None, 5000)
-    assert "price_max=5000" in u_max and "price_min" not in u_max
+    assert "price_max" not in u_max and "price_min" not in u_max
 
 
 def test_build_search_url_unsupported_site():
@@ -732,3 +737,347 @@ def test_resend_pass_uses_atomic_claim_in_loop(tmp_db, monkeypatch):
     # A は claim 成功 → 送信、B は既 claim 済 → skip
     assert hid_a in sent_ids, "A の resend が走っていない"
     assert hid_b not in sent_ids, "既 claim 済 B が二重送信 = HIGH-B 未防御"
+
+
+# ---------- W206 (2026-06-01): キーワード新着監視 拡張 ----------
+
+def test_build_search_url_excludes_price_max():
+    """W206: 上限価格は URL に焼かない (通知ゲート専用、履歴保持の為)。"""
+    from tabs.tab_keyword_watch import _build_search_url
+    # 上限のみ指定 → URL に price_max / aucmaxprice が出ない
+    u_m = _build_search_url("mercari", "x", None, 5000)
+    assert "price_max" not in u_m
+    u_y = _build_search_url("yahoo_auctions", "x", None, 5000)
+    assert "aucmaxprice" not in u_y
+    # 上下限指定でも上限のみ消える
+    u_m2 = _build_search_url("mercari", "x", 1000, 5000)
+    assert "price_min=1000" in u_m2 and "price_max" not in u_m2
+    u_y2 = _build_search_url("yahoo_auctions", "x", 1000, 5000)
+    assert "aucminprice=1000" in u_y2 and "aucmaxprice" not in u_y2
+
+
+def test_v59_idempotent_ebay_item_id(tmp_db):
+    """Q2: keyword_watches.ebay_item_id 追加が init_db 2 回連続でデータ保持 + ver=59。"""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+
+    # データ投入 (ebay_item_id 付き)
+    wid, new = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=v59-test",
+        keyword="v59-test",
+        ebay_item_id="358505733121",
+    )
+    assert new
+
+    # 2 回目の init_db でデータが消えない / 列も残る / ver=59
+    tmp_db.init_db()
+
+    with get_conn() as c:
+        ver = c.execute("PRAGMA user_version").fetchone()[0]
+        cols = {r[1] for r in c.execute("PRAGMA table_info(keyword_watches)").fetchall()}
+        row = c.execute(
+            "SELECT ebay_item_id FROM keyword_watches WHERE id=?", (wid,)
+        ).fetchone()
+    assert ver == 59
+    assert "ebay_item_id" in cols
+    assert row is not None and row[0] == "358505733121"
+
+
+def test_add_watch_with_ebay_item_id(tmp_db):
+    """add_watch が ebay_item_id kwarg を受け付け、DB に INSERT される。"""
+    from monitor.keyword_watch_db import add_watch, list_watches
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=iid",
+        keyword="iid",
+        ebay_item_id="123456789012",
+    )
+    target = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert target["ebay_item_id"] == "123456789012"
+
+
+def test_add_watch_without_ebay_item_id_is_null(tmp_db):
+    """ebay_item_id を渡さなければ NULL のまま (任意メタ)。"""
+    from monitor.keyword_watch_db import add_watch, list_watches
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=null-iid",
+        keyword="null-iid",
+    )
+    target = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert target["ebay_item_id"] is None
+
+
+def test_update_watch_ebay_item_id(tmp_db):
+    """update_watch で ebay_item_id を更新可、None でクリア可。"""
+    from monitor.keyword_watch_db import add_watch, update_watch, list_watches
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=upd",
+        keyword="upd",
+    )
+    # 設定
+    assert update_watch(wid, ebay_item_id="358505733121") is True
+    t = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert t["ebay_item_id"] == "358505733121"
+    # 別 ID に更新
+    assert update_watch(wid, ebay_item_id="999999999999") is True
+    t2 = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert t2["ebay_item_id"] == "999999999999"
+    # None でクリア
+    assert update_watch(wid, ebay_item_id=None) is True
+    t3 = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert t3["ebay_item_id"] is None
+
+
+def test_compute_watch_update_includes_ebay_item_id():
+    """_compute_watch_update が ebay_item_id を fields に含める。
+    ebay_item_id の変更だけでは URL 再生成しない (changed 判定対象外)。"""
+    from tabs.tab_keyword_watch import _compute_watch_update
+    target = {
+        "site": "mercari", "keyword": "same",
+        "price_min_jpy": 1000, "price_max_jpy": None, "is_sentinel": 0,
+        "ebay_item_id": None,
+    }
+    # ebay_item_id 設定だけ (keyword/価格は同じ)
+    fields = _compute_watch_update(
+        target, "same", 1000, None, "memo", True, ebay_item_id="123"
+    )
+    assert fields["ebay_item_id"] == "123"
+    assert "search_url" not in fields  # URL 不変
+    # None クリアも fields に出る
+    fields_clear = _compute_watch_update(
+        target, "same", 1000, None, "memo", True, ebay_item_id=None
+    )
+    assert "ebay_item_id" in fields_clear
+    assert fields_clear["ebay_item_id"] is None
+
+
+def test_get_ebay_prices_batch(tmp_db):
+    """get_ebay_prices_for_item_ids: ebay_listings から batch 取得 (N+1 回避)。
+    None / 欠落 / 空リストの境界条件を網羅。"""
+    from monitor.keyword_watch_db import get_ebay_prices_for_item_ids
+    from monitor.database import get_conn
+
+    # 2 件 listing を直接挿入 (W206 で扱う最小カラムのみ)
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            ("AAA111", "stock:01", "Item A", 99.99),
+        )
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            ("BBB222", "stock:02", "Item B", 1234.50),
+        )
+        # current_price NULL は dict から除外
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            ("CCC333", "stock:03", "Item C (no price)", None),
+        )
+
+    # 空リスト → {}
+    assert get_ebay_prices_for_item_ids([]) == {}
+    # None のみ → {}
+    assert get_ebay_prices_for_item_ids([None, ""]) == {}
+
+    # 2 件取得 + 欠落 ID + None 混在 + NULL price は除外
+    prices = get_ebay_prices_for_item_ids(
+        ["AAA111", "BBB222", "ZZZ_missing", None, "CCC333"]
+    )
+    assert prices == {"AAA111": 99.99, "BBB222": 1234.50}
+    # CCC333 は current_price NULL なので除外
+    assert "CCC333" not in prices
+    assert "ZZZ_missing" not in prices
+
+
+def test_inherit_relist_follows_keyword_watch(tmp_db):
+    """inherit_listing_on_relist が keyword_watches.ebay_item_id を旧→新 ItemID に追従更新。"""
+    from monitor.keyword_watch_db import add_watch, list_watches
+    from monitor.database import get_conn
+    from tasks.task_daily_relist import inherit_listing_on_relist
+
+    old_iid = "OLD_ID_001"
+    new_iid = "NEW_ID_002"
+
+    # 旧 ItemID の listing と、それに紐付く watch を用意
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (old_iid, "stock:01", "old listing", 100.0),
+        )
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=relist-test",
+        keyword="relist-test",
+        ebay_item_id=old_iid,
+    )
+
+    # relist 実行
+    result = inherit_listing_on_relist(
+        old_item_id=old_iid,
+        new_item_id=new_iid,
+        sku="stock:01",
+        title="new listing",
+        current_price=120.0,
+    )
+    # 戻り値 keyword_watch_rows = 1
+    assert result.get("keyword_watch_rows") == 1
+
+    # watch の ebay_item_id が new_iid に追従
+    target = next(r for r in list_watches(active_only=False) if r["id"] == wid)
+    assert target["ebay_item_id"] == new_iid
+
+
+def test_inherit_relist_no_keyword_watch_is_zero_rows(tmp_db):
+    """紐付け watch が無ければ keyword_watch_rows = 0 (silent skip ではなく明示)。"""
+    from monitor.database import get_conn
+    from tasks.task_daily_relist import inherit_listing_on_relist
+
+    old_iid = "OLD_NO_WATCH"
+    new_iid = "NEW_NO_WATCH"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (old_iid, "stock:01", "x", 100.0),
+        )
+
+    result = inherit_listing_on_relist(
+        old_item_id=old_iid, new_item_id=new_iid,
+        sku="stock:01", title="x", current_price=100.0,
+    )
+    assert result.get("keyword_watch_rows") == 0
+
+
+def test_discord_embed_includes_ebay_price(monkeypatch):
+    """W206: watch._ebay_price / ebay_item_id があれば embed fields に追加される。
+    無ければ field 自体が出ない (mock notifier で field 差を検証)。"""
+    import tasks.task_keyword_watch_crawl as mod
+    import notifiers.discord_notifier as dn_mod
+
+    sent = {}
+
+    def fake_send(self, message, embed=None):
+        sent["embed"] = embed
+        return True
+
+    monkeypatch.setattr(dn_mod.DiscordNotifier, "send_message", fake_send)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/X"
+        title = "Razer DeathAdder"
+        price_jpy = 5000
+        image_url = None
+
+    # case 1: ebay_item_id + _ebay_price あり → fields に両方含まれる
+    watch_with = {
+        "id": 1, "site": "mercari", "keyword": "kw",
+        "memo": "—", "price_min_jpy": 1000, "price_max_jpy": 10000,
+        "ebay_item_id": "358505733121", "_ebay_price": 89.99,
+    }
+    ok = mod._send_discord_for_hit("https://example/wh", watch_with, _Hit(), hit_id=1)
+    assert ok is True
+    field_names = [f["name"] for f in sent["embed"]["fields"]]
+    assert "eBay Item ID" in field_names
+    assert "eBay 販売価格" in field_names
+    price_field = next(f for f in sent["embed"]["fields"] if f["name"] == "eBay 販売価格")
+    # USD のみ表示 ($X,XXX.XX) / JPY 併記しない
+    assert price_field["value"] == "$89.99"
+    assert "¥" not in price_field["value"]
+    iid_field = next(f for f in sent["embed"]["fields"] if f["name"] == "eBay Item ID")
+    assert iid_field["value"] == "358505733121"
+
+    # case 2: ebay_item_id 無 watch → 両 field とも embed に含まれない
+    sent.clear()
+    watch_without = {
+        "id": 2, "site": "mercari", "keyword": "kw2",
+        "memo": "—", "price_min_jpy": 1000, "price_max_jpy": 10000,
+    }
+    ok2 = mod._send_discord_for_hit("https://example/wh", watch_without, _Hit(), hit_id=2)
+    assert ok2 is True
+    field_names2 = [f["name"] for f in sent["embed"]["fields"]]
+    assert "eBay Item ID" not in field_names2
+    assert "eBay 販売価格" not in field_names2
+
+    # case 3: ebay_item_id あり / _ebay_price 無 → Item ID のみ表示
+    sent.clear()
+    watch_id_only = {
+        "id": 3, "site": "yahoo_auctions", "keyword": "kw3",
+        "memo": "—", "price_min_jpy": 1000, "price_max_jpy": 10000,
+        "ebay_item_id": "999",
+        # _ebay_price 無
+    }
+    ok3 = mod._send_discord_for_hit("https://example/wh", watch_id_only, _Hit(), hit_id=3)
+    assert ok3 is True
+    field_names3 = [f["name"] for f in sent["embed"]["fields"]]
+    assert "eBay Item ID" in field_names3
+    assert "eBay 販売価格" not in field_names3
+
+
+def test_crawl_loop_injects_ebay_price(tmp_db, monkeypatch):
+    """run_keyword_watch_crawl が crawl loop 前に batch helper を呼んで
+    各 watch dict に _ebay_price を注入し、_send_discord_for_hit に渡す (N+1 回避)。"""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+
+    iid = "BATCH_TEST_001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price) "
+            "VALUES (?,?,?,?)",
+            (iid, "stock:01", "Watched listing", 55.55),
+        )
+    add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=batch-test",
+        keyword="batch-test", price_min_jpy=1000, price_max_jpy=50000,
+        ebay_item_id=iid,
+    )
+
+    class _Hit:
+        def __init__(self):
+            self.url = "https://jp.mercari.com/item/BatchHit"
+            self.title = "batch hit"
+            self.price_jpy = 12000
+            self.image_url = None
+
+    monkeypatch.setattr(
+        "monitor.mercari_search.search_mercari",
+        MagicMock(return_value=[_Hit()]),
+    )
+
+    sent_watch_refs = []
+
+    def fake_send(webhook, watch, hit, hit_id):
+        sent_watch_refs.append(dict(watch))
+        return True
+
+    monkeypatch.setattr(mod, "_send_discord_for_hit", fake_send)
+
+    # batch helper 呼出回数 = 1 (resend pass 含めて run 内 2 回でも OK だが、
+    # main loop 前に 1 回確実に呼ばれることを check)
+    call_count = {"n": 0}
+    real_fn = mod.get_ebay_prices_for_item_ids
+
+    def counted(item_ids):
+        call_count["n"] += 1
+        return real_fn(item_ids)
+
+    monkeypatch.setattr(mod, "get_ebay_prices_for_item_ids", counted)
+
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": "https://example/wh"}})
+    assert r["success"] is True
+
+    # _send_discord_for_hit に渡された watch dict が _ebay_price を持つ
+    assert any(w.get("_ebay_price") == 55.55 for w in sent_watch_refs), \
+        "crawl loop で _ebay_price 注入が動いていない (batch helper 結果が watch に乗らない)"
+    # batch helper が main loop 前に呼ばれている (件数は 1 or 2、in-range hit があれば
+    # resend pass も走るが detected_at >= now-7d で discord_sent=1 になるため 0 件)
+    assert call_count["n"] >= 1

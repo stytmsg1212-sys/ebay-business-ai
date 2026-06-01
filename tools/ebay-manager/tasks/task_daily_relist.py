@@ -138,9 +138,10 @@ def inherit_listing_on_relist(
         (End→Sell similar で ItemID が変わってもメモが残る。user 確定
         2026-05-19 = 引き継ぎ。新側に既存メモがあれば尊重 = 上記
         INSERT OR IGNORE と同方針)
+      - keyword_watches (W206): ebay_item_id 追従。任意紐付けが relist で孤立しないように。
 
     Returns: {"inherited_columns": int, "competitor_rows": int, "supplier_rows": int,
-              "monitored_rows": int, "note_rows": int}
+              "monitored_rows": int, "note_rows": int, "keyword_watch_rows": int}
 
     出典: 2026-05-11 W119 ふりかえりで silent skip 発見 (lp_min_price 消失 / 競合孤立).
     """
@@ -149,6 +150,7 @@ def inherit_listing_on_relist(
     supplier_rows = 0
     monitored_rows = 0
     note_rows = 0
+    keyword_watch_rows = 0
     with get_conn() as conn:
         # OLD 行から永続データ取得 (継承列をフラットに SELECT)
         old_row = conn.execute(
@@ -248,6 +250,15 @@ def inherit_listing_on_relist(
         )
         competitor_rows = cur_cp.rowcount
 
+        # - keyword_watches (W206): UI から任意紐付けされた eBay Item ID を追従.
+        #   relist で旧 ItemID が新 ItemID に切替わった時、Discord 通知 embed の
+        #   「eBay 販売価格」併記が引き続き機能するように.
+        cur_kw = conn.execute(
+            "UPDATE keyword_watches SET ebay_item_id=? WHERE ebay_item_id=?",
+            (new_item_id, old_item_id),
+        )
+        keyword_watch_rows = cur_kw.rowcount
+
         # - listing_notes: W140 メモを旧→新 ebay_item_id へ引き継ぐ.
         #   End→Sell similar で ItemID が変わってもメモ (発送/通関の注意点)
         #   が残るように (user 確定 2026-05-19 = 引き継ぎ). 空メモ
@@ -277,6 +288,7 @@ def inherit_listing_on_relist(
         "supplier_rows": supplier_rows,
         "monitored_rows": monitored_rows,
         "note_rows": note_rows,
+        "keyword_watch_rows": keyword_watch_rows,
     }
 
 

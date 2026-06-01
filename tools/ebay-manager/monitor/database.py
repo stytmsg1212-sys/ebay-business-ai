@@ -2790,6 +2790,40 @@ def init_db():
                 conn.execute("PRAGMA user_version = 58")
                 logger.info("[init_db v58] schema_ver bumped to 58")
 
+        # ---- v59 (W206, 2026-06-01): keyword_watches.ebay_item_id 追加 ----
+        # W206「キーワード新着監視 拡張」: 各 watch を自社の eBay listing と紐付けて
+        # Discord 通知 embed に「eBay Item ID」「eBay 販売価格 (USD)」を併記する。
+        # 任意メタ列 (NULL 可)。SKU ではなく ebay_item_id 単位の任意紐付け
+        # (sku-rules.md: listing 識別は ebay_item_id)。
+        # v55/v58 と同じ「ALTER 試行 → table_info で列存在確認 → bump」冪等パターン。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 58:
+            try:
+                conn.execute(
+                    "ALTER TABLE keyword_watches ADD COLUMN ebay_item_id TEXT"
+                )
+                logger.info(
+                    "[init_db v59] keyword_watches.ebay_item_id added"
+                )
+            except sqlite3.OperationalError:
+                pass
+            _v59_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(keyword_watches)"
+                ).fetchall()
+            }
+            if "ebay_item_id" in _v59_cols:
+                conn.execute("PRAGMA user_version = 59")
+                logger.info("[init_db v59] schema_ver bumped to 59")
+            else:
+                # ALTER が duplicate-column 以外 (ロック/スキーマ異常等) で失敗 = 列未追加。
+                # bump せず次回 init_db で再試行するが、痕跡を残さないと Q0 silent skip に
+                # なるため warning で可視化 (Codex 2段レビュー LOW 指摘、2026-06-01)。
+                logger.warning(
+                    "[init_db v59] ebay_item_id 列が未追加 (ALTER 失敗)。"
+                    "user_version は 58 のまま、次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
