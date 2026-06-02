@@ -67,7 +67,7 @@ CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 class RankClassification:
     """仕入先記述から推定された出品ランク。"""
     rank_code: str           # 'N' / 'S' / 'A' / 'B' / 'C' / 'D' / 'PO' / 'As-Is'
-    rank_label: str          # 'New (Unopened)' / 'Open Box' / 'Excellent' 等 (英語)
+    rank_label: str          # 'New' / 'New (Opened)' / 'Excellent' 等 (英語)
     rank_jp: str             # 'Tested · Minor Wear' 等 (description の rank_jp に使う短文)
     ebay_condition_id: str   # '1000' / '1500' / '3000' / '7000'
     confidence: float        # 0.0-1.0
@@ -80,8 +80,8 @@ class RankClassification:
 
 # ランク → (英語ラベル, JPヒント, eBay Condition ID)
 _RANK_TABLE: dict[str, tuple[str, str, str]] = {
-    "N":     ("New (Unopened)",  "Brand New Sealed",          "1000"),
-    "S":     ("Open Box",        "Opened \u00b7 No Wear",     "1500"),
+    "N":     ("New",             "Brand New Sealed",          "1000"),
+    "S":     ("New (Opened)",    "Opened \u00b7 No Wear",     "1500"),
     "A":     ("Excellent",       "Tested \u00b7 Minor Wear",  "3000"),
     "B":     ("Good",            "Tested \u00b7 Visible Wear", "3000"),
     "C":     ("Fair",            "Tested \u00b7 Heavy Wear",  "3000"),
@@ -140,8 +140,8 @@ eBay 出品時の 8段階ランク体系に分類します。
 
 | Rank  | EN Label         | JP Hint                      | eBay Cond ID |
 |-------|------------------|------------------------------|--------------|
-| N     | New (Unopened)   | Brand New Sealed             | 1000 |
-| S     | Open Box         | Opened \u00b7 No Wear        | 1500 |
+| N     | New              | Brand New Sealed             | 1000 |
+| S     | New (Opened)     | Opened \u00b7 No Wear        | 1500 |
 | A     | Excellent        | Tested \u00b7 Minor Wear     | 3000 |
 | B     | Good             | Tested \u00b7 Visible Wear   | 3000 |
 | C     | Fair             | Tested \u00b7 Heavy Wear     | 3000 |

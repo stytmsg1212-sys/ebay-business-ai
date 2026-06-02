@@ -57,7 +57,7 @@ class TestBuildResult:
     def test_valid_rank_n(self):
         r = _build_result("N", 0.9, "new sealed")
         assert r.rank_code == "N"
-        assert r.rank_label == "New (Unopened)"
+        assert r.rank_label == "New"
         assert r.ebay_condition_id == "1000"
         assert r.confidence == 0.9
 

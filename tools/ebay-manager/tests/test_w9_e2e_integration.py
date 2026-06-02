@@ -278,8 +278,8 @@ def _make_reference_listing(**overrides) -> ReferenceListing:
 def _make_rank(rank_code: str = "A") -> RankClassification:
     """正常系の RankClassification 生成 (rank_code 指定で差し替え可)。"""
     table = {
-        "N": ("New (Unopened)", "Brand New Sealed", "1000"),
-        "S": ("Open Box", "Opened · No Wear", "1500"),
+        "N": ("New", "Brand New Sealed", "1000"),
+        "S": ("New (Opened)", "Opened · No Wear", "1500"),
         "A": ("Excellent", "Tested · Minor Wear", "3000"),
         "B": ("Good", "Tested · Visible Wear", "3000"),
         "C": ("Fair", "Tested · Heavy Wear", "3000"),
@@ -300,8 +300,8 @@ def _make_rank(rank_code: str = "A") -> RankClassification:
 
 def _make_claude_rank_response(rank_code: str = "A", confidence: float = 0.92) -> MagicMock:
     table = {
-        "N": ("New (Unopened)", "Brand New Sealed"),
-        "S": ("Open Box", "Opened · No Wear"),
+        "N": ("New", "Brand New Sealed"),
+        "S": ("New (Opened)", "Opened · No Wear"),
         "A": ("Excellent", "Tested · Minor Wear"),
         "B": ("Good", "Tested · Visible Wear"),
         "C": ("Fair", "Tested · Heavy Wear"),

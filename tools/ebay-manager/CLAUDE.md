@@ -202,8 +202,8 @@ The shipper is a retailer and is not the manufacturer.
 
 | Rank | EN | JP | eBay Cond ID | 適用 |
 |---|---|---|---|---|
-| N | New (Unopened) | 新品・未開封 | 1000 | シュリンク / 工場出荷 |
-| S | Open Box | 新品同様 | 1500 (※) | 開封済みだが未使用、使用痕なし |
+| N | New | 新品・未開封 | 1000 | シュリンク / 工場出荷 |
+| S | New (Opened) | 新品同様 | 1500 (※) | 開封済みだが未使用、使用痕なし |
 
 ※ **Cond ID 1500 はカテゴリ依存** (Consumer Electronics > Portable Audio & Headphones 等で制限)。GetCategoryFeatures / Taxonomy API で事前確認、不可カテゴリでは **1000 fallback** (条件満たす場合) or **3000 + "Open box" description** に降格。出品時 VerifyAdd で再検証必須 (Q0 サイレントスキップ防止)。
 
