@@ -348,7 +348,10 @@ def _render_watch_list() -> None:
 def _render_add_form() -> None:
     """3. 新規追加 form"""
     st.subheader("➕ 新規追加")
-    with st.form("kw_add_form", clear_on_submit=True):
+    # 2026-06-02 (user 要望): 追加後も入力を保持 (clear_on_submit=False)。
+    # 同一商品をメルカリ→ヤフオクと続けて登録する際、文言を残したまま「サイト」だけ
+    # 切り替えて「追加」を押せば済むようにする (別 site + 別 URL なので dedup も通る)。
+    with st.form("kw_add_form", clear_on_submit=False):
         c1, c2 = st.columns([1, 3])
         with c1:
             site = st.selectbox("サイト", ["mercari", "yahoo_auctions"],
