@@ -1885,5 +1885,45 @@
         "priority": "高",
         "created": "2026-06-02",
         "completed": null
+    },
+    {
+        "id": 282,
+        "tag": "W210",
+        "title": "利益計器盤の修復 (sales_history 同期ギャップ31%欠落 + profit/fee/cost列を実値化)",
+        "description": "2026-06-02 ¥1M margin検算で判明: sales_history 120件は売上額のみ記録、profit_jpy/ebay_fee_usd/source_cost_jpy が全件ゼロ=margin算出不能。さらに同期ギャップで売上を取りこぼし(直近31日 DB $5,244 vs Seller Hub $12,078=捕捉43%、90日 DB 101件 vs 146注文=件数69%。5/22 backfill後は日次増分のみで直近ほど捕捉悪化)。打ち手: (1) eBay Transaction/Order取込で sales_history を完全同期(欠落~45件/90日を埋める)。(2) eBay手数料(FVF+国際+PLS)を実額取得しebay_fee_usdへ。(3) source_cost_jpy を purchase_yen/supplier_candidates採用価格から backfill。(4) profit_jpy 計算pipeline。これが¥1M計画の前提条件(roadmap打ち手#1)。Q3構造化フロー+Q2冪等migration。出典: 2026-06-02 実DB検算。",
+        "status": "未着手",
+        "priority": "高",
+        "created": "2026-06-02",
+        "completed": null
+    },
+    {
+        "id": 283,
+        "tag": "W211",
+        "title": "仕入原価(purchase_yen)カバレッジ拡大 — sold品33%しか原価が無くmargin分析が偏る",
+        "description": "2026-06-02 検算: sold 120件中 ebay_listings.purchase_yen が紐づくのは38件(33%)のみ。特に無在庫(ebay*)は32件中4件。原価既知サンプルだけで算出した実マージン(粗利47%/純利益16.7-30%)は偏りあり、¥1M倍率の確度を下げる。打ち手: (1) 無在庫品は採用済 supplier_candidates の candidate_price_jpy を原価として紐付け。(2) 有在庫品の原価入力フロー整備(出品/入荷時にpurchase_yen必須化)。(3) 既存sold品の遡及原価trace。W210の利益pipeline精度の前提。出典: 2026-06-02 実DB検算。",
+        "status": "未着手",
+        "priority": "高",
+        "created": "2026-06-02",
+        "completed": null
+    },
+    {
+        "id": 284,
+        "tag": "W212",
+        "title": "損益分岐/利益計算の関税washing修正 + primary_market対応 (赤字を黒字誤認する金銭直結バグ)",
+        "description": "2026-06-02 user指摘(item 357859072999)→Opus検証+2者独立レビュー(code-reviewer Opus4.8 + Codex gpt-5.5)完全一致。【真因】calculator.py の pattern=shipping は buyer徴収送料(=商品価格×duty_rate20%固定)を実関税と相殺(duty_cost_jpy=0, L315-418)。実関税>buyer徴収(特にSection232 25-50%品)の時、差額がprofitから落ちず過大計上→赤字を黒字誤認。profit_with_refund経由で仕入先採用判定にも過大利益伝播(L544-572)。さらに商品管理の損益分岐(compute_breakeven_price_usd)はprimary_market非対応でUS向けmixed/20%固定、実出品送料(shipping_cost)未使用、手動計算タブ(app.py L1958-1988 pattern可変)と乖離。【修正順序(2者合意)】(1)washingを buyer_shipping_usd と actual_duty_cost_jpy の2軸分離=shippingでも実関税明示cost計上 (2)breakevenをprimary_market-aware化+duty_pattern解決helper共通化 (3)canonical economic model集約(段階的)。【追加リスク】shipping_cost=0のfree/未取得不能・global_onlyのcountry=US固定・per-listing実関税率欠如で安全床が実50%映さず。Q3構造化フロー+Q2冪等+Q1検証。設計ノート: .company/engineering/docs/2026-06-02-breakeven-shipping-basis-analysis.md",
+        "status": "未着手",
+        "priority": "高",
+        "created": "2026-06-02",
+        "completed": null
+    },
+    {
+        "id": 285,
+        "tag": "W213",
+        "title": "daily codex lintのサイレント劣化修正 (LLM失敗をcascade検知だけで成功偽装)",
+        "description": "2026-06-02発覚(Codex CLI修復調査中)。codex_lint_runner はLLMレビュー(codex exec)とPython側cascade検知(detect_cascade_gaps)の2種を出力。5/16頃〜CLI default model(gpt-5.3-codex)がChatGPTアカウント認証で400失敗していたが、runnerはreturncode≠0をlog.errorしつつcascade候補をjsonlに書込継続=ログは埋まりLLM指摘0件が外形上成功に見えた(6/1,6/2 lintは全cascade候補, codex本体0)。ChatGPT(GPT-5)とcode-reviewer両者指摘。【暫定対応済】~/.codex/config.toml に model=gpt-5.5 固定でLLM復活。【恒久】(1)LLM 0件とLLM失敗(returncode≠0)を区別しhealth_alert/MonoDeckで可視化 (2)codex modelをconfig集中管理し将来のdefault変更で再発防止 (3)lint結果に source=llm/cascade を明示。Q0サイレントスキップ予防。出典: 2026-06-02。",
+        "status": "未着手",
+        "priority": "高",
+        "created": "2026-06-02",
+        "completed": null
     }
 ]

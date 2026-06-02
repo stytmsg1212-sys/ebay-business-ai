@@ -225,6 +225,12 @@ class CalcInput:
     duty_pattern: Optional[str] = None
     # ②③専用: バイヤー徴収送料(=関税)を手動指定。None なら item_price × duty_rate で自動算出
     shipping_usd_override: Optional[float] = None
+    # W212 washing 修正 (2026-06-02): 商品ごとの実関税率 (小数、例 0.30=I-B / 0.55=I-A)。
+    # None = 従来の washing 挙動 (buyer 徴収送料 = 実関税と仮定し相殺、後方互換ゼロ変更)。
+    # 設定時 = "shipping" パターンで buyer 徴収送料 (display) と seller 実負担関税 (actual)
+    #   を分離計上 → 実関税 > buyer 徴収 (Section 232 等) で profit 過大計上を断つ。
+    # ⚠️ 現状どの本番 caller も None (opt-in)。配線は別途 user 承認後。
+    actual_duty_rate: Optional[float] = None
 
 @dataclass
 class ServiceResult:
@@ -302,6 +308,12 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
             f"shipping_usd_override must be >= 0, got {inp.shipping_usd_override}"
         )
 
+    # W212: 実関税率の負値は profit を不正に過大化するため拒否 (fail-loud、2 段レビュー指摘)
+    if inp.actual_duty_rate is not None and inp.actual_duty_rate < 0:
+        raise ValueError(
+            f"actual_duty_rate must be >= 0, got {inp.actual_duty_rate}"
+        )
+
     # パターン別: バイヤー徴収送料(shipping_usd) と seller実負担関税(duty_cost_jpy)
     if pattern == "ddu":
         # ④ US以外DDU: 関税はバイヤーが現地で支払い、seller負担なし
@@ -319,6 +331,25 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
         # バイヤー徴収送料=通関支払で相殺（profit上は washed）
         duty_cost_jpy = 0.0
 
+    # W212 washing 修正 (2026-06-02): seller 実負担関税を分離計上。
+    # buyer_shipping_jpy = バイヤーが実際に払う送料(=display関税)を income 化。
+    # actual_duty_cost_jpy = seller が通関で実際に払う関税(= HS別 実関税率)。
+    # legacy (actual_duty_rate=None) は従来挙動と数学的に完全一致:
+    #   "shipping": actual_duty_cost = buyer_shipping_jpy → profit 式で相殺 = 従来 washed
+    #   "included": actual_duty_cost = duty_cost_jpy (item×duty_rate×fx)
+    #   "ddu":      両者 0
+    # actual_duty_rate 設定時のみ "shipping"/"included" で実関税を採用し過大計上を断つ。
+    buyer_shipping_jpy = shipping_usd * fx
+    if inp.actual_duty_rate is not None:
+        actual_duty_cost_jpy = (
+            0.0 if pattern == "ddu"
+            else inp.item_price_usd * inp.actual_duty_rate * fx
+        )
+    else:
+        actual_duty_cost_jpy = (
+            buyer_shipping_jpy if pattern == "shipping" else duty_cost_jpy
+        )
+
     # 売上
     revenue = (inp.item_price_usd + shipping_usd) * fx
     revenue_net = inp.item_price_usd * fx  # 関税分(送料)を除いた純売上
@@ -335,11 +366,12 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
     payoneer = payoneer_base * payoneer_rate
     point_return = inp.purchase_yen * point_rate
 
-    ebay_cost_subtotal = fvf + intl_payment + txn_fee + ad_fee + payoneer
-    if pattern == "shipping":
-        ebay_cost_subtotal += shipping_usd * fx  # ②③: 送料経由でバイヤー徴収した関税コスト
-    elif pattern == "included":
-        ebay_cost_subtotal += duty_cost_jpy      # ①: 商品価格内包の seller 実負担関税
+    # W212: 関税コストは actual_duty_cost_jpy に統一 (legacy=None では shipping→
+    # shipping_usd*fx / included→duty_cost_jpy / ddu→0 と同値 = 表示集計も従来一致。
+    # actual 設定時は profit と同じ実関税を集計に反映 = 表示の不整合を防ぐ)。
+    ebay_cost_subtotal = (
+        fvf + intl_payment + txn_fee + ad_fee + payoneer + actual_duty_cost_jpy
+    )
 
     # 消費税還付: 仕入価格は税込み前提なので、税込÷(1+税率)×税率で内税額を算出
     # 例) 税込10万円、税率10% → 10万 × 10/110 ≒ 9,091円
@@ -398,6 +430,8 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
 
         # CPaSS専用追加費用（米国関税処理手数料の基準となる関税額JPY）
         # ①=商品価格内包の関税, ②③=送料経由の徴収関税, ④=0
+        # W212 注: CPaSS 処理費は「buyer 徴収 (申告) 額」に対する手数料なので、
+        # actual_duty_rate (HS別実関税) には意図的に連動させない (display 額が正)。
         if pattern == "included":
             duty_jpy = duty_cost_jpy
         elif pattern == "shipping":
@@ -411,11 +445,15 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
 
         total_shipping = shipping_display + additional_total
 
-        # 利益計算
-        # profit = revenue_net - purchase - eBay費用（関税除く） - 実送料 - seller実負担関税
-        # duty_cost_jpy は ①(商品価格内包)のみ非ゼロ。②③④は0（後方互換）
+        # 利益計算 (W212 washing 修正)
+        # profit = (純売上 + buyer徴収送料income) - 仕入 - eBay費用 - 実送料 - seller実負担関税
+        # buyer_shipping_jpy / actual_duty_cost_jpy は上流で算出 (legacy は従来式と完全一致)。
         ebay_fees_no_duty = fvf + intl_payment + txn_fee + ad_fee + payoneer
-        profit = revenue_net - inp.purchase_yen - ebay_fees_no_duty - total_shipping - duty_cost_jpy
+        profit = (
+            revenue_net + buyer_shipping_jpy
+            - inp.purchase_yen - ebay_fees_no_duty - total_shipping
+            - actual_duty_cost_jpy
+        )
         profit_rate = profit / revenue if revenue > 0 else 0.0
 
         profit_with_refund = profit + tax_refund + point_return

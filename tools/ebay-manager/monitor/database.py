@@ -2900,6 +2900,41 @@ def init_db():
                     "news_action_reports table 未作成。次回 init_db で再試行。"
                 )
 
+        # ---- v61 (W212 prep, 2026-06-02): per-listing 関税分類カラム ----
+        # Section 232 該当商品ごとに duty 分類と実効関税率(%)を保持。
+        # 非該当 (NULL) は calculator が global duty_rate (20%) に fallback。
+        # ⚠️ 本カラムはデータ保持のみ。calculator が読む配線は W212 本実装 (washing 修正)
+        #   で行う。現時点では breakeven/profit 計算は従来どおり global 20% 固定 = 表示値不変。
+        # listing 識別は ebay_item_id (sku-rules.md)。section232_class: NULL / 'I-A' / 'I-B'。
+        # duty_rate_pct: 実効関税率 (+5% 手数料 buffer 込、I-A=55 / I-B=30)。
+        # 冪等性: ALTER は try/except sqlite3.OperationalError、bump は列実在確認後 (v60 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 60:
+            for _col, _typ in [
+                ("section232_class", "TEXT"),
+                ("duty_rate_pct", "REAL"),
+            ]:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ} DEFAULT NULL"
+                    )
+                    logger.info(f"[init_db v61] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # カラム既存
+            _v61_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if "section232_class" in _v61_cols and "duty_rate_pct" in _v61_cols:
+                conn.execute("PRAGMA user_version = 61")
+                logger.info("[init_db v61] schema_ver bumped to 61")
+            else:
+                logger.warning(
+                    "[init_db v61] 部分適用: ebay_listings の関税カラム未追加。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 

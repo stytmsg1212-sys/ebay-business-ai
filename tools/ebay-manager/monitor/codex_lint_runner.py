@@ -85,6 +85,10 @@ class LintFinding:
     line: Optional[int]
     description: str
     raw: str = ""
+    # W213 (2026-06-02): finding の出所。'llm'=Codex LLM レビュー / 'cascade'=Python
+    # キーワード波及検知 / 'llm_error'=Codex CLI 自体の失敗。jsonl で LLM レビューが
+    # 実際に走ったか (0 件 vs 失敗) を区別し、cascade だけで「成功」に見える劣化を防ぐ。
+    source: str = "llm"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -198,14 +202,33 @@ def run_codex_lint(
         return []
 
     # 2026-05-25: returncode != 0 を明示捕捉 (旧コードは parse 段階で空 list = silent success).
+    # W213 (2026-06-02): 失敗時も sentinel finding (source='llm_error') を jsonl に書く。
+    # 旧実装は [] を返すだけ → 呼出側が cascade findings と混ぜて jsonl 化 = LLM 死亡が
+    # 「成功 (cascade のみ)」に見えるサイレント劣化 (gpt-5.3-codex モデル非対応で実発生)。
+    # sentinel を残せば jsonl 監査・health で LLM 失敗を検知可能。
     if result.returncode != 0:
+        err_head = (result.stderr or result.stdout or "")[:300]
         logger.error(
             "run_codex_lint codex CLI exit %s | stderr=%r | stdout_head=%r",
             result.returncode,
             (result.stderr or "")[:500],
             (result.stdout or "")[:500],
         )
-        return []
+        sentinel = LintFinding(
+            severity="HIGH",
+            file="(codex CLI)",
+            line=None,
+            description=(
+                f"Codex LLM レビュー失敗 (exit={result.returncode}): {err_head}. "
+                f"モデル設定 (~/.codex/config.toml) / 認証を確認。LLM レビューは未実施。"
+            ),
+            source="llm_error",
+        )
+        if output_jsonl:
+            output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+            with output_jsonl.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(sentinel.to_dict(), ensure_ascii=False) + "\n")
+        return [sentinel]
 
     json_lines = result.stdout.split("\n")
     findings = _parse_findings_from_codex_output(json_lines)
@@ -294,6 +317,7 @@ def detect_cascade_gaps(
                         file=str(recent.name),
                         line=None,
                         description=f"cascade candidate: keyword '{kw}' also in {len(related_files)} other file(s) — verify consistency: {', '.join(related_files[:3])}",
+                        source="cascade",
                     )
                 )
     return findings

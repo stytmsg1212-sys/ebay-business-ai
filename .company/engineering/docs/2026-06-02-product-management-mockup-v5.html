@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品管理 100点モックアップ v5 — 検索/フィルタ優先 (2026-06-02)</title>
+<style>
+  :root{
+    --ok-bg:#e4f4ea;  --ok-fg:#157a40;
+    --warn-bg:#fbeecb; --warn-fg:#946312;
+    --bad-bg:#fbe2e2; --bad-fg:#a52a2a;
+    --ink:#1c2531; --muted:#76808c; --line:#e4e8ee; --card:#fff; --bg:#f5f7f9;
+    --accent:#2b6cb0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Yu Gothic UI",Meiryo,sans-serif;background:var(--bg);color:var(--ink);
+       padding:22px;line-height:1.45;font-size:13px}
+  .num{font-variant-numeric:tabular-nums}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:16px;font-weight:700;margin-bottom:2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+
+  /* ツールバー: 検索 + フィルタチップ */
+  .toolbar{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+  .searchrow{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .search{flex:1;border:1px solid #cdd4de;border-radius:6px;padding:8px 12px;font-size:14px;background:#fff;font-family:inherit}
+  .search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(43,108,176,.12)}
+  .fixrate{font-size:12px;color:var(--muted);white-space:nowrap}
+  .fixrate b{color:var(--ink)}
+  .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{border:1px solid #cdd4de;background:#fff;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;color:#445;font-weight:500}
+  .chip:hover{background:#f0f4f9}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip .c{font-variant-numeric:tabular-nums;opacity:.8;margin-left:4px}
+
+  /* 空状態 */
+  .empty{background:var(--card);border:1px dashed var(--line);border-radius:8px;padding:40px 20px;text-align:center;color:var(--muted)}
+  .empty .big{font-size:15px;color:#556;margin-bottom:6px}
+
+  /* 結果ヘッダ */
+  .resulthd{display:flex;align-items:center;gap:8px;margin:14px 2px 6px;font-size:13px}
+  .resulthd b{color:var(--ink)}
+  .resulthd .clear{margin-left:auto;font-size:12px;color:var(--accent);cursor:pointer}
+
+  /* 一覧 */
+  table.list{width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+  table.list th{background:#eef1f6;color:var(--muted);font-weight:600;font-size:11px;text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.list th.r{text-align:right}
+  table.list th.sort{color:var(--ink)}
+  table.list th.sort::after{content:"↓";margin-left:5px;font-size:10px}
+  table.list td{padding:7px 11px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+  table.list tbody tr:last-child td{border-bottom:none}
+  table.list tbody tr:nth-child(even){background:#fafbfc}
+  table.list tbody tr:hover{background:#f3f6fa;cursor:pointer}
+  table.list tbody tr.sel{background:#edf4ff;box-shadow:inset 3px 0 0 var(--accent)}
+  td.r{text-align:right}
+  .name{font-weight:600;width:36%;max-width:380px;overflow:hidden;text-overflow:ellipsis}
+  .tag{font-size:11px;color:var(--muted)}
+  .st{padding:1px 8px;border-radius:3px;font-weight:700;display:inline-block;font-size:12px}
+  .st.ok{background:var(--ok-bg);color:var(--ok-fg)}
+  .st.warn{background:var(--warn-bg);color:var(--warn-fg)}
+  .st.bad{background:var(--bad-bg);color:var(--bad-fg)}
+  .metric{font-size:12px;white-space:nowrap;color:var(--muted)}
+  .metric .v{font-weight:600;color:var(--ink)}
+  .metric .up{color:var(--ok-fg);font-weight:600}
+  .metric .flat{color:var(--muted)}
+  .metric .dn{color:var(--bad-fg);font-weight:600}
+  .heart{color:#e0457b}
+
+  /* 詳細 (v4 を踏襲、Section232 品で表示) */
+  .detail{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-top:16px;overflow:hidden}
+  .dhead{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .dhead .nm{font-size:15px;font-weight:700}
+  .dhead .spacer{flex:1}.dhead .views{font-size:12px;color:var(--muted)}
+  .pill{font-size:11px;padding:1px 9px;border-radius:3px;background:#eef1f6;color:#566;font-weight:500}
+  .acct{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .acct .c{padding:15px 18px}.acct .c.l{border-right:1px solid var(--line)}
+  .acct h4{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:11px;text-transform:uppercase;letter-spacing:.4px}
+  .r{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0}
+  .r .l{color:var(--muted)}.r .val{text-align:right}
+  .r .it{font-size:18px;font-weight:700}.r .pl{color:var(--muted);font-size:12px;margin:0 2px}.r .sh{color:var(--muted);font-size:12px;font-weight:600}
+  .r .tt{display:block;font-size:10px;color:var(--muted);margin-top:1px}
+  .hr{border-top:1px solid var(--line);margin:7px 0}.hr.d{border-top:1px dashed var(--line)}
+  .cost .l{color:var(--muted)}.cost .val{color:#4a5360}
+  .big{font-size:21px;font-weight:800}.pct{color:var(--muted);font-size:12px;font-weight:600;margin-left:3px}
+  .floor{font-size:11px;color:var(--muted);margin-top:4px}
+  .dest{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;font-size:11px;margin-bottom:10px}
+  .dest span{padding:4px 11px;color:var(--muted);cursor:pointer}.dest span.on{background:var(--ink);color:#fff;font-weight:600}
+  .ref{font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+  .note{font-size:11px;padding:7px 16px}
+  .note.bad{background:var(--bad-bg);color:var(--bad-fg)}
+  details{border-top:1px solid var(--line)}
+  summary{padding:10px 16px;font-weight:600;font-size:13px;cursor:pointer;color:#3a4453;list-style:none;display:flex;align-items:center;gap:7px}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"›";font-size:15px;color:var(--muted)}
+  details[open] summary::before{content:"⌄"}
+  .body{padding:2px 16px 14px;color:#445;font-size:12px}
+  .body .kv{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:6px}.body .kv b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>商品管理 — 100点モックアップ v5（検索/フィルタ優先・スクロールしない）</h1>
+  <div class="sub">一覧は常時表示しない。検索 or フィルタチップで該当だけ出す。Section232 該当品の関税表示も反映。</div>
+
+  <!-- ツールバー -->
+  <div class="toolbar">
+    <div class="searchrow">
+      <input class="search" placeholder="🔍 商品名・SKU・eBay ID で検索…">
+      <span class="fixrate">採算FIX <b>256 / 774</b></span>
+    </div>
+    <div class="chips">
+      <span class="chip on">🚨 Section232 該当<span class="c">13</span></span>
+      <span class="chip">⚠ 未FIX<span class="c">518</span></span>
+      <span class="chip">🔴 赤字<span class="c">7</span></span>
+      <span class="chip">📦 在庫切れ<span class="c">22</span></span>
+      <span class="chip"><span class="heart">♥</span> お気に入り急増<span class="c">9</span></span>
+      <span class="chip">📉 競合負け<span class="c">14</span></span>
+    </div>
+  </div>
+
+  <!-- 空状態 (フィルタ未選択時に表示するイメージ) -->
+  <!-- <div class="empty"><div class="big">検索 または フィルタを選んでください</div>全774件は一覧表示しません（必要な商品だけを絞り込み）</div> -->
+
+  <!-- フィルタ「Section232該当」適用中 = 13件だけ表示 -->
+  <div class="resulthd">フィルタ <b>🚨 Section232 該当</b> ＝ <b>13件</b> <span class="clear">✕ クリア</span></div>
+  <table class="list">
+    <thead><tr>
+      <th>商品名</th><th>関税区分</th><th>在庫</th><th class="sort">実利益率</th>
+      <th>view / <span class="heart">♥</span></th><th class="r">競合差</th><th>警告</th>
+    </tr></thead>
+    <tbody>
+      <tr class="sel">
+        <td class="name">STAUB Cocotte Round 20cm Cast Iron Dutch Oven</td>
+        <td><span class="st bad">I-A 55%</span></td>
+        <td><span class="st ok">○</span></td>
+        <td><span class="st bad num">赤字</span></td>
+        <td class="metric">👁 <span class="v num">430</span> <span class="flat num">+2%</span>　<span class="heart">♥</span> <span class="v num">28</span> <span class="up num">+6%</span></td>
+        <td class="r"><span class="st warn num">+$5</span></td>
+        <td><span class="st bad">純金属50%</span></td>
+      </tr>
+      <tr>
+        <td class="name">Netsuken NV-25 Electric Sushi Rice Warmer</td>
+        <td><span class="st warn">I-B 30%</span></td>
+        <td><span class="st ok">○</span></td>
+        <td><span class="st warn num">9%</span></td>
+        <td class="metric">👁 <span class="v num">1,540</span> <span class="up num">+10%</span>　<span class="heart">♥</span> <span class="v num">73</span> <span class="up num">+7%</span></td>
+        <td class="r"><span class="st ok num">+$31</span></td>
+        <td><span class="st warn">家電</span></td>
+      </tr>
+      <tr>
+        <td class="name">FOSTEX R100T Attenuator Transformer Pair</td>
+        <td><span class="st warn">I-B 30%</span></td>
+        <td><span class="st ok">○</span></td>
+        <td><span class="st ok num">14%</span></td>
+        <td class="metric">👁 <span class="v num">820</span> <span class="up num">+8%</span>　<span class="heart">♥</span> <span class="v num">51</span> <span class="up num">+12%</span></td>
+        <td class="r"><span class="st ok num">+$40</span></td>
+        <td><span class="st warn">変圧器</span></td>
+      </tr>
+      <tr>
+        <td class="name">Zojirushi NW-JE10 Pressure IH Rice Cooker</td>
+        <td><span class="st warn">I-B 30%</span></td>
+        <td><span class="st ok">○</span></td>
+        <td><span class="st warn num">6%</span></td>
+        <td class="metric">👁 <span class="v num">988</span> <span class="up num">+5%</span>　<span class="heart">♥</span> <span class="v num">61</span> <span class="flat num">±0%</span></td>
+        <td class="r"><span class="st warn num">+$2</span></td>
+        <td><span class="st warn">家電</span></td>
+      </tr>
+      <tr><td class="name" colspan="7" style="color:var(--muted);font-weight:400">… 他9件（トランス・モーター）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Section232 該当品の詳細 (STAUB = I-A 55%) -->
+  <div class="detail">
+    <div class="dhead">
+      <span class="nm">STAUB Cocotte Round 20cm Cast Iron Dutch Oven</span>
+      <span class="pill">Rank A</span><span class="pill">有在庫</span>
+      <span class="st ok">○ 在庫あり</span><span class="st bad">🚨 Section232 I-A</span>
+      <span class="spacer"></span>
+      <span class="views">👁 <span class="num">430</span> +2%　<span class="heart">♥</span> <span class="num">28</span> +6%</span>
+    </div>
+    <div class="acct">
+      <div class="c l">
+        <h4>買い手視点（eBay でどう見えるか）</h4>
+        <div class="r"><span class="l">現在価格</span>
+          <span class="val"><span class="it num">$267.00</span><span class="pl">+</span><span class="sh num">$80.00</span>
+            <span class="tt num">買い手総額 $347.00</span></span></div>
+        <div class="hr d"></div>
+        <div class="r"><span class="l">競合最安</span>
+          <span class="val"><span class="it num">$262.00</span><span class="pl">+</span><span class="sh num">$0.00</span>
+            <span class="tt num">買い手総額 $262.00</span></span></div>
+        <div class="r"><span class="l">競合差（総額）</span><span class="st warn num">+$85 高い</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l">損益分岐</span>
+          <span class="val"><span class="it num">$255.00</span><span class="pl">+</span><span class="sh num">$80.00</span>
+            <span class="tt num">買い手総額 $335.00</span></span></div>
+        <div class="floor">⚠ 鋳鉄=純金属 <b>関税55%</b>(閾値なし自動)。損益分岐が高く、競合より$85高い=売れにくい</div>
+      </div>
+      <div class="c">
+        <h4>あなたの取り分（手元にいくら残るか）</h4>
+        <div class="dest"><span class="on">USA向け（関税自社負担）</span><span>US以外（関税なし）</span></div>
+        <div class="r cost"><span class="l">売上（商品）</span><span class="val num">¥41,919</span></div>
+        <div class="r cost"><span class="l">− 原価</span><span class="val num">−¥21,000</span></div>
+        <div class="r cost"><span class="l">− eBay手数料</span><span class="val num">−¥6,200</span></div>
+        <div class="r cost"><span class="l">− 物流費</span><span class="val num">−¥5,800</span></div>
+        <div class="r cost"><span class="l">− <b>実関税 I-A 55%</b></span><span class="val num" style="color:var(--bad-fg)">−¥9,420</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l" style="font-weight:600">実利益（還付なし）</span>
+          <span class="val"><span class="st bad num" style="font-size:15px">−¥501</span><span class="pct num">赤字</span></span></div>
+        <div class="r cost"><span class="l">＋ 消費税還付</span><span class="val num">+¥1,909</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l" style="font-weight:700">手取り（還付込み）</span>
+          <span class="val"><span class="big num" style="color:var(--warn-fg)">¥1,408</span><span class="pct num">3.4%</span></span></div>
+        <div class="ref">参考）US以外向け（関税なし）: 実利益 ¥8,919 ／ 手取り ¥10,828</div>
+      </div>
+    </div>
+    <div class="note bad">🚨 鋳鉄ダッチオーブン = Section 232 I-A（純金属 55%・閾値なし自動課税）。USA向けは実質赤字〜薄利。US以外向け（関税なし）なら黒字。米国客比率が高いなら<b>値上げ or 出品見直し</b>を推奨。</div>
+    <details>
+      <summary>編集（価格・送料・仕入・関税源・物理属性）</summary>
+      <div class="body">
+        <div class="kv"><span>関税源: <b>純金属(鋳鉄) Section232 I-A 55%</b> ✎</span><span>HS: <b>7323</b>（鋼鉄製台所用品）</span></div>
+        <div class="kv">［商品価格］［送料］［仕入価格］［下限（商品価格軸）］［💾保存］［📤eBay反映］</div>
+      </div>
+    </details>
+    <details><summary>仕入先（候補・在庫状態）</summary><div class="body"><div class="kv">仕入先: <b>メルカリ ¥21,000</b></div></div></details>
+    <details><summary>競合・値下げ履歴</summary><div class="body"><div class="kv">登録ライバル: 1件 $262＋$0</div></div></details>
+  </div>
+
+  <div class="sub" style="margin-top:18px">※ v5 の要点: ①一覧は常時出さず検索/フィルタ結果のみ ②フィルタチップに件数 ③Section232該当は関税区分(I-A/I-B)を列表示 ④詳細は washing 修正後の「実関税」を明示（STAUB は I-A 55% で USA向け赤字が可視化）</div>
+</div>
+</body>
+</html>

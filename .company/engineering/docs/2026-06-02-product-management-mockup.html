@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品管理 100点モックアップ v4 (2026-06-02)</title>
+<style>
+  :root{
+    --ok-bg:#e4f4ea;  --ok-fg:#157a40;
+    --warn-bg:#fbeecb; --warn-fg:#946312;
+    --bad-bg:#fbe2e2; --bad-fg:#a52a2a;
+    --ink:#1c2531; --muted:#76808c; --line:#e4e8ee; --card:#fff; --bg:#f5f7f9;
+    --accent:#2b6cb0;  /* 選択・focus・リンクだけに限定 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Yu Gothic UI",Meiryo,sans-serif;background:var(--bg);color:var(--ink);
+       padding:22px;line-height:1.45;font-size:13px}
+  .num{font-variant-numeric:tabular-nums}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:16px;font-weight:700;margin-bottom:2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+
+  .legend{display:flex;gap:8px;margin-bottom:14px;font-size:12px;align-items:center}
+  .legend b{color:var(--muted);font-weight:600}
+  .lg{padding:2px 9px;border-radius:3px;font-weight:600;font-size:11px}
+  .lg.ok{background:var(--ok-bg);color:var(--ok-fg)}
+  .lg.warn{background:var(--warn-bg);color:var(--warn-fg)}
+  .lg.bad{background:var(--bad-bg);color:var(--bad-fg)}
+
+  /* ツールバー */
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .search{flex:1;border:1px solid #cdd4de;border-radius:6px;padding:7px 11px;font-size:13px;background:#fff;font-family:inherit}
+  .search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(43,108,176,.12)}
+  .fixrate{font-size:12px;color:var(--muted);white-space:nowrap}
+  .fixrate b{color:var(--ink)}
+
+  /* ===== 一覧 (sticky header + scroll) ===== */
+  .table-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table.list{width:100%;border-collapse:collapse;font-size:13px}
+  table.list th{background:#eef1f6;color:var(--muted);font-weight:600;font-size:11px;text-align:left;
+                padding:8px 11px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;z-index:2}
+  table.list th.r{text-align:right}
+  table.list th.sort{color:var(--ink)}
+  table.list th.sort::after{content:"↓";margin-left:5px;font-size:10px}
+  table.list td{padding:7px 11px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+  table.list tbody tr:last-child td{border-bottom:none}
+  table.list tbody tr:nth-child(even){background:#fafbfc}
+  table.list tbody tr:hover{background:#f3f6fa;cursor:pointer}
+  table.list tbody tr.sel{background:#edf4ff;box-shadow:inset 3px 0 0 var(--accent)}
+  table.list tbody tr.sel:hover{background:#edf4ff}
+  td.r{text-align:right}
+  .name{font-weight:600;width:34%;max-width:360px;overflow:hidden;text-overflow:ellipsis}
+  .tag{font-size:11px;color:var(--muted)}
+  .st{padding:1px 8px;border-radius:3px;font-weight:700;display:inline-block;font-size:12px}
+  .st.ok{background:var(--ok-bg);color:var(--ok-fg)}
+  .st.warn{background:var(--warn-bg);color:var(--warn-fg)}
+  .st.bad{background:var(--bad-bg);color:var(--bad-fg)}
+  .metric{font-size:12px;white-space:nowrap;color:var(--muted)}
+  .metric .v{font-weight:600;color:var(--ink)}
+  .metric .up{color:var(--ok-fg);font-weight:600}
+  .metric .flat{color:var(--muted)}
+  .metric .dn{color:var(--bad-fg);font-weight:600}
+  .heart{color:#e0457b}
+
+  /* ===== 詳細: 1画面 ===== */
+  .detail{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-top:16px;overflow:hidden}
+  .dhead{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .dhead .nm{font-size:15px;font-weight:700}
+  .dhead .spacer{flex:1}
+  .dhead .views{font-size:12px;color:var(--muted)}
+  .pill{font-size:11px;padding:1px 9px;border-radius:3px;background:#eef1f6;color:#566;font-weight:500}
+
+  .acct{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .acct .c{padding:15px 18px}
+  .acct .c.l{border-right:1px solid var(--line)}
+  .acct h4{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:11px;text-transform:uppercase;letter-spacing:.4px}
+  .r{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0}
+  .r .l{color:var(--muted)}
+  .r .val{text-align:right}
+  .r .it{font-size:18px;font-weight:700}
+  .r .pl{color:var(--muted);font-size:12px;margin:0 2px}
+  .r .sh{color:var(--muted);font-size:12px;font-weight:600}
+  .r .tt{display:block;font-size:10px;color:var(--muted);margin-top:1px}
+  .hr{border-top:1px solid var(--line);margin:7px 0}
+  .hr.d{border-top:1px dashed var(--line)}
+  .cost .l{color:var(--muted)}
+  .cost .val{color:#4a5360}
+  .big{font-size:21px;font-weight:800}
+  .pct{color:var(--muted);font-size:12px;font-weight:600;margin-left:3px}
+  .floor{font-size:11px;color:var(--muted);margin-top:4px}
+  .dest{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;font-size:11px;margin-bottom:10px}
+  .dest span{padding:4px 11px;color:var(--muted);cursor:pointer}
+  .dest span.on{background:var(--ink);color:#fff;font-weight:600}
+  .ref{font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+  .note{background:var(--warn-bg);color:var(--warn-fg);font-size:11px;padding:7px 16px}
+
+  /* ===== 編集ゾーン ===== */
+  .editzone{border-top:2px solid var(--line);background:#fbfcfe}
+  .ez-head{padding:11px 16px 2px;font-weight:700;font-size:13px}
+  .ez-head .opt{font-weight:400;font-size:11px;color:var(--muted);margin-left:8px}
+  .ez-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px 16px;padding:11px 16px 8px}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld.span2{grid-column:span 2}
+  .fld label{font-size:11px;color:var(--muted);font-weight:600}
+  .fld label .req{color:var(--bad-fg);margin-left:3px}
+  .fld .hint{font-size:10px;color:var(--muted)}
+  .inp{border:1px solid #cdd4de;border-radius:6px;padding:0 9px;min-height:34px;font-size:14px;background:#fff;width:100%;font-family:inherit;font-variant-numeric:tabular-nums}
+  textarea.inp{padding:7px 9px;min-height:auto}
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(43,108,176,.12)}
+  .inp.money{text-align:right}
+  .inp.big{font-size:17px;font-weight:700;text-align:right}
+  .inp[readonly]{background:#f1f3f6;color:var(--muted)}
+  .inpgrp{display:flex;gap:6px;align-items:center}
+  .inpgrp .unit{font-size:12px;color:var(--muted);white-space:nowrap}
+  .dim3{display:flex;gap:5px}
+  .dim3 .inp{text-align:center;padding:0 4px}
+  .miniBtn{border:1px solid #cdd4de;background:#fff;border-radius:6px;min-height:34px;padding:0 10px;font-size:11px;cursor:pointer;white-space:nowrap}
+  .miniBtn:hover{background:#f0f4f9}
+  .selbadge{font-size:10px;padding:1px 7px;border-radius:8px;background:var(--ok-bg);color:var(--ok-fg);font-weight:600}
+  .ez-actions{display:flex;gap:8px;padding:9px 16px 14px;border-top:1px dashed var(--line);margin-top:5px;flex-wrap:wrap;align-items:center}
+  .btn{border-radius:6px;min-height:36px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn.calc,.btn.save{background:#fff;color:var(--ink);border:1px solid #cdd4de}
+  .btn.ebay{background:var(--ink);color:#fff;border:1px solid var(--ink)}  /* 主操作=1つだけ濃色 */
+  .btn:hover{filter:brightness(.97)}
+  .ez-actions .live{margin-left:auto;font-size:11px;color:var(--muted)}
+  .ez-actions .live b{color:var(--ok-fg)}
+
+  details{border-top:1px solid var(--line)}
+  summary{padding:10px 16px;font-weight:600;font-size:13px;cursor:pointer;color:#3a4453;list-style:none;display:flex;align-items:center;gap:7px}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"›";font-size:15px;color:var(--muted);transition:transform .15s}
+  details[open] summary::before{transform:rotate(90deg)}
+  .body{padding:2px 16px 14px;color:#445;font-size:12px}
+  .body .kv{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:6px}
+  .body .kv b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>商品管理 — 100点モックアップ v4</h1>
+  <div class="sub">数値桁揃え・sticky header・薄ゼブラ＋選択行アクセント・ボタン階層化・装飾削減（SaaSトーン）</div>
+
+  <div class="legend">
+    <b>状態の3色:</b>
+    <span class="lg ok">健全・黒字・有利</span>
+    <span class="lg warn">注意・薄利・要確認</span>
+    <span class="lg bad">危険・赤字・在庫切れ・Section232</span>
+  </div>
+
+  <!-- ツールバー: 検索 + FIX率 -->
+  <div class="toolbar">
+    <input class="search" placeholder="🔍 商品名・SKUで検索 / 絞り込み（未FIX・赤字・在庫切れ）">
+    <span class="fixrate">採算FIX <b>256 / 774</b>（33%）</span>
+  </div>
+
+  <!-- ===== 一覧 ===== -->
+  <div class="table-wrap">
+    <table class="list">
+      <thead><tr>
+        <th>商品名</th><th>在庫種別</th><th>在庫</th><th class="sort">実利益率</th>
+        <th>view / <span class="heart">♥</span> お気に入り</th><th class="r">競合差</th><th>警告</th>
+      </tr></thead>
+      <tbody>
+        <tr class="sel">
+          <td class="name">Mitsubishi Uni 240色 色鉛筆 50周年</td>
+          <td class="tag">有在庫</td>
+          <td><span class="st ok">○</span></td>
+          <td><span class="st ok num">16%</span></td>
+          <td class="metric">view <span class="v num">1,240</span> <span class="up num">+12%</span>　<span class="heart">♥</span> <span class="v num">86</span> <span class="up num">+8%</span></td>
+          <td class="r"><span class="st ok num">+$17</span></td>
+          <td><span class="st warn">未FIX</span></td>
+        </tr>
+        <tr>
+          <td class="name">Sony WH-1000XM5 Wireless Headphones</td>
+          <td class="tag">無在庫</td>
+          <td><span class="st bad">×</span></td>
+          <td><span class="st warn num">4%</span></td>
+          <td class="metric">view <span class="v num">3,580</span> <span class="flat num">+1%</span>　<span class="heart">♥</span> <span class="v num">142</span> <span class="dn num">−3%</span></td>
+          <td class="r"><span class="st bad num">−$8</span></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="name">HIOKI DT4282 Digital Multimeter</td>
+          <td class="tag">有在庫</td>
+          <td><span class="st ok">○</span></td>
+          <td><span class="st bad">赤字</span></td>
+          <td class="metric">view <span class="v num">612</span> <span class="up num">+22%</span>　<span class="heart">♥</span> <span class="v num">39</span> <span class="up num">+15%</span></td>
+          <td class="r"><span class="st ok num">+$22</span></td>
+          <td><span class="st bad">Section232</span></td>
+        </tr>
+        <tr>
+          <td class="name">Zojirushi NW-JE10 Pressure IH 炊飯器</td>
+          <td class="tag">有在庫</td>
+          <td><span class="st ok">○</span></td>
+          <td><span class="st warn num">7%</span></td>
+          <td class="metric">view <span class="v num">988</span> <span class="up num">+5%</span>　<span class="heart">♥</span> <span class="v num">61</span> <span class="flat num">±0%</span></td>
+          <td class="r"><span class="st warn num">+$2</span></td>
+          <td><span class="st bad">Section232</span></td>
+        </tr>
+        <tr>
+          <td class="name">Canon PIXMA 未設定の商品（仕入価格なし）</td>
+          <td class="tag">無在庫</td>
+          <td><span class="st ok">○</span></td>
+          <td><span class="tag">—</span></td>
+          <td class="metric">view <span class="v num">204</span> <span class="flat num">+2%</span>　<span class="heart">♥</span> <span class="v num">7</span> <span class="flat num">±0%</span></td>
+          <td class="r"><span class="tag">—</span></td>
+          <td><span class="st warn">仕入価格未入力</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== 詳細 ===== -->
+  <div class="detail">
+    <div class="dhead">
+      <span class="nm">Mitsubishi Uni 240色 色鉛筆 50周年</span>
+      <span class="pill">Rank B</span><span class="pill">有在庫</span>
+      <span class="st ok">○ 在庫あり</span><span class="st warn">未FIX</span>
+      <span class="spacer"></span>
+      <span class="views">view <span class="num">1,240</span> <span style="color:#157a40">+12%</span>　<span class="heart">♥</span> <span class="num">86</span> <span style="color:#157a40">+8%</span></span>
+    </div>
+
+    <div class="acct">
+      <div class="c l">
+        <h4>買い手視点（eBay でどう見えるか）</h4>
+        <div class="r"><span class="l">現在価格</span>
+          <span class="val"><span class="it num">$690.00</span><span class="pl">+</span><span class="sh num">$108.00</span>
+            <span class="tt num">買い手総額 $798.00</span></span></div>
+        <div class="hr d"></div>
+        <div class="r"><span class="l">競合最安</span>
+          <span class="val"><span class="it num">$815.00</span><span class="pl">+</span><span class="sh num">$0.00</span>
+            <span class="tt num">買い手総額 $815.00</span></span></div>
+        <div class="r"><span class="l">競合差（総額）</span><span class="st ok num">+$17.00 有利</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l">損益分岐</span>
+          <span class="val"><span class="it num">$601.00</span><span class="pl">+</span><span class="sh num">$108.00</span>
+            <span class="tt num">買い手総額 $709.00</span></span></div>
+        <div class="floor">総額 $798 は下限 $709 を $89 上回る（黒字）／ 自動値下げ内部下限＝<b>商品 $601</b></div>
+      </div>
+
+      <div class="c">
+        <h4>あなたの取り分（手元にいくら残るか）</h4>
+        <div class="dest"><span class="on">USA向け（関税自社負担）</span><span>US以外（関税なし）</span></div>
+        <div class="r cost"><span class="l">売上（商品）</span><span class="val num">¥108,330</span></div>
+        <div class="r cost"><span class="l">− 原価</span><span class="val num">−¥65,000</span></div>
+        <div class="r cost"><span class="l">− eBay手数料</span><span class="val num">−¥14,381</span></div>
+        <div class="r cost"><span class="l">− 物流費</span><span class="val num">−¥9,392</span></div>
+        <div class="r cost"><span class="l">− 実関税（HS9609 非該当）</span><span class="val num">−¥0</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l" style="font-weight:600">実利益（還付なし）</span>
+          <span class="val"><span class="st ok num" style="font-size:15px">¥10,962</span><span class="pct num">10.1%</span></span></div>
+        <div class="r cost"><span class="l">＋ 消費税還付</span><span class="val num">+¥5,909</span></div>
+        <div class="hr"></div>
+        <div class="r"><span class="l" style="font-weight:700">手取り（還付込み）</span>
+          <span class="val"><span class="big num" style="color:var(--ok-fg)">¥16,871</span><span class="pct num">15.6%</span></span></div>
+        <div class="ref">参考）US以外向け（関税なし）: 実利益 <span class="num">¥15,226</span> ／ 手取り <span class="num">¥21,135</span></div>
+      </div>
+    </div>
+
+    <div class="note">HS9609（色鉛筆）= Section 232 非該当。該当品（鍋・アルミ・家電・自動車部品）は実関税 25〜50% で手取り激減。</div>
+
+    <!-- 編集ゾーン -->
+    <div class="editzone">
+      <div class="ez-head">編集<span class="opt">必須項目に <span style="color:var(--bad-fg)">*</span></span></div>
+      <div class="ez-grid">
+        <div class="fld"><label>商品価格 (USD)<span class="req">*</span></label><input class="inp big money" value="690.00"></div>
+        <div class="fld"><label>送料 (USD)</label><input class="inp money" value="108.00"></div>
+        <div class="fld"><label>仕入価格 (JPY)<span class="req">*</span></label>
+          <div class="inpgrp"><input class="inp money" value="65000"><button class="miniBtn">⟳ 取得</button></div></div>
+        <div class="fld"><label>下限価格 (USD・商品価格軸)</label>
+          <input class="inp money" placeholder="未入力＝損益分岐$601">
+          <span class="hint">⚠ 総額でなく商品価格を入力（自動値下げ下限）</span></div>
+
+        <div class="fld"><label>区分 (primary_market)</label>
+          <select class="inp"><option>mixed_global</option><option>US_only</option><option>global_only</option><option>unknown</option></select></div>
+        <div class="fld span2"><label>関税源 (HS / 実関税率)</label>
+          <div class="inpgrp">
+            <input class="inp" value="9609" style="max-width:84px">
+            <span class="unit">→ 非該当 15%</span>
+            <select class="inp" style="max-width:118px"><option>自動推定</option><option>手動確定</option></select>
+            <span class="selbadge">確信度 中</span></div>
+          <span class="hint">Section232該当HS（73/76/84-87等）を選ぶと実関税25〜50%で再計算</span></div>
+        <div class="fld"><label>SKU</label><input class="inp" value="stock:01"></div>
+
+        <div class="fld"><label>在庫数</label><input class="inp money" value="1"></div>
+        <div class="fld"><label>重量 (g)<span class="req">*</span></label><input class="inp money" value="6300"></div>
+        <div class="fld"><label>寸法 L×W×H (cm)</label>
+          <div class="dim3"><input class="inp" value="26"><input class="inp" value="52"><input class="inp" value="20"></div>
+          <span class="hint">課金重量 6.5kg（容積5.4／実6.3）</span></div>
+        <div class="fld"><label>eBay Item ID</label><input class="inp" value="357859072999" readonly></div>
+
+        <div class="fld span2" style="grid-column:span 4"><label>メモ</label>
+          <textarea class="inp" rows="2" placeholder="仕入先の癖・梱包注意など"></textarea></div>
+      </div>
+      <div class="ez-actions">
+        <button class="btn calc">利益計算（損益分岐 再計算）</button>
+        <button class="btn save">DB保存</button>
+        <button class="btn ebay">DB＋eBay反映</button>
+        <span class="live">プレビュー: 損益分岐 <b>$601 →（変更を反映して再計算）</b></span>
+      </div>
+    </div>
+
+    <details>
+      <summary>仕入先（候補・在庫状態・監視URL）</summary>
+      <div class="body">
+        <div class="kv"><span>仕入先: <b>メルカリ ¥65,000</b></span><span>在庫: <b>○ 在庫あり</b></span><span>最終確認: <b>2026-06-02 09:36</b></span></div>
+        <div class="kv">仕入先候補（利益高い順）: 候補A ¥62,000（採用可）／ 候補B ¥68,000（薄利）　［URL直接指定］</div>
+      </div>
+    </details>
+    <details>
+      <summary>競合・値下げ履歴</summary>
+      <div class="body">
+        <div class="kv">登録ライバル: 競合A $815＋$0 ／ 競合B $829＋$0　［ライバル追加］</div>
+        <div class="kv">直近値下げ: 2026-06-01 $710→$690（競合追従・自動）</div>
+      </div>
+    </details>
+    <details>
+      <summary>新規URL投入 → 画像・説明文生成 → eBay反映</summary>
+      <div class="body"><div class="kv"><input class="inp" placeholder="メルカリ/ヤフオク等のURL" style="max-width:420px"> ［生成］</div></div>
+    </details>
+  </div>
+
+</div>
+</body>
+</html>
