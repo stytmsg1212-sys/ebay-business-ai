@@ -196,3 +196,4 @@ tools/ebay-manager/data/tmp/
 /w[0-9]*_*.md
 /w[0-9]*.yml
 /商品管理*.yml
+tools/ebay-manager/data/.oauth-state/
