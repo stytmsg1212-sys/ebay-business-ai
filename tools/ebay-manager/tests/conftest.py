@@ -52,3 +52,13 @@ def _block_news_ai_calls(monkeypatch):
         lambda item, *, budget_remaining_usd: None,
         raising=False,
     )
+    # 2026-06-02 fix: X (Grok) も実 API を叩かせない。x_news_sources.json を
+    # enabled=true に切り替えると、run_news_check 系 test が fetch_x_entries 経由で
+    # 実 xAI を叩き (課金 + flake)、かつ「全 source 失敗」前提の test が崩れる。
+    # 最下層 search_x_posts を no-op 化し config.enabled に依らず hermetic に保つ。
+    # X 固有挙動を見たい個別 test は search_x_posts を再 setattr で上書き可能。
+    monkeypatch.setattr(
+        "monitor.xai_wrapper.search_x_posts",
+        lambda *args, **kwargs: [],
+        raising=False,
+    )
