@@ -101,8 +101,13 @@ def test_grace_iso_with_offset_does_NOT_clear(tmp_db):
     with get_conn() as c:
         _insert_listing(c, eid)
 
-    past = datetime.now(timezone.utc) - timedelta(hours=2)
-    # 旧 bug 形式: "2026-05-06T22:07:18+00:00"
+    # 2026-06-02 flake fix: 旧 `now-2h` は UTC 0-2 時帯に past が前日日付へ跨ぎ、
+    # 「同日なら ISO+offset ('...T..+00:00') は naive ('... ...') より lexicographic で
+    # 大きい (T=0x54 > 空白=0x20)」という本 test の前提が崩れて誤クリア (flake) した。
+    # 同一 UTC 日付の過去時刻 (本日 00:00:01) を使い、日付部を必ず一致させて時刻非依存化。
+    now = datetime.now(timezone.utc)
+    past = now.replace(hour=0, minute=0, second=1, microsecond=0)
+    # 旧 bug 形式: "2026-06-02T00:00:01+00:00"
     set_yahoo_grace_until(eid, past.isoformat())
 
     n = clear_yahoo_grace_if_due(eid)
