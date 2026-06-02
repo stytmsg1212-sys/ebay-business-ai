@@ -2824,6 +2824,82 @@ def init_db():
                     "user_version は 58 のまま、次回 init_db で再試行。"
                 )
 
+        # ---- v60 (W209, 2026-06-02): ダッシュボードニュース AI活用アクション化 ----
+        # news_items にスコア/軸を持たせ、深掘り結果は news_action_reports に保存。
+        # 軸 (relevance_axis):
+        #   a = Claude/Codex/MCP/Agent 技術
+        #   b = LLM/Agent 新能力の出品文/価格/仕入れ/CS 応用
+        #   c = eBay/越境 EC/関税制度
+        #   d = スクレイピング/anti-bot
+        # listing 識別は ebay_item_id (sku-rules.md) だが、本機能は news 単位 = URL 一意
+        # で SKU 規約は非該当。
+        # 冪等性パターン: ALTER は try/except sqlite3.OperationalError、CREATE は IF NOT
+        # EXISTS、bump は table_info で列実在確認後のみ。v55/v58/v59 と同じ流儀。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 59:
+            # news_items に relevance_score / relevance_axis を追加
+            for _col, _typ in [
+                ("relevance_score", "INTEGER"),
+                ("relevance_axis", "TEXT"),
+            ]:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE news_items ADD COLUMN {_col} {_typ} DEFAULT NULL"
+                    )
+                    logger.info(f"[init_db v60] news_items.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # カラム既存
+
+            # news_action_reports 新設 (深掘り結果)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS news_action_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    news_item_id INTEGER,
+                    title TEXT,
+                    url TEXT,
+                    axis TEXT,
+                    relevance_score INTEGER,
+                    summary_ja TEXT,
+                    target_module TEXT,
+                    integration_ja TEXT,
+                    benefit_ja TEXT,
+                    effort_estimate TEXT,
+                    confidence TEXT,
+                    model TEXT,
+                    cost_usd REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(url)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_nar_created "
+                "ON news_action_reports (created_at DESC)"
+            )
+
+            # bump は news_items の 2 列実在 + news_action_reports 実在を全て確認後のみ
+            _v60_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(news_items)"
+                ).fetchall()
+            }
+            _v60_tables = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if (
+                "relevance_score" in _v60_cols
+                and "relevance_axis" in _v60_cols
+                and "news_action_reports" in _v60_tables
+            ):
+                conn.execute("PRAGMA user_version = 60")
+                logger.info("[init_db v60] schema_ver bumped to 60")
+            else:
+                logger.warning(
+                    "[init_db v60] 部分適用: news_items 列 or "
+                    "news_action_reports table 未作成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -3794,6 +3870,31 @@ def update_ebay_listing_rank(ebay_item_id: str, rank: str):
         )
 
 
+VALID_PRIMARY_MARKETS: tuple[str, ...] = (
+    "US_only", "mixed_global", "global_only", "unknown",
+)
+
+
+def update_ebay_listing_primary_market(ebay_item_id: str, primary_market: str):
+    """eBay 出品の 4 区分 (primary_market) を更新する。
+
+    区分は送料・関税計算の前提 (reference_shipping_tariff_logic.md)。
+    listing 識別は ebay_item_id (SKU 不使用 / sku-rules)。
+    eBay 側への送料反映は別経路 (本関数は DB 保存のみ = user 判断で
+    📤eBay反映 ボタンを使う)。
+    """
+    if primary_market not in VALID_PRIMARY_MARKETS:
+        raise ValueError(
+            f"Invalid primary_market: {primary_market!r} "
+            f"(valid: {VALID_PRIMARY_MARKETS})"
+        )
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ebay_listings SET primary_market=? WHERE ebay_item_id=?",
+            (primary_market, ebay_item_id),
+        )
+
+
 def get_ebay_listings_by_rank(rank: str = None, order_by_rank: bool = True) -> list[dict]:
     """ランク別にeBay出品を取得 (退役済 is_ended=1 は除外、W76 T2: 2026-05-01)."""
     with get_conn() as conn:
@@ -4235,6 +4336,93 @@ def get_todays_api_cost(provider: str) -> float:
             (today, provider),
         ).fetchone()
     return float(row[0] or 0.0)
+
+
+def get_todays_api_cost_by_context(context: str,
+                                   provider: Optional[str] = None) -> float:
+    """W209: 当日の context (task/component 名) 別累計コスト (USD).
+
+    news_deep_dive の sub-budget 監視で使用 ($0.45/日 上限を超えたら打切り)。
+    api_budget_log.context 列 (v17 で追加済) で filter。
+
+    Args:
+        context: 'news_deep_dive' / 'news_relevance' / 'news_x' 等。
+        provider: None なら全 provider 合算。'anthropic' / 'xai' 等で絞り込み可。
+    """
+    from datetime import datetime as _dt
+    today = _dt.now().strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        if provider:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM api_budget_log "
+                "WHERE date = ? AND context = ? AND provider = ?",
+                (today, context, provider),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM api_budget_log "
+                "WHERE date = ? AND context = ?",
+                (today, context),
+            ).fetchone()
+    return float(row[0] or 0.0)
+
+
+# ---- W209 ニュース深掘り (news_action_reports) ----
+
+def save_news_action_report(
+    *,
+    news_item_id: Optional[int],
+    title: str,
+    url: str,
+    axis: str,                       # 'a' / 'b' / 'c' / 'd'
+    relevance_score: int,
+    summary_ja: str,
+    target_module: str,
+    integration_ja: str,
+    benefit_ja: str,
+    effort_estimate: str,            # 'S' / 'M' / 'L'
+    confidence: str,                 # 'high' / 'medium' / 'low'
+    model: str,
+    cost_usd: float,
+) -> Optional[int]:
+    """W209: 深掘りレポート 1 件を保存。UNIQUE(url) 衝突時は IGNORE。
+
+    Q0 silent skip 防止: rowcount=0 (=既存) は None 返却で呼び出し側が判別可能。
+    実 INSERT 件数の集計に使う。
+
+    Returns:
+        lastrowid (新規 INSERT 時) / None (URL 既存 or 失敗)
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO news_action_reports
+               (news_item_id, title, url, axis, relevance_score,
+                summary_ja, target_module, integration_ja, benefit_ja,
+                effort_estimate, confidence, model, cost_usd)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                news_item_id, title, url, axis, int(relevance_score),
+                summary_ja, target_module, integration_ja, benefit_ja,
+                effort_estimate, confidence, model, float(cost_usd),
+            ),
+        )
+        return cur.lastrowid if cur.rowcount else None
+
+
+def get_news_action_reports_recent(days: int = 7, limit: int = 5) -> list[dict]:
+    """W209: 直近 N 日の深掘りレポート (created_at 降順、relevance_score 降順 tiebreak)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id, news_item_id, title, url, axis, relevance_score,
+                      summary_ja, target_module, integration_ja, benefit_ja,
+                      effort_estimate, confidence, model, cost_usd, created_at
+               FROM news_action_reports
+               WHERE created_at >= datetime('now', ?)
+               ORDER BY created_at DESC, relevance_score DESC
+               LIMIT ?""",
+            (f"-{int(days)} days", int(limit)),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ---- メール管理 ----

@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "note": "W209 X 再導入 (2026-06-02): 技術 tip 限定、engagement 非加重、relevance_score でのみ選別。enabled を true にすると task_news_check 06:00 バッチで Phase 1 取得に組み込まれる。",
+  "model": "grok-4-1-fast-non-reasoning",
+  "max_per_handle": 10,
+  "daily_query_cap": 2,
+  "handles": [
+    {"handle": "AnthropicAI",  "axis_hint": "a", "tier": "official"},
+    {"handle": "claudeai",     "axis_hint": "a", "tier": "official"},
+    {"handle": "OpenAIDevs",   "axis_hint": "a", "tier": "official"},
+    {"handle": "karpathy",     "axis_hint": "a", "tier": "personality"},
+    {"handle": "simonw",       "axis_hint": "a", "tier": "personality"},
+    {"handle": "swyx",         "axis_hint": "a", "tier": "personality"},
+    {"handle": "alexalbert__", "axis_hint": "a", "tier": "personality"},
+    {"handle": "mckaywrigley", "axis_hint": "a", "tier": "personality"},
+    {"handle": "ClaudeCode_love", "axis_hint": "a", "tier": "community"},
+    {"handle": "fujibee",         "axis_hint": "a", "tier": "community"},
+    {"handle": "ClaudeDevs",      "axis_hint": "a", "tier": "community"}
+  ]
+}

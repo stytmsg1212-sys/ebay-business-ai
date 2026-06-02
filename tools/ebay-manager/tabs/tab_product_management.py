@@ -1048,6 +1048,36 @@ def _render_left_basic_and_physical(
             step=1.0, key=f"pm_height_{eid}",
         )
 
+    # ── 🌐 区分 (primary_market: 送料・関税計算の前提 / 2026-06-01 編集可化) ──
+    st.markdown(
+        '<div class="pm-section-label">🌐 区分 (送料・関税の前提 / 4 区分)</div>',
+        unsafe_allow_html=True,
+    )
+    from monitor.database import VALID_PRIMARY_MARKETS
+    _mkt_labels = {
+        "US_only": "US_only — 米国のみ販売 (商品価格に関税包含)",
+        "mixed_global": "mixed_global — 米国+他国 混在",
+        "global_only": "global_only — 米国以外",
+        "unknown": "unknown — 未判定",
+    }
+    _mkt_opts = list(VALID_PRIMARY_MARKETS)
+    # DB が None の listing は表示上 unknown を default に (書込は dirty 時のみ)。
+    _cur_mkt = (p.get("primary_market") or "unknown")
+    if _cur_mkt not in _mkt_opts:
+        _cur_mkt = "unknown"
+    # dirty-flag (BP / 送料 と同型): submit 値 != 表示初期値 の時のみ DB 保存。
+    # None の listing を無操作で unknown に上書きする stale write を遮断。
+    editing["primary_market_render_initial"] = _cur_mkt
+    editing["primary_market"] = st.selectbox(
+        "区分",
+        options=_mkt_opts,
+        index=_mkt_opts.index(_cur_mkt),
+        format_func=lambda m: _mkt_labels.get(m, m),
+        key=f"pm_primary_market_{eid}",
+        help="Terapeak 365 日 sold 判定 (W110(2))。送料差分式 + DDP 関税の前提区分。"
+             "保存で DB 更新 + 利益再計算 (eBay 送料反映は別途 📤eBay反映)。",
+    )
+
     # ── 💵 eBay 出品 ──
     st.markdown(
         '<div class="pm-section-label">💵 eBay 出品 (📤 eBay 反映で ReviseFixedPriceItem)</div>',
@@ -1302,13 +1332,32 @@ def _render_url_direct_description_section(p: dict) -> None:
                     with st.expander("rank 判定根拠", expanded=False):
                         st.caption(result["rank_reasoning"])
 
+            # 2026-06-01: description を編集可能化 (個別出品 W190 / 仕入先候補フロー
+            # と同等)。widget key を source of truth にし、再生成 (gen_desc 変化) 時
+            # のみリセット。編集値 edited_desc を画像加工 + 反映 button へ渡す。
+            gen_desc = result.get("description_html") or ""
+            sk_ed = f"pm_url_direct_edited_desc_{eid}"
+            sk_ed_src = f"pm_url_direct_edited_desc_src_{eid}"
+            if st.session_state.get(sk_ed_src) != gen_desc:
+                st.session_state[sk_ed] = gen_desc
+                st.session_state[sk_ed_src] = gen_desc
             with st.expander(
-                f"description HTML preview ({len(result.get('description_html', ''))} 文字)",
+                f"✏️ description (HTML) を編集 ({len(gen_desc)} 文字)",
                 expanded=False,
             ):
-                st.code(result.get("description_html", "")[:5000], language="html")
-                if len(result.get("description_html", "")) > 5000:
-                    st.caption("⚠️ 先頭 5000 文字のみ表示 (eBay 反映は全文)")
+                st.text_area(
+                    "Description HTML (禁止語句や文言をここで直接修正可)",
+                    height=400,
+                    key=sk_ed,
+                )
+                if st.button("↩ 生成結果に戻す", key=f"pm_url_direct_resetdesc_{eid}"):
+                    st.session_state[sk_ed] = gen_desc
+                    st.rerun()
+            edited_desc = st.session_state.get(sk_ed) or ""
+            if edited_desc != gen_desc:
+                st.caption(
+                    f"✏️ 編集済み ({len(edited_desc)} 文字) — この内容で eBay 反映されます"
+                )
 
             # ── W158 (2026-05-23): 画像加工 + 3 反映 button (個別出品同等) ──
             from tabs._image_pipeline_ui import (
@@ -1341,7 +1390,7 @@ def _render_url_direct_description_section(p: dict) -> None:
                 source_urls=imgs,
                 sku_hint=f"eid_{eid}",
                 ebay_item_id=eid,
-                description_html=result.get("description_html") or "",
+                description_html=edited_desc,
                 on_apply_image=_on_apply_image_pm,
                 on_apply_description=_on_apply_desc_pm,
                 on_apply_both=_on_apply_both_pm,
@@ -2032,6 +2081,18 @@ def _save_product_data(
         if new_sku != _cur_sku:
             from monitor.database import update_ebay_listing_sku
             update_ebay_listing_sku(ebay_item_id, new_sku)
+
+    # 区分 (primary_market) — 2026-06-01 編集可化。dirty 時のみ DB 保存
+    # (None→unknown の stale write を遮断 = BP / 送料 dirty-flag と同型)。
+    # update_ebay_listing_sku と同様 with ブロック外で自前 conn を使い WAL
+    # 単一 writer のロック競合を回避。eBay 送料反映は別経路 (user 判断で 📤)。
+    _mkt = editing.get("primary_market")
+    _mkt_init = editing.get("primary_market_render_initial")
+    if _mkt and _mkt != _mkt_init:
+        from monitor.database import update_ebay_listing_primary_market
+        update_ebay_listing_primary_market(ebay_item_id, _mkt)
+        st.success(f"🌐 区分を {_mkt} に更新しました (利益は再表示で再計算)")
+
     with get_conn() as conn:
         # inventory_count (None 渡しでも触らない、明示的に値があれば UPDATE)
         inv = editing.get("inventory_count")

@@ -137,6 +137,9 @@ NEWS_SOURCES = [
     {'name': 'HN: claude opus',   'type': 'hn', 'query': 'claude opus',   'days': 3, 'max': 15},
     {'name': 'HN: llm',           'type': 'hn', 'query': 'llm',           'days': 1, 'max': 15},
     {'name': 'HN: ai agent',      'type': 'hn', 'query': 'ai agent',      'days': 2, 'max': 15},
+    # W209 (2026-06-02): X 再導入. config/x_news_sources.json で enabled 制御.
+    # source 辞書には name/type のみ持ち、handles は config から動的読込.
+    {'name': 'X (Grok)',          'type': 'x'},
 ]
 
 # eBay ツールに関連するキーワード (影響判定用)
@@ -502,23 +505,48 @@ def _save_news_results_inner(news_items: List[Dict]) -> int:
                     f"news enrichment 失敗 (title={title[:60]}): {enrich_err}"
                 )
 
+        # W209: relevance_score / relevance_axis も persist (score 0 / 'none' で固定)
+        rel_score = item.get('relevance_score')
+        rel_axis = item.get('relevance_axis') or 'none'
         new_items_enriched.append((
             source, title, item.get('url', ''),
             summary_ja, impact_ja, impact_level, cats_str,
             item.get('published_at', ''),
+            int(rel_score) if rel_score is not None else None,
+            rel_axis,
         ))
 
     # Phase C: 短い write transaction で一括 INSERT (API call 一切なし = ms 単位)
     if new_items_enriched:
         with get_conn() as conn:
-            for values in new_items_enriched:
-                cur = conn.execute(
-                    """INSERT OR IGNORE INTO news_items
-                       (source, title, url, summary_ja, impact_ja, impact_level,
-                        categories, published_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    values,
+            # W209: news_items に relevance_score / relevance_axis 列 (v60) を追加済.
+            # 旧 DB (v59 以下) で本 task が走った場合の defensive check:
+            # PRAGMA table_info で列存在を確認し、欠落していれば旧 INSERT に fallback.
+            cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(news_items)"
+                ).fetchall()
+            }
+            has_rel_cols = (
+                'relevance_score' in cols and 'relevance_axis' in cols
+            )
+            if has_rel_cols:
+                sql = (
+                    "INSERT OR IGNORE INTO news_items "
+                    "(source, title, url, summary_ja, impact_ja, impact_level, "
+                    " categories, published_at, relevance_score, relevance_axis) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
+            else:
+                sql = (
+                    "INSERT OR IGNORE INTO news_items "
+                    "(source, title, url, summary_ja, impact_ja, impact_level, "
+                    " categories, published_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+            for values in new_items_enriched:
+                payload = values if has_rel_cols else values[:8]
+                cur = conn.execute(sql, payload)
                 inserted += cur.rowcount
 
     logger.info(f"ニュース DB 保存: 候補 {len(news_items)} 件 / 新規 INSERT {inserted} 件")
@@ -534,11 +562,36 @@ def _save_news_results_inner(news_items: List[Dict]) -> int:
 # 関数 reference を捕捉してしまい、`monkeypatch.setattr(t, "fetch_rss_entries", ...)`
 # が dict 内 reference に反映されず unit test がパッチ無効化される
 # (W154 実装中 2026-05-22 PM に内部 self-review で検出).
+#
+# W209 (2026-06-02): 'x' を再導入. fetcher は task_news_fetch_x.fetch_x_entries.
+# config/x_news_sources.json の enabled=false の間は呼ばれても [] を返す。
 _FETCHER_BY_TYPE = {
     'rss': 'fetch_rss_entries',
     'reddit': 'fetch_reddit_entries',
     'hn': 'fetch_hn_entries',
+    'x': 'fetch_x_entries',  # W209
 }
+
+
+def fetch_x_entries(source: Dict) -> List[Dict]:
+    """W209: X (Grok) fetcher. task_news_fetch_x への薄い proxy.
+
+    別 module に分離してあるのは config/x_news_sources.json の動的読み込みと
+    daily_cap ガードを完結させるため。本 module は import 時 side-effect を
+    最小化 (xai_wrapper を late import).
+    """
+    try:
+        from tasks.task_news_fetch_x import fetch_x_entries as _impl
+    except ImportError as e:
+        logger.warning(f"fetch_x_entries 実装 import 失敗: {e}")
+        return []
+    try:
+        return _impl(source)
+    except Exception as e:  # noqa: BLE001
+        # 本 fetcher 例外は他 source の続行を妨げない (run_news_check 側でも
+        # per-source try/except があるが、二重防御).
+        logger.warning(f"fetch_x_entries 実行失敗: {type(e).__name__}: {e}")
+        return []
 
 
 def _resolve_fetcher(stype: str):
@@ -552,6 +605,222 @@ def _resolve_fetcher(stype: str):
         return None
     import sys as _sys
     return getattr(_sys.modules[__name__], fn_name, None)
+
+
+# ─────────────────────────────────────────────
+# W209 Phase 2 + 3: 関連度スコアリング + 深掘り
+# ─────────────────────────────────────────────
+
+# 深掘りの 1 日コスト上限 (anthropic 分、user 確定 2026-06-02)
+DEEP_DIVE_BUDGET_USD_PER_DAY = 0.45
+# 深掘り対象の relevance_score 閾値 (これ未満は対象外)
+DEEP_DIVE_SCORE_THRESHOLD = 60
+# 深掘りの 1 日上限件数 (user 確定: 上位 3 件)
+DEEP_DIVE_MAX_ITEMS_PER_DAY = 3
+# HIGH-2 fix (2026-06-02 code-reviewer): 深掘り 1 件の最悪コスト見積 (Opus 4.8、
+# 本文 ~12k 字 + max_tokens=1200)。budget gate を事前チェックのみにすると
+# remaining=$0.01 でも 1 件起動し $0.45 を超過し得る。「残量 >= 1 件分の安全
+# マージン」を要求し、最終 used が DEEP_DIVE_BUDGET_USD_PER_DAY を超えない様にする。
+DEEP_DIVE_SAFETY_MARGIN_USD = 0.15
+
+
+def _score_news_items(items: List[Dict]) -> List[Dict]:
+    """各 news item に relevance_score / axis / reason_ja を付与.
+
+    item 自身を変更し (in-place)、同じ list を返す。
+    Haiku 失敗時 relevance_score=0 / axis='none' で深掘りから自然除外。
+    """
+    try:
+        from monitor.news_relevance import score_relevance
+    except ImportError as e:
+        logger.warning(f"news_relevance import 失敗 = score 付与 skip: {e}")
+        for it in items:
+            it.setdefault("relevance_score", 0)
+            it.setdefault("relevance_axis", "none")
+        return items
+
+    for it in items:
+        title = it.get("title") or ""
+        summary = it.get("summary_ja") or ""
+        source = it.get("source") or ""
+        try:
+            res = score_relevance(title=title, summary=summary, source=source)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"score_relevance 例外 ({title[:60]}): "
+                f"{type(e).__name__}: {e}"
+            )
+            res = {
+                "relevance_score": 0, "axis": "none",
+                "reason_ja": f"例外: {type(e).__name__}",
+            }
+        it["relevance_score"] = int(res.get("relevance_score") or 0)
+        it["relevance_axis"] = str(res.get("axis") or "none")
+        it["relevance_reason_ja"] = str(res.get("reason_ja") or "")
+    return items
+
+
+def _run_deep_dive_phase(items: List[Dict]) -> Dict:
+    """深掘り Phase 3: 関連度上位の記事を Opus 4.8 で深掘りし、
+    news_action_reports に保存する。
+
+    Returns:
+        {'deep_dive_count': int, 'deep_dive_skipped_reason': str,
+         'deep_dive_budget_used_usd': float}
+    """
+    # budget 残量を sub-budget 集計 (news_relevance + news_deep_dive 両方を含めず、
+    # 「深掘り (Opus) 専用」を見たいので context='news_deep_dive' のみで判定)。
+    # 2026-06-02 Codex 指摘 #2 fix: budget 集計失敗時は fail-OPEN (used=0.0 で続行)
+    # にすると、予算監視が壊れた日に手動 trigger 連投で日次上限を保証できない。
+    # 「予算を確認できない = 課金しない」= fail-CLOSED で深掘りを skip する (money-safe)。
+    try:
+        from monitor.database import get_todays_api_cost_by_context
+        used = get_todays_api_cost_by_context(
+            "news_deep_dive", provider="anthropic",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"get_todays_api_cost_by_context 失敗 (news_deep_dive) "
+            f"= budget 未確認のため深掘り skip (fail-closed): {e}"
+        )
+        return {
+            "deep_dive_count": 0,
+            "deep_dive_skipped_reason": f"budget check failed (fail-closed): {e}",
+            "deep_dive_budget_used_usd": 0.0,
+        }
+    remaining = DEEP_DIVE_BUDGET_USD_PER_DAY - used
+    # HIGH-2 fix: 「残量 >= 1 件分の安全マージン」を要求 (事前チェックのみで
+    # remaining=$0.01 でも起動して超過する経路を遮断)。
+    if remaining < DEEP_DIVE_SAFETY_MARGIN_USD:
+        logger.warning(
+            f"deep_dive: budget 残量不足 (used=${used:.3f} / "
+            f"cap=${DEEP_DIVE_BUDGET_USD_PER_DAY:.2f} / "
+            f"残量${remaining:.3f} < マージン${DEEP_DIVE_SAFETY_MARGIN_USD:.2f}) = skip"
+        )
+        return {
+            "deep_dive_count": 0,
+            "deep_dive_skipped_reason": (
+                f"budget insufficient (used=${used:.3f} cap=${DEEP_DIVE_BUDGET_USD_PER_DAY:.2f} "
+                f"remaining=${remaining:.3f} < margin=${DEEP_DIVE_SAFETY_MARGIN_USD:.2f})"
+            ),
+            "deep_dive_budget_used_usd": 0.0,
+        }
+
+    # 閾値以上の候補を score 降順 + axis 多様性で並べる
+    candidates = [
+        it for it in items
+        if int(it.get("relevance_score") or 0) >= DEEP_DIVE_SCORE_THRESHOLD
+        and (it.get("relevance_axis") or "none") != "none"
+    ]
+    candidates.sort(
+        key=lambda x: int(x.get("relevance_score") or 0), reverse=True,
+    )
+    if not candidates:
+        logger.info(
+            f"deep_dive: 閾値 >= {DEEP_DIVE_SCORE_THRESHOLD} の候補なし = skip"
+        )
+        return {
+            "deep_dive_count": 0,
+            "deep_dive_skipped_reason": (
+                f"no candidates >= score {DEEP_DIVE_SCORE_THRESHOLD}"
+            ),
+            "deep_dive_budget_used_usd": float(used),
+        }
+
+    targets = candidates[:DEEP_DIVE_MAX_ITEMS_PER_DAY]
+
+    try:
+        from monitor.news_deep_dive import deep_dive_article
+        from monitor.database import save_news_action_report, get_conn
+    except ImportError as e:
+        logger.warning(f"news_deep_dive / database 関数 import 失敗: {e}")
+        return {
+            "deep_dive_count": 0,
+            "deep_dive_skipped_reason": f"import error: {e}",
+            "deep_dive_budget_used_usd": float(used),
+        }
+
+    inserted = 0
+    batch_cost = 0.0  # HIGH-3: この run の深掘り実コスト合計 (当日累計と区別)
+    last_remaining = remaining
+    for it in targets:
+        # HIGH-2 fix: 残量が 1 件分の安全マージン未満なら起動しない
+        # (事前チェックのみで $0.45 を 1 件分オーバーシュートする経路を遮断)。
+        if last_remaining < DEEP_DIVE_SAFETY_MARGIN_USD:
+            logger.warning(
+                "deep_dive: ループ中に budget 残量不足、残り対象を skip "
+                f"(processed={inserted}/{len(targets)} 残量${last_remaining:.3f})"
+            )
+            break
+
+        report = deep_dive_article(it, budget_remaining_usd=last_remaining)
+        if not report:
+            logger.warning(
+                f"deep_dive: 失敗 / skip (title={it.get('title','')[:60]!r})"
+            )
+            continue
+        # report が非 None = Opus 呼出済 = コスト発生 (save 成否に関わらず計上)
+        batch_cost += float(report.get("cost_usd") or 0.0)
+
+        # news_item_id 解決 (URL 一致で SELECT、無ければ None)
+        url = it.get("url") or ""
+        news_item_id: Optional[int] = None
+        if url:
+            try:
+                with get_conn() as conn:
+                    row = conn.execute(
+                        "SELECT id FROM news_items WHERE url = ? LIMIT 1",
+                        (url,),
+                    ).fetchone()
+                if row:
+                    news_item_id = int(row[0])
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"news_item_id 解決失敗: {e}")
+
+        try:
+            rid = save_news_action_report(
+                news_item_id=news_item_id,
+                title=it.get("title") or "",
+                url=url,
+                axis=it.get("relevance_axis") or "none",
+                relevance_score=int(it.get("relevance_score") or 0),
+                summary_ja=report.get("summary_ja") or "",
+                target_module=report.get("target_module") or "",
+                integration_ja=report.get("integration_ja") or "",
+                benefit_ja=report.get("benefit_ja") or "",
+                effort_estimate=report.get("effort_estimate") or "M",
+                confidence=report.get("confidence") or "medium",
+                model=report.get("model") or "claude-opus-4-8",
+                cost_usd=float(report.get("cost_usd") or 0.0),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"save_news_action_report 失敗: {e}")
+            rid = None
+
+        if rid:
+            inserted += 1
+
+        # 実コスト消費分を更新 (Opus deep_dive_article 内で add_api_cost 済なので
+        # ここでは sub-budget 集計を再 query)
+        try:
+            used_now = get_todays_api_cost_by_context(
+                "news_deep_dive", provider="anthropic",
+            )
+            last_remaining = DEEP_DIVE_BUDGET_USD_PER_DAY - used_now
+        except Exception:  # noqa: BLE001
+            last_remaining -= float(report.get("cost_usd") or 0.0)
+
+    return {
+        "deep_dive_count": inserted,
+        "deep_dive_skipped_reason": "" if inserted else "all skipped",
+        # HIGH-3 fix: この run で実際に深掘りに使った額 (当日累計ではなく this-batch)。
+        # deep_dive_count と同じく「今回の実行分」で一貫させ、UI 手動 trigger 時の誤解を防ぐ。
+        "deep_dive_budget_used_usd": round(batch_cost, 4),
+    }
+
+
+# get_todays_api_cost_by_context は database.py に追加済 (v60 helper).
+# import は _run_deep_dive_phase 内で行う (循環防止 + test 容易性).
 
 
 def run_news_check(config: Optional[Dict] = None) -> Dict:
@@ -631,15 +900,42 @@ def run_news_check(config: Optional[Dict] = None) -> Dict:
             key=lambda x: priority_order.get(x.get('impact', 'none'), 3),
         )
 
+        # W209 Phase 2: 各 item に relevance_score / relevance_axis を付与 (Haiku).
+        # 失敗時 (Haiku API ダウン等) も score=0 / axis='none' で深掘りから自然除外.
+        _score_news_items(all_news)
+
         inserted = save_news_results(all_news) if all_news else 0
+
+        # W209 Phase 3: 深掘り (Opus 4.8). budget gate / 閾値 / 上位 3 件で制御.
+        # save 後に走らせて news_item_id を URL 一致で resolve できるようにする.
+        try:
+            deep_dive_result = _run_deep_dive_phase(all_news)
+        except Exception as e:  # noqa: BLE001
+            # Phase 3 全体失敗は Phase 1/2 success を覆さない (Q0 痕跡)
+            logger.error(
+                f"_run_deep_dive_phase 例外: {type(e).__name__}: {e}"
+            )
+            deep_dive_result = {
+                "deep_dive_count": 0,
+                "deep_dive_skipped_reason": f"phase 3 exception: {type(e).__name__}",
+                "deep_dive_budget_used_usd": 0.0,
+            }
 
         high = sum(1 for n in all_news if n.get('impact') == 'high')
         medium = sum(1 for n in all_news if n.get('impact') == 'medium')
 
+        # W209: 関連度集計
+        rel_60_plus = sum(
+            1 for n in all_news
+            if int(n.get('relevance_score') or 0) >= DEEP_DIVE_SCORE_THRESHOLD
+            and (n.get('relevance_axis') or 'none') != 'none'
+        )
+
         logger.info(
             f"ニュース確認完了: raw 合計 {fetched_entries_total} / "
             f"候補 {len(all_news)} / DB INSERT {inserted} "
-            f"(高 {high} / 中 {medium})"
+            f"(高 {high} / 中 {medium}) / 関連度>=60: {rel_60_plus} / "
+            f"深掘り: {deep_dive_result.get('deep_dive_count', 0)}"
         )
 
         return {
@@ -650,9 +946,18 @@ def run_news_check(config: Optional[Dict] = None) -> Dict:
             'high_impact_count': high,
             'medium_impact_count': medium,
             'per_source': per_source,
+            'relevance_60_plus_count': rel_60_plus,
+            'deep_dive_count': deep_dive_result.get('deep_dive_count', 0),
+            'deep_dive_skipped_reason': deep_dive_result.get(
+                'deep_dive_skipped_reason', ''
+            ),
+            'deep_dive_budget_used_usd': deep_dive_result.get(
+                'deep_dive_budget_used_usd', 0.0
+            ),
             'message': (
                 f'raw {fetched_entries_total} / 候補 {len(all_news)} / '
-                f'INSERT {inserted}'
+                f'INSERT {inserted} / rel>=60: {rel_60_plus} / '
+                f"deep_dive: {deep_dive_result.get('deep_dive_count', 0)}"
             ),
             'news': all_news[:10],  # 末尾配置: truncation で切れて他フィールドを保護
         }

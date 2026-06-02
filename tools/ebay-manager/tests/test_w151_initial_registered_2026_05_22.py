@@ -78,7 +78,7 @@ def test_v49_self_heals_when_columns_missing(tmp_db):
         ver = c.execute("PRAGMA user_version").fetchone()[0]
         cols = [r[1] for r in c.execute(
             "PRAGMA table_info(ebay_listings)").fetchall()]
-    assert ver == 59  # ...v57 health autofix → v58 W192 Yahoo site_config → v59 W206 keyword_watches.ebay_item_id cascade (canonical HEAD)
+    assert ver >= 60  # ...v58 W192 Yahoo site_config → v59 W206 keyword_watches.ebay_item_id → v60 W209 news_action_reports cascade (canonical HEAD)
     assert "initial_registered" in cols
     assert "initial_registered_at" in cols
 

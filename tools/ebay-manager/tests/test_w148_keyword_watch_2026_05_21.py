@@ -80,7 +80,7 @@ def test_v46_self_heals_when_tables_missing(tmp_db):
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
             "AND name IN ('keyword_watches','keyword_watch_hits')"
         ).fetchone()[0]
-    assert ver == 59  # cascade: init_db で v46→...→v59 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」、v59 = W206 keyword_watches.ebay_item_id canonical HEAD)
+    assert ver >= 60  # cascade: init_db で v46→...→v60 まで進む (test の意図は「v46 block 再突入で必須 table 再作成 + 累積 bump 完了」、v60 = W209 news_action_reports canonical HEAD)
     assert n == 2
 
 
@@ -770,7 +770,7 @@ def test_v59_idempotent_ebay_item_id(tmp_db):
     )
     assert new
 
-    # 2 回目の init_db でデータが消えない / 列も残る / ver=59
+    # 2 回目の init_db でデータが消えない / 列も残る / ver>=60
     tmp_db.init_db()
 
     with get_conn() as c:
@@ -779,7 +779,7 @@ def test_v59_idempotent_ebay_item_id(tmp_db):
         row = c.execute(
             "SELECT ebay_item_id FROM keyword_watches WHERE id=?", (wid,)
         ).fetchone()
-    assert ver == 59
+    assert ver >= 60
     assert "ebay_item_id" in cols
     assert row is not None and row[0] == "358505733121"
 

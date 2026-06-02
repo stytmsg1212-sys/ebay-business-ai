@@ -632,13 +632,39 @@ def render_supplier_description_section(
                 st.rerun()
             return
 
-        # Step 3: 生成成功 → preview + apply UI
-        desc = gen_result.get('description_html') or ''
+        # Step 3: 生成成功 → 編集 + preview + apply UI
+        desc_gen = gen_result.get('description_html') or ''
         st.success(
             f"✅ 生成成功 — rank={gen_result.get('rank_code')} / "
             f"title_en='{(gen_result.get('title_en') or '')[:60]}' / "
-            f"description {len(desc)} 文字"
+            f"description {len(desc_gen)} 文字"
         )
+
+        # 2026-06-01: description を編集可能化 (個別出品 W190 と同等)。
+        # 編集値 desc を以降の eBay 反映 / 画像加工反映の双方で使用する。
+        # widget key を source of truth にし、再生成 (desc_gen 変化) 時のみリセット
+        # することで value+key 併用警告と user 編集の取りこぼしを同時に防ぐ。
+        sk_desc_widget = f"{_SS}edited_desc_{candidate_id}"
+        sk_desc_src = f"{_SS}edited_desc_src_{candidate_id}"
+        if st.session_state.get(sk_desc_src) != desc_gen:
+            st.session_state[sk_desc_widget] = desc_gen
+            st.session_state[sk_desc_src] = desc_gen
+        with st.expander("✏️ description (HTML) を編集", expanded=False):
+            st.text_area(
+                "Description HTML (禁止語句や文言をここで直接修正可)",
+                height=400,
+                key=sk_desc_widget,
+            )
+            if st.button(
+                "↩ 生成結果に戻す", key=f"{_SS}btn_resetdesc_{candidate_id}",
+            ):
+                st.session_state[sk_desc_widget] = desc_gen
+                st.rerun()
+        desc = st.session_state.get(sk_desc_widget) or ''
+        if desc != desc_gen:
+            st.caption(
+                f"✏️ 編集済み ({len(desc)} 文字) — この内容で eBay 反映 / 画像加工反映されます"
+            )
 
         with st.expander("▼ description プレビュー (HTML レンダリング)", expanded=True):
             try:

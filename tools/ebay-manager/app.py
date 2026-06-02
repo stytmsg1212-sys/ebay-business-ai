@@ -1511,6 +1511,99 @@ if _w134_sel == "DASHBOARD":
         # .company/research/ を読むので今後 AI ニュース等の他ジャンルを掲載する
         # 用途で復活させる余地あり。
 
+        # ── AI 活用アクション (W209, 2026-06-02) ──
+        # ニュース取得タスク (06:00) の Phase 3 で深掘りされた組み込み案を表示.
+        # 関連度上位 3 件 (>=60) を Opus 4.8 で深掘り → news_action_reports に永続化.
+        # Q0: 0 件の時は「閾値未満」プレースホルダで空表示を避ける.
+        st.markdown(
+            '<div class="sec-header">AI 活用アクション</div>',
+            unsafe_allow_html=True,
+        )
+        _action_rows: list[dict] = []
+        try:
+            from monitor.database import get_news_action_reports_recent
+            _action_rows = get_news_action_reports_recent(days=7, limit=5)
+        except Exception as _e:  # noqa: BLE001
+            logger.warning(f"get_news_action_reports_recent 失敗: {_e}")
+            _action_rows = []
+
+        if _action_rows:
+            _axis_label = {
+                'a': 'Claude/Agent', 'b': 'eBay応用', 'c': '関税/EC', 'd': 'スクレイピング',
+            }
+            _axis_color = {
+                'a': 'rgba(120,200,255,0.9)',
+                'b': 'rgba(118,255,3,0.85)',
+                'c': 'rgba(240,200,48,0.85)',
+                'd': 'rgba(255,140,80,0.9)',
+            }
+            _effort_color = {
+                'S': 'rgba(118,255,3,0.7)',
+                'M': 'rgba(240,200,48,0.7)',
+                'L': 'rgba(240,64,80,0.7)',
+            }
+            _conf_label = {'high': '高', 'medium': '中', 'low': '低'}
+            for _r in _action_rows:
+                _ax = (_r.get('axis') or 'a').lower()
+                _ax_lbl = _axis_label.get(_ax, _ax.upper())
+                _ax_col = _axis_color.get(_ax, 'rgba(160,180,200,0.8)')
+                _eff = (_r.get('effort_estimate') or 'M').upper()[:1]
+                _eff_col = _effort_color.get(_eff, 'rgba(160,180,200,0.7)')
+                _conf = (_r.get('confidence') or 'medium').lower()
+                _conf_jp = _conf_label.get(_conf, _conf)
+                _score = int(_r.get('relevance_score') or 0)
+                _title = html.escape((_r.get('title') or '')[:80])
+                _url = html.escape(_r.get('url') or '', quote=True)
+                _title_link = (
+                    f'<a href="{_url}" target="_blank" '
+                    f'style="color:rgba(120,200,255,0.85);text-decoration:none;">'
+                    f'{_title}</a>'
+                ) if _url else _title
+                _sum = html.escape((_r.get('summary_ja') or '')[:240])
+                _tgt = html.escape((_r.get('target_module') or '')[:120])
+                _intg = html.escape((_r.get('integration_ja') or '')[:300])
+                _ben = html.escape((_r.get('benefit_ja') or '')[:200])
+
+                st.markdown(
+                    f'<div style="border-left:2px solid {_ax_col};'
+                    f'padding:8px 12px;margin-bottom:10px;'
+                    f'background:rgba(80,120,180,0.04);border-radius:0 4px 4px 0;">'
+                    f'<div style="display:flex;gap:6px;align-items:center;'
+                    f'margin-bottom:5px;flex-wrap:wrap;">'
+                    f'<span style="background:rgba(0,0,0,0.3);color:{_ax_col};'
+                    f'padding:1px 6px;border-radius:3px;font-size:10px;'
+                    f'letter-spacing:1px;">[{_ax.upper()}] {_ax_lbl}</span>'
+                    f'<span style="background:rgba(0,0,0,0.3);color:{_eff_col};'
+                    f'padding:1px 6px;border-radius:3px;font-size:10px;">'
+                    f'工数 {_eff}</span>'
+                    f'<span style="color:rgba(180,220,255,0.45);font-size:10px;'
+                    f'margin-left:4px;">関連度 {_score} / 確度 {_conf_jp}</span>'
+                    f'</div>'
+                    f'<div style="font-size:13px;color:#e0ecfa;line-height:1.5;'
+                    f'margin-bottom:4px;">{_sum}</div>'
+                    f'<div style="font-size:11px;color:rgba(160,220,255,0.75);'
+                    f'margin-bottom:3px;">'
+                    f'<b>組込先</b>: {_tgt}</div>'
+                    + (
+                        f'<div style="font-size:11px;color:rgba(160,220,255,0.65);'
+                        f'margin-bottom:3px;"><b>方法</b>: {_intg}</div>'
+                        if _intg else ''
+                    )
+                    + (
+                        f'<div style="font-size:11px;color:rgba(118,255,3,0.7);'
+                        f'margin-bottom:4px;"><b>効果</b>: {_ben}</div>'
+                        if _ben else ''
+                    )
+                    + f'<div style="font-size:10px;color:#5a7a96;">{_title_link}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            # Q0: 空表示を避け、なぜ 0 件かを明示
+            st.caption(
+                "本日は深掘り対象なし (関連度上位が閾値未満、または budget 到達)"
+            )
+
         # ── NEWS ──
         st.markdown('<div class="sec-header">NEWS</div>', unsafe_allow_html=True)
         from datetime import date as _date_cls
@@ -1528,20 +1621,23 @@ if _w134_sel == "DASHBOARD":
                               COALESCE(engagement_count, 0) AS engagement_count
                        FROM news_items
                        WHERE checked_at >= datetime('now','-3 days')
-                       ORDER BY CASE impact_level
+                       ORDER BY checked_at DESC,
+                                CASE impact_level
                                  WHEN 'high' THEN 0
                                  WHEN 'medium' THEN 1
                                  WHEN 'low' THEN 2
-                                 ELSE 3 END, checked_at DESC
+                                 ELSE 3 END,
+                                id DESC
                        LIMIT 20"""
                 ).fetchall()]
         except Exception as _e:
             _news_db_rows = []
 
         if _news_db_rows:
-            _high_db = [n for n in _news_db_rows if n.get('impact_level') == 'high']
-            _med_db = [n for n in _news_db_rows if n.get('impact_level') == 'medium']
-            # Claude 要約ベース表示 (W13: ソースタグ + engagement 追加、表示数 8 件に拡張)
+            # 2026-06-02 (user 要望): 新着順表示。SQL 側で checked_at DESC →
+            # impact → id DESC に並べ替え済 = 当日バッチが上、当日内は影響度順。
+            # 旧 impact-first は高影響ニュースが数日上位固定で新鮮味が出ない問題があった。
+            # Claude 要約ベース表示 (W13: ソースタグ + engagement 追加、表示数 8 件)
             _src_label = {
                 'x': 'X', 'reddit': 'Reddit', 'hn': 'HN', 'web': 'Web',
             }
@@ -1551,7 +1647,7 @@ if _w134_sel == "DASHBOARD":
                 'hn': 'rgba(255,180,60,0.9)',
                 'web': 'rgba(160,180,200,0.85)',
             }
-            for _n in (_high_db + _med_db)[:8]:
+            for _n in _news_db_rows[:8]:
                 _lvl = _n.get('impact_level') or 'low'
                 _accent = {'high': 'rgba(240,64,80,0.55)', 'medium': 'rgba(240,200,48,0.55)',
                            'low': 'rgba(120,180,255,0.45)'}.get(_lvl, 'rgba(160,180,200,0.4)')
@@ -1663,7 +1759,10 @@ if _w134_sel == "DASHBOARD":
 
             if not _high_news and not _med_news and not _constraint_hits:
                 st.caption("重要なニュースはありません")
-        else:
+        elif not _news_db_rows:
+            # DB ニュース (news_items) を表示済みの時は _news_file=None でこの
+            # else に落ちる → 「まだ取得されていません」誤表示の既存バグ (2026-06-02 fix)。
+            # DB 行が無く file も無い時のみ「まだ」を出す。
             st.caption("本日のニュースはまだ取得されていません")
 
         # ── SYSTEMS ──
