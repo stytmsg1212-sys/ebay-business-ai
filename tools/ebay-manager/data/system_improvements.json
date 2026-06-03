@@ -1925,5 +1925,15 @@
         "priority": "高",
         "created": "2026-06-02",
         "completed": null
+    },
+    {
+        "id": 286,
+        "tag": "W214",
+        "title": "区分変更時に手動下限(lp_min_price)と新breakevenの乖離をuserへ通知",
+        "description": "2026-06-03 W212 stale floor の Codex/code-reviewer裁定で判明。lp_min_price(手動絶対下限)はbreakeven未満も意図的に許容する既存設計(app.py warning「意図的ならOK」)。W212でbreakevenが区分依存に動的化したため、global_only→US_only等の区分変更で「古い低いlp_min_priceが新breakeven未満」になり、自動値下げが赤字値下げしうる(lp_min_price優先のため。fail-closed NULL化の対象外)。手動floorを勝手に書換えるのは仕様破壊なので不可。代わりに**区分変更時にlp_min_price<新breakevenを検知してuser通知**(UI警告orDiscord「この商品の手動下限が新区分の損益分岐未満、見直し推奨」)。floor=max(lp_min,breakeven)化は別semantic変更でuser判断要。低優先。出典: 2026-06-03 code-reviewer裁定。",
+        "status": "未着手",
+        "priority": "低",
+        "created": "2026-06-03",
+        "completed": null
     }
 ]
