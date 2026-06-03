@@ -109,3 +109,22 @@ def test_breakeven_with_actual_duty_is_higher():
     be_s232 = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, actual_duty_rate=0.30)
     assert be_legacy is not None and be_s232 is not None
     assert be_s232 > be_legacy, "実関税30%>display20% で breakeven は上がる(赤字出品防止)"
+
+
+def test_breakeven_ddu_is_lower_than_us():
+    """W212 (global_only): is_ddu=True (US関税なし) の breakeven は US DDP より低い."""
+    from monitor.lowest_price import compute_breakeven_price_usd
+    s = C.load_settings()
+    be_us = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s)  # US DDP (関税込)
+    be_ddu = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, is_ddu=True)  # DDU
+    assert be_us is not None and be_ddu is not None
+    assert be_ddu < be_us, "DDU(US関税なし)の floor は US DDP より低い = global_only に適正"
+
+
+def test_breakeven_ddu_ignores_section232():
+    """is_ddu=True 時は actual_duty_rate(Section232)を無視 = US以外に関税が乗らない."""
+    from monitor.lowest_price import compute_breakeven_price_usd
+    s = C.load_settings()
+    be_ddu_plain = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, is_ddu=True)
+    be_ddu_s232 = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, is_ddu=True, actual_duty_rate=0.55)
+    assert abs(be_ddu_plain - be_ddu_s232) < 0.5, "DDU では Section232 が floor に影響しない"

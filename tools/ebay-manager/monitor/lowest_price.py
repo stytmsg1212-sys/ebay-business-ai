@@ -31,6 +31,7 @@ def compute_breakeven_price_usd(
     category_id: int = 58248,
     country_code: str = "US",
     actual_duty_rate: Optional[float] = None,
+    is_ddu: bool = False,
 ) -> Optional[float]:
     """
     profit >= 0 になる最低 USD 価格を binary search で求める.
@@ -40,6 +41,11 @@ def compute_breakeven_price_usd(
     渡すと washing 撤廃 (Section 232 該当品の実関税を seller 実費計上) した breakeven を
     返す。None = 従来 (global duty_rate 20% washed)。callers が listing の
     duty_rate_pct/100 を渡すことで per-listing 化。
+
+    is_ddu (2026-06-03): True で DDU (US以外) 基準の breakeven。global_only listing
+    (非US客中心) は US 関税 (Section 232 含む) を載せず floor を出す業務方針
+    (reference_shipping_tariff_logic §4.3「US客自腹リスク許容・global SEO重視」)。
+    is_ddu=True 時 calculator は pattern="ddu" で関税ゼロ = actual_duty_rate は無視される。
 
     Returns:
         float (USD, 小数 2 桁丸め) or None
@@ -62,7 +68,7 @@ def compute_breakeven_price_usd(
                 width_cm=float(width_cm or 0),
                 height_cm=float(height_cm or 0),
                 category_id=int(category_id),
-                is_ddu=False,
+                is_ddu=is_ddu,
                 country_code=country_code,
                 actual_duty_rate=actual_duty_rate,
             )
@@ -125,7 +131,7 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
     with get_conn() as conn:
         row = conn.execute(
             "SELECT purchase_yen, weight_g, length_cm, width_cm, height_cm, "
-            "duty_rate_pct "
+            "duty_rate_pct, primary_market "
             "FROM ebay_listings WHERE ebay_item_id=?",
             (ebay_item_id,)
         ).fetchone()
@@ -145,6 +151,10 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
                 f"duty_rate_pct={row[5]} for {ebay_item_id} がパーセント範囲[1,100]外 "
                 f"(小数で入力された誤り疑い)。global duty にフォールバック."
             )
+    # W212 (2026-06-03): global_only (非US客中心) は DDU 基準で floor を出す = US 関税
+    # (Section 232 含む) を載せない (reference_shipping_tariff_logic §4.3、user 承認 2026-06-03)。
+    # US_only/mixed_global/unknown/NULL は従来どおり US DDP (保守、関税込)。
+    is_ddu = (row[6] == "global_only")
     try:
         breakeven = compute_breakeven_price_usd(
             purchase_yen=row[0] or 0,
@@ -154,6 +164,7 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
             height_cm=row[4] or 0,
             settings=settings,
             actual_duty_rate=actual_duty_rate,
+            is_ddu=is_ddu,
         )
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         # H7 fix: 例外型を絞る. 想定外の Exception はあえて表面化させる.
