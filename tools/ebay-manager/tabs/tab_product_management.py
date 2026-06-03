@@ -695,6 +695,7 @@ def _cd_profit_breakdown(
                 max(s.profit_with_refund for s in res.service_results),
                 max(s.tax_refund for s in res.service_results),
                 res.shipping_usd * settings["exchange_rate"],
+                res.point_return,  # ポイント還元 (購入時付与、DDP/DDU 共通)
             )
 
         us = _calc(False)    # USA向け = DDP (関税 売主負担)
@@ -711,6 +712,7 @@ def _cd_profit_breakdown(
         "refund_us": us[1], "refund_nonus": nonus[1],
         "noref_us": us[0], "noref_nonus": nonus[0],
         "tax_refund": us[2], "ddp_cost_jpy": round(us[3]),
+        "point_return": round(us[4]),  # 手取りに含まれるポイント分 (判断材料)
     }
 
 
@@ -764,6 +766,7 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
     if bd is None:
         return None
     return {**bd,
+            "pyen": float(pyen),  # 仕入れ金額 (実効値、安い仕入先探しの判断材料)
             "primary_market": (p.get("primary_market") or "").strip().lower()}
 
 
@@ -887,14 +890,29 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
                 _ml, _mn, _mr = "USA向け（関税自社負担）", bd["noref_us"], bd["refund_us"]
                 _rl, _rr = "US以外向け（関税なし）", bd["refund_nonus"]
             _c = lambda v: '#147a40' if v >= 0 else '#a52a2a'
+            _pyen = bd.get("pyen") or 0          # 仕入れ金額(原価) = 安い仕入先探しの判断材料
+            _refund = bd.get("tax_refund") or 0  # 消費税還付
+            _pt = bd.get("point_return") or 0    # ポイント還元 = 赤字許容の判断材料
             _html = (
                 '<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:6px">◆ あなたの取り分（手元にいくら残るか）</div>'
+                # 仕入れ金額: 手取りがマイナスでも「いくら安い仕入先を探せば黒字か」を判断
+                f'<div style="display:flex;justify-content:space-between;padding:2px 0">'
+                f'<span style="color:#888">仕入れ金額（原価）</span>'
+                f'<span style="color:#b04a4a;font-weight:600">¥{_pyen:,.0f}</span></div>'
+                '<hr style="border:0;border-top:1px solid #e4e8ee;margin:5px 0">'
                 f'<div style="font-size:11px;color:#888;margin-bottom:4px">{_ml}</div>'
                 f'<div style="display:flex;justify-content:space-between;padding:2px 0">'
                 f'<span style="color:#888">実利益（還付なし）</span>'
                 f'<span style="color:{_c(_mn)};font-weight:700">¥{_mn:+,.0f}</span></div>'
+                f'<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:12px">'
+                f'<span style="color:#888">＋ 消費税還付</span>'
+                f'<span style="color:#6b46c1">¥{_refund:+,.0f}</span></div>'
+                # ポイント: 「ポイントが XX 円もらえるから赤字も許容」の判断
+                f'<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:12px">'
+                f'<span style="color:#888">＋ ポイント還元</span>'
+                f'<span style="color:#6b46c1">¥{_pt:+,.0f}</span></div>'
                 f'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0">'
-                f'<span style="font-weight:700">手取り（還付込み）</span>'
+                f'<span style="font-weight:700">手取り（還付・ポイント込）</span>'
                 f'<span style="font-size:18px;font-weight:800;color:{_c(_mr)}">¥{_mr:+,.0f}</span></div>'
                 f'<div style="font-size:11px;color:#888;margin-top:6px;padding-top:5px;border-top:1px dashed #e4e8ee">'
                 f'参考）{_rl}: 手取り ¥{_rr:+,.0f}</div>'

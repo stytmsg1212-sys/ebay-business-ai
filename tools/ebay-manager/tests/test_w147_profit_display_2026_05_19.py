@@ -41,9 +41,10 @@ def _svc(profit, pwr, tax):
                            tax_refund=tax)
 
 
-def _result(services, shipping_usd):
+def _result(services, shipping_usd, point_return=0):
     return SimpleNamespace(service_results=services,
-                           shipping_usd=shipping_usd)
+                           shipping_usd=shipping_usd,
+                           point_return=point_return)
 
 
 # ── _profit_breakdown (入力解決層) ──
