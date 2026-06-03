@@ -884,15 +884,17 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
                 unsafe_allow_html=True)
         else:
             if mk == "global_only":
-                _ml, _mn, _mr = "US以外向け（関税なし）", bd["noref_nonus"], bd["refund_nonus"]
-                _rl, _rr = "USA向け（関税自社負担）", bd["refund_us"]
+                _ml, _mn = "US以外向け（関税なし）", bd["noref_nonus"]
+                _rl, _rn = "USA向け（関税自社負担）", bd["noref_us"]
             else:
-                _ml, _mn, _mr = "USA向け（関税自社負担）", bd["noref_us"], bd["refund_us"]
-                _rl, _rr = "US以外向け（関税なし）", bd["refund_nonus"]
+                _ml, _mn = "USA向け（関税自社負担）", bd["noref_us"]
+                _rl, _rn = "US以外向け（関税なし）", bd["noref_nonus"]
             _c = lambda v: '#147a40' if v >= 0 else '#a52a2a'
             _pyen = bd.get("pyen") or 0          # 仕入れ金額(原価) = 安い仕入先探しの判断材料
             _refund = bd.get("tax_refund") or 0  # 消費税還付
-            _pt = bd.get("point_return") or 0    # ポイント還元 = 赤字許容の判断材料
+            _pt = bd.get("point_return") or 0    # ポイント還元 = 赤字許容の判断材料 (合算しない)
+            _m_arefund = _mn + _refund           # 実利益(還付あり) = 還付なし + 消費税還付
+            _r_arefund = _rn + _refund           # 参考仕向地の 実利益(還付あり)
             _html = (
                 '<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:6px">◆ あなたの取り分（手元にいくら残るか）</div>'
                 # 仕入れ金額: 手取りがマイナスでも「いくら安い仕入先を探せば黒字か」を判断
@@ -907,15 +909,15 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
                 f'<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:12px">'
                 f'<span style="color:#888">＋ 消費税還付</span>'
                 f'<span style="color:#6b46c1">¥{_refund:+,.0f}</span></div>'
-                # ポイント: 「ポイントが XX 円もらえるから赤字も許容」の判断
-                f'<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:12px">'
-                f'<span style="color:#888">＋ ポイント還元</span>'
-                f'<span style="color:#6b46c1">¥{_pt:+,.0f}</span></div>'
                 f'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0">'
-                f'<span style="font-weight:700">手取り（還付・ポイント込）</span>'
-                f'<span style="font-size:18px;font-weight:800;color:{_c(_mr)}">¥{_mr:+,.0f}</span></div>'
+                f'<span style="font-weight:700">実利益（還付あり）</span>'
+                f'<span style="font-size:18px;font-weight:800;color:{_c(_m_arefund)}">¥{_m_arefund:+,.0f}</span></div>'
+                # ポイント: 合算せず別表示。「ポイントが XX 円もらえるから赤字も許容」の判断材料
+                f'<div style="display:flex;justify-content:space-between;padding:2px 0">'
+                f'<span style="color:#888">ポイント還元</span>'
+                f'<span style="color:#6b46c1;font-weight:600">¥{_pt:+,.0f}</span></div>'
                 f'<div style="font-size:11px;color:#888;margin-top:6px;padding-top:5px;border-top:1px dashed #e4e8ee">'
-                f'参考）{_rl}: 手取り ¥{_rr:+,.0f}</div>'
+                f'参考）{_rl}: 実利益（還付あり）¥{_r_arefund:+,.0f}</div>'
             )
             _s232 = p.get("section232_class")
             if _s232:
