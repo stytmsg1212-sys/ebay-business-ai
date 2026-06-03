@@ -3270,13 +3270,25 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
     pm_norm = _normalize_primary_market(primary_market)
     with get_conn() as conn:
         existing = conn.execute(
-            "SELECT id, sku FROM ebay_listings WHERE ebay_item_id=?", (ebay_item_id,)
+            "SELECT id, sku, primary_market FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,)
         ).fetchone()
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if existing:
             existing_sku = existing["sku"] or ""
             sku_changed = (sku or "") != existing_sku
+            # W212 (2026-06-03, Codex HIGH fix v2 = fail-closed): primary_market が実際に
+            # 変わるなら breakeven(floor)の前提が変わる (global_only=DDU / 他=US DDP)。
+            # 同一 transaction で lp_breakeven_usd=NULL に無効化し stale floor の時間窓を閉じる
+            # (auto-pricedown は floor=NULL なら skip)。再計算は呼出元 (個別出品 UI) が実施。
+            # 個別出品経路のみ pm_norm 指定 (ebay_sync は None=COALESCE で不変なので非該当)。
+            _pm_changed = pm_norm is not None and pm_norm != (existing["primary_market"] or None)
+            if _pm_changed:
+                conn.execute(
+                    "UPDATE ebay_listings SET lp_breakeven_usd=NULL WHERE ebay_item_id=?",
+                    (ebay_item_id,),
+                )
             # W183 (2026-05-28): source_url_manual=1 の listing は手動設定 URL を保護.
             # SKU が変わっても source_url / source_status / source_last_checked を
             # SKU 派生で上書きしない (EC 直接 URL 無在庫監視の継続性確保).
@@ -3923,24 +3935,26 @@ def update_ebay_listing_primary_market(ebay_item_id: str, primary_market: str):
             f"Invalid primary_market: {primary_market!r} "
             f"(valid: {VALID_PRIMARY_MARKETS})"
         )
+    # W212 (2026-06-03, Codex HIGH fix v2 = fail-closed): primary_market は breakeven
+    # (floor) の前提 (global_only=DDU / 他=US DDP)。区分変更で旧 floor が残ると US_only 化後に
+    # 自動値下げが赤字価格まで下げうる (stale floor = money-direct)。
+    # 同一 transaction で lp_breakeven_usd=NULL に無効化 → 時間窓・再計算失敗の両方を閉じる
+    # (auto-pricedown は floor=NULL なら skip_no_floor で安全側に倒れる)。commit 後に再計算。
     with get_conn() as conn:
         conn.execute(
-            "UPDATE ebay_listings SET primary_market=? WHERE ebay_item_id=?",
+            "UPDATE ebay_listings SET primary_market=?, lp_breakeven_usd=NULL "
+            "WHERE ebay_item_id=?",
             (primary_market, ebay_item_id),
         )
-    # W212 (2026-06-03, Codex HIGH fix): primary_market は breakeven(floor)の前提
-    # (global_only=DDU / 他=US DDP)。区分変更後に lp_breakeven_usd を再計算しないと、
-    # 旧 floor (例 global_only の低い DDU floor) が残り、US_only 化後に自動値下げが
-    # 赤字価格まで下げうる (stale floor = money-direct)。同 transaction 外で再計算。
     try:
         from monitor.lowest_price import update_listing_breakeven
         from calculator import load_settings
         update_listing_breakeven(ebay_item_id, load_settings())
-    except Exception as e:  # noqa: BLE001 — 再計算失敗で区分更新自体は壊さない
+    except Exception as e:  # noqa: BLE001 — 再計算失敗でも floor=NULL=fail-closed
         import logging
         logging.getLogger(__name__).warning(
             f"primary_market 変更後の breakeven 再計算失敗 ({ebay_item_id}): {e}. "
-            f"次回 利益計算ボタン/recompute で復旧。"
+            f"floor=NULL のまま (自動値下げ skip で安全)。次回 利益計算ボタンで復旧。"
         )
 
 

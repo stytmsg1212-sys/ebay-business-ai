@@ -2222,6 +2222,20 @@ def _do_add(draft_params: dict, settings: dict) -> None:
                             quantity_ebay=1,
                             primary_market=draft_params.get("primary_market"),
                         )
+                        # W212 (2026-06-03): primary_market 指定時、upsert が区分変更で
+                        # lp_breakeven_usd=NULL 無効化済 (fail-closed)。floor を区分に応じて
+                        # 再計算 (global_only=DDU / 他=US DDP)。失敗しても floor=NULL のまま安全。
+                        if draft_params.get("primary_market"):
+                            try:
+                                from monitor.lowest_price import update_listing_breakeven
+                                from calculator import load_settings
+                                update_listing_breakeven(str(_w176_item_id), load_settings())
+                            except Exception as _be:  # noqa: BLE001
+                                logger.warning(
+                                    "W176 breakeven recompute failed (item_id=%s): %s. "
+                                    "floor=NULL のまま (自動値下げ skip で安全)。",
+                                    _w176_item_id, _be,
+                                )
                         bump_db_version()
                     except Exception as _e:  # noqa: BLE001
                         logger.exception(

@@ -682,11 +682,13 @@ def _bulk_decision(ebay_item_ids: set, action: str, reviewer: str = "user") -> N
                  datetime.now().isoformat(), row.get("reason"), reviewer),
             )
 
-            # 承認: 当該 listing 1 件のみ primary_market 更新 (cascade 排除)
+            # 承認: 当該 listing 1 件のみ primary_market 更新 (cascade 排除)。
+            # W212 fail-closed: 同 transaction で lp_breakeven_usd=NULL 無効化
+            # (floor=NULL → auto-pricedown skip で stale floor の時間窓を閉じる)。
             if action == "approved":
                 c.execute(
-                    "UPDATE ebay_listings SET primary_market = ? "
-                    "WHERE ebay_item_id = ?",
+                    "UPDATE ebay_listings SET primary_market = ?, "
+                    "lp_breakeven_usd = NULL WHERE ebay_item_id = ?",
                     (row["proposed_market"], eid),
                 )
                 approved_eids.append(eid)
@@ -696,19 +698,23 @@ def _bulk_decision(ebay_item_ids: set, action: str, reviewer: str = "user") -> N
                 (eid,),
             )
 
-    # W212 (2026-06-03, Codex HIGH fix): primary_market は breakeven(floor)の前提
-    # (global_only=DDU / 他=US DDP)。区分承認後に再計算しないと旧 floor が残り自動値下げが
-    # stale floor で赤字化しうる。transaction commit 後 (上の with を抜けてから) に再計算し
-    # SQLite write-lock 競合を回避。1 件失敗しても他に波及させない。
+    # W212 (2026-06-03, Codex HIGH fix v2): commit 後 (write-lock 競合回避) に floor 再計算。
+    # 上で floor=NULL 済 = 再計算失敗/load_settings 失敗でも floor=NULL のまま fail-closed。
     if approved_eids:
-        from monitor.lowest_price import update_listing_breakeven
-        from calculator import load_settings
-        _settings = load_settings()
-        for eid in approved_eids:
-            try:
-                update_listing_breakeven(eid, _settings)
-            except Exception as e:  # noqa: BLE001
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"区分承認後の breakeven 再計算失敗 ({eid}): {e}"
-                )
+        import logging
+        try:
+            from monitor.lowest_price import update_listing_breakeven
+            from calculator import load_settings
+            _settings = load_settings()
+            for eid in approved_eids:
+                try:
+                    update_listing_breakeven(eid, _settings)
+                except Exception as e:  # noqa: BLE001
+                    logging.getLogger(__name__).warning(
+                        f"区分承認後の breakeven 再計算失敗 ({eid}): {e}. floor=NULL のまま安全。"
+                    )
+        except Exception as e:  # noqa: BLE001 — load_settings 等の失敗も fail-closed
+            logging.getLogger(__name__).warning(
+                f"区分承認後の breakeven 再計算 setup 失敗: {e}. "
+                f"承認 {len(approved_eids)} 件は floor=NULL のまま (自動値下げ skip で安全)。"
+            )
