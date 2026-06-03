@@ -30,10 +30,16 @@ def compute_breakeven_price_usd(
     settings: dict,
     category_id: int = 58248,
     country_code: str = "US",
+    actual_duty_rate: Optional[float] = None,
 ) -> Optional[float]:
     """
     profit >= 0 になる最低 USD 価格を binary search で求める.
     必須入力 (purchase_yen / weight_g) が欠けていれば None を返す.
+
+    W212 (2026-06-02): actual_duty_rate (商品ごとの実関税率、小数 0.30/0.55 等) を
+    渡すと washing 撤廃 (Section 232 該当品の実関税を seller 実費計上) した breakeven を
+    返す。None = 従来 (global duty_rate 20% washed)。callers が listing の
+    duty_rate_pct/100 を渡すことで per-listing 化。
 
     Returns:
         float (USD, 小数 2 桁丸め) or None
@@ -58,6 +64,7 @@ def compute_breakeven_price_usd(
                 category_id=int(category_id),
                 is_ddu=False,
                 country_code=country_code,
+                actual_duty_rate=actual_duty_rate,
             )
             res = calculate(inp, settings)
             if not res.service_results:
@@ -117,12 +124,27 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
     """
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT purchase_yen, weight_g, length_cm, width_cm, height_cm "
+            "SELECT purchase_yen, weight_g, length_cm, width_cm, height_cm, "
+            "duty_rate_pct "
             "FROM ebay_listings WHERE ebay_item_id=?",
             (ebay_item_id,)
         ).fetchone()
     if not row:
         return None
+    # W212: per-listing 実関税率 (Section 232 該当品) があれば washing 撤廃で breakeven 算出。
+    # None (非該当) は従来 global duty_rate 20% (washed)。duty_rate_pct はパーセント → 小数化。
+    # 範囲ガード (Codex 2段レビュー): 0.30 のような小数誤入力を /100 すると 0.003 = 過小 floor
+    # (赤字出品リスク)。実関税率はパーセント (I-B 30 / I-A 55) のため [1,100] 外は誤入力疑いで
+    # global にフォールバック + warning (silent な過小 floor を防ぐ)。
+    actual_duty_rate = None
+    if row[5] is not None:
+        if 1 <= row[5] <= 100:
+            actual_duty_rate = row[5] / 100.0
+        else:
+            logger.warning(
+                f"duty_rate_pct={row[5]} for {ebay_item_id} がパーセント範囲[1,100]外 "
+                f"(小数で入力された誤り疑い)。global duty にフォールバック."
+            )
     try:
         breakeven = compute_breakeven_price_usd(
             purchase_yen=row[0] or 0,
@@ -131,6 +153,7 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
             width_cm=row[3] or 0,
             height_cm=row[4] or 0,
             settings=settings,
+            actual_duty_rate=actual_duty_rate,
         )
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         # H7 fix: 例外型を絞る. 想定外の Exception はあえて表面化させる.

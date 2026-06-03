@@ -98,3 +98,14 @@ def test_shipping_override_with_actual_duty():
     assert res.service_results, "計算が成立すること"
     # override(buyer徴収150) は revenue/FVF に効き、actual(実関税0.30)は別途 cost 計上
     assert res.shipping_usd == 150.0
+
+
+def test_breakeven_with_actual_duty_is_higher():
+    """W212 配線: compute_breakeven_price_usd に actual_duty_rate を渡すと、
+    Section232 (実関税 > display 20%) の breakeven が従来より高くなる."""
+    from monitor.lowest_price import compute_breakeven_price_usd
+    s = C.load_settings()
+    be_legacy = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s)
+    be_s232 = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, actual_duty_rate=0.30)
+    assert be_legacy is not None and be_s232 is not None
+    assert be_s232 > be_legacy, "実関税30%>display20% で breakeven は上がる(赤字出品防止)"
