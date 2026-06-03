@@ -147,7 +147,8 @@ def _fetch_all_products() -> list[dict]:
                 el.ebay_item_id, el.sku, el.title, el.current_price, el.shipping_cost,
                 el.weight_g, el.length_cm, el.width_cm, el.height_cm,
                 el.purchase_yen, el.lp_min_price, el.lp_breakeven_usd,
-                el.primary_market, el.rank, el.includes, el.warranty,
+                el.primary_market, el.duty_rate_pct, el.section232_class,
+                el.rank, el.includes, el.warranty,
                 el.total_sold_count, el.watch_count, el.view_count,
                 el.source, el.source_url, el.source_status, el.source_last_checked,
                 el.source_out_of_stock_since, el.source_url_manual,
@@ -647,6 +648,7 @@ def _cd_profit_breakdown(
     price: float, pyen: float, weight_g: float,
     length_cm: float, width_cm: float, height_cm: float,
     category_id: int, settings_mtime: float, db_version: int,
+    actual_duty_rate: Optional[float] = None,
 ) -> Optional[dict]:
     """W147: 現在価格での「還付あり/なし × USA向け(DDP)/US以外(DDU)」利益
     (円) を返す表示専用 純関数。
@@ -682,6 +684,9 @@ def _cd_profit_breakdown(
                 width_cm=float(width_cm or 0), height_cm=float(height_cm or 0),
                 category_id=int(category_id), is_ddu=is_ddu,
                 country_code="US",
+                # W212: USA向け(DDP)は per-listing 実関税(Section232)を反映。
+                # US以外(DDU)は calculator 側で関税ゼロ化されるため actual は無視される。
+                actual_duty_rate=actual_duty_rate,
             ), settings)
             if not res.service_results:
                 return None
@@ -742,6 +747,10 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
         _smt = _SETTINGS_FILE.stat().st_mtime
     except OSError:
         _smt = 0.0  # stat 不能でも算出は継続 (cache 無効化のみ機能低下)
+    # W212: Section 232 該当品は per-listing 実関税率 (duty_rate_pct, パーセント) を反映。
+    # 範囲外 (誤入力) / 非該当 (None) は global duty にフォールバック。
+    _drp = p.get("duty_rate_pct")
+    _adr = (_drp / 100.0) if (_drp is not None and 1 <= _drp <= 100) else None
     bd = _cd_profit_breakdown(
         float(price), float(pyen), float(wt),
         float(f_l if f_l is not None else (p.get("length_cm") or 0)),
@@ -750,6 +759,7 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
         int(p.get("category_id") or 58248),
         _smt,
         get_db_version(),
+        _adr,
     )
     if bd is None:
         return None
@@ -819,106 +829,105 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
         unsafe_allow_html=True,
     )
 
-    # 4 主要指標 (st.metric)
-    # M4 fix: 未入力表記を「未入力」に統一 ("未計算" / "未取得" / "-" を排除)
-    st.markdown('<div class="pm-hero-row">', unsafe_allow_html=True)
-    cols = st.columns(4)
-    with cols[0]:
-        st.metric("現在総額", f"${total:.2f}",
-                  delta=f"${cp:.2f} + 送料 ${sh:.2f}",
-                  delta_color="off",
-                  help="eBay 表示価格 + 送料")
-    with cols[1]:
-        if be and be > 0:
-            st.metric("損益分岐", f"${be:.2f}",
-                      help="これ以下で売ったら赤字")
-        else:
-            st.metric("損益分岐", "未入力",
-                      help="仕入価格 + 重量 + 寸法を入力 → 利益計算ボタンで自動算出")
-    with cols[2]:
-        if be and be > 0:
-            # W156 fix (2026-05-22 PM): 旧計算 `margin = total - be` は次元不整合バグ.
-            # `be` = breakeven item_price (`compute_breakeven_price_usd` が
-            # `is_ddu=False, country_code='US'` で binary search した結果, 送料込
-            # 計算で profit=0 になる item_price). `total = cp + sh` で sh を足すと
-            # be 内に既に組み込まれた送料を二重計上する → 黒字偽装.
-            # 正しい比較は `cp` (現 item_price) vs `be` (breakeven item_price).
-            # 検証例: 357039873158 cp=$95 sh=$16 be=$101.94 → 旧 +$9.06 (黒字偽)
-            # → 新 -$6.94 (赤字真) + 消費税還付 ≈ ¥-37 (還付あり × USA向け と整合).
-            margin = cp - be
-            st.metric(
-                "現在粗利", f"${margin:+.2f}",
-                delta=("黒字" if margin > 0 else "赤字" if margin < 0 else "ゼロ"),
-                delta_color=("normal" if margin > 0 else "inverse"),
-                help=(
-                    f"現 item_price ${cp:.2f} - breakeven item_price ${be:.2f} "
-                    f"(送料は両側で同じく差し引き済 = 二重計上回避)"
-                ),
-            )
-        else:
-            st.metric("現在粗利", "未入力", help="breakeven 未計算")
-    with cols[3]:
-        if competitor_min:
-            cmin = float(competitor_min)
-            diff = total - cmin
-            st.metric("競合最安", f"${cmin:.2f}",
-                      delta=f"差 ${diff:+.2f}",
-                      delta_color=("inverse" if diff > 0 else "normal"),
-                      help="登録競合の総額 (商品+送料) 最安値")
-        else:
-            st.metric("競合最安", "未入力",
-                      help="競合登録 + 価格再取得で表示")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── W147: 利益サマリ (還付あり/なし × USA向け(DDP)/US以外(DDU)) ──
-    # calculator が算出済の区分を hero に可視化 (計算式は不変 = 表示のみ)。
-    # 主 2 値 = 還付あり (= user の実入金に最も近い前提)。primary_market 連動で
-    # 非該当 (US_only→「US以外」/ global_only→「USA向け」) は淡色 + 参考値注記。
-    # mixed_global / unknown / NULL は両方そのまま強調 (安全側)。
-    # 区分定義の出典: reference_shipping_tariff_logic.md。
+    # ── 採算パネル (v5 redesign 2026-06-03): 買い手視点 / あなたの取り分 の2列 ──
+    # 金額軸の散らばり (商品のみ / 送料込み / 還付有無) を「2視点」に正規化。
+    # 損益分岐は商品軸 (自動値下げ floor) + 総額換算 (競合と同じ物差し) を併記。
     bd = _profit_breakdown(p)
-    if bd is not None:
-        mk = bd["primary_market"]
-        us_dim = (mk == "global_only")   # この listing は USA で売れない
-        nonus_dim = (mk == "us_only")    # この listing は US 以外で売れない
-        st.markdown('<div class="pm-hero-row">', unsafe_allow_html=True)
-        pc = st.columns(2)
-        with pc[0]:
-            _render_profit_value(
-                "還付あり × USA向け(DDP・関税自社負担)",
-                bd["refund_us"], us_dim)
-        with pc[1]:
-            _render_profit_value(
-                "還付あり × US以外(DDU・関税なし)",
-                bd["refund_nonus"], nonus_dim)
-        st.markdown('</div>', unsafe_allow_html=True)
-        # Codex 2段 HIGH 対応: "US以外" を非US送料 lane と誤読させない。
-        # 2 値の差 = 米国輸入関税分 (送料は両値とも US 基準)。
-        st.caption(
-            "2 値の差 = 米国輸入関税(Section 232)分。送料は US 基準"
-            "（本システムは US 軸差分式）・US以外は関税なし(DDU)前提。"
+    mk = (market or "").strip().lower()
+    be_total = (be + sh) if (be and be > 0) else None  # 総額軸の損益分岐
+    _pcols = st.columns(2)
+
+    with _pcols[0]:  # 左: 買い手視点
+        _ph = (f'<span style="font-size:20px;font-weight:700;color:#0f2747">${cp:,.2f}</span>'
+               f'<span style="color:#8a93a0;font-size:13px"> + ${sh:,.2f}</span>')
+        _html = (
+            '<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:6px">◆ 買い手視点（eBayでの見え方）</div>'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">'
+            f'<span style="color:#888">現在価格</span><span>{_ph}</span></div>'
+            f'<div style="text-align:right;font-size:11px;color:#555;margin-bottom:4px">買い手総額 <b>${total:,.2f}</b></div>'
         )
-        if us_dim or nonus_dim:
-            _w = "USA向け" if us_dim else "US以外"
-            # 区分名は pill (区分: {market}) と同じ生値で表示 (大小文字不一致防止)
-            st.caption(
-                f"※ この listing は区分 **{market}** のため"
-                f"「{_w}」は参考値（薄字）です。"
+        if competitor_min:
+            cmin = float(competitor_min); diff = total - cmin
+            _dc = '#147a40' if diff < 0 else '#a52a2a' if diff > 0 else '#888'
+            _dl = '有利' if diff < 0 else '高い' if diff > 0 else '同'
+            _html += (
+                f'<div style="display:flex;justify-content:space-between;padding:3px 0">'
+                f'<span style="color:#888">競合最安(総額)</span><span><b>${cmin:,.2f}</b></span></div>'
+                f'<div style="display:flex;justify-content:space-between;padding:3px 0">'
+                f'<span style="color:#888">競合差</span>'
+                f'<span style="color:{_dc};font-weight:700">${diff:+,.2f} {_dl}</span></div>'
             )
-        with st.expander("利益内訳（還付なし・税還付・関税）",
+        else:
+            _html += '<div style="color:#888;padding:3px 0">競合最安: 未登録</div>'
+        if be_total:
+            _html += (
+                '<hr style="border:0;border-top:1px solid #e4e8ee;margin:6px 0">'
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">'
+                f'<span style="color:#888">損益分岐</span>'
+                f'<span><span style="font-size:18px;font-weight:700;color:#c9821a">${be:,.2f}</span>'
+                f'<span style="color:#8a93a0;font-size:12px"> + ${sh:,.2f}</span></span></div>'
+                f'<div style="text-align:right;font-size:11px;color:#888">買い手総額 ${be_total:,.2f}'
+                f'（競合と同じ物差し）／ 自動値下げ下限=商品 ${be:,.2f}</div>'
+            )
+        else:
+            _html += '<div style="color:#888;padding:3px 0">損益分岐: 未入力（仕入価格+重量が必要）</div>'
+        st.markdown(_html, unsafe_allow_html=True)
+
+    with _pcols[1]:  # 右: あなたの取り分
+        if bd is None:
+            st.markdown(
+                '<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:6px">◆ あなたの取り分</div>'
+                '<div style="color:#888;padding:8px 0">利益: 未入力（仕入価格+重量を入力 → 利益計算）</div>',
+                unsafe_allow_html=True)
+        else:
+            if mk == "global_only":
+                _ml, _mn, _mr = "US以外向け（関税なし）", bd["noref_nonus"], bd["refund_nonus"]
+                _rl, _rr = "USA向け（関税自社負担）", bd["refund_us"]
+            else:
+                _ml, _mn, _mr = "USA向け（関税自社負担）", bd["noref_us"], bd["refund_us"]
+                _rl, _rr = "US以外向け（関税なし）", bd["refund_nonus"]
+            _c = lambda v: '#147a40' if v >= 0 else '#a52a2a'
+            _html = (
+                '<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:6px">◆ あなたの取り分（手元にいくら残るか）</div>'
+                f'<div style="font-size:11px;color:#888;margin-bottom:4px">{_ml}</div>'
+                f'<div style="display:flex;justify-content:space-between;padding:2px 0">'
+                f'<span style="color:#888">実利益（還付なし）</span>'
+                f'<span style="color:{_c(_mn)};font-weight:700">¥{_mn:+,.0f}</span></div>'
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0">'
+                f'<span style="font-weight:700">手取り（還付込み）</span>'
+                f'<span style="font-size:18px;font-weight:800;color:{_c(_mr)}">¥{_mr:+,.0f}</span></div>'
+                f'<div style="font-size:11px;color:#888;margin-top:6px;padding-top:5px;border-top:1px dashed #e4e8ee">'
+                f'参考）{_rl}: 手取り ¥{_rr:+,.0f}</div>'
+            )
+            _s232 = p.get("section232_class")
+            if _s232:
+                _html += (
+                    f'<div style="background:#fbe2e2;color:#a52a2a;font-size:11px;padding:5px 8px;border-radius:4px;margin-top:6px">'
+                    f'🚨 Section232 {_s232}（実関税 {int(p.get("duty_rate_pct") or 0)}%）= USA向けは関税が利益を圧迫</div>'
+                )
+            st.markdown(_html, unsafe_allow_html=True)
+
+    st.caption(
+        "買い手視点と取り分の2軸に整理。損益分岐は総額換算で競合と直接比較可。"
+        "USA向け=DDP(関税自社負担)/US以外=DDU(関税なし)。"
+    )
+
+    # 利益内訳の詳細 (折りたたみ)。bd は上の採算パネルで算出済 (重複計算しない)。
+    # 区分定義の出典: reference_shipping_tariff_logic.md。
+    if bd is not None:
+        with st.expander("利益内訳の詳細（還付なし / 税還付 / 関税・両仕向地）",
                          expanded=False):
             st.markdown(
-                f"- 還付なし × USA向け (DDP): "
-                f"**¥{bd['noref_us']:+,.0f}**\n"
-                f"- 還付なし × US以外 (DDU): "
-                f"**¥{bd['noref_nonus']:+,.0f}**\n"
+                f"- 還付なし × USA向け (DDP): **¥{bd['noref_us']:+,.0f}** "
+                f"／ US以外 (DDU): **¥{bd['noref_nonus']:+,.0f}**\n"
+                f"- 手取り(還付込) × USA向け: ¥{bd['refund_us']:+,.0f} "
+                f"／ US以外: ¥{bd['refund_nonus']:+,.0f}\n"
                 f"- 消費税還付額（目安）: ¥{bd['tax_refund']:,.0f}\n"
-                f"- 米国向け関税コスト（DDP・売主負担）: "
-                f"¥{bd['ddp_cost_jpy']:,.0f}"
+                f"- 米国向け関税コスト（DDP・売主負担）: ¥{bd['ddp_cost_jpy']:,.0f}"
             )
             st.caption(
-                "利益は現在の eBay 表示価格・最良送料サービス基準。"
-                "calculator と同じ計算式（W147 は表示のみ）。"
+                "calculator と同じ計算式（表示のみ・eBay/DB 未書込）。"
+                "Section 232 該当品は per-listing 実関税を反映。送料は US 軸差分式基準。"
             )
 
     if _eff["preview"]:
