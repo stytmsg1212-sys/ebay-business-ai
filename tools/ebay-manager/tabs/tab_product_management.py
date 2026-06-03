@@ -1497,6 +1497,46 @@ def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
                 else:
                     st.error("保存に失敗しました (listing が見つかりません)。")
 
+        # 在庫を今すぐ確認 (定時 02:30 を待たず、この URL を同一ロジックで判定)。
+        # 結果表示のみ = DB の source_status は更新しない (定時チェックが正式反映)。
+        # 新ショップ URL/サイト設定の動作テストにも使える。
+        if st.button("🔍 在庫を今すぐ確認", key=f"pm_src_check_{eid}",
+                     help="定時(02:30)を待たず仕入先URLの在庫を今チェック。結果表示のみ(DB非更新)"):
+            from monitor.database import (
+                find_site_config_by_url, find_site_config_by_sku,
+            )
+            from monitor.scrapers import check_item_by_config
+            _curl = (_u or p.get("source_url") or "").strip()
+            if not _curl:
+                st.error("仕入先 URL がありません (上に入力して保存してください)。")
+            else:
+                _cfg = (find_site_config_by_url(_curl)
+                        or find_site_config_by_sku(p.get("sku") or ""))
+                if not _cfg:
+                    st.warning(
+                        "このサイトの在庫判定設定 (site_configs) が未登録です。"
+                        "「在庫監視 > サイト別設定」で 売切/在庫あり テキストを登録すると判定できます。"
+                    )
+                else:
+                    with st.spinner("在庫確認中… (httpx → Playwright)"):
+                        try:
+                            _status = check_item_by_config(
+                                {"source_url": _curl}, _cfg)
+                        except Exception as _e:  # noqa: BLE001
+                            _status = "unknown"
+                            logger.warning(f"[pm 在庫確認] {eid}: {_e}")
+                    _em = {
+                        "available": "🟢 在庫あり", "unavailable": "🔴 在庫切れ",
+                        "not_found": "⚠️ ページなし(削除/404)", "unknown": "❓ 判定不能",
+                    }.get(_status, f"❓ {_status}")
+                    st.info(f"判定: **{_em}** （サイト設定: {_cfg.get('site_name')}）")
+                    st.caption(
+                        f"使用マーカー — 在庫あり「{_cfg.get('in_stock_text1','')}」"
+                        f"／ 売切「{_cfg.get('sold_out_text','')}」。"
+                        f"結果表示のみ・DB 非更新（正式反映は 02:30 定時チェック）。"
+                        f"❓ の場合はこのサイト専用ロジックが必要（URLを伝えてください）。"
+                    )
+
     # 監視 URL 一覧 (折りたたみ、簡潔)
     monitored = _fetch_monitored_items_for_listing(eid)
     if monitored:
