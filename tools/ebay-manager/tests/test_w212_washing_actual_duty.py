@@ -128,3 +128,39 @@ def test_breakeven_ddu_ignores_section232():
     be_ddu_plain = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, is_ddu=True)
     be_ddu_s232 = compute_breakeven_price_usd(65000, 3000, 0, 0, 0, s, is_ddu=True, actual_duty_rate=0.55)
     assert abs(be_ddu_plain - be_ddu_s232) < 0.5, "DDU では Section232 が floor に影響しない"
+
+
+def test_primary_market_change_recomputes_breakeven():
+    """W212 Codex HIGH fix: primary_market 変更で breakeven(floor)が自動再計算され、
+    global_only(DDU) と US DDP で floor が変わる = stale floor 残存を防ぐ."""
+    from monitor.database import (
+        update_ebay_listing_primary_market, get_conn, init_db,
+    )
+    init_db()
+    eid = "test_w212_pm_recompute_001"
+    with get_conn() as c:
+        c.execute("DELETE FROM ebay_listings WHERE ebay_item_id=?", (eid,))
+        c.execute(
+            "INSERT INTO ebay_listings "
+            "(ebay_item_id, sku, title, purchase_yen, weight_g, primary_market) "
+            "VALUES (?,?,?,?,?,?)",
+            (eid, "stock:test", "W212 test listing", 60000, 3000, "mixed_global"),
+        )
+    try:
+        update_ebay_listing_primary_market(eid, "mixed_global")
+        with get_conn() as c:
+            be_us = c.execute(
+                "SELECT lp_breakeven_usd FROM ebay_listings WHERE ebay_item_id=?",
+                (eid,),
+            ).fetchone()[0]
+        update_ebay_listing_primary_market(eid, "global_only")
+        with get_conn() as c:
+            be_ddu = c.execute(
+                "SELECT lp_breakeven_usd FROM ebay_listings WHERE ebay_item_id=?",
+                (eid,),
+            ).fetchone()[0]
+        assert be_us is not None and be_ddu is not None
+        assert be_ddu < be_us, "global_only化で floor が DDU 基準に再計算され下がる"
+    finally:
+        with get_conn() as c:
+            c.execute("DELETE FROM ebay_listings WHERE ebay_item_id=?", (eid,))

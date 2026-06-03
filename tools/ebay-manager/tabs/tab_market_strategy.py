@@ -657,6 +657,7 @@ def _bulk_decision(ebay_item_ids: set, action: str, reviewer: str = "user") -> N
     """
     if not ebay_item_ids:
         return
+    approved_eids: list[str] = []  # W212: commit 後に breakeven 再計算する対象
     with _conn() as c:
         for eid in ebay_item_ids:
             row = c.execute(
@@ -688,8 +689,26 @@ def _bulk_decision(ebay_item_ids: set, action: str, reviewer: str = "user") -> N
                     "WHERE ebay_item_id = ?",
                     (row["proposed_market"], eid),
                 )
+                approved_eids.append(eid)
 
             c.execute(
                 "DELETE FROM pending_market_changes WHERE ebay_item_id = ?",
                 (eid,),
             )
+
+    # W212 (2026-06-03, Codex HIGH fix): primary_market は breakeven(floor)の前提
+    # (global_only=DDU / 他=US DDP)。区分承認後に再計算しないと旧 floor が残り自動値下げが
+    # stale floor で赤字化しうる。transaction commit 後 (上の with を抜けてから) に再計算し
+    # SQLite write-lock 競合を回避。1 件失敗しても他に波及させない。
+    if approved_eids:
+        from monitor.lowest_price import update_listing_breakeven
+        from calculator import load_settings
+        _settings = load_settings()
+        for eid in approved_eids:
+            try:
+                update_listing_breakeven(eid, _settings)
+            except Exception as e:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"区分承認後の breakeven 再計算失敗 ({eid}): {e}"
+                )

@@ -3928,6 +3928,20 @@ def update_ebay_listing_primary_market(ebay_item_id: str, primary_market: str):
             "UPDATE ebay_listings SET primary_market=? WHERE ebay_item_id=?",
             (primary_market, ebay_item_id),
         )
+    # W212 (2026-06-03, Codex HIGH fix): primary_market は breakeven(floor)の前提
+    # (global_only=DDU / 他=US DDP)。区分変更後に lp_breakeven_usd を再計算しないと、
+    # 旧 floor (例 global_only の低い DDU floor) が残り、US_only 化後に自動値下げが
+    # 赤字価格まで下げうる (stale floor = money-direct)。同 transaction 外で再計算。
+    try:
+        from monitor.lowest_price import update_listing_breakeven
+        from calculator import load_settings
+        update_listing_breakeven(ebay_item_id, load_settings())
+    except Exception as e:  # noqa: BLE001 — 再計算失敗で区分更新自体は壊さない
+        import logging
+        logging.getLogger(__name__).warning(
+            f"primary_market 変更後の breakeven 再計算失敗 ({ebay_item_id}): {e}. "
+            f"次回 利益計算ボタン/recompute で復旧。"
+        )
 
 
 def get_ebay_listings_by_rank(rank: str = None, order_by_rank: bool = True) -> list[dict]:
