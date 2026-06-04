@@ -56,6 +56,56 @@ def _detect_rakuten_purchase_status(url: str, html: str) -> Optional[str]:
     return "unavailable"
 
 
+# 「出荷日X日（数量: N～M）」= オリエンタルモーターの唯一信頼できる注文可能シグナル.
+# 「在庫なし」「404」「生産終了」は在庫ありページにもテンプレ/JS で常駐 = 罠なので不使用.
+# tag_tolerant (code-review HIGH-3): 出荷日 と （数量 の間に HTML タグ (<span> 等) や
+# 桁数増が挟まっても取りこぼさない (実機 在庫あり=match / 404=non-match を確認 2026-06-03).
+_ORIENTALMOTOR_AVAIL_RE = re.compile(
+    r"出荷日(?:<[^>]*>|[^（(]){0,20}[（(](?:<[^>]*>|[^）)]){0,25}数量"
+)
+
+
+def _detect_orientalmotor_status(url: str, html: str) -> Optional[str]:
+    """オリエンタルモーター WEB ショップ (orientalmotor-shop.jp) 専用在庫判定.
+
+    受注生産型で「在庫切れ」状態がほぼ無く、注文可否は本体の
+    「出荷日X日（数量: N～M）」シグナルでのみ確実に判定できる:
+      シグナル present                 -> available   (注文可能)
+      シグナル absent かつ 本文体裁OK   -> unavailable (削除/生産終了/受注停止)
+      シグナル absent かつ 本文不十分   -> None         (部分取得/anti-bot → fallback)
+
+    ⚠️ 「在庫なし」「404」「生産終了」テキストは在庫ありページにもテンプレ/JS で
+    常駐する (raw HTML に埋め込み) ため在庫信号にしない。使うと全件誤判定 (楽天
+    HIDDEN_STOCK と同類の罠)。シグナルは raw HTML に server-side (UTF-8) で含まれ
+    httpx で確実取得可。
+
+    HIGH-1 fix (code-review 2026-06-03): signal absent を即 unavailable 確定すると、
+    httpx 部分取得 / anti-bot / 空応答で **在庫あり品を false-OOS** (オーバーセル/Defect/
+    機会損失) する。楽天 _detect_rakuten_purchase_status と同じ保守姿勢で、本文が商品
+    ページ体裁 (orientalmotor 含む + 十分長) を取れた時のみ unavailable を確定し、取得
+    異常は None (Playwright fallback) に逃がす (Q0: silent な確定を作らない)。
+
+    出典: 2026-06-03 Playwright 実機調査。在庫あり 21 件 (カテゴリ OP 全 20 + 旧型番
+    PK264-01A) で出荷日(数量)シグナル present、404 スタブ (NONEXISTENT / US590) で absent
+    を確認。charset=UTF-8 で httpx デコード正常。user 承認済 (option B 専用コード)。
+    """
+    if "orientalmotor-shop" not in url.lower():
+        return None
+    if _ORIENTALMOTOR_AVAIL_RE.search(html):
+        logger.debug(f"orientalmotor 出荷日(数量) signal -> available: {url}")
+        return "available"
+    # signal absent: 本文体裁 sanity check. 不十分なら確定せず fallback (false-OOS 防止).
+    page_ok = ("orientalmotor" in html.lower()) and len(html) > 2000
+    if not page_ok:
+        logger.warning(
+            "orientalmotor 本文不十分 (len=%d) -> 判定保留(fallback): %s",
+            len(html), url,
+        )
+        return None
+    logger.debug(f"orientalmotor 出荷日(数量) absent (本文OK) -> unavailable: {url}")
+    return "unavailable"
+
+
 def _check_with_httpx(
     url: str,
     in_stock_texts: list[str],
@@ -88,6 +138,9 @@ def _check_with_httpx(
         rakuten_status = _detect_rakuten_purchase_status(url, html)
         if rakuten_status is not None:
             return rakuten_status
+        om_status = _detect_orientalmotor_status(url, html)
+        if om_status is not None:
+            return om_status
         if "item.rakuten" in url.lower():
             rakuten_sold_out_texts = [
                 t for t in sold_out_texts
