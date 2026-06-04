@@ -231,6 +231,10 @@ class CalcInput:
     #   を分離計上 → 実関税 > buyer 徴収 (Section 232 等) で profit 過大計上を断つ。
     # ⚠️ 現状どの本番 caller も None (opt-in)。配線は別途 user 承認後。
     actual_duty_rate: Optional[float] = None
+    # W220 (2026-06-04): per-listing ポイント実額(¥)。仕入先/カードで還元率が
+    # 違うため listing ごとに実額を持つ。None = 従来の purchase_yen × point_rate
+    # (global rate、後方互換ゼロ変更)。指定時は point_return = point_yen で確定。
+    point_yen: Optional[float] = None
 
 @dataclass
 class ServiceResult:
@@ -364,7 +368,12 @@ def calculate(inp: CalcInput, settings: dict) -> CalcResult:
     # ad_fee も eBay 側で差し引かれるため、Payoneer基準額から控除する
     payoneer_base = revenue - fvf - intl_payment - txn_fee - ad_fee
     payoneer = payoneer_base * payoneer_rate
-    point_return = inp.purchase_yen * point_rate
+    # W220: per-listing ポイント実額があればそれを優先 (仕入先/カードで率が異なる)。
+    # None = 従来の global rate 換算 (後方互換)。
+    point_return = (
+        inp.point_yen if inp.point_yen is not None
+        else inp.purchase_yen * point_rate
+    )
 
     # W212: 関税コストは actual_duty_cost_jpy に統一 (legacy=None では shipping→
     # shipping_usd*fx / included→duty_cost_jpy / ddu→0 と同値 = 表示集計も従来一致。

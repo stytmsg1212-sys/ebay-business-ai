@@ -76,9 +76,10 @@ def test_session_state_overrides_db_and_market_normalized(tpm):
     ss["pm_weight_ITEM1"] = 150
     captured = {}
 
-    def _fake(price, pyen, wt, ln, wd, ht, cat, smt, dbv, adr=None):
+    def _fake(price, pyen, wt, ln, wd, ht, cat, smt, dbv, adr=None, pt=None):
         # W212: actual_duty_rate(adr) を 10 引数目に追加 (Section232 per-listing 配線)
-        captured.update(price=price, pyen=pyen, wt=wt, cat=cat, smt=smt, adr=adr)
+        # W220: point_yen(pt) を 11 引数目に追加 (per-listing ポイント実額)
+        captured.update(price=price, pyen=pyen, wt=wt, cat=cat, smt=smt, adr=adr, pt=pt)
         return {"refund_us": 1, "refund_nonus": 2, "noref_us": 3,
                 "noref_nonus": 4, "tax_refund": 5, "ddp_cost_jpy": 6}
 

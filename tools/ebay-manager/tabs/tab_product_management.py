@@ -150,6 +150,7 @@ def _fetch_all_products() -> list[dict]:
                 el.purchase_yen, el.lp_min_price, el.lp_breakeven_usd,
                 el.primary_market, el.duty_rate_pct, el.section232_class,
                 el.rank, el.includes, el.warranty,
+                el.point_yen, el.listing_description,
                 el.total_sold_count, el.watch_count, el.view_count,
                 el.source, el.source_url, el.source_status, el.source_last_checked,
                 el.source_out_of_stock_since, el.source_url_manual,
@@ -650,6 +651,7 @@ def _cd_profit_breakdown(
     length_cm: float, width_cm: float, height_cm: float,
     category_id: int, settings_mtime: float, db_version: int,
     actual_duty_rate: Optional[float] = None,
+    point_yen: Optional[float] = None,
 ) -> Optional[dict]:
     """W147: 現在価格での「還付あり/なし × USA向け(DDP)/US以外(DDU)」利益
     (円) を返す表示専用 純関数。
@@ -688,6 +690,8 @@ def _cd_profit_breakdown(
                 # W212: USA向け(DDP)は per-listing 実関税(Section232)を反映。
                 # US以外(DDU)は calculator 側で関税ゼロ化されるため actual は無視される。
                 actual_duty_rate=actual_duty_rate,
+                # W220: per-listing ポイント実額(¥)。指定時 point_return=point_yen。
+                point_yen=point_yen,
             ), settings)
             if not res.service_results:
                 return None
@@ -756,6 +760,11 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
     # 例外なく flat だったため (lowest_price.update_listing_breakeven と同方針)。
     # section232_class は警告バッジで別途掲出 (true-up リスク注意喚起)。
     _adr = None
+    # W220: per-listing ポイント実額。編集中の入力値 (session) を優先、無ければ DB 値。
+    _f_point = _ss_num("pointyen")
+    # W220 MEDIUM-1: DB の 0 (ポイント無し明示) を None に潰さない (is not None)。
+    _point_yen = (_f_point if _f_point is not None
+                  else (float(p["point_yen"]) if p.get("point_yen") is not None else None))
     bd = _cd_profit_breakdown(
         float(price), float(pyen), float(wt),
         float(f_l if f_l is not None else (p.get("length_cm") or 0)),
@@ -765,6 +774,7 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
         _smt,
         get_db_version(),
         _adr,
+        _point_yen,
     )
     if bd is None:
         return None
@@ -1118,6 +1128,19 @@ def _render_left_basic_and_physical(
                 help="W183 自動値下げの絶対下限. 未入力なら breakeven が下限.",
             )
 
+        # W220 (2026-06-04): per-listing ポイント実額(¥)。仕入先/カードで還元率が
+        # 違うため実額を入力。採算パネルの「ポイント還元」に反映 (手取り判断材料、
+        # 利益には合算しない)。settings.point_reward_rate (global) は実質 0 で機能せず。
+        editing["point_yen"] = st.number_input(
+            "ポイント還元 (¥)",
+            min_value=0,
+            # W220 MEDIUM-1: 0 (ポイント無し明示) を None に潰さない (is not None)。
+            value=int(p["point_yen"]) if p.get("point_yen") is not None else None,
+            step=100, key=f"pm_pointyen_{eid}",
+            help="この仕入れで得たポイント実額(¥)。採算の「ポイント還元」に反映 "
+                 "(赤字許容の判断材料。利益額には合算しない)。空=ポイントなし。",
+        )
+
         # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
         editing["new_bp_id"] = None
         # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
@@ -1279,6 +1302,27 @@ def _render_left_basic_and_physical(
             step=1.0, key=f"pm_height_{eid}",
         )
 
+    # W220 (2026-06-04): 商品ランク編集 (CLAUDE.md 8段階)。既存 DB に 'E' 等
+    # 8段階外の値もあるため、現在値が候補に無ければ先頭保持で非破壊。未設定は
+    # sentinel「（未設定）」で stale write 防止 (selectbox 無操作で None 化)。
+    # slice2 は DB 保存のみ。eBay Condition 反映は slice3 (📤 eBay反映 経由)。
+    _RANK_BLANK = "（未設定）"
+    _RANK_CHOICES = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
+    _cur_rank = (p.get("rank") or "").strip()
+    _rank_opts = [_RANK_BLANK] + _RANK_CHOICES
+    if _cur_rank and _cur_rank not in _RANK_CHOICES:
+        _rank_opts = [_RANK_BLANK, _cur_rank] + _RANK_CHOICES  # legacy値(E等)保持
+    _rank_default = _cur_rank if _cur_rank in _rank_opts else _RANK_BLANK
+    _rank_sel = st.selectbox(
+        "商品ランク",
+        options=_rank_opts,
+        index=_rank_opts.index(_rank_default),
+        key=f"pm_rank_{eid}",
+        help="N=新品 / S=新品同様 / A=美品 / B=良品 / C=使用感 / D=難あり / "
+             "PO=通電のみ / As-Is=未確認。保存で DB 更新 (eBay Condition 反映は別途)。",
+    )
+    editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
+
     # ──────────────────────────────────────────────────────────────────────
     # 📎 listing メモ (W140) — 内容あれば自動展開、空なら折りたたみ
     # ──────────────────────────────────────────────────────────────────────
@@ -1300,6 +1344,26 @@ def _render_left_basic_and_physical(
             help="例: 電池を抜いて発送 / 通関書類に型番XXX明記。eBay には送信"
                  "されません。保存後この listing が売れると MonoDeck と Discord "
                  "に通知。空にして保存でメモ削除。",
+            label_visibility="collapsed",
+        )
+
+    # W220 (2026-06-04): description (商品説明文) 編集。ローカル下書きを DB に保持。
+    # eBay への反映は slice3 の「📤 eBay反映」(ReviseItem) 経由で明示実行 (即時 push
+    # しない=安全側)。内容あれば見出しに「入力あり」、本文は折りたたみ既定。
+    _desc_body = p.get("listing_description") or ""
+    with st.expander(
+        "📝 説明文 (description) 編集"
+        + (" — 入力あり" if _desc_body.strip() else " — 空"),
+        expanded=False,
+    ):
+        editing["listing_description"] = st.text_area(
+            "description",
+            value=_desc_body,
+            key=f"pm_desc_{eid}",
+            max_chars=8000,
+            height=160,
+            help="商品説明文の下書き (HTML 可)。保存で MonoDeck DB に保持。eBay へは "
+                 "別途「📤 eBay反映」(ReviseItem) で送信 (slice3)。空保存で下書き削除。",
             label_visibility="collapsed",
         )
 
@@ -2356,6 +2420,47 @@ def _save_product_data(
         _cur_note = (get_listing_note(ebay_item_id) or "").strip()
         if _new_note != _cur_note:
             upsert_listing_note(ebay_item_id, _new_note)
+
+    # W220 (2026-06-04): ポイント実額(¥)。値ありで UPDATE (None=未入力は触らない)。
+    # 採算パネルのポイント還元表示 (money-direct 判断材料) に効く。同値書込は無害。
+    _pt = editing.get("point_yen")
+    if _pt is not None:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE ebay_listings SET point_yen=? WHERE ebay_item_id=?",
+                (float(_pt), ebay_item_id),
+            )
+
+    # W220: 商品ランク。change-guard (実変更時のみ。None=「（未設定）」は触らない)。
+    # eBay Condition 反映は slice3 (本 slice は DB のみ)。
+    _rank = editing.get("rank")
+    if _rank is not None:
+        with get_conn() as conn:
+            _cr = conn.execute(
+                "SELECT rank FROM ebay_listings WHERE ebay_item_id=?",
+                (ebay_item_id,),
+            ).fetchone()
+        if (_cr[0] if _cr else None) != _rank:
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE ebay_listings SET rank=? WHERE ebay_item_id=?",
+                    (_rank, ebay_item_id),
+                )
+
+    # W220: description 下書き。change-guard (note と同型)。eBay 非送信 (slice3 で送信)。
+    _desc = editing.get("listing_description")
+    if _desc is not None:
+        with get_conn() as conn:
+            _cd = conn.execute(
+                "SELECT listing_description FROM ebay_listings WHERE ebay_item_id=?",
+                (ebay_item_id,),
+            ).fetchone()
+        if ((_cd[0] if _cd else None) or "") != _desc:
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE ebay_listings SET listing_description=? WHERE ebay_item_id=?",
+                    (_desc, ebay_item_id),
+                )
 
     # W134 Step2: 全書込完了後に read-cache 無効化 (商品管理一覧へ即時反映)
     bump_db_version()

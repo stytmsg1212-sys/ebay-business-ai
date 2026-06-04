@@ -2935,6 +2935,41 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v62 (W220, 2026-06-04): per-listing ポイント額 + description 下書き ----
+        # point_yen: 仕入先/カードで還元率が違うため per-listing 実ポイント額(¥)を保持。
+        #   settings.point_reward_rate (global) は実質 0 で機能せず → calculator は
+        #   point_yen 指定時にそれを優先 (未指定は従来の purchase_yen×rate = 後方互換)。
+        # listing_description: description 編集の下書き (ローカル保持)。eBay 反映は
+        #   明示「📤 eBay反映」ボタン経由 (ReviseFixedPriceItem) で行う。
+        # listing 識別は ebay_item_id (sku-rules.md)。冪等: ALTER は try/except
+        #   sqlite3.OperationalError、bump は列実在確認後 (v60/v61 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 61:
+            for _col, _typ in [
+                ("point_yen", "REAL"),
+                ("listing_description", "TEXT"),
+            ]:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ} DEFAULT NULL"
+                    )
+                    logger.info(f"[init_db v62] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # カラム既存
+            _v62_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if "point_yen" in _v62_cols and "listing_description" in _v62_cols:
+                conn.execute("PRAGMA user_version = 62")
+                logger.info("[init_db v62] schema_ver bumped to 62")
+            else:
+                logger.warning(
+                    "[init_db v62] 部分適用: ebay_listings の point_yen/"
+                    "listing_description 未追加。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
