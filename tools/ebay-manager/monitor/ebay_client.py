@@ -923,6 +923,95 @@ def revise_item_description(
     }
 
 
+def _build_revise_item_condition_xml(
+    item_id: str, condition_id: str, condition_description: Optional[str] = None
+) -> str:
+    """ReviseFixedPriceItem の ConditionID (+任意 ConditionDescription) 更新 XML.
+
+    W220 (2026-06-04): 商品ランク変更を eBay の Condition に反映。ConditionID は
+    eBay 標準値 (1000=New / 1500=New other / 3000=Used / 7000=For parts/As-Is)。
+    ConditionDescription は used/as-is で買い手向けフリーフォーム説明 (≤1000 字)。
+    指定時のみ送る (未指定なら既存 ConditionDescription を eBay 側で維持)。
+    """
+    from xml.sax.saxutils import escape
+    cd = ""
+    if condition_description and condition_description.strip():
+        cd = (f"\n    <ConditionDescription>"
+              f"{escape(condition_description.strip()[:1000])}"
+              f"</ConditionDescription>")
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    <eBayAuthToken>{{USER_TOKEN}}</eBayAuthToken>
+  </RequesterCredentials>
+  <Item>
+    <ItemID>{escape(item_id)}</ItemID>
+    <ConditionID>{escape(str(condition_id))}</ConditionID>{cd}
+  </Item>
+</ReviseFixedPriceItemRequest>"""
+
+
+def revise_item_condition(
+    item_id: str,
+    condition_id: str,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+    condition_description: Optional[str] = None,
+) -> dict:
+    """W220 (2026-06-04): active fixed-price listing の ConditionID を更新.
+
+    商品ランク (N/S/A/B/C/D/PO/As-Is) → eBay ConditionID への反映。caller が
+    rank→condition_id を解決して渡す。ConditionID 値が category で不可
+    (例 S=1500 制限) の場合は eBay が Ack=Failure を返すので caller が
+    fallback (3000 等) を判断する (Q0: 本関数は成否を正直に返す、握り潰さない)。
+
+    Returns: {'success': bool, 'message': str, 'condition_id': str}
+    """
+    cid = str(condition_id or "").strip()
+    if not cid:
+        return {'success': False, 'message': 'condition_id is empty',
+                'condition_id': cid}
+    user_token = _resolve_active_token(user_token)
+    xml_body = _build_revise_item_condition_xml(
+        item_id, cid, condition_description,
+    ).replace("{USER_TOKEN}", user_token)
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "ReviseFixedPriceItem",
+        "X-EBAY-API-APP-NAME": app_id,
+        "X-EBAY-API-DEV-NAME": dev_id,
+        "X-EBAY-API-CERT-NAME": cert_id,
+        "Content-Type": "text/xml",
+    }
+    try:
+        resp = httpx.post(
+            TRADING_API_URL, content=xml_body.encode("utf-8"),
+            headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        return {'success': False, 'message': f"通信エラー: {e}",
+                'condition_id': cid}
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {'success': False, 'message': f"XML parse error: {e}",
+                'condition_id': cid}
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    ack = root.findtext("ns:Ack", namespaces=ns)
+    if ack in ("Success", "Warning"):
+        return {'success': True,
+                'message': f"ItemID {item_id} の ConditionID を {cid} に更新",
+                'condition_id': cid}
+    errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+    msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+    return {'success': False, 'message': f"API エラー: {msg}",
+            'condition_id': cid}
+
+
 def filter_items_with_sku(items: list[dict]) -> list[dict]:
     """SKUが設定されているアイテムのみ返す"""
     return [i for i in items if i.get("sku", "").strip()]

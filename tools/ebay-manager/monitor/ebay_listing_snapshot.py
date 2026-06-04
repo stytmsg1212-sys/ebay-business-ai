@@ -53,6 +53,9 @@ class ListingSnapshot:
     # を post-state で検出する核心 signal。
     ship_override_present: bool = False        # Domestic override 要素の有無
     ship_override_priority: Optional[int] = None  # その <ShippingServicePriority>
+    # --- W220 追加 (末尾、default 付き = 既存構築不変) ---
+    # 商品ランク → eBay Condition 反映 (slice3) の pre/post verify 用。
+    condition_id: Optional[str] = None         # Item/ConditionID (1000/1500/3000/7000)
 
 
 def _f(text: Optional[str]) -> Optional[float]:
@@ -205,6 +208,8 @@ def fetch_listing_snapshot(
         error=None,
         ship_override_present=ov_present,
         ship_override_priority=ov_priority,
+        # W220: ConditionID (GetItem が標準で返す)。rank→Condition verify 用。
+        condition_id=(item.findtext("n:ConditionID", namespaces=_NS) or None),
     )
 
 

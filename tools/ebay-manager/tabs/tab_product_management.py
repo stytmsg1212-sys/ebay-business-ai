@@ -1323,6 +1323,20 @@ def _render_left_basic_and_physical(
     )
     editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
 
+    # W220 slice3 (2026-06-04): Condition 理由 (eBay ConditionDescription)。
+    # ランクを Used(A/B/C/D/PO) / As-Is に変えて 📤eBay反映 する時に送る状態説明。
+    # As-Is(7000) は CLAUDE.md で **必須** (欠落=buyer紛争でDefect確定リスク)。
+    # eBay 専用 (DB 非保存)。空なら eBay 側の既存 ConditionDescription を維持。
+    editing["condition_description"] = st.text_input(
+        "Condition 理由 (中古/As-Is 用・eBay表示)",
+        value="",
+        key=f"pm_conddesc_{eid}",
+        max_chars=1000,
+        help="ランクを Used/As-Is に変えて eBay 反映する時の状態説明 (例: "
+             "Tested OK / No AC adapter for testing)。As-Is は必須。空なら eBay "
+             "側の既存説明を維持。DB には保存しません (eBay 専用)。",
+    )
+
     # ──────────────────────────────────────────────────────────────────────
     # 📎 listing メモ (W140) — 内容あれば自動展開、空なら折りたたみ
     # ──────────────────────────────────────────────────────────────────────
@@ -3260,6 +3274,30 @@ def _render_one_product(p: dict, config: dict) -> None:
                     # 未反映項目の editing 値を一括 DB 保存しない (整合性優先)。
                     return
 
+                # W220 slice3: price/shipping 反映成功後、説明文 + ランク→Condition
+                # を eBay へ反映 (独立関数、money-direct 送料ロジック非干渉)。DB 保存
+                # (下記) より前に呼ぶ = description draft の「変更前 DB 値」と比較できる。
+                _content = _apply_listing_content_to_ebay(eid, editing, config)
+                if _content.get("changed"):
+                    if _content.get("success"):
+                        messages.append(
+                            _content.get("message") or "説明文/Condition 反映")
+                    else:
+                        st.warning(
+                            "⚠️ 説明文/Condition の eBay 反映に一部失敗: "
+                            f"{_content.get('message', '不明')} / "
+                            f"https://www.ebay.com/itm/{eid} で確認してください。"
+                        )
+                        st.session_state["pm_keep_open_eid"] = eid
+                    # HIGH-3 (Codex/code-reviewer): eBay 反映に失敗した項目は DB に
+                    # 保存しない (DB↔eBay 乖離防止)。desc_ok/cond_ok が False の項目
+                    # だけ editing から除外 = _save_product_data が skip (None ガード)。
+                    # None=未試行 / True=成功 は通常保存 (DB が実 eBay と一致)。
+                    if _content.get("desc_ok") is False:
+                        editing["listing_description"] = None
+                    if _content.get("cond_ok") is False:
+                        editing["rank"] = None
+
             # 2. DB 保存 (save_db / save_ebay 両方で実行)
             # H9 (Wave C): eBay 反映 success 後の DB save 失敗を transparent に報告.
             # 旧実装は例外 propagate → user に generic Streamlit error、DB-eBay 不整合の説明なし.
@@ -3333,6 +3371,134 @@ def _money_eq(a: Optional[float], b: Optional[float]) -> bool:
     if a is None or b is None:
         return False
     return round(float(a), 2) == round(float(b), 2)
+
+
+# W220 slice3 (2026-06-04): 商品ランク → eBay ConditionID マップ (CLAUDE.md 8段階)。
+# S=1500 は category 依存で不可な場合があり、revise 失敗/verify 不一致時に
+# 3000 (Used) へ fallback する (Q0: 降格を明示通知、サイレント不可)。
+_RANK_TO_CONDITION_ID = {
+    "N": "1000", "S": "1500",
+    "A": "3000", "B": "3000", "C": "3000", "D": "3000", "PO": "3000",
+    "As-Is": "7000",
+}
+
+
+def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dict:
+    """W220 slice3: description (ReviseItem) と 商品ランク→Condition
+    (ReviseFixedPriceItem) を eBay 本番へ反映。price/shipping の _apply_to_ebay
+    とは **独立** (money-direct 送料ロジックに干渉しない)。
+
+    - description: 編集 draft が DB 保存値と異なり非空なら ReviseItem で push。
+      (DB 比較は本保存で上書きされる前に行う = この関数は _save_product_data の前に呼ぶ)
+    - condition: rank→ConditionID が実 eBay ConditionID と異なれば
+      ReviseFixedPriceItem で push → post GetItem で実 ConditionID 一致を verify
+      (Ack でなく実値)。S=1500 が category 不可で失敗時は 3000 へ fallback (明示通知)。
+    eBay 書込は呼出側「📤 eBay反映」クリック時のみ発火 (本関数は自動実行されない)。
+
+    Returns: {'success': bool, 'message': str, 'changed': bool}
+    """
+    new_desc = editing.get("listing_description")
+    new_rank = editing.get("rank")
+    target_cid = _RANK_TO_CONDITION_ID.get(new_rank) if new_rank else None
+
+    # description は「draft が DB 現値 (上書き前) と異なり非空」の時だけ push。
+    desc_changed = False
+    if new_desc is not None and new_desc.strip():
+        with get_conn() as conn:
+            _r = conn.execute(
+                "SELECT listing_description FROM ebay_listings WHERE ebay_item_id=?",
+                (eid,),
+            ).fetchone()
+        cur_desc = (_r[0] if _r else None) or ""
+        desc_changed = new_desc.strip() != cur_desc.strip()
+
+    if not desc_changed and target_cid is None:
+        return {"success": True, "message": "", "changed": False}
+
+    try:
+        creds = get_ebay_credentials(config or {})
+        app_id = creds.get("app_id", "")
+        dev_id = creds.get("dev_id", "")
+        cert_id = creds.get("cert_id", "")
+        token = creds.get("user_token", "")
+        if not (app_id and dev_id and cert_id and token):
+            return {"success": False, "message": "eBay credentials 不在",
+                    "changed": True}
+    except (KeyError, ValueError, OSError) as e:
+        return {"success": False, "message": f"credentials 取得エラー: {e}",
+                "changed": True}
+
+    from monitor.ebay_client import revise_item_condition, revise_item_description
+    from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+
+    ok = True
+    msgs: list[str] = []
+    desc_ok = None   # None=未試行 / True/False=反映結果 (HIGH-3 per-part DB 保存用)
+    cond_ok = None
+    # ConditionDescription (eBay 表示用、DB 非保存)。used/As-Is で送る。
+    cd = (editing.get("condition_description") or "").strip() or None
+
+    # 1. description (ReviseItem)
+    if desc_changed:
+        _rd = revise_item_description(
+            eid, new_desc, app_id, dev_id, cert_id, token)
+        desc_ok = bool(_rd.get("success"))
+        if desc_ok:
+            msgs.append("説明文を eBay に反映")
+        else:
+            ok = False
+            msgs.append(f"説明文 反映失敗: {_rd.get('message', '不明')}")
+
+    # 2. 商品ランク → ConditionID (pre GetItem で差分判定 → revise → post verify)
+    if target_cid is not None:
+        # HIGH-1 (Q0): As-Is(7000) は ConditionDescription 必須 (CLAUDE.md)。
+        # 理由欠落なら silent push せず明示ブロック (buyer紛争 Defect 防止)。
+        if target_cid == "7000" and not cd:
+            cond_ok = False
+            ok = False
+            msgs.append("As-Is は『Condition 理由』が必須です。状態説明を入力して"
+                        "再反映してください (未入力のため Condition は変更せず)")
+        else:
+            snap = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+            if not snap.ok:
+                cond_ok = False
+                ok = False
+                msgs.append(f"Condition 反映中止 (現状 GetItem 失敗): {snap.error}")
+            elif (snap.condition_id or "") == target_cid:
+                pass  # 既に一致 = 反映不要 (cond_ok は None のまま = 未変更)
+            else:
+                _rc = revise_item_condition(
+                    eid, target_cid, app_id, dev_id, cert_id, token,
+                    condition_description=cd)
+                snap2 = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+                actual = snap2.condition_id if snap2.ok else None
+                if actual == target_cid:
+                    cond_ok = True
+                    msgs.append(f"Condition を {new_rank} ({target_cid}) に反映")
+                elif target_cid == "1500":
+                    # S=1500 が category 不可 → 3000 (Used) へ fallback (明示通知)
+                    _rf = revise_item_condition(
+                        eid, "3000", app_id, dev_id, cert_id, token,
+                        condition_description=cd)
+                    snap3 = fetch_listing_snapshot(
+                        eid, app_id, dev_id, cert_id, token)
+                    if snap3.ok and snap3.condition_id == "3000":
+                        cond_ok = True
+                        msgs.append("Condition: S(新品同様)はこのカテゴリで不可の"
+                                    "ため Used(3000) で反映しました (要確認)")
+                    else:
+                        cond_ok = False
+                        ok = False
+                        msgs.append("Condition 反映失敗 (S=1500 不可・3000 "
+                                    f"fallback も失敗): {_rc.get('message', '不明')}")
+                else:
+                    cond_ok = False
+                    ok = False
+                    msgs.append(f"Condition 反映 verify 失敗 (実値={actual}): "
+                                f"{_rc.get('message', '不明')}")
+
+    return {"success": ok, "message": " / ".join(msgs), "changed": True,
+            "desc_ok": desc_ok, "cond_ok": cond_ok}
 
 
 def _apply_to_ebay(
