@@ -1694,3 +1694,441 @@ def relist_item(
         "RelistFixedPriceItem", _build_relist_fixed_price_xml(item_id),
         app_id, dev_id, cert_id, user_token,
     )
+
+
+# =================================================================
+# W219 (2026-06-03): eBay Finances API
+# 実手数料 (FVF / INTERNATIONAL_FEE / AD_FEE / REGULATORY_OPERATING_FEE 等)
+# を取得し計算式の推定手数料と突合する分析専用 wrapper.
+# OAuth scope: sell.finances (settings 既保有, ebay_oauth_refresh.py L52).
+# read-only GET のみ. calculator/settings/task_order_alert は変更しない.
+# =================================================================
+
+# REST 用 base URL (Production). sandbox は別途 apiz.sandbox.ebay.com.
+FINANCES_API_BASE = "https://apiz.ebay.com/sell/finances/v1"
+
+
+def get_transactions(
+    start_date: str,
+    end_date: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    transaction_type: str | None = None,
+    timeout: int = 60,
+    access_token: str | None = None,
+    page_cap: int = 50,
+) -> dict:
+    """eBay Finances API `/transaction` をページングしながら全件取得.
+
+    用途: W219 段1-2 分析 (実手数料 vs calculator 推定の突合). read-only.
+    `apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[<from>..<to>]`
+
+    Args:
+        start_date: ISO 8601 UTC. 例 "2025-12-05T00:00:00.000Z".
+        end_date:   ISO 8601 UTC. 例 "2026-06-03T00:00:00.000Z".
+        limit: 1 ページ件数 (eBay 仕様で 1..1000, 既定 200).
+        offset: 初回 offset (通常 0). page_cap 到達時に途中状態を返す用に exposed.
+        transaction_type: 'SALE' / 'REFUND' / 'NON_SALE_CHARGE' / 'SHIPPING_LABEL'.
+            None なら全種別取得 (filter 未指定).
+        timeout: HTTP timeout sec.
+        access_token: 上書き用. None なら `get_valid_access_token()` で取得 (auto-refresh).
+        page_cap: 暴走防止. 最大ページ数 (limit=200 なら 200*50=10000 件まで).
+
+    Returns:
+        {
+            'success': bool,
+            'transactions': list[dict],     # eBay 生 JSON object をそのまま蓄積
+            'total': int | None,            # eBay 報告 total (推定値)
+            'fetched': int,                 # 実取得件数
+            'pages': int,                   # 実ページ数
+            'truncated': bool,              # page_cap 到達で打ち切ったか
+            'errors': list[str],            # 失敗時の詳細 (Q0: 偽装成功させない)
+            'last_status': int | None,      # 最終 HTTP status code
+        }
+
+    Q0 方針:
+        - 401/403 (token 失効・scope 未 consent) は errors に詳細記録し success=False.
+          空配列を success=True で返さない.
+        - rate limit (429) も同様に errors. 部分取得でも transactions に積んだ分は保持.
+        - JSON parse 失敗・network エラーも success=False で raw 残す.
+
+    eBay 公式 doc:
+        https://developer.ebay.com/api-docs/sell/finances/resources/transaction/methods/getTransactions
+        - filter syntax: `transactionDate:[2025-12-05T00:00:00.000Z..2026-06-03T00:00:00.000Z]`
+        - transactionType filter は別 key. 複合は `filter=...&filter=...` で OR 動作.
+        - 1 ページ最大 200 件 (内部上限 1000 だが安定実績 200).
+    """
+    errors: list[str] = []
+    transactions: list[dict] = []
+    last_status: Optional[int] = None
+    reported_total: Optional[int] = None
+    pages = 0
+    truncated = False
+
+    # OAuth token (auto-refresh 経由) を取得
+    if access_token is None:
+        try:
+            from monitor.ebay_oauth_refresh import get_valid_access_token
+            access_token = get_valid_access_token()
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"oauth token 取得失敗: {e}")
+            return {
+                "success": False, "transactions": [], "total": None,
+                "fetched": 0, "pages": 0, "truncated": False,
+                "errors": errors, "last_status": None,
+            }
+    if not access_token:
+        errors.append(
+            "access_token が None (auto-refresh 失敗 or EBAY_USER_TOKEN 未設定)"
+        )
+        return {
+            "success": False, "transactions": [], "total": None,
+            "fetched": 0, "pages": 0, "truncated": False,
+            "errors": errors, "last_status": None,
+        }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+    # eBay の filter は **URL encoded** で渡す必要がある (`[`, `]`, `..`, `:` 等).
+    # httpx は params= に dict を渡すと自動 encode するため利用.
+    base_filter = f"transactionDate:[{start_date}..{end_date}]"
+    cur_offset = int(offset)
+
+    try:
+        client = httpx.Client(timeout=timeout)
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"httpx.Client 初期化失敗: {e}")
+        return {
+            "success": False, "transactions": [], "total": None,
+            "fetched": 0, "pages": 0, "truncated": False,
+            "errors": errors, "last_status": None,
+        }
+
+    try:
+        while pages < page_cap:
+            params: dict = {
+                "filter": base_filter,
+                "limit": str(limit),
+                "offset": str(cur_offset),
+            }
+            if transaction_type:
+                # eBay は同名 key の繰り返しで複数 filter を受ける.
+                # httpx は str を 1 個渡すなら下記、複数なら list. 今回は OR 同 key 想定.
+                params["filter"] = (
+                    f"{base_filter}&filter=transactionType:{{{transaction_type}}}"
+                )
+                # ↑ params 経由だと `&` も encode されるため URL を組み立て直す.
+                # 簡潔さ優先で URL を明示組立に切替.
+            try:
+                if transaction_type:
+                    # 2 個の filter を要求するため manual URL 組み立て
+                    from urllib.parse import quote
+                    url = (
+                        f"{FINANCES_API_BASE}/transaction"
+                        f"?filter={quote(base_filter)}"
+                        f"&filter={quote(f'transactionType:{{{transaction_type}}}')}"
+                        f"&limit={limit}&offset={cur_offset}"
+                    )
+                    resp = client.get(url, headers=headers)
+                else:
+                    resp = client.get(
+                        f"{FINANCES_API_BASE}/transaction",
+                        headers=headers,
+                        params={
+                            "filter": base_filter,
+                            "limit": str(limit),
+                            "offset": str(cur_offset),
+                        },
+                    )
+            except httpx.HTTPError as e:
+                errors.append(f"page offset={cur_offset} HTTP error: {e}")
+                break
+            last_status = resp.status_code
+            if resp.status_code in (401, 403):
+                # Q0: scope 未 consent / token 失効. 空成功にしない.
+                try:
+                    body_preview = resp.text[:500]
+                except Exception:  # noqa: BLE001
+                    body_preview = "<unreadable>"
+                errors.append(
+                    f"Finances API auth 失敗 status={resp.status_code} "
+                    f"(scope=sell.finances consent 必要 / token 失効 の疑い): "
+                    f"{body_preview}"
+                )
+                break
+            if resp.status_code == 429:
+                # rate limit. 部分取得を返す.
+                try:
+                    body_preview = resp.text[:300]
+                except Exception:  # noqa: BLE001
+                    body_preview = "<unreadable>"
+                errors.append(
+                    f"Finances API rate limit (429) offset={cur_offset}: "
+                    f"{body_preview}"
+                )
+                break
+            if resp.status_code != 200:
+                try:
+                    body_preview = resp.text[:500]
+                except Exception:  # noqa: BLE001
+                    body_preview = "<unreadable>"
+                errors.append(
+                    f"Finances API 異常 status={resp.status_code} "
+                    f"offset={cur_offset}: {body_preview}"
+                )
+                break
+
+            try:
+                data = resp.json()
+            except (ValueError, TypeError) as e:
+                errors.append(
+                    f"page offset={cur_offset} JSON parse 失敗: {e}; "
+                    f"body[:300]={resp.text[:300]!r}"
+                )
+                break
+
+            page_items = data.get("transactions") or []
+            transactions.extend(page_items)
+            pages += 1
+            if reported_total is None:
+                rt = data.get("total")
+                if isinstance(rt, int):
+                    reported_total = rt
+
+            # ページ尽きたか判定
+            if not page_items or len(page_items) < limit:
+                break
+            cur_offset += limit
+        else:
+            # while else: page_cap に達して break せず終了
+            truncated = True
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    success = (not errors) and (last_status == 200 or last_status is None and pages == 0)
+    # last_status が None のまま (1 度も叩けず) = errors にもう積んでいるので success=False になる.
+    if last_status is None:
+        success = False
+
+    return {
+        "success": success,
+        "transactions": transactions,
+        "total": reported_total,
+        "fetched": len(transactions),
+        "pages": pages,
+        "truncated": truncated,
+        "errors": errors,
+        "last_status": last_status,
+    }
+
+
+def parse_sale_fees(txn: dict) -> dict:
+    """1 つの SALE transaction から手数料明細を抽出 (parse helper).
+
+    実観測スキーマ (2026-06-03, 本番 styt.msg1212 アカウント):
+        {
+          "transactionId": "06-14724-56167",
+          "orderId":       "06-14724-56167",
+          "transactionType": "SALE",
+          "transactionDate": "2026-06-02T13:20:06.839Z",
+          "amount":              {"value": "162.36", "currency": "USD"},
+          "totalFeeBasisAmount": {"value": "195.0",  "currency": "USD"},
+          "totalFeeAmount":      {"value": "32.64",  "currency": "USD"},
+          "ebayCollectedTaxAmount": {"value": "19.5", "currency": "USD"},
+          "orderLineItems": [
+            {
+              "lineItemId": "10082224798306",
+              "feeBasisAmount": {"value": "214.5", "currency": "USD"},
+              "marketplaceFees": [
+                {"feeType": "FINAL_VALUE_FEE",
+                 "amount": {"value": "29.96"}},
+                {"feeType": "FINAL_VALUE_FEE_FIXED_PER_ORDER",
+                 "amount": {"value": "0.44"}},
+                {"feeType": "INTERNATIONAL_FEE",
+                 "amount": {"value": "2.24"},
+                 "feeMemo": "Charged because the delivery address is in ..."},
+              ],
+            }
+          ]
+        }
+
+    ⚠️ **SALE には `itemId` フィールド無し** (lineItemId のみ). 本当の eBay
+    legacy ItemID (12 桁) は SALE 単体からは取得不能で、`orderId` を
+    `sales_history.ebay_order_id` に join するしかない. 旧 implementation の
+    `_extract_legacy_item_id(li.get("itemId"))` は常に空文字列を返していた
+    (実観測で確定、scripts/inspect_finances_schema_2026_06_03.py).
+
+    ⚠️ **Promoted Listings fee (AD_FEE / PREMIUM_AD_FEES) は SALE に出ない**.
+    NON_SALE_CHARGE transactionType で別 entry として課金される
+    (`transactionMemo="Promoted Listings - Priority fee"`,
+     `references[].referenceType="ITEM_ID"` で listing にひも付け).
+    SALE のみ集約すると AD=$0 になる (本当の AD 料金は `parse_non_sale_charge`
+    で取得).
+
+    Returns:
+        {
+            'order_id': str,
+            'transaction_id': str,
+            'transaction_date': str,
+            'amount_usd': float,            # transaction (買い手支払合計) 売上
+            'total_fee_usd': float,         # eBay 公表合計手数料
+            'line_items': [
+                {
+                    'item_id': str (eBay legacy 12 桁を抽出),
+                    'line_item_id': str,
+                    'fees_by_type': {feeType: float_usd},  # 合計値
+                    'fee_total_usd': float,
+                }, ...
+            ],
+            'fees_by_type': {feeType: float_usd},   # transaction 全体集約
+            'fee_total_from_lines_usd': float,
+        }
+
+    Q0 (silent skip 防止): 想定 key 不在時も空 dict ではなく 0 で構造維持.
+        ただし orderLineItems が完全に無い (非 SALE 等) は line_items=[] で返す.
+    """
+    def _money(d) -> float:
+        if not isinstance(d, dict):
+            return 0.0
+        v = d.get("value")
+        try:
+            return float(v) if v is not None else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _extract_legacy_item_id(item_id_raw: str) -> str:
+        """eBay legacy/RESTful itemId 形式 'v1|123456789012|0' から 12 桁を抽出.
+        既に純数字なら返す. 不明形式は元文字列."""
+        if not item_id_raw:
+            return ""
+        s = str(item_id_raw)
+        if "|" in s:
+            parts = s.split("|")
+            for p in parts:
+                if p.isdigit() and len(p) >= 9:
+                    return p
+        return s
+
+    order_id = str(txn.get("orderId") or "")
+    txn_id = str(txn.get("transactionId") or "")
+    txn_date = str(txn.get("transactionDate") or "")
+    amount_usd = _money(txn.get("amount"))
+    total_fee_usd = _money(txn.get("totalFeeAmount"))
+
+    line_results: list[dict] = []
+    agg_by_type: dict[str, float] = {}
+    fee_total_from_lines = 0.0
+
+    for li in (txn.get("orderLineItems") or []):
+        if not isinstance(li, dict):
+            continue
+        li_id = str(li.get("lineItemId") or "")
+        # 実観測: SALE.orderLineItems[].itemId は存在しない. 念のため互換コードは
+        # 残す (将来 schema 変更で itemId が増えた場合に拾える). 通常は "".
+        item_id = _extract_legacy_item_id(li.get("itemId") or "")
+        fees_by_type: dict[str, float] = {}
+        li_fee_total = 0.0
+        for fee in (li.get("marketplaceFees") or []):
+            if not isinstance(fee, dict):
+                continue
+            ft = str(fee.get("feeType") or "UNKNOWN")
+            fv = _money(fee.get("amount"))
+            fees_by_type[ft] = fees_by_type.get(ft, 0.0) + fv
+            agg_by_type[ft] = agg_by_type.get(ft, 0.0) + fv
+            li_fee_total += fv
+        fee_total_from_lines += li_fee_total
+        line_results.append({
+            "item_id": item_id,
+            "line_item_id": li_id,
+            "fees_by_type": fees_by_type,
+            "fee_total_usd": li_fee_total,
+        })
+
+    return {
+        "order_id": order_id,
+        "transaction_id": txn_id,
+        "transaction_date": txn_date,
+        "amount_usd": amount_usd,
+        "total_fee_usd": total_fee_usd,
+        "line_items": line_results,
+        "fees_by_type": agg_by_type,
+        "fee_total_from_lines_usd": fee_total_from_lines,
+    }
+
+
+def parse_non_sale_charge(txn: dict) -> dict:
+    """NON_SALE_CHARGE transaction を parse する (Promoted Listings fee 等).
+
+    実観測 (2026-06-03):
+        {
+          "transactionId": "FEE-7561359420110_11",
+          "transactionType": "NON_SALE_CHARGE",
+          "amount": {"value": "2.0", "currency": "USD"},
+          "bookingEntry": "DEBIT",
+          "transactionDate": "2026-06-02T...",
+          "transactionMemo": "Promoted Listings - Priority fee",
+          "feeType": "PREMIUM_AD_FEES",
+          "references": [{"referenceId": "358212419810",
+                          "referenceType": "ITEM_ID"}]
+        }
+
+    SALE には現れない手数料 (Promoted, 月額 Store subscription, 各種 surcharge)
+    を拾うため、SALE と別 parser を持つ. amount は DEBIT/CREDIT を区別し
+    DEBIT を seller 負担 (= cost) として正値で返す.
+
+    Returns:
+        {
+            'transaction_id': str,
+            'transaction_date': str,
+            'fee_type': str,            # 例 PREMIUM_AD_FEES
+            'memo': str,                # 例 'Promoted Listings - Priority fee'
+            'amount_usd_debit': float,  # DEBIT 時の seller 負担額 (正値)
+            'amount_usd_credit': float, # CREDIT 時の seller 戻し額 (正値)
+            'item_id': str,             # references[ITEM_ID] (eBay legacy 12桁)
+            'order_id_ref': str,        # references[ORDER_ID] (あれば)
+        }
+    """
+    def _money(d) -> float:
+        if not isinstance(d, dict):
+            return 0.0
+        v = d.get("value")
+        try:
+            return float(v) if v is not None else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    booking = str(txn.get("bookingEntry") or "").upper()
+    amt = _money(txn.get("amount"))
+    debit = amt if booking == "DEBIT" else 0.0
+    credit = amt if booking == "CREDIT" else 0.0
+
+    item_id = ""
+    order_id_ref = ""
+    for ref in (txn.get("references") or []):
+        if not isinstance(ref, dict):
+            continue
+        rt = str(ref.get("referenceType") or "").upper()
+        rid = str(ref.get("referenceId") or "")
+        if rt == "ITEM_ID" and not item_id:
+            item_id = rid
+        elif rt == "ORDER_ID" and not order_id_ref:
+            order_id_ref = rid
+
+    return {
+        "transaction_id": str(txn.get("transactionId") or ""),
+        "transaction_date": str(txn.get("transactionDate") or ""),
+        "fee_type": str(txn.get("feeType") or ""),
+        "memo": str(txn.get("transactionMemo") or ""),
+        "amount_usd_debit": debit,
+        "amount_usd_credit": credit,
+        "item_id": item_id,
+        "order_id_ref": order_id_ref,
+    }
