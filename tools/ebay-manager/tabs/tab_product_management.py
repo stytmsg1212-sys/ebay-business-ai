@@ -14,6 +14,7 @@ user iterative 前提.
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import sqlite3
@@ -749,10 +750,12 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
         _smt = _SETTINGS_FILE.stat().st_mtime
     except OSError:
         _smt = 0.0  # stat 不能でも算出は継続 (cache 無効化のみ機能低下)
-    # W212: Section 232 該当品は per-listing 実関税率 (duty_rate_pct, パーセント) を反映。
-    # 範囲外 (誤入力) / 非該当 (None) は global duty にフォールバック。
-    _drp = p.get("duty_rate_pct")
-    _adr = (_drp / 100.0) if (_drp is not None and 1 <= _drp <= 100) else None
+    # W215 (2026-06-03): Section 232 該当品の per-listing 実関税率 (duty_rate_pct
+    # 25-55%) は **表示利益に適用しない** (= global duty_rate 11% で試算)。CPaSS 実請求
+    # 全数調査で OC SpeedPAK DDP は原産国別 flat (日本発10%) を課金し Section 232 該当品も
+    # 例外なく flat だったため (lowest_price.update_listing_breakeven と同方針)。
+    # section232_class は警告バッジで別途掲出 (true-up リスク注意喚起)。
+    _adr = None
     bd = _cd_profit_breakdown(
         float(price), float(pyen), float(wt),
         float(f_l if f_l is not None else (p.get("length_cm") or 0)),
@@ -921,9 +924,15 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
             )
             _s232 = p.get("section232_class")
             if _s232:
+                # W215: 利益は flat 11% で試算 (OC 実請求準拠)。ただし本品は Section 232
+                # 該当 = CBP 実額が OC 推定を超えた場合に true-up (追加請求) されうるため
+                # 警告のみ掲出 (率には畳み込まない)。法定分類は記録 (duty_rate_pct) 保持。
+                _stat = int(p.get("duty_rate_pct") or 0)
+                _statx = f"法定~{_stat}%" if _stat else "法定高率"
                 _html += (
-                    f'<div style="background:#fbe2e2;color:#a52a2a;font-size:11px;padding:5px 8px;border-radius:4px;margin-top:6px">'
-                    f'🚨 Section232 {_s232}（実関税 {int(p.get("duty_rate_pct") or 0)}%）= USA向けは関税が利益を圧迫</div>'
+                    f'<div style="background:#fdf0d5;color:#9a6a00;font-size:11px;padding:5px 8px;border-radius:4px;margin-top:6px">'
+                    f'⚠️ Section232 {_s232}（{_statx}）= 利益はOC実績flat11%で試算。'
+                    f'CBP実額超過時は追加請求(true-up)の可能性 → 高額・低粗利は要注意</div>'
                 )
             st.markdown(_html, unsafe_allow_html=True)
 
@@ -971,18 +980,213 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
 def _render_left_basic_and_physical(
     p: dict, config: dict, bp_state: Optional[dict] = None,
 ) -> dict:
-    """左列: SKU / 在庫数 / 物理属性 / eBay 出品 / 仕入価格 編集 form (form 内呼出前提)."""
+    """左列: SKU / 在庫数 / 物理属性 / eBay 出品 / 仕入価格 編集 form (form 内呼出前提).
+
+    W217 (2026-06-03): 採算パネルと同じ思想で「💰 money-direct → 📦 属性 →
+    📎 メモ (折りたたみ)」の3段配置に再整理。widget の key/value/help/dirty
+    変数 (primary_market_render_initial / add_render_initial /
+    bp_render_initial_id) は1文字も改変せず、配置順序のみ変更 (K2 surgical)。
+    Streamlit は st.markdown で <div> を開けて閉じる pattern が機能しない
+    (他 widget が <div> の外に出てしまう) ため、money 枠の border-left+bg
+    視覚は完全には再現せず、見出し pm-money-head + 既存 section-label 構造
+    で「金額系」と「属性系」の段差を表現する。
+    """
     eid = p["ebay_item_id"]
     editing: dict = {}
+    current_sku = p.get("sku") or ""
 
-    # ── 🏷️ SKU + 在庫数 (stock prefix のみ在庫数表示) ──
-    st.markdown('<div class="pm-section-label">🏷️ SKU + 在庫数</div>',
+    # ──────────────────────────────────────────────────────────────────────
+    # 💰 価格・採算 (money-direct・誤操作注意)
+    # ──────────────────────────────────────────────────────────────────────
+    # W217-A (2026-06-03): モックアップの「💰金額枠 (amber 左ライン + 背景 +
+    # 角丸)」を st.container(border=True, key=...) で実装。CSS hook は
+    # div[class*="st-key-pm_money_box_"] で amber border-left を上書き。
+    # 旧 issue (st.markdown <div> が後続 widget を囲めない) を、新規 widget
+    # 配置を変えずに container で囲むだけで解決する。
+    # ⚠️ st.container の key= パラメータは Streamlit 1.36+ で導入された機能
+    # (border= は 1.29+ から、key= は 1.36+ から)。本コードは key= を使うため
+    # requirements.txt の pin を streamlit>=1.56.0 (現に動作確認済の installed
+    # 版) へ引き上げ済。古い streamlit (例 1.32.0) では TypeError で本タブが
+    # 即クラッシュするため、requirements.txt の pin を下げてはいけない。
+    # widget の key / value / help / dirty-flag 変数
+    # (primary_market_render_initial / add_render_initial /
+    # bp_render_initial_id) は 1 文字も改変せず、container でラップするのみ。
+    with st.container(border=True, key=f"pm_money_box_{eid}"):
+        st.markdown(
+            '<div class="pm-section-label" '
+            'style="color: var(--pm-warning) !important; '
+            'border-bottom-color: var(--pm-warning) !important; '
+            'margin-top: 0 !important;">'
+            '💰 価格・採算 (money-direct・誤操作注意)</div>',
+            unsafe_allow_html=True,
+        )
+
+        # 💵 eBay 出品価格 + 送料 (商品価格 / Buyer pays / +each)
+        eb1, eb2, eb3 = st.columns(3)
+        with eb1:
+            editing["new_ebay_price"] = st.number_input(
+                "商品価格 (USD)",
+                min_value=0.0,
+                value=float(p.get("current_price") or 0.0) if p.get("current_price") else None,
+                step=1.0, format="%.2f",
+                key=f"pm_ebay_price_{eid}",
+            )
+        with eb2:
+            editing["new_ship_cost"] = st.number_input(
+                "送料 Buyer pays (USD)",
+                min_value=0.0,
+                value=float(p.get("shipping_cost") or 0.0) if p.get("shipping_cost") is not None else None,
+                step=0.5, format="%.2f",
+                key=f"pm_ebay_ship_{eid}",
+                help="1 個目の送料 (ShippingServiceCost)",
+            )
+        with eb3:
+            # W142 根本原因#5(b): 旧実装は value=None ハードコードで +each が
+            # 常時空欄 (ebay_listings に保存列が無かった)。migration v43 の
+            # shipping_additional_cost を表示 source に (Buyer pays L771 と対称)。
+            # W142 Codex-R3 HIGH-2: +each dirty-flag 用 render 初期値 (= DB 列値)。
+            # _apply_to_ebay は「submit 値 != この初期値」の時のみ user が
+            # +each を実操作したとみなす。BP の Codex#1 bp_render_initial_id と
+            # 同型 = 表示中 DB 値を「変更」と誤認し stale を実 eBay に上書き
+            # する経路を遮断 (金銭直結、Phase2 実 eBay 真実原則を守る)。
+            _add_init = (float(p.get("shipping_additional_cost"))
+                         if p.get("shipping_additional_cost") is not None
+                         else None)
+            editing["add_render_initial"] = _add_init
+            editing["new_ship_additional"] = st.number_input(
+                "送料 +each (USD)",
+                min_value=0.0,
+                value=_add_init,
+                step=0.5, format="%.2f",
+                key=f"pm_ebay_ship_add_{eid}",
+                help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)。"
+                     "DB保存値表示。実 eBay との一致は 📤eBay反映 で verify。",
+            )
+        # W142 (B): 送料は DB保存値表示 + 乖離マーカー (expander 展開で
+        # GetItem を呼ばない = 速度/quota 優先、真値は 📤eBay反映 で verify /
+        # BP ↻ で取得)。鮮度を fetched_at で正直開示 (R-11/HIGH-1 の精神)。
+        _ship_fa = _fetched_jst_label(
+            p.get("shipping_additional_fetched_at") or p.get("last_synced_at")
+        )
+        st.caption(
+            f"💡 送料 (Buyer pays / +each) は **DB保存値**表示 "
+            f"(実 eBay 最終同期: {_ship_fa})。eBay.com で直接変更していると"
+            f"乖離し得ます。真値は 📤eBay反映 時に verify されます。"
+        )
+
+        # 🌐 区分 + 💰 仕入価格 + 下限価格 (採算判断に直結する 3 軸を money 枠内に集約)
+        from monitor.database import VALID_PRIMARY_MARKETS
+        _mkt_labels = {
+            "US_only": "US_only — 米国のみ販売 (商品価格に関税包含)",
+            "mixed_global": "mixed_global — 米国+他国 混在",
+            "global_only": "global_only — 米国以外",
+            "unknown": "unknown — 未判定",
+        }
+        _mkt_opts = list(VALID_PRIMARY_MARKETS)
+        # DB が None の listing は表示上 unknown を default に (書込は dirty 時のみ)。
+        _cur_mkt = (p.get("primary_market") or "unknown")
+        if _cur_mkt not in _mkt_opts:
+            _cur_mkt = "unknown"
+        # dirty-flag (BP / 送料 と同型): submit 値 != 表示初期値 の時のみ DB 保存。
+        # None の listing を無操作で unknown に上書きする stale write を遮断。
+        editing["primary_market_render_initial"] = _cur_mkt
+        mk1, mk2, mk3 = st.columns(3)
+        with mk1:
+            editing["primary_market"] = st.selectbox(
+                "区分 (送料・関税前提)",
+                options=_mkt_opts,
+                index=_mkt_opts.index(_cur_mkt),
+                format_func=lambda m: _mkt_labels.get(m, m),
+                key=f"pm_primary_market_{eid}",
+                help="Terapeak 365 日 sold 判定 (W110(2))。送料差分式 + DDP 関税の前提区分。"
+                     "保存で DB 更新 + 利益再計算 (eBay 送料反映は別途 📤eBay反映)。",
+            )
+        with mk2:
+            editing["purchase_yen"] = st.number_input(
+                "仕入価格 (JPY)",
+                min_value=0,
+                value=int(p["purchase_yen"]) if p.get("purchase_yen") else None,
+                step=100, key=f"pm_pyen_{eid}",
+            )
+        with mk3:
+            editing["lp_min_price"] = st.number_input(
+                "下限価格 (USD)",
+                min_value=0.0,
+                value=float(p["lp_min_price"]) if p.get("lp_min_price") else None,
+                step=1.0, format="%.2f",
+                key=f"pm_minp_{eid}",
+                help="W183 自動値下げの絶対下限. 未入力なら breakeven が下限.",
+            )
+
+        # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
+        editing["new_bp_id"] = None
+        # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
+        # 由来の現 BP id)。_apply_to_ebay は「submit 値 != この初期値」の時のみ
+        # 「user が selectbox を操作した」とみなし、無操作の stale 初期値が実
+        # eBay へ巻き戻る経路を遮断する (金銭直結)。
+        editing["bp_render_initial_id"] = None
+        if bp_state is not None:
+            pl = bp_state.get("policies")
+            if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
+                ids = [pi.policy_id for pi in pl.policies]
+                opts = [pi.name for pi in pl.policies]
+                cur_id = bp_state.get("id")
+                editing["bp_render_initial_id"] = cur_id
+                cur_idx = ids.index(cur_id) if cur_id in ids else 0
+                sel_i = st.selectbox(
+                    "Shipping Policy (BP)",
+                    options=list(range(len(ids))),
+                    index=cur_idx,
+                    format_func=lambda i: opts[i],
+                    # Codex#1-fix2 (金銭直結): widget key に **DB 由来 cur_id を
+                    # 含める**。Streamlit は key が session_state に在ると
+                    # index= を無視し保存値を返す仕様。固定 key だと ↻/同期で
+                    # DB BP が A→B に変わっても widget は旧 A を保持 →
+                    # bp_render_initial(=fresh B) と new_bp_id(=stale A) が
+                    # 食い違い「無操作なのに touched」誤判定 → 実 eBay の B を
+                    # stale A へ巻き戻す (DDP buffer 喪失)。key に cur_id を
+                    # 織り込むと DB BP 変化時に **別 widget = fresh 初期化**
+                    # され dirty-flag 前提 (無操作⟹widget値==render初期値) を
+                    # 回復。同一 DB 状態内は key 安定で user の途中選択を保持。
+                    key=f"pm_bp_{eid}_{cur_id}",
+                    help="変更すると 📤 eBay 反映 で listing の BP を差し替えます",
+                )
+                editing["new_bp_id"] = ids[sel_i]
+                if ids[sel_i] != cur_id:
+                    _ov_c = editing.get("new_ship_cost")
+                    _ov_a = editing.get("new_ship_additional")
+                    _cur = (f"現在 Buyer pays ${float(_ov_c):.2f}"
+                            if _ov_c is not None else "現在 Buyer pays 未設定")
+                    if _ov_a is not None:
+                        _cur += f" / +each ${float(_ov_a):.2f}"
+                    st.warning(
+                        "⚠️ BP を変更すると送料が**新 BP の default に戻ります**。"
+                        f"({_cur})"
+                    )
+                    st.caption(
+                        "現在の custom 送料に **DDP 関税 buffer** が含まれる場合、"
+                        "buffer が消え **売主の関税負担 (赤字方向、Section 232 "
+                        "該当品は数百ドル/件)** が発生し得ます。新 BP default 額は "
+                        "BP 適用後 GetItem で判明 (変更前取得不可、eBay 仕様)。"
+                        "変更後に送料を再設定してください。"
+                    )
+            else:
+                st.caption(
+                    "🚚 Shipping Policy 変更不可: "
+                    f"{bp_state.get('error') or '現在 BP / BP 一覧の取得に失敗'}"
+                )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 📦 商品属性 (SKU / 在庫 / 物理属性) — money 系より控えめに
+    # ──────────────────────────────────────────────────────────────────────
+    st.markdown('<div class="pm-section-label">📦 商品属性</div>',
                 unsafe_allow_html=True)
+
+    # 🏷️ SKU + 在庫数 (stock prefix のみ在庫数表示)
     sku_col, inv_col = st.columns(2)
     with sku_col:
-        current_sku = p.get("sku") or ""
         editing["sku"] = st.text_input(
-            "SKU",
+            "SKU (在庫種別)",
             value=current_sku,
             key=f"pm_sku_{eid}",
             help="stock* で始まる = 有在庫 (在庫数管理対象) / ebay* で始まる = 無在庫",
@@ -1046,9 +1250,7 @@ def _render_left_basic_and_physical(
             else:
                 st.caption("在庫数管理対象外 (stock*/ebay* 以外の SKU)")
 
-    # ── 📦 物理属性 ──
-    st.markdown('<div class="pm-section-label">📦 物理属性 (送料計算 + breakeven に必須)</div>',
-                unsafe_allow_html=True)
+    # 📐 物理属性 (重量 / 長さ / 幅 / 高さ) — モックアップでは控えめなグリッド
     e1, e2 = st.columns(2)
     with e1:
         editing["weight_g"] = st.number_input(
@@ -1077,195 +1279,29 @@ def _render_left_basic_and_physical(
             step=1.0, key=f"pm_height_{eid}",
         )
 
-    # ── 🌐 区分 (primary_market: 送料・関税計算の前提 / 2026-06-01 編集可化) ──
-    st.markdown(
-        '<div class="pm-section-label">🌐 区分 (送料・関税の前提 / 4 区分)</div>',
-        unsafe_allow_html=True,
-    )
-    from monitor.database import VALID_PRIMARY_MARKETS
-    _mkt_labels = {
-        "US_only": "US_only — 米国のみ販売 (商品価格に関税包含)",
-        "mixed_global": "mixed_global — 米国+他国 混在",
-        "global_only": "global_only — 米国以外",
-        "unknown": "unknown — 未判定",
-    }
-    _mkt_opts = list(VALID_PRIMARY_MARKETS)
-    # DB が None の listing は表示上 unknown を default に (書込は dirty 時のみ)。
-    _cur_mkt = (p.get("primary_market") or "unknown")
-    if _cur_mkt not in _mkt_opts:
-        _cur_mkt = "unknown"
-    # dirty-flag (BP / 送料 と同型): submit 値 != 表示初期値 の時のみ DB 保存。
-    # None の listing を無操作で unknown に上書きする stale write を遮断。
-    editing["primary_market_render_initial"] = _cur_mkt
-    editing["primary_market"] = st.selectbox(
-        "区分",
-        options=_mkt_opts,
-        index=_mkt_opts.index(_cur_mkt),
-        format_func=lambda m: _mkt_labels.get(m, m),
-        key=f"pm_primary_market_{eid}",
-        help="Terapeak 365 日 sold 判定 (W110(2))。送料差分式 + DDP 関税の前提区分。"
-             "保存で DB 更新 + 利益再計算 (eBay 送料反映は別途 📤eBay反映)。",
-    )
-
-    # ── 💵 eBay 出品 ──
-    st.markdown(
-        '<div class="pm-section-label">💵 eBay 出品 (📤 eBay 反映で ReviseFixedPriceItem)</div>',
-        unsafe_allow_html=True,
-    )
-    eb1, eb2, eb3 = st.columns(3)
-    with eb1:
-        editing["new_ebay_price"] = st.number_input(
-            "商品価格 (USD)",
-            min_value=0.0,
-            value=float(p.get("current_price") or 0.0) if p.get("current_price") else None,
-            step=1.0, format="%.2f",
-            key=f"pm_ebay_price_{eid}",
-        )
-    with eb2:
-        editing["new_ship_cost"] = st.number_input(
-            "送料 Buyer pays (USD)",
-            min_value=0.0,
-            value=float(p.get("shipping_cost") or 0.0) if p.get("shipping_cost") is not None else None,
-            step=0.5, format="%.2f",
-            key=f"pm_ebay_ship_{eid}",
-            help="1 個目の送料 (ShippingServiceCost)",
-        )
-    with eb3:
-        # W142 根本原因#5(b): 旧実装は value=None ハードコードで +each が
-        # 常時空欄 (ebay_listings に保存列が無かった)。migration v43 の
-        # shipping_additional_cost を表示 source に (Buyer pays L771 と対称)。
-        # W142 Codex-R3 HIGH-2: +each dirty-flag 用 render 初期値 (= DB 列値)。
-        # _apply_to_ebay は「submit 値 != この初期値」の時のみ user が
-        # +each を実操作したとみなす。BP の Codex#1 bp_render_initial_id と
-        # 同型 = 表示中 DB 値を「変更」と誤認し stale を実 eBay に上書き
-        # する経路を遮断 (金銭直結、Phase2 実 eBay 真実原則を守る)。
-        _add_init = (float(p.get("shipping_additional_cost"))
-                     if p.get("shipping_additional_cost") is not None
-                     else None)
-        editing["add_render_initial"] = _add_init
-        editing["new_ship_additional"] = st.number_input(
-            "送料 +each (USD)",
-            min_value=0.0,
-            value=_add_init,
-            step=0.5, format="%.2f",
-            key=f"pm_ebay_ship_add_{eid}",
-            help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)。"
-                 "DB保存値表示。実 eBay との一致は 📤eBay反映 で verify。",
-        )
-    # W142 (B): 送料は DB保存値表示 + 乖離マーカー (expander 展開で
-    # GetItem を呼ばない = 速度/quota 優先、真値は 📤eBay反映 で verify /
-    # BP ↻ で取得)。鮮度を fetched_at で正直開示 (R-11/HIGH-1 の精神)。
-    _ship_fa = _fetched_jst_label(
-        p.get("shipping_additional_fetched_at") or p.get("last_synced_at")
-    )
-    st.caption(
-        f"💡 送料 (Buyer pays / +each) は **DB保存値**表示 "
-        f"(実 eBay 最終同期: {_ship_fa})。eBay.com で直接変更していると"
-        f"乖離し得ます。真値は 📤eBay反映 時に verify されます。"
-    )
-
-    # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
-    editing["new_bp_id"] = None
-    # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
-    # 由来の現 BP id)。_apply_to_ebay は「submit 値 != この初期値」の時のみ
-    # 「user が selectbox を操作した」とみなし、無操作の stale 初期値が実
-    # eBay へ巻き戻る経路を遮断する (金銭直結)。
-    editing["bp_render_initial_id"] = None
-    if bp_state is not None:
-        pl = bp_state.get("policies")
-        if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
-            ids = [pi.policy_id for pi in pl.policies]
-            opts = [pi.name for pi in pl.policies]
-            cur_id = bp_state.get("id")
-            editing["bp_render_initial_id"] = cur_id
-            cur_idx = ids.index(cur_id) if cur_id in ids else 0
-            sel_i = st.selectbox(
-                "Shipping Policy (BP)",
-                options=list(range(len(ids))),
-                index=cur_idx,
-                format_func=lambda i: opts[i],
-                # Codex#1-fix2 (金銭直結): widget key に **DB 由来 cur_id を
-                # 含める**。Streamlit は key が session_state に在ると
-                # index= を無視し保存値を返す仕様。固定 key だと ↻/同期で
-                # DB BP が A→B に変わっても widget は旧 A を保持 →
-                # bp_render_initial(=fresh B) と new_bp_id(=stale A) が
-                # 食い違い「無操作なのに touched」誤判定 → 実 eBay の B を
-                # stale A へ巻き戻す (DDP buffer 喪失)。key に cur_id を
-                # 織り込むと DB BP 変化時に **別 widget = fresh 初期化**
-                # され dirty-flag 前提 (無操作⟹widget値==render初期値) を
-                # 回復。同一 DB 状態内は key 安定で user の途中選択を保持。
-                key=f"pm_bp_{eid}_{cur_id}",
-                help="変更すると 📤 eBay 反映 で listing の BP を差し替えます",
-            )
-            editing["new_bp_id"] = ids[sel_i]
-            if ids[sel_i] != cur_id:
-                _ov_c = editing.get("new_ship_cost")
-                _ov_a = editing.get("new_ship_additional")
-                _cur = (f"現在 Buyer pays ${float(_ov_c):.2f}"
-                        if _ov_c is not None else "現在 Buyer pays 未設定")
-                if _ov_a is not None:
-                    _cur += f" / +each ${float(_ov_a):.2f}"
-                st.warning(
-                    "⚠️ BP を変更すると送料が**新 BP の default に戻ります**。"
-                    f"({_cur})"
-                )
-                st.caption(
-                    "現在の custom 送料に **DDP 関税 buffer** が含まれる場合、"
-                    "buffer が消え **売主の関税負担 (赤字方向、Section 232 "
-                    "該当品は数百ドル/件)** が発生し得ます。新 BP default 額は "
-                    "BP 適用後 GetItem で判明 (変更前取得不可、eBay 仕様)。"
-                    "変更後に送料を再設定してください。"
-                )
-        else:
-            st.caption(
-                "🚚 Shipping Policy 変更不可: "
-                f"{bp_state.get('error') or '現在 BP / BP 一覧の取得に失敗'}"
-            )
-
-    # ── 💰 仕入価格 + 下限価格 ──
-    st.markdown(
-        '<div class="pm-section-label">💰 仕入価格 + 下限価格</div>',
-        unsafe_allow_html=True,
-    )
-    p1, p2 = st.columns(2)
-    with p1:
-        editing["purchase_yen"] = st.number_input(
-            "仕入価格 (JPY)",
-            min_value=0,
-            value=int(p["purchase_yen"]) if p.get("purchase_yen") else None,
-            step=100, key=f"pm_pyen_{eid}",
-        )
-    with p2:
-        editing["lp_min_price"] = st.number_input(
-            "下限価格 (USD)",
-            min_value=0.0,
-            value=float(p["lp_min_price"]) if p.get("lp_min_price") else None,
-            step=1.0, format="%.2f",
-            key=f"pm_minp_{eid}",
-            help="W183 自動値下げの絶対下限. 未入力なら breakeven が下限.",
-        )
-
-    # ── 📎 listing メモ (W140) ──
+    # ──────────────────────────────────────────────────────────────────────
+    # 📎 listing メモ (W140) — 内容あれば自動展開、空なら折りたたみ
+    # ──────────────────────────────────────────────────────────────────────
     # eBay へは送信せず MonoDeck DB のみ保持。この listing が売れたら発送前に
     # MonoDeck バナー + Discord で警告 (発送/通関の注意点の見落とし防止)。
     # メモは ebay_item_id 紐付 (sku-rules: SKU をキーにしない)。自動再出品
     # (End→Sell similar) では inherit_listing_on_relist が旧→新へ引き継ぐ。
-    st.markdown(
-        '<div class="pm-section-label">📎 listing メモ '
-        '(発送/通関の注意点・売れたら警告)</div>',
-        unsafe_allow_html=True,
-    )
-    editing["note_text"] = st.text_area(
-        "listing メモ",
-        value=get_listing_note(eid) or "",
-        key=f"pm_note_{eid}",
-        max_chars=2000,
-        height=80,
-        help="例: 電池を抜いて発送 / 通関書類に型番XXX明記。eBay には送信"
-             "されません。保存後この listing が売れると MonoDeck と Discord "
-             "に通知。空にして保存でメモ削除。",
-        label_visibility="collapsed",
-    )
+    _note_body = get_listing_note(eid) or ""
+    with st.expander(
+        "📎 発送/通関メモ (売れたら警告)" + (" — 入力あり" if _note_body.strip() else " — 空"),
+        expanded=bool(_note_body.strip()),
+    ):
+        editing["note_text"] = st.text_area(
+            "listing メモ",
+            value=_note_body,
+            key=f"pm_note_{eid}",
+            max_chars=2000,
+            height=80,
+            help="例: 電池を抜いて発送 / 通関書類に型番XXX明記。eBay には送信"
+                 "されません。保存後この listing が売れると MonoDeck と Discord "
+                 "に通知。空にして保存でメモ削除。",
+            label_visibility="collapsed",
+        )
 
     return editing
 
@@ -1431,8 +1467,14 @@ def _render_url_direct_description_section(p: dict) -> None:
                 st.rerun()
 
 
-def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
-    """右列: 在庫監視 + 仕入先候補 + ライバル dataframe."""
+def _render_supplier_section(p: dict, config: dict) -> None:
+    """仕入先 (📊 在庫状態 + 🏪 候補 dataframe). W217-B v2 (2026-06-04) で
+    _render_right_inventory_supplier_rival から分割。
+
+    K2 surgical: 関数本体の中身・呼出ロジック・「🔍 在庫を今すぐ確認」button・
+    仕入先候補採用フロー・dirty-flag は 1 行も変えない (配置移動のみ)。
+    form 外であることを呼出側で維持すること (左列でも form block の外に置く)。
+    """
     eid = p["ebay_item_id"]
 
     # ── 📊 仕入先 在庫状態 ──
@@ -1593,9 +1635,19 @@ def _render_right_inventory_supplier_rival(p: dict, config: dict) -> None:
             key=f"pm_supplier_df_{eid}",
         )
 
-    st.markdown("---")
 
-    # ── 🎯 ライバル dataframe ──
+def _render_rival_section(p: dict, config: dict) -> None:
+    """ライバル集約パネル (🎯 監視 + 登録済 dataframe). W217-B v2 (2026-06-04)
+    で _render_right_inventory_supplier_rival から分割。
+
+    K2 surgical:
+      - _render_rival_watch_section / _render_rival_dataframe の本体は不変
+      - 競合再シード (_pm_seed_comp_session), widget key (pm_comp_{eid}_{idx}),
+        upsert_listing_competitors, set_rival_search_keywords, dirty-flag は
+        1 行も変更しない (空欄全消失事故の機序を回避)
+      - form 外で呼ぶこと (個別 button 即時反応を維持)
+    """
+    _render_rival_watch_section(p, config)
     _render_rival_dataframe(p, config)
 
 
@@ -1661,81 +1713,103 @@ def _render_rival_dataframe(p: dict, config: dict) -> None:
                 "発送目安": handling_str,
                 "最終取得": r["last_priced_at"] or "-",
             })
-        df = pd.DataFrame(df_rows)
-        st.dataframe(
-            df,
-            column_config={
-                "item id": st.column_config.TextColumn("item id", width="small"),
-                "リンク": st.column_config.LinkColumn(
-                    "リンク", display_text="開く", width="small",
-                ),
-                "商品価格": st.column_config.NumberColumn("商品価格", format="$%.2f", width="small"),
-                "送料": st.column_config.NumberColumn("送料", format="$%.2f", width="small"),
-                "合計": st.column_config.NumberColumn("合計", format="$%.2f", width="small"),
-                "発送目安": st.column_config.TextColumn("発送目安", width="small"),
-                "最終取得": st.column_config.TextColumn("最終取得", width="medium"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            key=f"pm_pricing_df_{eid}",
+        # W217-A (2026-06-03): モックアップ準拠で HTML table 化.
+        # 旧 st.dataframe (canvas 描画) は行背景色不可で、最安行を 🥇 絵文字
+        # のみで表現していた。モックの「最安行 緑背景 + 合計緑文字」を満たす
+        # ため、純関数 _render_rival_table_html で HTML <table> を組み立てる。
+        # 既存 _lowest_rival_marker (🥇 prefix 付与) はそのまま流用、テーブル
+        # 側で 🥇 prefix を見て pm-rival-best 行 class を当てる。
+        # リンク列は <a target="_blank">開く</a> で LinkColumn と等価。
+        df_rows = _lowest_rival_marker(df_rows)
+        _rival_table_html = _render_rival_table_html(df_rows)
+        st.markdown(_rival_table_html, unsafe_allow_html=True)
+
+        # W217 (2026-06-03): 自社総額 vs 競合最安 → 競合差 1 行 (採算パネルと
+        # 同じ色ロジック)。競合最安 = ebay_listings.competitor_min_price
+        # (L165 の集計列)、自社総額 = 編集中なら form 値、なければ DB 値
+        # (_hero_effective と同じ source of truth)。
+        _eff_own = _hero_effective(p)
+        _own_total = _eff_own["price"] + _eff_own["ship"]
+        _gap_html = _competitor_gap_line(
+            _own_total, p.get("competitor_min_price"),
         )
+        if _gap_html:
+            st.markdown(_gap_html, unsafe_allow_html=True)
 
-    # ライバル item id 編集 (max 10、横一列 5×2)
-    st.caption("**ライバル item id 編集** (eBay 12-13 桁、空欄で削除)")
     existing_ids = [r["competitor_item_id"] for r in pricing_rows]
-    # ③同型 データ損失修正 (2026-05-18、user 実報告): DB 登録済み競合が
-    # 編集欄に出ず空欄のまま 💾DB保存/📤eBay反映 で全消滅していた。
-    # signature 駆動再シードで根治 (詳細・機序は _pm_seed_comp_session
-    # docstring)。純関数化しテストで本物を検証 (drift 防止)。
-    _pm_seed_comp_session(
-        st.session_state, eid, existing_ids, _MAX_COMPETITORS
-    )
-    comp_inputs: list[str] = []
-    rows_count = (_MAX_COMPETITORS + 4) // 5
-    for r in range(rows_count):
-        cols = st.columns(5)
-        for c in range(5):
-            idx = r * 5 + c
-            if idx >= _MAX_COMPETITORS:
-                break
-            with cols[c]:
-                # value= は渡さない: session_state[key] を唯一の真実源に
-                # (value= と session_state 併用は Streamlit が警告)。③同型。
-                val = st.text_input(
-                    f"#{idx + 1}",
-                    key=f"pm_comp_{eid}_{idx}",
-                    placeholder="(空)",
-                    label_visibility="collapsed",
-                )
-                comp_inputs.append(val.strip())
-    st.session_state[f"pm_comp_list_{eid}"] = [c for c in comp_inputs if c]
 
-    if pricing_rows and st.button(
-        "🔄 ライバル価格 再取得 (Browse API)",
-        key=f"pm_refresh_comp_{eid}", use_container_width=True,
+    # W217 (2026-06-03): ライバル item id 編集グリッドを expander 降格 (誤操作保護).
+    # 編集グリッド (5x2) は upsert_listing_competitors の全置換挙動で、
+    # signature 駆動再シードが正しく動かないと「空欄保存で全消失」事故になる
+    # ため、⚠️ 警告つきで折りたたみ default にして誤操作を防ぐ。
+    # 重要: _pm_seed_comp_session の widget key (pm_comp_{eid}_{idx}) は不変。
+    # expander 本体は折りたたんでも body は毎 rerun 実行されるため (Streamlit
+    # 仕様)、シードと session_state 集計は折りたたみ時も正常動作する。
+    with st.expander(
+        "⚠️ ライバル item id を編集 (空欄=削除・全置換注意)",
+        expanded=False,
     ):
-        with st.spinner("Browse API で価格再取得中..."):
-            try:
-                result = refresh_competitor_pricing(eid, config or {})
-                f, fl = result.get("fetched", 0), result.get("failed", 0)
-                if f == 0 and fl == 0:
-                    st.info("登録ライバルなし")
-                else:
-                    st.success(f"取得成功 {f} / 失敗 {fl}")
-                    st.rerun()
-            except (sqlite3.OperationalError, ValueError, TypeError, KeyError) as e:
-                st.error(f"エラー: {e}")
+        st.caption("**ライバル item id 編集** (eBay 12-13 桁、空欄で削除)")
+        # ③同型 データ損失修正 (2026-05-18、user 実報告): DB 登録済み競合が
+        # 編集欄に出ず空欄のまま 💾DB保存/📤eBay反映 で全消滅していた。
+        # signature 駆動再シードで根治 (詳細・機序は _pm_seed_comp_session
+        # docstring)。純関数化しテストで本物を検証 (drift 防止)。
+        _pm_seed_comp_session(
+            st.session_state, eid, existing_ids, _MAX_COMPETITORS
+        )
+        comp_inputs: list[str] = []
+        rows_count = (_MAX_COMPETITORS + 4) // 5
+        for r in range(rows_count):
+            cols = st.columns(5)
+            for c in range(5):
+                idx = r * 5 + c
+                if idx >= _MAX_COMPETITORS:
+                    break
+                with cols[c]:
+                    # value= は渡さない: session_state[key] を唯一の真実源に
+                    # (value= と session_state 併用は Streamlit が警告)。③同型。
+                    val = st.text_input(
+                        f"#{idx + 1}",
+                        key=f"pm_comp_{eid}_{idx}",
+                        placeholder="(空)",
+                        label_visibility="collapsed",
+                    )
+                    comp_inputs.append(val.strip())
+        st.session_state[f"pm_comp_list_{eid}"] = [c for c in comp_inputs if c]
 
-    # W184「新規発見ライバル alerts」は 2026-05-22 PM の W153 v3
-    # (per-listing 検出) で上位互換となったため非表示化. 旧 new_competitor_alerts
-    # テーブルは our_item_id 紐付け無しでグローバル pending が全 listing に
-    # 混在表示される構造的バグがあった. 関数本体 _render_new_alerts_for_listing
-    # と DB table / helper 群 (get_japan_competitor_alerts /
-    # fetch_alert_shipping_usd / update_alert_action) は dead code として
-    # 残置, 物理削除は別 W で実施.
+    # W217 (2026-06-03): 価格再取得 + CLI 一括候補を共通 expander に格納 (普段非表示).
+    # 「🔄 価格再取得 (Browse API)」と「🆕 CLI 一括候補」は普段見ない情報
+    # (再取得は cron 自動、CLI 候補は初期登録専用) のためまとめて折りたたみ。
+    with st.expander(
+        "🔄 価格再取得 (Browse API) / 🆕 CLI 一括候補 (初期登録用)",
+        expanded=False,
+    ):
+        if pricing_rows and st.button(
+            "🔄 ライバル価格 再取得 (Browse API)",
+            key=f"pm_refresh_comp_{eid}", use_container_width=True,
+        ):
+            with st.spinner("Browse API で価格再取得中..."):
+                try:
+                    result = refresh_competitor_pricing(eid, config or {})
+                    f, fl = result.get("fetched", 0), result.get("failed", 0)
+                    if f == 0 and fl == 0:
+                        st.info("登録ライバルなし")
+                    else:
+                        st.success(f"取得成功 {f} / 失敗 {fl}")
+                        st.rerun()
+                except (sqlite3.OperationalError, ValueError, TypeError, KeyError) as e:
+                    st.error(f"エラー: {e}")
 
-    # CLI 一括検索結果からの候補追加 (初期登録専用、後で削除予定)
-    _render_cli_bulk_candidates(p, existing_ids)
+        # W184「新規発見ライバル alerts」は 2026-05-22 PM の W153 v3
+        # (per-listing 検出) で上位互換となったため非表示化. 旧 new_competitor_alerts
+        # テーブルは our_item_id 紐付け無しでグローバル pending が全 listing に
+        # 混在表示される構造的バグがあった. 関数本体 _render_new_alerts_for_listing
+        # と DB table / helper 群 (get_japan_competitor_alerts /
+        # fetch_alert_shipping_usd / update_alert_action) は dead code として
+        # 残置, 物理削除は別 W で実施.
+
+        # CLI 一括検索結果からの候補追加 (初期登録専用、後で削除予定)
+        _render_cli_bulk_candidates(p, existing_ids)
 
 
 def _render_cli_bulk_candidates(p: dict, registered_ids: list[str]) -> None:
@@ -2320,6 +2394,192 @@ def _build_expander_header(p: dict) -> str:
 
 _W153_UI_COOLDOWN_SEC = 60.0  # H-H: 「今すぐ検索」連打防止
 
+
+# =============================================================================
+# W217 (2026-06-03): 純関数 helpers (unit test 可、Streamlit 非依存)
+# =============================================================================
+
+def _kw_state_badge(eid: str, db_kw: str, session_state) -> str:
+    """ライバル監視「検索ワード」状態バッジ HTML 文字列を返す.
+
+    session_state[`pm_rival_kw_{eid}`] (UI 入力値) と db_kw (DB 保存値) を
+    比較し、3 状態のバッジ HTML を返す (render せず文字列返却 = unit test 可、
+    保存ロジックは読まない・比較のみ).
+
+    状態:
+      - 🟢 cron 反映済 (一致 or UI 未編集) — DB 値が cron に渡る
+      - 🟡 未保存 (UI 編集中で不一致) — 保存ボタンで cron 反映
+      - ⚪ 未設定 (両方空)
+
+    比較は空白 normalize 済の strip 一致で実施 (legacy \n 区切り data の
+    UI 表示時 normalize と整合)。session_state は dict 互換のため plain
+    dict で単体検証可。
+    """
+    import re as _re
+    def _norm(s):
+        return _re.sub(r"\s+", " ", (s or "")).strip()
+    db_norm = _norm(db_kw)
+    ui_key = f"pm_rival_kw_{eid}"
+    if ui_key in session_state:
+        ui_norm = _norm(session_state.get(ui_key) or "")
+        if not db_norm and not ui_norm:
+            return ('<span class="pm-kw-badge pm-kw-badge-idle">'
+                    '⚪ 未設定</span>')
+        if ui_norm == db_norm:
+            return ('<span class="pm-kw-badge pm-kw-badge-ok">'
+                    '🟢 cron 反映済 (保存値=これ)</span>')
+        return ('<span class="pm-kw-badge pm-kw-badge-warn">'
+                '🟡 未保存 (保存で cron 反映)</span>')
+    # UI 未描画 = DB 値そのまま
+    if not db_norm:
+        return ('<span class="pm-kw-badge pm-kw-badge-idle">'
+                '⚪ 未設定</span>')
+    return ('<span class="pm-kw-badge pm-kw-badge-ok">'
+            '🟢 cron 反映済 (保存値=これ)</span>')
+
+
+def _lowest_rival_marker(rows: list) -> list:
+    """合計 (total) 列が最小の行に 🥇 を付与した行リストを返す (純関数).
+
+    - rows: dict のリスト。各 dict は最低限 "合計" key を持つ
+            (NumberColumn 用 float / None)
+    - 戻り値: 同じ shape のリスト。最安行の "item id" key 先頭に "🥇 " を付与
+            (Streamlit dataframe は行背景色不可なので絵文字付与で代替).
+    - None 安全: "合計" が None / 欠損の行は最安対象外、全行 None なら何も付与しない
+    """
+    if not rows:
+        return rows
+    # 合計が数値である行のみ評価
+    valid = [(i, r) for i, r in enumerate(rows)
+             if r.get("合計") is not None]
+    if not valid:
+        return rows
+    min_i, _ = min(valid, key=lambda x: x[1]["合計"])
+    out = []
+    for i, r in enumerate(rows):
+        if i == min_i:
+            new_r = dict(r)
+            iid = str(r.get("item id") or "")
+            if not iid.startswith("🥇"):
+                new_r["item id"] = f"🥇 {iid}"
+            out.append(new_r)
+        else:
+            out.append(r)
+    return out
+
+
+def _competitor_gap_line(total_usd: float, competitor_min) -> str:
+    """自社総額 vs 競合最安 → 競合差の 1 行 HTML を返す (採算パネルと同じ色ロジック).
+
+    - total_usd: 自社 buyer 総額 (商品価格 + 送料)
+    - competitor_min: 競合最安 (None なら空文字列を返す = render しない)
+    - 戻り値: HTML 1 行。自社 > 競合 = 🔴 劣位 (赤背景) / 自社 < 競合 = 🟢 有利
+            (緑背景) / 同 = ⚪ (中立)。
+    色ロジックは _render_hero_metrics の採算パネル (L854-) と同じ.
+    """
+    if competitor_min is None:
+        return ""
+    try:
+        cmin = float(competitor_min)
+    except (TypeError, ValueError):
+        return ""
+    diff = float(total_usd) - cmin
+    if diff > 0:
+        # 自社が高い = 競合劣位
+        cls = "pm-gap-line pm-gap-line-bad"
+        diff_label = f"競合差 +${diff:.2f} 🔴 劣位"
+        diff_color = "#FECACA"  # red-200
+    elif diff < 0:
+        cls = "pm-gap-line pm-gap-line-ok"
+        diff_label = f"競合差 ${diff:.2f} 🟢 有利"
+        diff_color = "#A7F3D0"  # emerald-200
+    else:
+        cls = "pm-gap-line pm-gap-line-eq"
+        diff_label = "競合差 $0.00 ⚪ 同"
+        diff_color = "#E5E7EB"
+    return (
+        f'<div class="{cls}">'
+        f'<span>自社 買い手総額 <b>${total_usd:.2f}</b> '
+        f'vs 競合最安 <b>${cmin:.2f}</b></span>'
+        f'<span style="color:{diff_color};font-weight:700">{diff_label}</span>'
+        f'</div>'
+    )
+
+
+def _render_rival_table_html(rows: list) -> str:
+    """登録済 active ライバル dataframe を HTML table 文字列にする (純関数).
+
+    W217-A (2026-06-03): モックアップに合わせ、st.dataframe (canvas 描画で
+    行背景色不可) を HTML <table> に置換。最安行 (item id が "🥇 " で始まる)
+    に CSS class "pm-rival-best" を付与し、行背景緑 + 合計緑文字。
+
+    入力 rows: dict のリスト (`_lowest_rival_marker` の戻り値と同形)。
+      期待 key: "item id" (🥇 prefix 有りも有り得る) / "リンク" (URL str) /
+      "商品価格" (float|None) / "送料" (float|None) / "合計" (float|None) /
+      "発送目安" (str) / "最終取得" (str)
+    リンク列が空文字列なら "—" 表記。
+
+    Returns:
+        HTML table 文字列 (st.markdown unsafe_allow_html=True で描画)。
+        rows が空なら空文字列を返す。
+    """
+    if not rows:
+        return ""
+    parts: list[str] = []
+    parts.append('<table class="pm-rival-tbl">')
+    parts.append(
+        '<thead><tr>'
+        '<th class="pm-rival-th-left">item id</th>'
+        '<th>価格</th><th>送料</th><th>合計</th>'
+        '<th>発送</th><th>取得</th><th class="pm-rival-th-link">リンク</th>'
+        '</tr></thead><tbody>'
+    )
+    for r in rows:
+        iid = str(r.get("item id") or "")
+        is_best = iid.startswith("🥇")
+        row_cls = "pm-rival-best" if is_best else ""
+        tot = r.get("合計")
+        tot_cls = "pm-rival-tot-ok" if is_best else ""
+        # 価格 / 送料 / 合計 (None safe)
+        def _fmt_usd(v):
+            if v is None:
+                return "—"
+            try:
+                return f"${float(v):.2f}"
+            except (TypeError, ValueError):
+                return "—"
+        price_str = _fmt_usd(r.get("商品価格"))
+        ship_str = _fmt_usd(r.get("送料"))
+        tot_str = _fmt_usd(tot)
+        ship_disp = str(r.get("発送目安") or "—")
+        last_disp = str(r.get("最終取得") or "—")
+        # リンク (st.column_config.LinkColumn 等価: display_text="開く")。
+        link = str(r.get("リンク") or "")
+        if link:
+            link_cell = (
+                f'<a href="{html.escape(link)}" target="_blank" '
+                f'rel="noopener noreferrer">開く</a>'
+            )
+        else:
+            link_cell = "—"
+        # item id は 🥇 prefix を含む可能性あり (HTML escape する必要なし、
+        # 純数字 + 絵文字 prefix のみ。安全側で escape する)。
+        iid_esc = html.escape(iid)
+        parts.append(
+            f'<tr class="{row_cls}">'
+            f'<td class="pm-rival-td-iid">{iid_esc}</td>'
+            f'<td>{price_str}</td>'
+            f'<td>{ship_str}</td>'
+            f'<td class="{tot_cls}">{tot_str}</td>'
+            f'<td>{html.escape(ship_disp)}</td>'
+            f'<td>{html.escape(last_disp)}</td>'
+            f'<td class="pm-rival-td-link">{link_cell}</td>'
+            f'</tr>'
+        )
+    parts.append('</tbody></table>')
+    return "".join(parts)
+
+
 # v51 (2026-05-22 PM): Economy 系発送方法 (中国大量出品 noise) を UI で hide.
 # 業務知識: reference_ebay_economy_shipping_seller_pattern.md
 # 検索段階 skip ではなく UI hide にする = 同 seller の高 value listing は別 listing として残る.
@@ -2449,64 +2709,26 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
         help="空白区切り 1 query (3-8 word). 例: 'maxell MXCP-P100 Cassette Player'. brand + model + 商品カテゴリ語を含めると精度向上.",
     )
 
-    btn_cols = st.columns([1, 1, 1])
-    with btn_cols[0]:
-        if st.button(
-            "🤖 Claude 生成", key=f"pm_rival_gen_{eid}",
-            help="Claude Haiku で 1 best query (3-8 word) を生成 (text_input を上書き)",
-        ):
-            with st.spinner("Haiku 生成中..."):
-                try:
-                    from monitor.rival_keyword_generator import generate_keywords
-                    cand = generate_keywords(title=p.get("title") or "")
-                    # Codex LOW (2026-05-22 PM): set_rival_search_keywords 戻り値を check
-                    # (現状 generator は 3-8 word 保証だが、defense in depth で
-                    # listing 不在 / 将来 stricter guard rejection も検出).
-                    ok = set_rival_search_keywords(eid, cand, mark_generated=True)
-                    if ok:
-                        st.session_state[pending_key] = cand  # M-internal-1
-                        st.success(f"生成 → DB 保存: {cand}")
-                        st.rerun()
-                    else:
-                        st.error(
-                            f"生成 query が DB layer に拒否されました: {cand!r}. "
-                            f"(listing 不在 or 1-word). 手動入力してください."
-                        )
-                except ValueError as e:
-                    st.error(f"Haiku 出力異常: {e}. 手動入力してください")
-                except RuntimeError as e:
-                    st.error(f"API key 未設定: {e}")
-                except Exception as e:
-                    st.error(f"生成失敗: {type(e).__name__}: {e}")
-    with btn_cols[1]:
-        if st.button(
-            "💾 検索ワード保存", key=f"pm_rival_save_{eid}",
-            help="text_input 内容を DB 保存 (空白区切り 2 word 以上必須)",
-        ):
-            # HIGH-1 fix (2026-05-22 PM internal review): 保存経路にも 1-word guard
-            # (今すぐ検索だけでなく cron も同じ DB 値を読むため、保存時点で止める).
-            import re as _re_save
-            q_save = _re_save.sub(r"\s+", " ", new_kw or "").strip()
-            if not q_save:
-                # 空文字 = 削除目的、DB layer の set_rival_search_keywords が許可する
-                ok = set_rival_search_keywords(eid, "", mark_generated=False)
-                if ok:
-                    st.success("検索ワード削除完了 (空文字保存)")
-                else:
-                    st.error("保存失敗 (listing 不在?)")
-            elif len(q_save.split(" ")) < 2:
-                st.warning(
-                    f"検索ワードが短すぎます (1 word では AND 検索が成立せず noise 過多)。"
-                    f"3-8 word 推奨。現在: {q_save!r} — 保存をキャンセルしました"
-                )
-            else:
-                ok = set_rival_search_keywords(eid, new_kw, mark_generated=False)
-                if ok:
-                    st.success("保存完了")
-                else:
-                    st.error("保存失敗 (listing 不在 or DB 拒否)")
+    # W217 (2026-06-03): 検索ワード状態バッジ (🟢 cron 反映済 / 🟡 未保存 / ⚪ 未設定).
+    # DB 値 (= cron が読む値) と UI 編集値の同期状態を色付き badge で明示。
+    # 純関数 _kw_state_badge で render せず文字列を組み立て (unit test 可、
+    # 保存ロジックは読まない・比較のみ)。
+    _db_kw_for_badge = p.get("rival_search_keywords") or ""
+    _badge_html = _kw_state_badge(eid, _db_kw_for_badge, st.session_state)
+    if _badge_html:
+        st.markdown(
+            f'{_badge_html} '
+            f'<span style="font-size:11px;color:var(--pm-text-dim);'
+            f'margin-left:8px">最終生成: {gen_at} UTC</span>',
+            unsafe_allow_html=True,
+        )
 
-    with btn_cols[2]:
+    # W217 (2026-06-03): ボタン優先度を [今すぐ検索 > 保存 > 生成] へ.
+    # モックアップ判断: 主アクション「今すぐ検索」を 2 倍幅 (primary) で
+    # 大きく配置、副次的な「保存」「生成」は等幅で控えめに。各ハンドラ本体は
+    # 不変、widget 順序と column 比率のみ変更 (K2 surgical)。
+    btn_cols = st.columns([2, 1, 1])
+    with btn_cols[0]:
         # H-H: UI cooldown 60s (v2.1 MED-5 admit: single-process limit)
         cooldown_key = f"pm_rival_search_at_{eid}"
         last_at = st.session_state.get(cooldown_key, 0.0)
@@ -2553,6 +2775,62 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
         if on_cooldown:
             remaining = int(_W153_UI_COOLDOWN_SEC - (now_s - last_at))
             st.caption(f"cooldown {remaining}s")
+    with btn_cols[1]:
+        if st.button(
+            "💾 検索ワード保存", key=f"pm_rival_save_{eid}",
+            help="text_input 内容を DB 保存 (空白区切り 2 word 以上必須)",
+        ):
+            # HIGH-1 fix (2026-05-22 PM internal review): 保存経路にも 1-word guard
+            # (今すぐ検索だけでなく cron も同じ DB 値を読むため、保存時点で止める).
+            import re as _re_save
+            q_save = _re_save.sub(r"\s+", " ", new_kw or "").strip()
+            if not q_save:
+                # 空文字 = 削除目的、DB layer の set_rival_search_keywords が許可する
+                ok = set_rival_search_keywords(eid, "", mark_generated=False)
+                if ok:
+                    st.success("検索ワード削除完了 (空文字保存)")
+                else:
+                    st.error("保存失敗 (listing 不在?)")
+            elif len(q_save.split(" ")) < 2:
+                st.warning(
+                    f"検索ワードが短すぎます (1 word では AND 検索が成立せず noise 過多)。"
+                    f"3-8 word 推奨。現在: {q_save!r} — 保存をキャンセルしました"
+                )
+            else:
+                ok = set_rival_search_keywords(eid, new_kw, mark_generated=False)
+                if ok:
+                    st.success("保存完了")
+                else:
+                    st.error("保存失敗 (listing 不在 or DB 拒否)")
+
+    with btn_cols[2]:
+        if st.button(
+            "🤖 Claude 生成", key=f"pm_rival_gen_{eid}",
+            help="Claude Haiku で 1 best query (3-8 word) を生成 (text_input を上書き)",
+        ):
+            with st.spinner("Haiku 生成中..."):
+                try:
+                    from monitor.rival_keyword_generator import generate_keywords
+                    cand = generate_keywords(title=p.get("title") or "")
+                    # Codex LOW (2026-05-22 PM): set_rival_search_keywords 戻り値を check
+                    # (現状 generator は 3-8 word 保証だが、defense in depth で
+                    # listing 不在 / 将来 stricter guard rejection も検出).
+                    ok = set_rival_search_keywords(eid, cand, mark_generated=True)
+                    if ok:
+                        st.session_state[pending_key] = cand  # M-internal-1
+                        st.success(f"生成 → DB 保存: {cand}")
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"生成 query が DB layer に拒否されました: {cand!r}. "
+                            f"(listing 不在 or 1-word). 手動入力してください."
+                        )
+                except ValueError as e:
+                    st.error(f"Haiku 出力異常: {e}. 手動入力してください")
+                except RuntimeError as e:
+                    st.error(f"API key 未設定: {e}")
+                except Exception as e:
+                    st.error(f"生成失敗: {type(e).__name__}: {e}")
 
     # ── ⑥ 検出済 expander (status 3 tab + 件数バッジ L-internal-4) ──
     # v51 (2026-05-22 PM): Economy 系を UI hide + 送料/配達日数表示 + 一括却下.
@@ -2781,8 +3059,10 @@ def _render_one_product(p: dict, config: dict) -> None:
             bump_db_version()
             st.rerun()
 
-        # W153 (2026-05-22): ライバル監視 section (form 外、個別 button 即時反応).
-        _render_rival_watch_section(p, config)
+        # W153 (2026-05-22): ライバル監視 section の呼出位置を移動.
+        # W217-B v2 (2026-06-04 mockup): 2 列構図に再整理。
+        # 左列下段=_render_supplier_section / 右列=_render_rival_section。
+        # form 外・個別 button 即時反応の挙動は移設後も不変。
 
         # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
         # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は
@@ -2802,11 +3082,13 @@ def _render_one_product(p: dict, config: dict) -> None:
         # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
         _render_hero_metrics(p, bp_state=bp_state)
 
-        # ── 2 列 layout: 左 (form 内) / 右 (form 外) ──
+        # ── 2 列 layout: 左 (編集 form + 仕入先) / 右 (ライバル) ──
+        # W217-B v2 (2026-06-04 mockup): 左=編集+仕入先, 右=ライバルのみ。
+        # 配置のみ変更、money-direct ロジック・dirty-flag は不変。
         left, right = st.columns([1, 1], gap="medium")
 
         with left:
-            # 左列: 編集 inputs + submit buttons (rerun 抑制)
+            # 左列上段: 編集 inputs + submit buttons (form 内、rerun 抑制)
             with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
                 editing = _render_left_basic_and_physical(
                     p, config, bp_state=bp_state)
@@ -2829,10 +3111,13 @@ def _render_one_product(p: dict, config: dict) -> None:
                         "💡 利益計算", use_container_width=True,
                         help="DB 保存 + breakeven 再計算",
                     )
+            # 左列下段: 仕入先 (form **外** = 「🔍 在庫を今すぐ確認」など
+            # 個別 button の即時反応を維持)
+            _render_supplier_section(p, config)
 
         with right:
-            # 右列 (form 外): dataframes + action button 群
-            _render_right_inventory_supplier_rival(p, config)
+            # 右列 (form 外): ライバル監視 + 登録済 dataframe
+            _render_rival_section(p, config)
 
         # ── form 外: submit 結果処理 ──
         if save_db or save_ebay or calc_be:
@@ -3775,6 +4060,151 @@ def render_product_management(config: dict) -> None:
         /* === Caption / 小さい text もはっきり === */
         [data-testid="stCaptionContainer"],
         small {
+            color: var(--pm-text-dim) !important;
+        }
+
+        /* === W217 (2026-06-03): money-direct 編集枠 強調 === */
+        /* 既存 --pm-warning (amber) / --pm-bg-card2 を流用 (新変数を作らない / K1).
+           モックアップの border-left + bg + radius を踏襲し、money 系入力
+           (商品価格 / 自動値下げ下限 / 送料 / 区分 / 仕入価格 / BP) を
+           「誤操作注意」として視覚的に隔離。属性 (SKU/寸法/メモ) と段差をつける。 */
+        .pm-edit-money {
+            border-left: 4px solid var(--pm-warning);
+            background: var(--pm-bg-card2);
+            border-radius: 8px;
+            padding: 12px 13px;
+            margin-bottom: 12px;
+        }
+        .pm-money-head {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--pm-warning);
+            letter-spacing: 0.03em;
+            margin-bottom: 9px;
+        }
+
+        /* === W217: ライバル監視 状態バッジ === */
+        .pm-kw-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 9px;
+            border-radius: 20px;
+            margin-top: 4px;
+        }
+        .pm-kw-badge-ok {
+            background: rgba(16, 185, 129, 0.22);
+            color: #A7F3D0;
+            border: 1px solid #34D399;
+        }
+        .pm-kw-badge-warn {
+            background: rgba(245, 158, 11, 0.22);
+            color: #FDE68A;
+            border: 1px solid #FBBF24;
+        }
+        .pm-kw-badge-idle {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--pm-text-dim);
+            border: 1px solid var(--pm-border);
+        }
+
+        /* === W217: 競合差 1 行 (採算パネルと同じ色ロジック) === */
+        .pm-gap-line {
+            margin-top: 10px;
+            font-size: 12px;
+            padding: 7px 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pm-gap-line-bad {
+            background: rgba(239, 68, 68, 0.18);
+        }
+        .pm-gap-line-ok {
+            background: rgba(16, 185, 129, 0.18);
+        }
+        .pm-gap-line-eq {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* === W217-A: ライバル登録済 HTML table (モック準拠、最安行緑背景) === */
+        .pm-rival-tbl {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin: 4px 0 0 0;
+            color: var(--pm-text, #e6e9ee);
+        }
+        .pm-rival-tbl th {
+            text-align: right;
+            color: var(--pm-text-dim);
+            font-weight: 600;
+            font-size: 10.5px;
+            padding: 5px 7px;
+            border-bottom: 1px solid var(--pm-border-strong);
+        }
+        .pm-rival-tbl th.pm-rival-th-left {
+            text-align: left;
+        }
+        .pm-rival-tbl th.pm-rival-th-link {
+            text-align: center;
+            width: 50px;
+        }
+        .pm-rival-tbl td {
+            padding: 6px 7px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .pm-rival-tbl td.pm-rival-td-iid {
+            text-align: left;
+            font-family: var(--f-mono, monospace);
+        }
+        .pm-rival-tbl td.pm-rival-td-link {
+            text-align: center;
+        }
+        .pm-rival-tbl td.pm-rival-td-link a {
+            color: var(--pm-info);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .pm-rival-tbl td.pm-rival-td-link a:hover {
+            text-decoration: underline;
+        }
+        /* 最安行: 緑背景 + 合計緑文字 (モックの tr.best と .tot-ok 相当) */
+        .pm-rival-tbl tr.pm-rival-best td {
+            background: rgba(16, 185, 129, 0.13);
+        }
+        .pm-rival-tbl td.pm-rival-tot-ok {
+            color: var(--pm-success);
+            font-weight: 700;
+        }
+
+        /* === W217-A: 金額枠 (st.container(border=True, key="pm_money_box_*")) === */
+        /* Streamlit 1.36+ で st.container(key=K) は内側 div に
+           class="st-key-K" を付与する (border=True は 1.29+)。これを selector
+           で掴んで amber 左ラインを適用する。border=True で既存 box 枠が出る
+           ため、border-left を強い amber に上書きするだけでモック「💰金額枠」
+           を再現できる。requirements.txt pin = streamlit>=1.56.0。 */
+        div[class*="st-key-pm_money_box_"] {
+            border-left: 4px solid var(--pm-warning) !important;
+            background: var(--pm-bg-card2) !important;
+            border-radius: 8px !important;
+        }
+        /* 金額枠内の number_input / selectbox 高さをコンパクト化 (モック準拠) */
+        div[class*="st-key-pm_money_box_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-pm_money_box_"] [data-testid="stTextInput"] input {
+            padding: 5px 8px !important;
+            font-size: 1em !important;
+        }
+        div[class*="st-key-pm_money_box_"] [data-testid="stNumberInput"] label,
+        div[class*="st-key-pm_money_box_"] [data-testid="stSelectbox"] label,
+        div[class*="st-key-pm_money_box_"] [data-testid="stTextInput"] label {
+            font-size: 0.78em !important;
+            margin-bottom: 2px !important;
             color: var(--pm-text-dim) !important;
         }
         </style>""",

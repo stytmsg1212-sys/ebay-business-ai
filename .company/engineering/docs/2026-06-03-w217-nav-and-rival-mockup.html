@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W217 上部ナビ(Codex設計) + ライバル集約 モックアップ</title>
+<style>
+  :root{
+    --bg:#15181e; --card:#1e222b; --card2:#262b35; --line:#333a45;
+    --txt:#e6e9ee; --muted:#8a93a0; --muted2:#6b7280;
+    --ok:#3ddc84; --okbg:rgba(61,220,132,.13);
+    --warn:#f0b429; --warnbg:rgba(240,180,41,.13);
+    --bad:#f06f6f; --badbg:rgba(240,111,111,.13);
+    --money:#e9a13b; --accent:#6ea8fe; --accentbg:rgba(110,168,254,.14);
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--txt);font-family:"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+       margin:0;padding:0;line-height:1.5;font-size:14px}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 16px 30px}
+  h1{font-size:18px;margin:18px 0 4px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+
+  /* ===== 上部ナビ (Codex 設計: segmented categories + pages) ===== */
+  .topnav{position:sticky;top:0;z-index:50;background:rgba(20,22,26,.96);backdrop-filter:blur(6px);
+          border-bottom:1px solid var(--line);padding:8px 16px 10px;margin-bottom:14px}
+  .topnav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{font-family:monospace;font-size:13px;font-weight:600;letter-spacing:3px;color:var(--txt);white-space:nowrap}
+  /* category segmented control */
+  .seg{display:inline-flex;background:#11141a;border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+  .seg button{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;
+              padding:6px 13px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:var(--accentbg);color:var(--txt);box-shadow:inset 0 0 0 1px rgba(110,168,254,.55)}
+  /* pages row (selected category only) */
+  .pages{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;max-width:1200px;margin-left:auto;margin-right:auto}
+  .pages button{border:1px solid var(--line);background:#1d222b;color:#c8ced8;font-size:13px;font-weight:500;
+                padding:8px 14px;border-radius:8px;cursor:pointer;min-height:38px}
+  .pages button:hover{background:#252b36;border-color:#3a4352;color:#fff}
+  .pages button.on{background:var(--accentbg);color:#fff;border-color:rgba(110,168,254,.65);box-shadow:inset 3px 0 0 var(--accent)}
+
+  .note{font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 13px;margin:0 0 16px}
+
+  /* ===== ライバル集約パネル ===== */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+  .ptitle{font-size:13px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .ptitle .pill{margin-left:auto;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--okbg);color:var(--ok);border:1px solid rgba(61,220,132,.35)}
+  .sub-h{font-size:11px;color:var(--muted);font-weight:600;margin:14px 0 7px;padding-bottom:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+  .sub-h:first-of-type{margin-top:0}
+  .fld label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+  .fld .inp{background:#11141a;border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:13px}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;margin-top:6px}
+  .badge.ok{background:var(--okbg);color:var(--ok)}
+  .btnrow{display:grid;gap:8px;margin-top:11px;grid-template-columns:2fr 1fr 1fr}
+  .btn{border:1px solid var(--line);border-radius:7px;padding:8px;text-align:center;font-size:12px;font-weight:600;background:#222732;color:var(--txt)}
+  .btn.primary{background:#c0392b;border-color:#c0392b;color:#fff}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  th{text-align:right;color:var(--muted);font-weight:600;font-size:10.5px;padding:5px 7px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:6px 7px;border-bottom:1px solid #23272f}
+  tr.best td{background:var(--okbg)}
+  .tot-ok{color:var(--ok);font-weight:700}
+  .gapline{margin-top:10px;font-size:12px;padding:7px 10px;background:var(--badbg);border-radius:6px;display:flex;justify-content:space-between}
+  .gapline .bad{color:var(--bad);font-weight:700}
+  .fold{border:1px dashed var(--line);border-radius:7px;padding:9px 11px;margin-top:10px;color:var(--muted);font-size:12px;display:flex;gap:8px;background:#181c23}
+  .fold.warn{border-color:rgba(240,180,41,.4);color:var(--warn)}
+</style>
+</head>
+<body>
+
+<!-- ===== 上部ナビ (Codex 設計) ===== -->
+<div class="topnav">
+  <div class="topnav-inner">
+    <span class="brand">◯ MONO DECK</span>
+    <div class="seg">
+      <button class="on">★ 毎日</button>
+      <button>⚲ リサーチ</button>
+      <button>⏺ 出品・関連</button>
+      <button>⛭ 設定・ops</button>
+    </div>
+  </div>
+  <div class="pages">
+    <button class="on">DASHBOARD</button>
+    <button>商品管理</button>
+    <button>在庫監視</button>
+    <button>仕入先候補</button>
+    <button>入荷確認</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>W217 改善案 — ① 上部ナビ(Codex設計) ＋ ② ライバル集約</h1>
+  <div class="sub">上=ナビ（★毎日 を選択中の表示例）／下=商品管理の右列「ライバル」を1パネルに集約</div>
+
+  <div class="note">
+    <b>① 上部ナビ（Codex/GPT-5.5 設計）</b>: カテゴリは <b>セグメント切替</b>（★毎日／⚲リサーチ／⏺出品・関連／⛭設定・ops）。
+    選択中カテゴリの<b>ページだけ</b>を下段に表示 → 21項目を詰め込まず広々。「⚲リサーチ」を押せばリサーチ系5つだけ、
+    「⛭設定・ops」を押せば設定系7つだけが出る。選択中ページは青い左ライン強調。
+  </div>
+
+  <!-- ② ライバル集約パネル -->
+  <div class="panel">
+    <div class="ptitle">🎯 ライバル（監視 + 登録済を集約）<span class="pill">✓ 監視ON</span></div>
+
+    <!-- 監視設定 (旧ライバル監視 W153) -->
+    <div class="sub-h">🔍 監視設定</div>
+    <div class="fld"><label>検索ワード（cronが毎日この語で巡回）</label>
+      <div class="inp">maxell MXCP-P100 Cassette Player</div></div>
+    <div><span class="badge ok">🟢 cron反映済（保存値=これ）</span> <span style="font-size:11px;color:var(--muted)">最終生成 6/2 14:00</span></div>
+    <div class="btnrow">
+      <div class="btn primary">🔍 今すぐ検索</div>
+      <div class="btn">💾 保存</div>
+      <div class="btn">🤖 生成</div>
+    </div>
+
+    <!-- 登録済 (旧ライバル登録済 active) -->
+    <div class="sub-h">📋 登録済ライバル（active）</div>
+    <table>
+      <thead><tr><th>item id</th><th>価格</th><th>送料</th><th>合計</th><th>発送</th><th>取得</th></tr></thead>
+      <tbody>
+        <tr class="best"><td>🥇 3357…1241</td><td>$78</td><td>$22</td><td class="tot-ok">$100</td><td>3日後</td><td>6/2</td></tr>
+        <tr><td>2956…0470</td><td>$95</td><td>$25</td><td>$120</td><td>5日後</td><td>6/2</td></tr>
+        <tr><td>3361…8842</td><td>$110</td><td>$28</td><td>$138</td><td>7日後</td><td>6/1</td></tr>
+      </tbody>
+    </table>
+    <div class="gapline">
+      <span>自社 買い手総額 <b>$140.44</b> vs 競合最安 <b>$100</b></span>
+      <span class="bad">競合差 +$40.44 🔴 劣位</span>
+    </div>
+
+    <div class="fold warn">▶ ⚠️ ライバル item id を編集（空欄=削除・全置換注意）</div>
+    <div class="fold">▶ 📋 検出済 RIVAL（新規候補）／🔄 価格再取得</div>
+  </div>
+
+  <div class="note">
+    <b>② ライバル集約</b>: 旧「ライバル監視」と「ライバル(登録済 active)」を <b>1つの🎯ライバルパネル</b>にまとめ、
+    上から「🔍監視設定 → 📋登録済 → 競合差 → 編集(折りたたみ) → 検出済(折りたたみ)」の自然な流れに。
+    モックアップ（最初にお見せした版）の意図に合わせました。
+  </div>
+</div>
+</body>
+</html>

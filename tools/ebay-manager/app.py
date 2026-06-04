@@ -180,6 +180,88 @@ def _cd_competitors_grouped(db_version: int, ids: tuple):
 st.set_page_config(page_title="MONO Deck", page_icon="◯", layout="wide")
 apply_custom_styling()
 
+# ── W217-C (2026-06-04 mockup): グローバル密度 CSS ──
+# 全体的にボタン・入力枠が大きく余白過多 → 密度を上げて視線移動を減らす。
+# K2 surgical: padding / min-height / gap / font-size のみ調整。色・font-family
+# は apply_dark_paper_theme に従う。過度に詰めて崩さないため控えめ。
+# Streamlit 1.56 の data-testid を基準に上書き。
+st.markdown(
+    """<style>
+    /* ── Buttons (st.button / st.download_button / form_submit_button) ──
+       既定 padding 0.5rem 1rem (≈ 8 16px) min-height ~38-42px を詰める。
+       ナビボタン ([class*="st-key-_w134_navbtn_"]) は独自 padding 持つので影響なし
+       (より具体的なセレクタが優先)。 */
+    [data-testid="stButton"] > button,
+    [data-testid="stDownloadButton"] > button,
+    [data-testid="stFormSubmitButton"] > button {
+        min-height: 34px !important;
+        padding: 5px 12px !important;
+        font-size: 13px !important;
+        line-height: 1.3 !important;
+    }
+    /* ── Text / Number / Selectbox / Textarea inputs ── */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTimeInput"] input,
+    [data-testid="stSelectbox"] div[role="combobox"],
+    [data-testid="stMultiSelect"] div[role="combobox"] {
+        min-height: 34px !important;
+        padding-top: 5px !important;
+        padding-bottom: 5px !important;
+        font-size: 13px !important;
+    }
+    [data-testid="stTextArea"] textarea {
+        font-size: 13px !important;
+        line-height: 1.4 !important;
+        padding: 6px 9px !important;
+    }
+    /* widget label 余白詰め */
+    [data-testid="stWidgetLabel"] {
+        margin-bottom: 2px !important;
+    }
+    [data-testid="stWidgetLabel"] p {
+        font-size: 12px !important;
+        line-height: 1.35 !important;
+    }
+    /* ── Vertical block gap (要素間余白) ──
+       既定 1rem を詰めて密度向上。ただし極端に詰めると見出しが食い込むので
+       控えめ (0.55rem ≈ 9px)。 */
+    [data-testid="stVerticalBlock"] {
+        gap: 0.55rem !important;
+    }
+    /* ── Block container padding ── */
+    .main .block-container {
+        padding-top: 0.6rem !important;
+    }
+    /* ── Metric / Caption / Subheader 余白詰め ── */
+    [data-testid="stMetric"] {
+        padding: 4px 8px !important;
+    }
+    [data-testid="stMetricLabel"] p {
+        font-size: 11px !important;
+    }
+    [data-testid="stCaptionContainer"],
+    .stCaption {
+        font-size: 11.5px !important;
+        margin-top: 1px !important;
+        margin-bottom: 1px !important;
+    }
+    /* ── Expander header 詰め ── */
+    [data-testid="stExpander"] details > summary {
+        padding: 6px 10px !important;
+        font-size: 13px !important;
+    }
+    /* ── Checkbox / Radio 余白 ── */
+    [data-testid="stCheckbox"] label,
+    [data-testid="stRadio"] label {
+        font-size: 13px !important;
+        line-height: 1.35 !important;
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
+
 # Helper functions
 def rank_to_stars(rank: str) -> str:
     """Convert rank (S-E) to star representation"""
@@ -192,6 +274,56 @@ def rank_to_stars(rank: str) -> str:
         'E': "-",
     }
     return rank_stars.get(rank, "???")
+
+
+def _render_inventory_summary_html(
+    total_risk: int,
+    oos_n: int,
+    pnf_n: int,
+    last_checked_str: str,
+) -> str:
+    """在庫監視「要対応」サブタブの先頭サマリバー (純関数, 表示のみ).
+
+    K1 Simplicity: DB アクセス禁止 (呼出側で集計済の値を受ける).
+    K2 Surgical: 表示のみ、money-direct logic に一切触れない.
+
+    引数:
+      total_risk: 要対応件数 (oos_n + pnf_n)。0 → 緑、>0 → 赤.
+      oos_n: 在庫切れ件数.
+      pnf_n: ページ消失件数.
+      last_checked_str: 最終チェック時刻表示文字列 (例 "2026-06-04 02:35:21 (3 時間前)" や
+                        "データなし"). 呼出側で format 済を受ける.
+
+    戻り値: <div> 1 枚の HTML 文字列 (`st.markdown(..., unsafe_allow_html=True)` 用).
+    """
+    if total_risk == 0:
+        bar_color = "rgba(118,255,3,0.85)"     # 緑系
+        bar_bg = "rgba(118,255,3,0.06)"
+        count_color = "rgba(118,255,3,0.95)"
+        head_label = "要対応"
+    else:
+        bar_color = "rgba(255,90,90,0.85)"     # 赤系
+        bar_bg = "rgba(255,90,90,0.06)"
+        count_color = "rgba(255,140,140,0.95)"
+        head_label = "要対応"
+
+    last_checked_safe = html.escape(last_checked_str or "")
+
+    return (
+        f'<div style="border-left:4px solid {bar_color};background:{bar_bg};'
+        f'padding:10px 14px;margin-bottom:10px;border-radius:4px;">'
+        f'<div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;">'
+        f'<span style="font-size:13px;color:rgba(220,235,250,0.65);">{head_label}</span>'
+        f'<span style="font-size:26px;font-weight:700;color:{count_color};">{int(total_risk)}件</span>'
+        f'<span style="font-size:12px;color:rgba(220,235,250,0.7);">'
+        f'在庫切れ <b>{int(oos_n)}</b> ・ ページ消失 <b>{int(pnf_n)}</b>'
+        f'</span>'
+        f'<span style="font-size:12px;color:rgba(180,220,255,0.55);margin-left:auto;">'
+        f'最終チェック: {last_checked_safe}'
+        f'</span>'
+        f'</div></div>'
+    )
+
 
 init_db()
 # W9: description_templates に v4 テンプレを初期投入 (既に何かあれば no-op)
@@ -270,28 +402,175 @@ if "_w134_sel" not in st.session_state:
     _legacy = st.session_state.get("_w134_nav")
     st.session_state._w134_sel = _legacy if _legacy in _W134_TABS else "DASHBOARD"
 
-with st.sidebar:
-    st.markdown(
-        '<div style="font-family:var(--f-mono,monospace);font-size:14px;'
-        'font-weight:600;letter-spacing:3px;margin:4px 0 12px 0;">'
-        '◯ &nbsp; MONO &nbsp; DECK</div>',
-        unsafe_allow_html=True,
-    )
-    for _grp_label, _grp_pages in _W134_GROUPS.items():
-        st.markdown(
-            f'<div style="font-size:11px;color:#a89d8a;letter-spacing:2px;'
-            f'margin:10px 0 4px 0;">{_grp_label}</div>',
-            unsafe_allow_html=True,
-        )
-        for _page in _grp_pages:
+# ── W217-A v2 (2026-06-04): 上部ナビを 2 段式 (segmented_control + pages) に刷新 ──
+# 旧 (v1): 4 カテゴリ × 全 21 ページを 4 列の極小ボタンで一度に並べ視認困難。
+# 新 (v2): 上段=カテゴリ segmented_control / 下段=選択カテゴリのページのみ
+# 横並びボタン (最大 4 列/行)。Codex/GPT-5.5 設計。
+#
+# state/routing は **完全不変**:
+#   - state key: st.session_state._w134_sel (選択中ページ名)
+#   - widget key: _w134_navbtn_<page>
+#   - 各 if _w134_sel == "..." 分岐 21 箇所は 1 行も変更しない。
+# K2 surgical: ナビ表示制御だけを変える。下流 routing 差分ゼロ。
+#
+# カテゴリ表示同期: _w134_sel が属するカテゴリを「現在表示中カテゴリ」の
+# 初期値にして、別カテゴリページに jump した後の rerun でもページが消えない
+# ようにする (segmented_control 値は _w217a_cat_view state key で保持)。
+st.markdown(
+    """<style>
+    /* W217-A v2: 上部ナビ container を sticky + コンパクト化 (keyed container) */
+    .st-key-_w217a_navbar {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(20, 22, 26, 0.95);
+        backdrop-filter: blur(6px);
+        margin: -8px -16px 8px -16px;
+        padding: 6px 16px 8px 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    /* Streamlit 新レイアウトは各要素を stLayoutWrapper で個別ラップする。
+       その wrapper は nav の高さしかなく sticky の移動余地が無いため、
+       display:contents で wrapper をボックスツリーから外し、nav の実効親を
+       全高の stVerticalBlock にして sticky を機能させる (2026-06-04)。 */
+    [data-testid="stLayoutWrapper"]:has(> .st-key-_w217a_navbar) {
+        display: contents;
+    }
+    /* nav ブランド名 */
+    .w217a-topnav-brand {
+        font-family: var(--f-mono, monospace);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 3px;
+        color: #e6e9ee;
+        margin: 0 12px 4px 0;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    /* segmented_control 自身は Streamlit の default style を流用 (上段カテゴリ)。
+       W217-B v2 (2026-06-04): mockup .seg button (padding:6px 13px / font 12.5px)
+       準拠で Streamlit segmented_control を引き締め。 */
+    .st-key-_w134_nav_group button {
+        padding: 6px 13px !important;
+        font-size: 12.5px !important;
+        font-weight: 600 !important;
+        min-height: 30px !important;
+    }
+    /* 下段ページボタン: mockup .pages button (padding:8px 14px / font 13px /
+       min-height 38px) 準拠。rounded + hover + 選択中は青 accent 左ライン。 */
+    [class*="st-key-_w134_navbtn_"] button {
+        padding: 8px 14px !important;
+        font-size: 13px !important;
+        line-height: 1.25 !important;
+        min-height: 38px !important;
+        margin: 0 !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        background: #1d222b !important;
+        color: #c8ced8 !important;
+        font-weight: 500 !important;
+        transition: background 0.12s, border-color 0.12s, color 0.12s !important;
+    }
+    [class*="st-key-_w134_navbtn_"] button:hover {
+        background: #252b36 !important;
+        border-color: #3a4352 !important;
+        color: #fff !important;
+    }
+    /* 選択中 (type="primary") = 青 accent 左ライン強調 */
+    [class*="st-key-_w134_navbtn_"] button[kind="primary"] {
+        background: rgba(110, 168, 254, 0.14) !important;
+        color: #fff !important;
+        border-color: rgba(110, 168, 254, 0.65) !important;
+        box-shadow: inset 3px 0 0 #6ea8fe !important;
+    }
+    /* nav 内の columns 間隔をつめる */
+    [data-testid="stHorizontalBlock"]:has([class*="st-key-_w134_navbtn_"]) {
+        gap: 6px !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+    }
+    /* W217-B v2: ページボタン列を「内容幅」にして左詰めパック (mockup .pages の
+       flex auto-width 準拠)。等幅列で全幅ボタンになるのを防ぎ、サンプルの
+       コンパクトな pill 並びにする。 */
+    [data-testid="stColumn"]:has([class*="st-key-_w134_navbtn_"]) {
+        width: auto !important;
+        flex: 0 0 auto !important;
+        min-width: 0 !important;
+    }
+    /* メインコンテナ余白を広げる (sidebar 撤去で横幅を活かす) */
+    .main .block-container {
+        padding-top: 1rem;
+        max-width: 1600px;
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
+
+# page → 所属カテゴリ の逆引き map (下記 view-sync で使う)
+_W134_PAGE_TO_GROUP = {
+    page: grp for grp, pages in _W134_GROUPS.items() for page in pages
+}
+
+# 現在表示中カテゴリ = _w134_sel の属するカテゴリを default に。
+# user が segmented_control で別カテゴリへ切り替えると _w217a_cat_view が
+# それを記憶し、_w134_sel と別カテゴリでも下段にそのカテゴリのページが出る。
+_W217A_VIEW_KEY = "_w217a_cat_view"
+_sel_group = _W134_PAGE_TO_GROUP.get(
+    st.session_state._w134_sel, next(iter(_W134_GROUPS))
+)
+if _W217A_VIEW_KEY not in st.session_state:
+    st.session_state[_W217A_VIEW_KEY] = _sel_group
+# 選択中ページが現在表示カテゴリに含まれていなければ自動同期
+# (例: routing で _w134_sel が外部から変更された場合)。
+if st.session_state._w134_sel not in _W134_GROUPS.get(
+    st.session_state[_W217A_VIEW_KEY], []
+):
+    st.session_state[_W217A_VIEW_KEY] = _sel_group
+
+_navbar = st.container(key="_w217a_navbar")
+_navbar.markdown(
+    '<div class="w217a-topnav-brand">◯ &nbsp; MONO &nbsp; DECK</div>',
+    unsafe_allow_html=True,
+)
+
+# ── 上段: カテゴリ segmented_control ──
+# segmented_control は Streamlit 1.56+ で安定提供。本 project は requirements.txt
+# で streamlit>=1.56.0 を pin 済み。version 不在時の fallback は不要 (要件未満)。
+_cat_labels = list(_W134_GROUPS.keys())
+_cur_view = st.session_state[_W217A_VIEW_KEY]
+_picked_cat = _navbar.segmented_control(
+    "カテゴリ",
+    options=_cat_labels,
+    default=_cur_view if _cur_view in _cat_labels else _cat_labels[0],
+    key="_w134_nav_group",
+    label_visibility="collapsed",
+)
+# 戻り値 None ガード (Streamlit が segmented_control で None を返す状況に備え)
+if _picked_cat and _picked_cat != _cur_view:
+    st.session_state[_W217A_VIEW_KEY] = _picked_cat
+    _cur_view = _picked_cat
+
+# ── 下段: 選択カテゴリのページのみ横並びボタン (最大 4 列/行) ──
+_pages_in_view = _W134_GROUPS.get(_cur_view, [])
+_PAGE_COLS_PER_ROW = 4
+for _row_start in range(0, len(_pages_in_view), _PAGE_COLS_PER_ROW):
+    _row_pages = _pages_in_view[_row_start:_row_start + _PAGE_COLS_PER_ROW]
+    # 端数行も同じ列幅で揃える (右端が伸びるのを防ぐ)
+    _cols = _navbar.columns(_PAGE_COLS_PER_ROW, gap="small")
+    for _i_btn, _page in enumerate(_row_pages):
+        with _cols[_i_btn]:
             _is_active = (st.session_state._w134_sel == _page)
             if st.button(
                 _page,
                 key=f"_w134_navbtn_{_page}",
-                use_container_width=True,
+                use_container_width=False,
                 type=("primary" if _is_active else "secondary"),
             ):
                 st.session_state._w134_sel = _page
+                # ページ jump 後は新 _w134_sel の所属カテゴリへ view も同期
+                st.session_state[_W217A_VIEW_KEY] = _W134_PAGE_TO_GROUP.get(
+                    _page, _cur_view
+                )
                 st.rerun()
 
 _w134_sel = st.session_state._w134_sel
@@ -2083,10 +2362,8 @@ if _w134_sel == "在庫監視":
         pnf_items = risk_data["page_not_found"]
         total_risk = len(oos_items) + len(pnf_items)
 
-        st.subheader(f"要対応商品: {total_risk}件")
-        st.caption("eBay在庫が1以上あるのに、仕入先で購入できない商品です。出品停止または仕入先変更を検討してください。")
-
-        # ── 最終実行日時 (source_last_checked の最大値) ──
+        # 最終チェック時刻を文字列化 (旧 caption 群の format 維持、表示先のみサマリバーへ集約)
+        _last_checked_str = "データなし"
         try:
             from datetime import datetime as _dt_inv
             with get_conn() as _inv_conn:
@@ -2112,13 +2389,22 @@ if _w134_sel == "在庫監視":
                         _ago = f"{int(_delta.total_seconds()/3600)} 時間前"
                     else:
                         _ago = f"{int(_delta.total_seconds()/86400)} 日前"
-                    st.caption(f"**最終チェック**: {_dt_inv_obj.strftime('%Y-%m-%d %H:%M:%S')} ({_ago})")
+                    _last_checked_str = f"{_dt_inv_obj.strftime('%Y-%m-%d %H:%M:%S')} ({_ago})"
                 else:
-                    st.caption(f"**最終チェック**: {_last_inv}")
-            else:
-                st.caption("**最終チェック**: データなし")
+                    _last_checked_str = str(_last_inv)
         except Exception as _e:
             logger.warning("在庫リスク 最終チェック表示 失敗: %s", _e)
+
+        st.markdown(
+            _render_inventory_summary_html(
+                total_risk=total_risk,
+                oos_n=len(oos_items),
+                pnf_n=len(pnf_items),
+                last_checked_str=_last_checked_str,
+            ),
+            unsafe_allow_html=True,
+        )
+        st.caption("eBay在庫が1以上あるのに、仕入先で購入できない商品です。出品停止または仕入先変更を検討してください。")
 
         # W100 (2026-05-06): ヤフオク再出品待ち listing 表示
         # ヤフオクで落札者なし終了 → 1日後の再出品慣行を待ってからリサーチする listing
@@ -2137,33 +2423,32 @@ if _w134_sel == "在庫監視":
                     "ORDER BY yahoo_grace_until ASC"
                 ).fetchall()
             if _w100_rows:
-                st.markdown(f"#### 再出品待ち ({len(_w100_rows)}件)")
-                st.caption(
-                    "ヤフオクで **落札者なし終了** → 1日後の再出品慣行を待ってからリサーチします。"
-                    "ヤフオク終了 + 24時間後に supplier_sweep が自動的にリサーチを実行します。"
-                )
-                for _r_w100 in _w100_rows[:20]:
-                    _until_raw = _r_w100["yahoo_grace_until"]
-                    try:
-                        _until_dt = _dt_w100.fromisoformat(_until_raw)
-                        if _until_dt.tzinfo is None:
-                            _until_dt = _until_dt.replace(tzinfo=_tz_w100.utc)
-                        _now_w100 = _dt_w100.now(_tz_w100.utc)
-                        _remain_w100 = _until_dt - _now_w100
-                        _h_w100 = int(_remain_w100.total_seconds() // 3600)
-                        _m_w100 = int((_remain_w100.total_seconds() % 3600) // 60)
-                        _jst_w100 = _until_dt.astimezone(_tz_w100(_td_w100(hours=9))).strftime("%m/%d %H:%M JST")
-                    except (ValueError, TypeError):
-                        _jst_w100 = _until_raw
-                        _h_w100, _m_w100 = "?", "?"
-                    _title_w100 = (_r_w100["title"] or "")[:50]
+                with st.expander(f"再出品待ち {len(_w100_rows)}件", expanded=(len(_w100_rows) > 0)):
                     st.caption(
-                        f"- {_title_w100} (`{_r_w100['ebay_item_id']}`) "
-                        f"残り {_h_w100}時間{_m_w100}分 / リサーチ予定: {_jst_w100}"
+                        "ヤフオクで **落札者なし終了** → 1日後の再出品慣行を待ってからリサーチします。"
+                        "ヤフオク終了 + 24時間後に supplier_sweep が自動的にリサーチを実行します。"
                     )
-                if len(_w100_rows) > 20:
-                    st.caption(f"...他 {len(_w100_rows) - 20} 件")
-                st.divider()
+                    for _r_w100 in _w100_rows[:20]:
+                        _until_raw = _r_w100["yahoo_grace_until"]
+                        try:
+                            _until_dt = _dt_w100.fromisoformat(_until_raw)
+                            if _until_dt.tzinfo is None:
+                                _until_dt = _until_dt.replace(tzinfo=_tz_w100.utc)
+                            _now_w100 = _dt_w100.now(_tz_w100.utc)
+                            _remain_w100 = _until_dt - _now_w100
+                            _h_w100 = int(_remain_w100.total_seconds() // 3600)
+                            _m_w100 = int((_remain_w100.total_seconds() % 3600) // 60)
+                            _jst_w100 = _until_dt.astimezone(_tz_w100(_td_w100(hours=9))).strftime("%m/%d %H:%M JST")
+                        except (ValueError, TypeError):
+                            _jst_w100 = _until_raw
+                            _h_w100, _m_w100 = "?", "?"
+                        _title_w100 = (_r_w100["title"] or "")[:50]
+                        st.caption(
+                            f"- {_title_w100} (`{_r_w100['ebay_item_id']}`) "
+                            f"残り {_h_w100}時間{_m_w100}分 / リサーチ予定: {_jst_w100}"
+                        )
+                    if len(_w100_rows) > 20:
+                        st.caption(f"...他 {len(_w100_rows) - 20} 件")
         except Exception:
             pass  # 表示失敗は UI 破綻させない (Q0: scheduler.log の [grace] 行で観測可能)
 
@@ -2522,10 +2807,17 @@ if _w134_sel == "在庫監視":
                                 )
                             # W100: grace UI 廃止
                             _grace_html = ""
+                            # score を pill バッジ化 (背景=_score_color、文字=濃色).
+                            # 表示のみ変更、_score_color 算出ロジック (≥80/≥60/未満) は不変.
+                            _score_badge = (
+                                f'<span style="display:inline-block;background:{_score_color};'
+                                f'color:#0e1626;font-weight:700;font-size:11px;padding:1px 8px;'
+                                f'border-radius:10px;line-height:1.5;">score {_score}</span>'
+                            )
                             st.markdown(
                                 f'<div style="border-left:2px solid {_score_color};padding:4px 10px;'
                                 f'background:rgba(80,120,180,0.03);font-size:12px;">'
-                                f'<span style="color:{_score_color};font-weight:700;">score={_score}</span>'
+                                f'{_score_badge}'
                                 f' <span style="color:rgba(180,220,255,0.5);font-size:10px;">[{_type_label}]</span>'
                                 f' <span style="color:rgba(180,220,255,0.6);">{html.escape(_plat)}</span>'
                                 f' <span style="color:rgba(255,255,255,0.85);">{html.escape(_ttl)}</span>'
@@ -4987,13 +5279,10 @@ if _w134_sel == "仕入先候補":
     _th_alt0 = int(_th_settings.get("supplier_alt0_score_threshold", 60))
     _th_alt1 = int(_th_settings.get("supplier_alt1_score_threshold", 20))
 
-    with st.container(border=True):
-        st.markdown(
-            '<div style="font-family:var(--f-mono,monospace);font-size:11px;'
-            'letter-spacing:2px;color:#d8cdb5;text-transform:uppercase;">'
-            'T H R E S H O L D &nbsp; C O N T R O L</div>',
-            unsafe_allow_html=True,
-        )
+    # W212-supplier-card-cleanup (2026-06-04): 普段触らない探索閾値を expander
+    # で折りたたみ降格 (表示・配置のみ、内部 slider / 保存 / 再計算 ロジックは
+    # 不変. money-direct な DELETE FROM supplier_candidates は中で従来通り発火).
+    with st.expander("探索スコア閾値の調整 (THRESHOLD CONTROL)", expanded=False):
         st.caption(
             "新規探索時のスコア下限。緩和 (低い) → 候補多く拾う / "
             "厳格 (高い) → 精度重視。変更後「再計算実行」で既存候補にも適用。"
@@ -5223,16 +5512,17 @@ if _w134_sel == "仕入先候補":
         # (rerun 後に消えないよう session_state 経由で持ち越し).
         for _lvl, _msg in st.session_state.pop(f"_sup_msgs_{cid}", []):
             getattr(st, _lvl, st.info)(_msg)
+        # W212-supplier-card-cleanup: カード描画用のうち後続採用フローでも参照
+        # する 5 変数のみ残置. platform / price / reasoning / alt_note /
+        # junk_flag / profitable はヘルパ内へ移送 (K2 Surgical).
         score = row.get("match_score") or 0
-        platform = row.get("source_platform") or "?"
-        price = row.get("candidate_price_jpy")
         title = row.get("candidate_title") or "(タイトル未取得)"
         url = row.get("candidate_url", "")
-        reasoning = row.get("match_reasoning") or ""
-        alt_note = row.get("alt_listing_note") or ""
-        junk_flag = row.get("junk_likely_untested") or 0
-        profitable = row.get("profitable") or 0
         status = row.get("status", "pending")
+        # W212-supplier-card-cleanup (2026-06-04): カード HTML を純関数ヘルパに分離.
+        # caller 側で DB / settings 依存値 (eBay USD price / JPY 換算 / profit_jpy /
+        # parent_status) を取得してヘルパに渡す. ヘルパは DB アクセスを行わない.
+        # money-direct path (採用/不採用/ReviseItem) は不変、純粋に表示整理のみ.
         # 2026-04-26: eBay 出品額 (USD + JPY 換算) 表示。user 要望対応.
         # ebay_item_id から ebay_listings.current_price を引いて利益判断と並列表示.
         _ebay_price_usd: Optional[float] = None
@@ -5247,127 +5537,18 @@ if _w134_sel == "仕入先候補":
         _ebay_price_jpy = (
             int(_ebay_price_usd * _fx) if _ebay_price_usd else None
         )
-        _ebay_price_html = (
-            f'<span style="color:#76ff03;font-weight:600;margin-right:8px;">'
-            f'eBay出品 ${_ebay_price_usd:.2f}'
-            + (f' (¥{_ebay_price_jpy:,})' if _ebay_price_jpy else '')
-            + '</span>'
-        ) if _ebay_price_usd else (
-            '<span style="color:rgba(200,200,200,0.5);font-size:11px;margin-right:8px;">eBay出品: 未取得</span>'
-        )
-        # 2026-04-25: 評価モデル badge. Opus/Sonnet/Haiku を短縮表示.
-        # 動画 KB を踏まえた深い判断は Opus, 廉価 bulk は Haiku の使い分けを可視化.
-        _eval_model = (row.get("eval_model") or "")
-        if "opus" in _eval_model.lower():
-            _model_label = "Opus 4.7"
-            _model_color = "rgba(196,128,255,0.95)"  # purple = 深い思考
-            _model_bg = "rgba(140,80,200,0.18)"
-        elif "sonnet" in _eval_model.lower():
-            _model_label = "Sonnet 4.6"
-            _model_color = "rgba(120,200,255,0.95)"
-            _model_bg = "rgba(80,140,200,0.15)"
-        elif "haiku" in _eval_model.lower():
-            _model_label = "Haiku 4.5"
-            _model_color = "rgba(180,220,200,0.85)"
-            _model_bg = "rgba(100,140,120,0.15)"
-        else:
-            _model_label = ""
-            _model_color = ""
-            _model_bg = ""
-        _model_html = (
-            f'<span style="color:{_model_color};font-size:11px;font-weight:600;'
-            f'background:{_model_bg};padding:1px 8px;border-radius:3px;'
-            f'letter-spacing:0.3px;">{_model_label}</span>'
-        ) if _model_label else ""
-
-        # 利益額 + 利益率 (Interstellar amber 色) の inline 文字列を構築
-        _profit_jpy = row.get("profit_jpy")
-        _profit_html = ""
-        if _profit_jpy is not None and price and price > 0:
-            _rate = (_profit_jpy / price) * 100
-            _profit_html = (
-                f'<span style="color:#ffa84a;font-weight:600;margin-left:8px;">'
-                f'利益 +¥{int(_profit_jpy):,} ({_rate:.0f}%)</span>'
-            )
-        elif row.get("alt_listing_possible"):
-            _profit_html = (
-                '<span style="color:#a89d8a;font-size:11px;margin-left:8px;">'
-                '利益: (別SKU出品機会・計算対象外)</span>'
-            )
-
-        badge_color = "rgba(118,255,3,0.8)" if profitable else "rgba(255,160,64,0.8)"
-        score_color = (
-            "rgba(118,255,3,0.9)" if score >= 80
-            else "rgba(240,200,48,0.9)" if score >= 60
-            else "rgba(255,128,128,0.9)"
-        )
-
-        # カード内に判定理由・別出品提案・ジャンク警告を全て内包（視覚的統一）
-        reasoning_html = (
-            f'<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(120,180,255,0.2);'
-            f'font-size:11px;color:rgba(200,220,255,0.7);">判定: {reasoning}</div>'
-        ) if reasoning else ""
-        alt_html = (
-            f'<div style="margin-top:4px;font-size:11px;color:rgba(180,255,200,0.75);">'
-            f'別出品提案: {alt_note}</div>'
-        ) if alt_note else ""
-        junk_html = (
-            f'<div style="margin-top:4px;font-size:11px;color:rgba(255,200,120,0.85);">'
-            f'注意: 「動作未確認ジャンク」の可能性あり（仕入先は動作確認していないだけの可能性）</div>'
-        ) if junk_flag else ""
-
-        # 仕入先復活警告: 親 listing の source_status='在庫有' なら警告表示
-        # (accepted 候補の場合は特に注意喚起。ユーザー手動判断を促す)
+        # 仕入先復活警告判定用の親 status (caller 側で N+1 回避済の dict から取得)
         _parent_ss = _sup_parent_status.get(row.get("ebay_item_id") or "", "")
-        _recovered_html = ""
-        if _parent_ss == "在庫有":
-            _rec_msg = (
-                "仕入先が在庫有に復活しています — この候補は不要の可能性。"
-                + ("採用済ですが反映前に「不採用」に戻すことを推奨。" if status == "accepted" else "")
-            )
-            _recovered_html = (
-                f'<div style="margin-top:6px;padding:6px 10px;'
-                f'background:rgba(240,180,48,0.08);border-left:3px solid rgba(240,180,48,0.85);'
-                f'font-size:11px;color:rgba(255,220,120,0.95);">'
-                f'仕入先復活: {_rec_msg}</div>'
-            )
 
-        _ebay_iid = row.get("ebay_item_id") or ""
-        # クリック1回で全選択→Ctrl+C でコピーできるよう user-select:all を指定
-        _ebay_id_html = (
-            f'<span style="color:rgba(180,220,255,0.8);font-size:11px;">ItemID: '
-            f'<code style="background:rgba(120,200,255,0.12);padding:1px 6px;'
-            f'border-radius:3px;color:rgba(200,230,255,0.95);'
-            f'user-select:all;cursor:text;">{_ebay_iid}</code></span>'
-        ) if _ebay_iid else (
-            '<span style="color:rgba(200,200,200,0.5);font-size:11px;">ItemID: -</span>'
-        )
-
+        from tabs._supplier_card_html import render_supplier_card_html
         st.markdown(
-            f'<div style="border:1px solid rgba(120,180,255,0.3);'
-            f'border-radius:6px;padding:10px 14px;margin:6px 0;'
-            f'background:rgba(20,30,50,0.4);">'
-            f'<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;'
-            f'font-family:Share Tech Mono,monospace;">'
-            f'<span style="color:{score_color};font-size:20px;font-weight:700;">{score}</span>'
-            f'<span style="color:rgba(180,220,255,0.8);font-size:12px;">SKU: {row.get("sku","?")}</span>'
-            f'{_ebay_id_html}'
-            f'<span style="color:rgba(180,220,255,0.6);font-size:11px;">{platform}</span>'
-            f'<span style="color:{badge_color};font-size:11px;">'
-            f'{"採算OK" if profitable else "採算注意"}</span>'
-            f'<span style="color:rgba(200,200,200,0.6);font-size:11px;">'
-            f'状態: {_STATUS_JA.get(status, status)}</span>'
-            f'{_model_html}'
-            f'</div>'
-            f'<div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,0.9);">{title}</div>'
-            f'<div style="margin-top:4px;font-size:12px;color:#d8cdb5;">'
-            f'{_ebay_price_html}'
-            f'<span>仕入 ¥{f"{price:,}" if price else "?"}</span>'
-            f'{_profit_html}'
-            f'　<a href="{url}" target="_blank" style="color:rgba(120,200,255,0.9);">商品ページを開く</a>'
-            f'</div>'
-            f'{reasoning_html}{alt_html}{junk_html}{_recovered_html}'
-            f'</div>',
+            render_supplier_card_html(
+                row=row,
+                ebay_price_usd=_ebay_price_usd,
+                ebay_price_jpy=_ebay_price_jpy,
+                profit_jpy=row.get("profit_jpy"),
+                parent_status=_parent_ss,
+            ),
             unsafe_allow_html=True,
         )
 
