@@ -161,6 +161,32 @@ _CUSTOMS_SUBJECT_HINTS = (
     'awb', 'trk', 'tracking', '輸入', '税関', '情報提出', '情報のご提供',
 )
 
+# 2026-06-03 W216 (user 要望「関税は利益直結なので最新情報を漏らさず毎朝チェック」):
+# 関税ポリシー/率変更/追加請求/還付の "ニュース" を専用カテゴリ tariff_policy で検知。
+# OrangeConnex (SpeedPAK DDP の推定関税を原産国別 flat 率で課金する主体) を sender に
+# 追加するのが核心 — 旧 query には OC が無く、率変更通知/IEEPA還付/追加請求が
+# **そもそも取得されていなかった** (2026-06-03 Gmail 全数調査で発覚)。
+# customs_request (FedEx の per-shipment 通関情報要求) とは別物 = 利益計算 (settings.duty_rate,
+# W215) の改定根拠となる制度/請求ニュース。subject 一致で判定 (該当メールは件名が明確)。
+_TARIFF_POLICY_SENDER_HINTS = (
+    'orangeconnex.com',
+    'orangeconnex.jp',
+    'fedex.com',
+    'ebay.com',
+    'ebay.co.jp',
+)
+
+_TARIFF_POLICY_SUBJECT_HINTS = (
+    # 率変更/制度 (policy)
+    '関税率', '推定関税', '関税政策', '率変更', '関税・税金', '予測関税',
+    'duty rate', 'duty & tax', 'duty&tax', 'duty and tax', 'デミニマス', 'de minimis',
+    'ieepa', 'section 122', 'section 232', '第122条', '第232条', 'reciprocal',
+    # 追加請求/精算 (billing/true-up)
+    '追加請求', '追徴', '未払い関税', '輸入手数料', '関税その他税金',
+    # 還付/返金 (refund)
+    '関税還付', '関税返金', '関税の返金', 'tariff refund', 'duty refund',
+)
+
 
 def _categorize_email(subject: str, sender: str) -> str:
     """メールをカテゴリ分けする.
@@ -178,6 +204,18 @@ def _categorize_email(subject: str, sender: str) -> str:
     """
     subject_lower = subject.lower()
     sender_lower = (sender or '').lower()
+
+    # 2026-06-03 W216: tariff_policy 判定 (関税の制度/率変更/追加請求/還付ニュース)。
+    # customs_request (per-shipment 通関情報要求) より先に判定 = FedEx 等で sender が
+    # 重複しても policy/billing/refund 系を優先カテゴリ化。sender AND subject の AND
+    # で false positive 防止 (eBay の売上/出品通知等を誤分類しない)。利益計算 (W215
+    # settings.duty_rate) 改定の根拠ソースとして毎朝 Discord で掲出する。
+    if any(h in sender_lower for h in _TARIFF_POLICY_SENDER_HINTS):
+        if any(
+            h.lower() in subject_lower if h.isascii() else h in subject
+            for h in _TARIFF_POLICY_SUBJECT_HINTS
+        ):
+            return 'tariff_policy'
 
     # 2026-05-21 Phase A: customs_request 判定 (FedEx/UPS/DHL の通関情報要求)。
     # supplier_purchase より先に判定 (両者で sender 重複しないが、関税系を
@@ -361,6 +399,10 @@ def extract_ebay_emails(service):
             # task_customs_check pipeline と並行取込 (Gmail API 読取は副作用なし)。
             ' OR from:fedex.com OR from:ups.com OR from:dhl.com'
             ' OR from:aramex.com'
+            # 2026-06-03 W216: OrangeConnex 追加。OC は SpeedPAK DDP の推定関税を
+            # 原産国別 flat 率で課金する主体で、率変更通知/IEEPA還付/追加請求の
+            # 一次情報源。旧 query に不在 = これらが未取得だった (利益直結の漏れ)。
+            ' OR from:orangeconnex.com OR from:orangeconnex.jp'
             ')'
         )
         # maxResults を 300 に増 (eBay 200 + 仕入 ~100 想定、超過は 14 日内に再収束)

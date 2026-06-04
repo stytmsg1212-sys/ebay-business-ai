@@ -682,7 +682,7 @@ def execute_daily_tasks(config, scheduled_hour=None):
     # ──────────────────────────────────────
     # Discord 通知: 全タスク結果のレポート送信
     # ──────────────────────────────────────
-    _send_discord_notifications(config, results)
+    _send_discord_notifications(config, results, is_morning=is_morning)
 
     logger.info("=" * 60)
     logger.info(f"【定時実行完了】 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -691,7 +691,63 @@ def execute_daily_tasks(config, scheduled_hour=None):
     return results
 
 
-def _send_discord_notifications(config, results):
+def _get_recent_tariff_emails(hours: int = 26) -> list:
+    """W216: 直近 hours 時間に取得した tariff_policy メールを返す (毎朝 Discord 掲出用)。
+
+    emails.fetched_at は Python datetime.now() bind = JST naive (sqlite-timezone rule の
+    例外カラム)。よって cutoff も Python の JST で算出して bind し、TZ ずれを避ける
+    (SQL datetime('now') = UTC との混在禁止)。判定は rule ベースの `category` のみで
+    行う (claude_summarizer の category enum に tariff_policy は無く category_ai は
+    供給され得ないため、OR 条件にしても空振り = dead 条件になる. code-review HIGH-1)。
+    """
+    from datetime import timedelta
+    from monitor.database import get_conn
+    cutoff = (datetime.now() - timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT subject, sender, COALESCE(NULLIF(summary_ja,''), '') AS summary_ja,
+                      COALESCE(NULLIF(priority_ai,''), '') AS priority_ai, fetched_at
+               FROM emails
+               WHERE category = 'tariff_policy'
+                 AND fetched_at >= ?
+               ORDER BY fetched_at DESC""",
+            (cutoff,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _send_tariff_digest(notifier) -> None:
+    """W216: 関税ポリシー/率変更/追加請求/還付メールの毎朝ダイジェストを Discord 掲出。
+
+    関税は利益計算 (settings.duty_rate, W215) に直結するため、最新情報を漏らさず
+    user に毎朝届ける (user 要望 2026-06-03)。該当メール 0 件なら何も送らない
+    (no-news = no-noise)。Q0: 取りこぼし防止が目的なので送信失敗は warning ログに残す。
+    """
+    try:
+        emails = _get_recent_tariff_emails(hours=26)
+        if not emails:
+            return
+        lines = []
+        for em in emails[:10]:
+            subj = (em.get('subject') or '').strip()[:90]
+            summ = (em.get('summary_ja') or '').strip()[:120]
+            pri = (em.get('priority_ai') or '').strip()
+            tag = f"[{pri}] " if pri else ''
+            lines.append(f"• {tag}{subj}" + (f"\n　└ {summ}" if summ else ''))
+        more = f"\n…他 {len(emails) - 10} 件" if len(emails) > 10 else ''
+        embed = {
+            "title": f"🛃 関税アップデート {len(emails)}件 (率変更/追加請求/還付)",
+            "description": "\n".join(lines) + more,
+            "color": 0xE67E22,
+            "footer": {"text": "利益計算 duty_rate に直結 — 率変更なら settings.us_duty を見直し (W215/W216)"},
+        }
+        notifier.send_message("🛃 **関税アップデート** (毎朝チェック)", embed=embed)
+        logger.info(f"W216 関税ダイジェスト送信: {len(emails)}件")
+    except Exception as e:
+        logger.warning(f"W216 関税ダイジェスト送信エラー: {e}")
+
+
+def _send_discord_notifications(config, results, is_morning: bool = False):
     """全タスク結果をDiscordに通知"""
     webhook_url = config.get('discord', {}).get('webhook_url')
     if not webhook_url:
@@ -703,6 +759,10 @@ def _send_discord_notifications(config, results):
 
         # 1. デイリーレポート（全タスクのステータスサマリー）
         notifier.send_daily_report(results)
+
+        # 1b. W216 関税アップデート ダイジェスト (毎朝のみ、利益直結ニュースの取りこぼし防止)
+        if is_morning:
+            _send_tariff_digest(notifier)
 
         # 2. 在庫切れアラート（あれば個別通知）
         inv_alert = results.get('inventory_alert', {})
