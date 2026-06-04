@@ -1786,5 +1786,15 @@
     "priority": "高",
     "created": "2026-06-04",
     "completed": "2026-06-04"
+  },
+  {
+    "id": 293,
+    "tag": "W221",
+    "title": "MonoDeck 体感速度改善 (Tier1: 商品管理 st.fragment化 + 閉商品skip + 一覧テーブル化)",
+    "description": "2026-06-04 user「各処理が遅い、サクサクに」。Claude+Codex(gpt-5.5)協働診断: 主因は商品管理タブが st.fragment 未使用=1商品操作で表示中25商品が全再描画。アプリ化(wrap)は速度無意味と結論、現Streamlitのまま改善。Tier1: (1)1商品renderを@st.fragment化(form内包、widget key商品ID固定、fragment外はfull rerun) (2)閉expanderの重処理skip(開いた商品だけprofit/BP/rival計算) (3)一覧テーブル中心化+詳細は開時のみ (4)profit cache強化(ttl撤廃→db_version連動) (5)画像lazy。Phase0で実測(full rerun/1件/25件render時間)→各段Q1実測比較。money-direct UI=code-reviewer HIGH=0+Codex。Tier2(多ページ化)は速度効果限定的=保守性目的で後回し。設計: .company/engineering/docs/2026-06-04-monodeck-performance-improvement.md",
+    "status": "着手中",
+    "priority": "高",
+    "created": "2026-06-04",
+    "completed": null
   }
 ]

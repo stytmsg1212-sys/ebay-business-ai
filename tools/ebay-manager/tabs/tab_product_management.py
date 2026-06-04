@@ -3140,21 +3140,30 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
 # =============================================================================
 
 def _render_one_product(p: dict, config: dict) -> None:
-    """1 商品 expander + 2 列 layout + st.form (rerun 抑制) + 3 submit buttons.
+    """1 商品アコーディオン (トグルボタン + if is_open) + 2 列 layout + st.form + 3 submit.
 
     UI 改修 (2026-05-11 v3):
       - 編集 inputs は `st.form` で囲み、submit まで rerun が走らない (user 入力中の画面暗化解消)
       - submit button 3 種: 💾 DB保存 / 📤 DB + eBay 反映 / 💡 利益計算 (breakeven 再計算)
-      - 保存後の expander 状態維持: session_state['pm_keep_open_eid'] で次回 expanded=True
+    W221 (2026-06-04 perf): 旧 `st.expander` をトグルボタン + `if is_open:` に置換。
+      閉じた商品は body (入れ子 expander 含む) を描画せず = 25商品 228 expander →
+      開いた 1 商品分のみ (tab 描画 4.5s→1.0s)。単一 open は pm_keep_open_eid で管理
+      (トグルが set/clear、保存後も submit handler が同 state を維持)。
     """
     eid = p["ebay_item_id"]
     header = _build_expander_header(p)
 
-    # 保存後 expander 開き続けるための state (1 回 render で消費)
+    # W221 (2026-06-04 perf): アコーディオン化。閉じた商品は body を描画せず
+    # トグルボタンのみ = 25商品で 228 expander → 開いた 1 商品分のみに激減
+    # (tab 描画 ~4.5s の主因 = 閉商品も入れ子 expander 9個を全描画していた)。
+    # 単一 open (既存 pm_keep_open_eid を再利用、保存後も handler が維持)。
     keep_open_eid = st.session_state.get("pm_keep_open_eid")
     is_open = (eid == keep_open_eid)
-
-    with st.expander(header, expanded=is_open):
+    if st.button(("🔽 " if is_open else "▶️ ") + header,
+                 key=f"pm_toggle_{eid}", use_container_width=True):
+        st.session_state["pm_keep_open_eid"] = None if is_open else eid
+        st.rerun()
+    if is_open:
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
 
