@@ -1,12 +1,26 @@
 {
-  "checked_at": "2026-05-29T18:33:15.849901",
-  "total_items": 372,
+  "checked_at": "2026-06-04T03:01:02.701255",
+  "total_items": 374,
   "stats": {
-    "in_stock": 114,
-    "out_of_stock": 148,
-    "page_not_found": 84,
-    "error": 26,
+    "in_stock": 104,
+    "out_of_stock": 147,
+    "page_not_found": 96,
+    "error": 27,
     "by_source": {
+      "Unknown": {
+        "total": 7,
+        "in_stock": 2,
+        "out_of_stock": 0,
+        "page_not_found": 2,
+        "error": 3
+      },
+      "ヤフオク": {
+        "total": 215,
+        "in_stock": 65,
+        "out_of_stock": 111,
+        "page_not_found": 29,
+        "error": 10
+      },
       "Paypayフリマ": {
         "total": 23,
         "in_stock": 7,
@@ -14,25 +28,11 @@
         "page_not_found": 2,
         "error": 14
       },
-      "ヤフオク": {
-        "total": 215,
-        "in_stock": 74,
-        "out_of_stock": 112,
-        "page_not_found": 19,
-        "error": 10
-      },
-      "Unknown": {
-        "total": 4,
-        "in_stock": 1,
-        "out_of_stock": 0,
-        "page_not_found": 2,
-        "error": 1
-      },
       "メルカリ": {
         "total": 78,
-        "in_stock": 13,
+        "in_stock": 11,
         "out_of_stock": 33,
-        "page_not_found": 32,
+        "page_not_found": 34,
         "error": 0
       },
       "FA機器": {
@@ -84,13 +84,6 @@
         "page_not_found": 0,
         "error": 0
       },
-      "HILTI": {
-        "total": 1,
-        "in_stock": 0,
-        "out_of_stock": 0,
-        "page_not_found": 0,
-        "error": 1
-      },
       "ヨドバシカメラ": {
         "total": 2,
         "in_stock": 0,
@@ -122,6 +115,20 @@
     }
   },
   "by_source": {
+    "Unknown": {
+      "total": 7,
+      "in_stock": 2,
+      "out_of_stock": 0,
+      "page_not_found": 2,
+      "error": 3
+    },
+    "ヤフオク": {
+      "total": 215,
+      "in_stock": 65,
+      "out_of_stock": 111,
+      "page_not_found": 29,
+      "error": 10
+    },
     "Paypayフリマ": {
       "total": 23,
       "in_stock": 7,
@@ -129,25 +136,11 @@
       "page_not_found": 2,
       "error": 14
     },
-    "ヤフオク": {
-      "total": 215,
-      "in_stock": 74,
-      "out_of_stock": 112,
-      "page_not_found": 19,
-      "error": 10
-    },
-    "Unknown": {
-      "total": 4,
-      "in_stock": 1,
-      "out_of_stock": 0,
-      "page_not_found": 2,
-      "error": 1
-    },
     "メルカリ": {
       "total": 78,
-      "in_stock": 13,
+      "in_stock": 11,
       "out_of_stock": 33,
-      "page_not_found": 32,
+      "page_not_found": 34,
       "error": 0
     },
     "FA機器": {
@@ -199,13 +192,6 @@
       "page_not_found": 0,
       "error": 0
     },
-    "HILTI": {
-      "total": 1,
-      "in_stock": 0,
-      "out_of_stock": 0,
-      "page_not_found": 0,
-      "error": 1
-    },
     "ヨドバシカメラ": {
       "total": 2,
       "in_stock": 0,
@@ -237,22 +223,40 @@
   },
   "results": [
     {
+      "id": 398,
+      "ebay_id": "357197894617",
+      "sku": "https://x.gd/ABoJq",
+      "source": "Unknown",
+      "url": "https://www.orientalmotor-shop.jp/products/BMUD200-A/",
+      "status": "在庫有",
+      "checked_at": "2026-06-04T03:01:02.682169"
+    },
+    {
+      "id": 397,
+      "ebay_id": "358626622802",
+      "sku": "ebayyh_1230103087",
+      "source": "ヤフオク",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/1230103087",
+      "status": "在庫有",
+      "checked_at": "2026-06-04T03:01:02.682169"
+    },
+    {
       "id": 396,
-      "ebay_id": "358603616486",
+      "ebay_id": "358614835035",
       "sku": "ebayPF_z606464462",
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z606464462",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 395,
-      "ebay_id": "358602711505",
-      "sku": "ebayyh_s1225648285",
-      "source": "ヤフオク",
-      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1225648285",
-      "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "ebay_id": "358614834860",
+      "sku": "stock",
+      "source": "Unknown",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1225794123",
+      "status": "エラー",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 394,
@@ -261,7 +265,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206136150",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 393,
@@ -270,7 +274,7 @@
       "source": "Unknown",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1182819686",
       "status": "エラー",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 392,
@@ -279,7 +283,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1142812576",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 391,
@@ -288,7 +292,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1230032691",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 389,
@@ -297,7 +301,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/98284261994",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 390,
@@ -306,16 +310,16 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/25388296384",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 381,
       "ebay_id": "358505733121",
-      "sku": "ebayyh_k1227898900",
+      "sku": "ebayyh_q1231115282",
       "source": "ヤフオク",
-      "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1227898900",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1231115282",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 382,
@@ -324,7 +328,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1131393975",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 383,
@@ -333,7 +337,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1184076046",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 384,
@@ -342,7 +346,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1225543857",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 385,
@@ -351,7 +355,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/48362173678",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 386,
@@ -360,7 +364,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/47286070750",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 387,
@@ -369,7 +373,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/52607382626",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 388,
@@ -378,7 +382,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1227590760",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 374,
@@ -387,7 +391,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1228374237",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 375,
@@ -396,7 +400,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1199306851",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 376,
@@ -405,7 +409,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1231031424",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 377,
@@ -414,16 +418,16 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1228787885",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 378,
       "ebay_id": "358286504951",
-      "sku": "ebayyh_t1229961982",
+      "sku": "ebayyh_s1231452049",
       "source": "ヤフオク",
-      "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1229961982",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1231452049",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 379,
@@ -432,7 +436,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225242029",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 380,
@@ -441,7 +445,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206224270",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 373,
@@ -449,8 +453,8 @@
       "sku": "ebayyh_p1227904185",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1227904185",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "在庫無",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 372,
@@ -459,7 +463,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1170771780",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 371,
@@ -468,7 +472,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1226005644",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 370,
@@ -477,7 +481,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1223941198",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 369,
@@ -485,8 +489,8 @@
       "sku": "ebayyh_l1165131409",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1165131409",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 368,
@@ -495,7 +499,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1225404921",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 367,
@@ -504,7 +508,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1228500320",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 366,
@@ -513,7 +517,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z591889606",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 365,
@@ -522,7 +526,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1224420721",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 364,
@@ -531,7 +535,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1227485162",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 363,
@@ -540,7 +544,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1219328156",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 271,
@@ -549,7 +553,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1224194132",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 272,
@@ -558,7 +562,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1213147655",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 273,
@@ -567,7 +571,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1129385732",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 274,
@@ -576,7 +580,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1220316348",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 275,
@@ -585,7 +589,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1219355319",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 276,
@@ -594,7 +598,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1215919606",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 277,
@@ -603,7 +607,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1191338305",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 279,
@@ -612,7 +616,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1201778700",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 280,
@@ -621,7 +625,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1222392954",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 281,
@@ -630,7 +634,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1153924917",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 283,
@@ -639,7 +643,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1115547614",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 284,
@@ -648,7 +652,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1194741917",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 285,
@@ -657,7 +661,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1152721169",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 286,
@@ -666,7 +670,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1203018330",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 287,
@@ -675,7 +679,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1219471843",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 288,
@@ -684,7 +688,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1189574309",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 289,
@@ -693,7 +697,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1185437016",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 290,
@@ -702,7 +706,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1187065410",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 291,
@@ -711,7 +715,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1174049004",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 292,
@@ -720,7 +724,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1124178394",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 293,
@@ -729,7 +733,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1204314713",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 294,
@@ -738,7 +742,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1207628835",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 295,
@@ -747,7 +751,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1179225312",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 296,
@@ -756,7 +760,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1224152609",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 297,
@@ -765,7 +769,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1215362637",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 298,
@@ -774,7 +778,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1193473176",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 299,
@@ -783,7 +787,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1191677059",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 300,
@@ -792,7 +796,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1206765919",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 301,
@@ -801,16 +805,16 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1208998697",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 302,
       "ebay_id": "357942138881",
-      "sku": "ebayyh_l1209014834",
+      "sku": "ebayyh_o1231499189",
       "source": "ヤフオク",
-      "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1209014834",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1231499189",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 303,
@@ -819,7 +823,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1212849709",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 305,
@@ -827,8 +831,8 @@
       "sku": "ebayyh_s1046210112",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1046210112",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 306,
@@ -837,7 +841,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1224031365",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 307,
@@ -846,7 +850,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1223917962",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 309,
@@ -855,7 +859,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1223902441",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 310,
@@ -864,7 +868,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1200301578",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 311,
@@ -872,8 +876,8 @@
       "sku": "ebayyh_m1153748556",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1153748556",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 312,
@@ -882,7 +886,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1132498865",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 313,
@@ -891,7 +895,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1197834054",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 314,
@@ -900,7 +904,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1157910854",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 315,
@@ -909,7 +913,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1215342913",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 316,
@@ -918,7 +922,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1213687976",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 317,
@@ -926,17 +930,17 @@
       "sku": "ebayyh_q1208285646",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1208285646",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 318,
-      "ebay_id": "358263502661",
-      "sku": "ebayyh_d1222684422",
+      "ebay_id": "358626622587",
+      "sku": "ebayyh_v1231234744",
       "source": "ヤフオク",
-      "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1222684422",
+      "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1231234744",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 319,
@@ -945,7 +949,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1209142679",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 320,
@@ -954,7 +958,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/u1217319083",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 321,
@@ -963,7 +967,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1230160225",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 322,
@@ -972,7 +976,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1201149043",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 323,
@@ -981,7 +985,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1192212606",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 324,
@@ -990,7 +994,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1217403661",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 325,
@@ -998,8 +1002,8 @@
       "sku": "ebayyh_x1093322879",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1093322879",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 327,
@@ -1008,7 +1012,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1217484594",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 328,
@@ -1017,7 +1021,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1223153267",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 329,
@@ -1026,7 +1030,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1204370725",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 332,
@@ -1035,7 +1039,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1222778254",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 333,
@@ -1044,7 +1048,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1223945810",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 334,
@@ -1053,7 +1057,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1215763902",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 336,
@@ -1062,7 +1066,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/r1226199554",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 337,
@@ -1071,7 +1075,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1224816587",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 338,
@@ -1080,7 +1084,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1115522403",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 339,
@@ -1089,7 +1093,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1206303295",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 340,
@@ -1098,7 +1102,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1224683891",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 341,
@@ -1107,7 +1111,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1218984186",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 342,
@@ -1116,7 +1120,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1213920587",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 343,
@@ -1125,7 +1129,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1211261773",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 345,
@@ -1134,7 +1138,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1204858377",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 347,
@@ -1143,7 +1147,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1178364362",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 348,
@@ -1152,7 +1156,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1162751376",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 349,
@@ -1161,7 +1165,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1220926694",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 350,
@@ -1170,7 +1174,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1221568673",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 351,
@@ -1179,7 +1183,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1208996117",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 352,
@@ -1188,16 +1192,16 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1216555930",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 353,
-      "ebay_id": "358502738187",
+      "ebay_id": "358618368471",
       "sku": "ebayyh_c1205874003",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1205874003",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 354,
@@ -1206,7 +1210,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1211047272",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 355,
@@ -1215,7 +1219,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1203267025",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 356,
@@ -1224,7 +1228,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1206302905",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 357,
@@ -1233,7 +1237,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1221747865",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 359,
@@ -1242,7 +1246,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1202223437",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 360,
@@ -1251,7 +1255,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1202312692",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 361,
@@ -1260,7 +1264,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1208500426",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 362,
@@ -1269,7 +1273,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1196774667",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 154,
@@ -1278,7 +1282,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1195336864",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 155,
@@ -1287,7 +1291,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1115535580",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 156,
@@ -1296,7 +1300,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1229879728",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 157,
@@ -1304,8 +1308,8 @@
       "sku": "ebayyh_v1231133739",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1231133739",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 158,
@@ -1314,7 +1318,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1179542044",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 159,
@@ -1323,7 +1327,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1228374237",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 160,
@@ -1332,7 +1336,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1221830158",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 161,
@@ -1341,16 +1345,16 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1221617156",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 162,
-      "ebay_id": "358502739076",
+      "ebay_id": "358618370836",
       "sku": "ebayyh_w1216761623",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1216761623",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 163,
@@ -1359,7 +1363,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1222161720",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 164,
@@ -1368,7 +1372,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1205669690",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 165,
@@ -1377,7 +1381,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1209007032",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 166,
@@ -1386,7 +1390,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1214430988",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 167,
@@ -1395,7 +1399,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1199306851",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 168,
@@ -1404,7 +1408,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1160182853",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 169,
@@ -1413,7 +1417,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1168642155",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 170,
@@ -1422,7 +1426,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1211601964",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 171,
@@ -1431,7 +1435,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1221648415",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 172,
@@ -1440,7 +1444,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1214436890",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 173,
@@ -1449,7 +1453,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1141306867",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 174,
@@ -1458,7 +1462,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1218698269",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 175,
@@ -1467,7 +1471,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1222593170",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 176,
@@ -1475,8 +1479,8 @@
       "sku": "ebayyh_b1217245604",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1217245604",
-      "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 177,
@@ -1485,7 +1489,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1206659463",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 178,
@@ -1494,7 +1498,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1221416503",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 179,
@@ -1503,7 +1507,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1217600007",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 180,
@@ -1512,7 +1516,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1183323850",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 181,
@@ -1521,7 +1525,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1213574764",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 182,
@@ -1530,7 +1534,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1215887265",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 183,
@@ -1539,7 +1543,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1222017513",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 184,
@@ -1548,7 +1552,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1203815469",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 185,
@@ -1557,7 +1561,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1201924443",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 186,
@@ -1565,8 +1569,8 @@
       "sku": "ebayyh_n1223766324",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1223766324",
-      "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "在庫有",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 187,
@@ -1575,7 +1579,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1194836799",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 188,
@@ -1584,7 +1588,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1211306575",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 189,
@@ -1592,8 +1596,8 @@
       "sku": "ebayyh_q1013329511",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1013329511",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 190,
@@ -1602,7 +1606,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1224346671",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 193,
@@ -1611,7 +1615,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1170338216",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 194,
@@ -1620,7 +1624,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1190876799",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 195,
@@ -1629,7 +1633,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222664658",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 196,
@@ -1637,8 +1641,8 @@
       "sku": "ebayyh_h1200656191",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1200656191",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 197,
@@ -1647,7 +1651,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1221365091",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 199,
@@ -1656,7 +1660,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1223243839",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 200,
@@ -1665,7 +1669,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1189813429",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 201,
@@ -1674,7 +1678,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1219601244",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 202,
@@ -1683,7 +1687,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1201447450",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 203,
@@ -1692,7 +1696,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1167024293",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 204,
@@ -1701,7 +1705,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1200524301",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 205,
@@ -1709,8 +1713,8 @@
       "sku": "ebayyh_t1153319674",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1153319674",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 206,
@@ -1719,7 +1723,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1205183519",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 207,
@@ -1728,7 +1732,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1225005638",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 209,
@@ -1737,7 +1741,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1164283583",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 210,
@@ -1746,7 +1750,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1222773359",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 211,
@@ -1755,7 +1759,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/b1217451474",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 212,
@@ -1764,7 +1768,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1158320250",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 213,
@@ -1773,7 +1777,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1206873661",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 214,
@@ -1781,8 +1785,8 @@
       "sku": "ebayyh_1187983564",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1187983564",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 215,
@@ -1791,7 +1795,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1115526940",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 216,
@@ -1800,7 +1804,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1181130813",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 217,
@@ -1809,7 +1813,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1170372712",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 218,
@@ -1818,7 +1822,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/n1229900064",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 219,
@@ -1827,7 +1831,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/x1226971838",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 220,
@@ -1836,7 +1840,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1224478209",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 222,
@@ -1845,7 +1849,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1219168012",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 223,
@@ -1853,8 +1857,8 @@
       "sku": "ebayyh_q1172485375",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1172485375",
-      "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "在庫有",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 224,
@@ -1863,7 +1867,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1168715321",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 225,
@@ -1872,7 +1876,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1219600215",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 226,
@@ -1881,7 +1885,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/f1115530087",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 227,
@@ -1890,7 +1894,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/l1222575957",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 228,
@@ -1899,7 +1903,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/e1215790386",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 229,
@@ -1908,7 +1912,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1216184845",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 230,
@@ -1917,7 +1921,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1216215778",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 231,
@@ -1926,7 +1930,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/r1215882048",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 232,
@@ -1935,7 +1939,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1218909290",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 234,
@@ -1944,7 +1948,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1215878993",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 236,
@@ -1953,7 +1957,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1210158984",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 237,
@@ -1962,7 +1966,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206466122",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 238,
@@ -1971,7 +1975,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1216225990",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 239,
@@ -1980,7 +1984,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1226795678",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 240,
@@ -1989,7 +1993,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1141295648",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 242,
@@ -1998,7 +2002,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1207872084",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 243,
@@ -2007,7 +2011,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1206136150",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 244,
@@ -2016,7 +2020,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1114086083",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 245,
@@ -2025,7 +2029,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1115546465",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 246,
@@ -2034,7 +2038,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1213446672",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 247,
@@ -2043,7 +2047,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1224102596",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 248,
@@ -2052,7 +2056,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/g1219434164",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 249,
@@ -2061,7 +2065,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1216422817",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 250,
@@ -2069,8 +2073,8 @@
       "sku": "ebayyh_w1174283364",
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1174283364",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 251,
@@ -2079,7 +2083,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/s1218565486",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 252,
@@ -2088,7 +2092,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/h1222590926",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 253,
@@ -2097,7 +2101,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1230031461",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 254,
@@ -2106,7 +2110,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/k1220914337",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 255,
@@ -2115,7 +2119,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1205926445",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 256,
@@ -2124,7 +2128,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222096637",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 257,
@@ -2133,7 +2137,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/p1222682323",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 258,
@@ -2142,7 +2146,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1186482429",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 259,
@@ -2151,7 +2155,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1016457067",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 260,
@@ -2160,7 +2164,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1222546134",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 261,
@@ -2169,7 +2173,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/v1216414671",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 262,
@@ -2178,7 +2182,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/c1130862429",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 264,
@@ -2187,7 +2191,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/o1223384079",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 265,
@@ -2196,7 +2200,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/d1197413108",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 266,
@@ -2205,7 +2209,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1164096874",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 267,
@@ -2214,7 +2218,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1231031424",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 268,
@@ -2223,7 +2227,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/w1209241221",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 270,
@@ -2232,7 +2236,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/t1184152737",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 141,
@@ -2241,7 +2245,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m74396658434",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 142,
@@ -2250,7 +2254,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m58229585221",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 143,
@@ -2259,7 +2263,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m20103954450",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 144,
@@ -2268,7 +2272,7 @@
       "source": "FA機器",
       "url": "https://x.gd/h21vh1",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 145,
@@ -2277,7 +2281,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/WyUJx",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 146,
@@ -2286,7 +2290,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m15777687812",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 147,
@@ -2295,7 +2299,7 @@
       "source": "FA機器",
       "url": "https://x.gd/222-495",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 148,
@@ -2304,7 +2308,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m21595824946",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 149,
@@ -2313,7 +2317,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/b1207350828",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 150,
@@ -2322,7 +2326,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m16556773134",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 151,
@@ -2331,7 +2335,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m49633796170",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 152,
@@ -2340,7 +2344,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/w1208800540",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 153,
@@ -2349,7 +2353,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m80522728058",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 120,
@@ -2358,7 +2362,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z403885168",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 121,
@@ -2367,7 +2371,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/gxc7m/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 122,
@@ -2376,7 +2380,7 @@
       "source": "Unknown",
       "url": "https://item.rakuten.co.jp/HkI1t0/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 123,
@@ -2385,7 +2389,7 @@
       "source": "TSUKUMO",
       "url": "https://fa-tsukumo.100-1.co.jp/shopdetail/000000002637",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 124,
@@ -2394,7 +2398,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m58084060843",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 125,
@@ -2403,7 +2407,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m15458576428",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 126,
@@ -2412,7 +2416,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m75766922167",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 127,
@@ -2421,7 +2425,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m22866637305",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 128,
@@ -2430,7 +2434,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m15436896746",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 129,
@@ -2439,7 +2443,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m84692355300",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 130,
@@ -2448,7 +2452,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/RFj8r",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 131,
@@ -2457,7 +2461,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m30278227189",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 132,
@@ -2466,7 +2470,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m94578140692",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 133,
@@ -2475,7 +2479,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m13786463372",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 134,
@@ -2484,7 +2488,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/I8lHe",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 135,
@@ -2493,7 +2497,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m82773248459",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 136,
@@ -2502,7 +2506,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z301014652",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 137,
@@ -2511,7 +2515,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/9Y1rg",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 138,
@@ -2520,7 +2524,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m99148442019",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 139,
@@ -2529,7 +2533,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z424286554",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 140,
@@ -2538,7 +2542,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/vywOZ/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 103,
@@ -2547,7 +2551,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m70860737734",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 104,
@@ -2556,16 +2560,16 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m37956040255",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 105,
-      "ebay_id": "358502738625",
+      "ebay_id": "358618368617",
       "sku": "ebayYS_0TIYt",
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/0TIYt",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 106,
@@ -2574,7 +2578,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/f1187821169",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 107,
@@ -2583,25 +2587,25 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m35359409025",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 108,
-      "ebay_id": "358502738836",
+      "ebay_id": "358618369142",
       "sku": "ebayPF_z473769182",
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z473769182",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 109,
-      "ebay_id": "358502738955",
+      "ebay_id": "358618370029",
       "sku": "ebayme_91971457024",
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m91971457024",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 110,
@@ -2610,7 +2614,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m91634797640",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 111,
@@ -2619,7 +2623,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z478969594",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 112,
@@ -2628,7 +2632,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m92620165496",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 113,
@@ -2637,7 +2641,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/u66z4/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 114,
@@ -2646,7 +2650,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m12007088063",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 115,
@@ -2655,7 +2659,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m48179739657",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 116,
@@ -2664,7 +2668,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m34004542298",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 117,
@@ -2673,7 +2677,7 @@
       "source": "FA機器",
       "url": "https://x.gd/130-156",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 118,
@@ -2682,7 +2686,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m43831808668",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 119,
@@ -2691,7 +2695,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m39476065799",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 87,
@@ -2700,7 +2704,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m68097265970",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 88,
@@ -2709,7 +2713,7 @@
       "source": "Caster House",
       "url": "https://www.casterhouse.co.jp/shop/products/detail/44825",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 89,
@@ -2718,7 +2722,7 @@
       "source": "Amazon",
       "url": "https://www.amazon.co.jp/dp/3le7O",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 90,
@@ -2727,7 +2731,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m23602681051",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 91,
@@ -2736,7 +2740,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/h1201321820",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 92,
@@ -2745,7 +2749,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/uEuyC/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 93,
@@ -2754,7 +2758,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/c1161386549",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 94,
@@ -2763,7 +2767,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m71922763669",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 95,
@@ -2772,7 +2776,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/ndLkZ",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 96,
@@ -2781,7 +2785,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m79865930870",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 97,
@@ -2790,7 +2794,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m69160132571",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 98,
@@ -2799,7 +2803,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z567607732",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 99,
@@ -2808,7 +2812,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m12486564092",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 100,
@@ -2817,7 +2821,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m41033809537",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 101,
@@ -2826,7 +2830,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z475307054",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 102,
@@ -2835,7 +2839,7 @@
       "source": "Unknown",
       "url": "https://item.rakuten.co.jp/tuzukiya/m20-5806/",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 71,
@@ -2844,7 +2848,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m75967437293",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 72,
@@ -2853,7 +2857,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m62896386627",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 73,
@@ -2862,7 +2866,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/9406",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 74,
@@ -2871,7 +2875,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m43296413328",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 75,
@@ -2880,7 +2884,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z565054494",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 76,
@@ -2889,7 +2893,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/eo5iA",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 77,
@@ -2898,7 +2902,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/5850",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 78,
@@ -2907,7 +2911,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/10892",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 79,
@@ -2916,7 +2920,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/12851",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 80,
@@ -2925,7 +2929,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/14946",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 81,
@@ -2934,7 +2938,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/30279698157",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 82,
@@ -2943,7 +2947,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m27412233551",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 83,
@@ -2952,7 +2956,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m52194163687",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 84,
@@ -2960,8 +2964,8 @@
       "sku": "ebayme_64853248651",
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m64853248651",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "在庫無",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 85,
@@ -2970,7 +2974,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/uIL73",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 86,
@@ -2979,7 +2983,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m67772929009",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 59,
@@ -2988,7 +2992,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m11858831196",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 60,
@@ -2997,7 +3001,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m73002319293",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 61,
@@ -3006,7 +3010,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/SLPFZ",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 62,
@@ -3015,7 +3019,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/11820",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 63,
@@ -3024,7 +3028,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/q1176161825",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 64,
@@ -3033,7 +3037,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/373",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 65,
@@ -3042,7 +3046,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/1725",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 66,
@@ -3051,7 +3055,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/1431",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 67,
@@ -3060,7 +3064,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/1318",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 68,
@@ -3069,7 +3073,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/1174",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 69,
@@ -3078,7 +3082,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/1130840403",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 70,
@@ -3087,7 +3091,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m25339922175",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 48,
@@ -3096,7 +3100,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m77169832374",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 49,
@@ -3105,7 +3109,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/k6Yos/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 50,
@@ -3114,7 +3118,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m59150634702",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 51,
@@ -3123,16 +3127,16 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m67371177485",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 52,
       "ebay_id": "357166122965",
-      "sku": "ebayHI_ih6S2",
-      "source": "HILTI",
+      "sku": "stock",
+      "source": "Unknown",
       "url": null,
       "status": "エラー",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 53,
@@ -3141,7 +3145,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/eHN4k/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 54,
@@ -3150,7 +3154,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z400651116",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 55,
@@ -3159,7 +3163,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/14797",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 56,
@@ -3168,7 +3172,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/3708",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 57,
@@ -3177,7 +3181,7 @@
       "source": "KINBON WEB SHOP（盆栽）",
       "url": "https://www.bonsai.co.jp/products/detail/269",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 58,
@@ -3186,7 +3190,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m39976223117",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 38,
@@ -3195,7 +3199,7 @@
       "source": "Amazon",
       "url": "https://www.amazon.co.jp/dp/x29VO",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 39,
@@ -3204,7 +3208,7 @@
       "source": "ヨドバシカメラ",
       "url": "https://www.yodobashi.com/product/100000001007833513",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 40,
@@ -3213,7 +3217,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m62451594099",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 41,
@@ -3222,7 +3226,7 @@
       "source": "Amazon",
       "url": "https://www.amazon.co.jp/dp/LuODR",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 42,
@@ -3231,7 +3235,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m8862099721",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 43,
@@ -3240,7 +3244,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m69793220268",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 44,
@@ -3249,7 +3253,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m83497661362",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 45,
@@ -3258,7 +3262,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z505137716",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 46,
@@ -3267,7 +3271,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/LK1jL",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 47,
@@ -3276,7 +3280,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/hWe8O/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 28,
@@ -3285,7 +3289,7 @@
       "source": "Unknown",
       "url": "https://item.rakuten.co.jp/DjJe2/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 29,
@@ -3294,7 +3298,7 @@
       "source": "ATAGO",
       "url": "https://www.atago.net/japanese/new/atagoshop-index.php?key=JBM49988",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 30,
@@ -3303,7 +3307,7 @@
       "source": "ATAGO",
       "url": "https://www.atago.net/japanese/new/atagoshop-index.php?key=PEV34351",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 31,
@@ -3312,7 +3316,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/Qm3OE",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 32,
@@ -3321,7 +3325,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m72766968854",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 33,
@@ -3330,7 +3334,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/xpDg0/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 34,
@@ -3339,7 +3343,7 @@
       "source": "Yahoo!ショッピング",
       "url": "https://store.shopping.yahoo.co.jp/iiIcrM",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 35,
@@ -3348,7 +3352,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m90532998731",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 36,
@@ -3357,7 +3361,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m17358493382",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 37,
@@ -3366,7 +3370,7 @@
       "source": "ヨドバシカメラ",
       "url": "https://www.yodobashi.com/product/100000001007833512",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 19,
@@ -3375,7 +3379,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/n1221828290",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 20,
@@ -3384,7 +3388,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m56500264607",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 21,
@@ -3393,7 +3397,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m16317274359",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 22,
@@ -3402,7 +3406,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m54454064838",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 23,
@@ -3411,7 +3415,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m34163664597",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 24,
@@ -3420,7 +3424,7 @@
       "source": "OFFモール（ハードオフ）",
       "url": "https://netmall.hardoff.co.jp/product/5125292",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 25,
@@ -3429,7 +3433,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m45499542220",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 26,
@@ -3438,7 +3442,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m24631554748",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 27,
@@ -3447,7 +3451,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z418707210",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 12,
@@ -3456,7 +3460,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m12229124936",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 13,
@@ -3465,7 +3469,7 @@
       "source": "トンカタストア",
       "url": "https://shop.tonkachi.co.jp/products/ll2182",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 14,
@@ -3474,7 +3478,7 @@
       "source": "ヤフオク",
       "url": "https://page.auctions.yahoo.co.jp/jp/auction/j1221361668",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 15,
@@ -3483,7 +3487,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/sg6ei/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 16,
@@ -3492,7 +3496,7 @@
       "source": "FA機器",
       "url": "https://x.gd/130-683",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 17,
@@ -3501,7 +3505,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m75813078759",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 18,
@@ -3510,7 +3514,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m48903649695",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 6,
@@ -3519,7 +3523,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z514064178",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 7,
@@ -3528,7 +3532,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m34498052605",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 8,
@@ -3537,7 +3541,7 @@
       "source": "Paypayフリマ",
       "url": "https://paypayfleamarket.yahoo.co.jp/item/z450068452",
       "status": "不明",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 9,
@@ -3546,7 +3550,7 @@
       "source": "楽天市場",
       "url": "https://item.rakuten.co.jp/xwbZF/",
       "status": "ページなし",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 10,
@@ -3555,7 +3559,7 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m10652897161",
       "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 11,
@@ -3563,8 +3567,8 @@
       "sku": "ebayme_29606365464",
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m29606365464",
-      "status": "在庫有",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 5,
@@ -3572,8 +3576,8 @@
       "sku": "ebayme_74983762893",
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m74983762893",
-      "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "status": "ページなし",
+      "checked_at": "2026-06-04T03:01:02.682169"
     },
     {
       "id": 1,
@@ -3582,11 +3586,44 @@
       "source": "メルカリ",
       "url": "https://jp.mercari.com/item/m44731528581",
       "status": "在庫無",
-      "checked_at": "2026-05-29T18:33:15.842880"
+      "checked_at": "2026-06-04T03:01:02.682169"
     }
   ],
   "changes": {
-    "changed_items": [],
+    "changed_items": [
+      {
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/m1153748556",
+        "sku": "ebayyh_m1153748556",
+        "source": "ヤフオク",
+        "prev_status": "在庫有",
+        "current_status": "ページなし",
+        "changed_at": "2026-06-04T03:01:02.700689"
+      },
+      {
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1208285646",
+        "sku": "ebayyh_q1208285646",
+        "source": "ヤフオク",
+        "prev_status": "在庫有",
+        "current_status": "ページなし",
+        "changed_at": "2026-06-04T03:01:02.700704"
+      },
+      {
+        "url": "https://page.auctions.yahoo.co.jp/jp/auction/q1013329511",
+        "sku": "ebayyh_q1013329511",
+        "source": "ヤフオク",
+        "prev_status": "在庫有",
+        "current_status": "ページなし",
+        "changed_at": "2026-06-04T03:01:02.700728"
+      },
+      {
+        "url": "https://shop.tonkachi.co.jp/products/ll2182",
+        "sku": "ebayTS_ll2182",
+        "source": "トンカタストア",
+        "prev_status": "ページなし",
+        "current_status": "在庫有",
+        "changed_at": "2026-06-04T03:01:02.700807"
+      }
+    ],
     "became_out_of_stock": []
   }
 }

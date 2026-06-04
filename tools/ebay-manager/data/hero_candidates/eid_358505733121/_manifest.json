@@ -1,0 +1,46 @@
+{
+  "source_url": "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/af533068dad3ae8d50ccfa7912914c98992c4d7e930399de80e1516d30ce49b8/i-img1200x1200-17796815553851pdwmoy35.jpg",
+  "source_sha256": "c39ab5c062f2343fd6894bd66bf2a10b53a589d16138e19581f66c3b880a8efb",
+  "pipeline_version": "1",
+  "prompt_version": "1",
+  "stage_outputs": {
+    "hero": [
+      "hero_W3.png",
+      "hero_W2.png",
+      "hero_W4.png"
+    ],
+    "hero_meta": [
+      {
+        "filename": "hero_W3.png",
+        "plate_id": "W3",
+        "score": 10.0,
+        "reasoning": "PINNED (fixed top candidate); camera=mid_angle, angle rank 1/4"
+      },
+      {
+        "filename": "hero_W2.png",
+        "plate_id": "W2",
+        "score": 8.0,
+        "reasoning": "camera=mid_angle, angle rank 2/4"
+      },
+      {
+        "filename": "hero_W4.png",
+        "plate_id": "W4",
+        "score": 6.0,
+        "reasoning": "camera=mid_angle, angle rank 3/4"
+      }
+    ],
+    "additional": [
+      "_additional_00.png",
+      "_additional_01.png",
+      "_additional_02.png",
+      "_additional_03.png"
+    ],
+    "additional_urls": [
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/af533068dad3ae8d50ccfa7912914c98992c4d7e930399de80e1516d30ce49b8/i-img1200x1200-17796815554234c9h5sq35.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/af533068dad3ae8d50ccfa7912914c98992c4d7e930399de80e1516d30ce49b8/i-img1200x1200-17796815554999nerxkt35.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/af533068dad3ae8d50ccfa7912914c98992c4d7e930399de80e1516d30ce49b8/i-img1200x1200-17796815555223qqjupk35.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/af533068dad3ae8d50ccfa7912914c98992c4d7e930399de80e1516d30ce49b8/i-img1200x1200-17796815556004xjfxsq35.jpg"
+    ]
+  },
+  "created_at": "2026-05-31T21:42:35.778447+00:00"
+}

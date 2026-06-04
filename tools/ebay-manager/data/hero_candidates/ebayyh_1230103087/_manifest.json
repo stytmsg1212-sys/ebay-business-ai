@@ -1,0 +1,52 @@
+{
+  "source_url": "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17789152523076afdgui1452.jpg",
+  "source_sha256": "45d18e71393f58f868cee23dec3234b35a4c46b12311b96a8da4225d12fb79d0",
+  "pipeline_version": "1",
+  "prompt_version": "1",
+  "stage_outputs": {
+    "hero": [
+      "hero_W3.png",
+      "hero_W2.png",
+      "hero_W4.png"
+    ],
+    "hero_meta": [
+      {
+        "filename": "hero_W3.png",
+        "plate_id": "W3",
+        "score": 8.0,
+        "reasoning": "PINNED (fixed top candidate); camera=high_angle, angle rank 2/4"
+      },
+      {
+        "filename": "hero_W2.png",
+        "plate_id": "W2",
+        "score": 10.0,
+        "reasoning": "camera=high_angle, angle rank 1/4"
+      },
+      {
+        "filename": "hero_W4.png",
+        "plate_id": "W4",
+        "score": 4.0,
+        "reasoning": "camera=high_angle, angle rank 4/4"
+      }
+    ],
+    "additional": [
+      "_additional_00.png",
+      "_additional_01.png",
+      "_additional_02.png",
+      "_additional_03.png",
+      "_additional_04.png",
+      "_additional_05.png",
+      "_additional_06.png"
+    ],
+    "additional_urls": [
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17789152246900rs6nwq680413.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17789152245672ap8nls421502.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17789152246271v1xzgj42279.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17789152245250slzrka27707.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17800062206471f4thfo36.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17800062245896ep8ofs28.jpg",
+      "https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/dr000/auc0205/user/f096f64f802ee5952110e43891a63129399678cacdbd9bf58b2d60ce65335359/i-img1200x900-17800062342178vgfexg127646.jpg"
+    ]
+  },
+  "created_at": "2026-06-01T14:12:11.548284+00:00"
+}
