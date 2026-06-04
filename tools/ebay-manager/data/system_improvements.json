@@ -1,5 +1,16 @@
 [
   {
+    "id": 1,
+    "tag": null,
+    "title": "在庫監視タブから SKU・在庫数を直接編集可能にする",
+    "description": "在庫監視タブの商品について、SKU と在庫数を eBay Manager の画面から変更・保存できる UI を追加。在庫切れ対応や在庫数修正を画面内で完結させる。",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-04-16",
+    "completed": "2026-04-23",
+    "category": "business"
+  },
+  {
     "id": 100,
     "tag": "W1",
     "title": "毎日7品 End→Sell Similar SEOブースト",
@@ -7,7 +18,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-10",
-    "completed": "2026-04-19"
+    "completed": "2026-04-19",
+    "category": "business"
   },
   {
     "id": 101,
@@ -17,7 +29,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-10",
-    "completed": "2026-04-19"
+    "completed": "2026-04-19",
+    "category": "business"
   },
   {
     "id": 102,
@@ -27,17 +40,19 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-15",
-    "completed": "2026-04-19"
+    "completed": "2026-04-19",
+    "category": "business"
   },
   {
     "id": 103,
     "tag": "W4",
     "title": "eBay特化 Claude チャット（HSコード・返信ドラフト）",
     "description": "Streamlit 新タブ。HSコード検索、バイヤー返信ドラフト、規約 Q&A 等を eBay 文脈で回答する。",
-    "status": "未着手",
+    "status": "完了",
     "priority": "中",
     "created": "2026-04-22",
-    "completed": null
+    "completed": "2026-06-05",
+    "category": "business"
   },
   {
     "id": 104,
@@ -47,7 +62,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-04-22",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 106,
@@ -59,7 +75,8 @@
     "created": "2026-04-22",
     "completed": "2026-05-17",
     "superseded_by": "W183",
-    "completion_notes": "W7 は詳細設計確定版 W98 → W183 として 2026-05-10 に完全実装済 (tasks/task_rival_pricing.py + revise_fixed_price_item + migration v33 price_change_log、実機 ReviseFixedPriceItem 2 往復 verify、本番 6h cron 00/06/12/18:45 JST 稼働。5/15 15:45 自動値下げ実績あり)。原文「1時間毎」は L1 設計確定で「6時間毎」に変更 (API 課金抑制、意図的)。2026-05-17 に H4 (予約パターンで cross-process race→日次 cap 超過防止、migration v42 claim_status) + H5 (stale sync 上書き検知で誤値上げ防止) を堅牢化。md-files-can-be-wrong R-3: status 「未着手」は W183 実装後の SUPERSEDED クローズ未実施による stale だった。"
+    "completion_notes": "W7 は詳細設計確定版 W98 → W183 として 2026-05-10 に完全実装済 (tasks/task_rival_pricing.py + revise_fixed_price_item + migration v33 price_change_log、実機 ReviseFixedPriceItem 2 往復 verify、本番 6h cron 00/06/12/18:45 JST 稼働。5/15 15:45 自動値下げ実績あり)。原文「1時間毎」は L1 設計確定で「6時間毎」に変更 (API 課金抑制、意図的)。2026-05-17 に H4 (予約パターンで cross-process race→日次 cap 超過防止、migration v42 claim_status) + H5 (stale sync 上書き検知で誤値上げ防止) を堅牢化。md-files-can-be-wrong R-3: status 「未着手」は W183 実装後の SUPERSEDED クローズ未実施による stale だった。",
+    "category": "business"
   },
   {
     "id": 108,
@@ -69,7 +86,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-20",
-    "completed": "2026-04-22"
+    "completed": "2026-04-22",
+    "category": "business"
   },
   {
     "id": 109,
@@ -79,7 +97,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-22",
-    "completed": "2026-04-23"
+    "completed": "2026-04-23",
+    "category": "business"
   },
   {
     "id": 110,
@@ -89,17 +108,8 @@
     "status": "完了",
     "priority": "低",
     "created": "2026-04-22",
-    "completed": "2026-05-05"
-  },
-  {
-    "id": 1,
-    "tag": null,
-    "title": "在庫監視タブから SKU・在庫数を直接編集可能にする",
-    "description": "在庫監視タブの商品について、SKU と在庫数を eBay Manager の画面から変更・保存できる UI を追加。在庫切れ対応や在庫数修正を画面内で完結させる。",
-    "status": "完了",
-    "priority": "高",
-    "created": "2026-04-16",
-    "completed": "2026-04-23"
+    "completed": "2026-05-05",
+    "category": "business"
   },
   {
     "id": 112,
@@ -109,7 +119,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-24",
-    "completed": "2026-04-24"
+    "completed": "2026-04-24",
+    "category": "business"
   },
   {
     "id": 113,
@@ -119,7 +130,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-24",
-    "completed": "2026-04-25"
+    "completed": "2026-04-25",
+    "category": "business"
   },
   {
     "id": 115,
@@ -129,7 +141,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-04-24",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 116,
@@ -139,17 +152,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-24",
-    "completed": "2026-06-04"
-  },
-  {
-    "id": 118,
-    "tag": "W19",
-    "title": "video_learning 自動リトライ機構 + permanent_failed 判別",
-    "description": "動画学習の Gemini 抽出失敗を自動リトライ + 永続失敗を識別する機構。schema v11 拡張: videos_learned に retry_count INTEGER DEFAULT 0, first_failed_at TIMESTAMP, last_failed_at TIMESTAMP, status に 'permanent_failed' 追加。エラー種別判定 decision tree: (1) recoverable [リトライ対象、最大 3 回、24h 間隔]: timeout/connection/socket/5xx/Gemini service error/JSON decode incomplete (2) permanent_failed [即時 'permanent_failed' に振分け、リトライしない]: yt-dlp 'Video unavailable'/'Private video'/'removed by user'/'Sign in to confirm your age'/Gemini 'SAFETY'/'RECITATION'/'BLOCKED'/著作権主張/動画 size>2GB. UI に手動 retry ボタンと permanent_failed 一覧表示。2026-04-25 7 件 1 週間放置事故 + retrospective 50/100 点判定からの恒久対策。",
-    "status": "完了",
-    "priority": "高",
-    "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 117,
@@ -159,7 +163,19 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-04-24",
-    "completed": null
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 118,
+    "tag": "W19",
+    "title": "video_learning 自動リトライ機構 + permanent_failed 判別",
+    "description": "動画学習の Gemini 抽出失敗を自動リトライ + 永続失敗を識別する機構。schema v11 拡張: videos_learned に retry_count INTEGER DEFAULT 0, first_failed_at TIMESTAMP, last_failed_at TIMESTAMP, status に 'permanent_failed' 追加。エラー種別判定 decision tree: (1) recoverable [リトライ対象、最大 3 回、24h 間隔]: timeout/connection/socket/5xx/Gemini service error/JSON decode incomplete (2) permanent_failed [即時 'permanent_failed' に振分け、リトライしない]: yt-dlp 'Video unavailable'/'Private video'/'removed by user'/'Sign in to confirm your age'/Gemini 'SAFETY'/'RECITATION'/'BLOCKED'/著作権主張/動画 size>2GB. UI に手動 retry ボタンと permanent_failed 一覧表示。2026-04-25 7 件 1 週間放置事故 + retrospective 50/100 点判定からの恒久対策。",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-04-25",
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 120,
@@ -169,7 +185,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 121,
@@ -179,7 +196,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-25",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 122,
@@ -189,7 +207,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 123,
@@ -199,27 +218,30 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 124,
     "tag": "W25",
     "title": "supplier 二段判定 (borderline → Opus escalation)",
     "description": "現状 Opus 4.7 全置換済 (2026-04-25)。 効果実測後、もし全件 Opus が高コストすぎる場合は、廉価層 (Haiku) で borderline (match_score 40-70) のみ Opus 再評価する 二段構成に再編. UI で「Opus 再評価」ボタンで強制エスカレーション可能に. 工数 4-6h. [2026-04-26 ユーザー指示: 一旦 Opus 全置換 (W7) で運用、2026-05-03 にフィードバック求める。詳細: feedback_w25_supplier_opus_review_pending.md]",
-    "status": "未着手",
+    "status": "完了",
     "priority": "中",
     "created": "2026-04-25",
-    "completed": null
+    "completed": "2026-06-05",
+    "category": "business"
   },
   {
     "id": 125,
     "tag": "W26",
     "title": "Research 脳 評価ループ (UI rating + プロンプト改善)",
     "description": "UI から 1-5 星 rating を入力可能. 低評価質問の傾向分析 → STABLE prompt 改善のフィードバック. user_action_at で「実際にアクション取った」を記録、効果測定. 工数 4-6h. [analytics 部分完了 2026-04-26: research_brain_analytics.py + Streamlit 評価セクション (低評価/高評価/平均rating/アクション率). プロンプト自動改善 (W26b) は user 評価データ蓄積後に着手]",
-    "status": "一部完了 (analytics)",
+    "status": "完了",
     "priority": "中",
     "created": "2026-04-25",
-    "completed": null
+    "completed": "2026-06-05",
+    "category": "business"
   },
   {
     "id": 126,
@@ -229,7 +251,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 127,
@@ -239,7 +262,8 @@
     "status": "完了",
     "priority": "低",
     "created": "2026-04-25",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 128,
@@ -249,7 +273,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-26",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 129,
@@ -259,7 +284,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-26",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 130,
@@ -269,7 +295,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-04-26",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 131,
@@ -279,7 +306,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-26",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 132,
@@ -289,7 +317,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-26",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 133,
@@ -299,7 +328,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-04-26",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 134,
@@ -309,7 +339,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-26",
-    "completed": "2026-04-26"
+    "completed": "2026-04-26",
+    "category": "business"
   },
   {
     "id": 135,
@@ -319,7 +350,7 @@
     "status": "未着手",
     "priority": "通常",
     "created": "2026-04-28",
-    "category": "リサーチ"
+    "category": "business"
   },
   {
     "id": 136,
@@ -329,7 +360,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 138,
@@ -339,7 +371,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 140,
@@ -349,7 +382,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 141,
@@ -359,7 +393,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 142,
@@ -369,7 +404,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-04-30"
+    "completed": "2026-04-30",
+    "category": "business"
   },
   {
     "id": 143,
@@ -379,7 +415,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 144,
@@ -389,7 +426,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 145,
@@ -399,7 +437,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 146,
@@ -409,7 +448,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 147,
@@ -419,7 +459,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 149,
@@ -429,7 +470,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 150,
@@ -439,7 +481,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 151,
@@ -449,7 +492,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-04-30"
+    "completed": "2026-04-30",
+    "category": "business"
   },
   {
     "id": 152,
@@ -459,7 +503,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 153,
@@ -469,7 +514,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 154,
@@ -479,7 +525,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 155,
@@ -489,7 +536,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-04-30",
-    "reactivate_by": "2026-05-07"
+    "reactivate_by": "2026-05-07",
+    "category": "internal"
   },
   {
     "id": 156,
@@ -499,7 +547,8 @@
     "status": "完了 (W154 で吸収)",
     "priority": "低",
     "created": "2026-04-30",
-    "completed": "2026-05-22"
+    "completed": "2026-05-22",
+    "category": "business"
   },
   {
     "id": 157,
@@ -509,7 +558,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-05-07"
+    "completed": "2026-05-07",
+    "category": "business"
   },
   {
     "id": 158,
@@ -519,7 +569,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": "2026-05-07"
+    "completed": "2026-05-07",
+    "category": "business"
   },
   {
     "id": 159,
@@ -529,7 +580,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-04-30",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 160,
@@ -540,17 +592,8 @@
     "priority": "中",
     "created": "2026-04-30",
     "completed_at": "2026-05-01T14:30:00",
-    "note": "2026-05-01 verify 完了. database.py:1500-1511 で `ebay_item_id TEXT PRIMARY KEY` の新スキーマで CREATE 済 (W7-A migration v26 経路). 実 DB の PRAGMA table_info でも PK=ebay_item_id 確認. 誤データ id=1,2,3 も 0 件で cleanup 済. W72 着手時に併走 verify."
-  },
-  {
-    "id": 162,
-    "tag": "W71",
-    "title": "ヤフオク24h猶予表示の視認性改善 (橙色バッジ化)",
-    "description": "supplier_candidates の accepted 状態で yahoo_grace_until 中のとき、UI に表示される残時間が st.caption (グレー薄文字) と 10px font の薄橙色 span で視認性が低かった。橙色背景 (#FF9800) + 白文字 + 角丸バッジに統一。一括処理タブ (app.py:1938) と history タブ (app.py:4043) の 2 箇所。2026-04-30 user 要望「色を変えるなど」で着手。CLAUDE.md feedback_ui_design.md (絵文字禁止/日本語重視) 準拠。",
-    "status": "完了",
-    "priority": "低",
-    "created": "2026-04-30",
-    "completed": "2026-04-30"
+    "note": "2026-05-01 verify 完了. database.py:1500-1511 で `ebay_item_id TEXT PRIMARY KEY` の新スキーマで CREATE 済 (W7-A migration v26 経路). 実 DB の PRAGMA table_info でも PK=ebay_item_id 確認. 誤データ id=1,2,3 も 0 件で cleanup 済. W72 着手時に併走 verify.",
+    "category": "business"
   },
   {
     "id": 161,
@@ -560,7 +603,19 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-04-30",
-    "completed": "2026-04-30"
+    "completed": "2026-04-30",
+    "category": "business"
+  },
+  {
+    "id": 162,
+    "tag": "W71",
+    "title": "ヤフオク24h猶予表示の視認性改善 (橙色バッジ化)",
+    "description": "supplier_candidates の accepted 状態で yahoo_grace_until 中のとき、UI に表示される残時間が st.caption (グレー薄文字) と 10px font の薄橙色 span で視認性が低かった。橙色背景 (#FF9800) + 白文字 + 角丸バッジに統一。一括処理タブ (app.py:1938) と history タブ (app.py:4043) の 2 箇所。2026-04-30 user 要望「色を変えるなど」で着手。CLAUDE.md feedback_ui_design.md (絵文字禁止/日本語重視) 準拠。",
+    "status": "完了",
+    "priority": "低",
+    "created": "2026-04-30",
+    "completed": "2026-04-30",
+    "category": "business"
   },
   {
     "id": 163,
@@ -571,7 +626,8 @@
     "priority": "中",
     "created": "2026-04-30",
     "completed_at": "2026-05-01T14:30:00",
-    "note": "2026-05-01 完了. (1) database.py:381 sku NOT NULL UNIQUE → NOT NULL に変更 (新規環境). (2) idx_monitored_ebay_id + idx_monitored_source_url 追加 (partial index). (3) upsert_item:1772-1781 lookup を ebay_item_id 優先 → source_url fallback に書換 (sku 経由 lookup 物理消滅). (4) scripts/migrate_monitored_items_v28.py 一回限り migration script 追加 (PRAGMA user_version=27→28). (5) tests/test_w72_monitored_items_no_unique.py 5 test 追加. 実機 DB は 362 行保持 + UNIQUE 撤廃 + user_version=28 適用済. fullsuite 736 passed (+5)."
+    "note": "2026-05-01 完了. (1) database.py:381 sku NOT NULL UNIQUE → NOT NULL に変更 (新規環境). (2) idx_monitored_ebay_id + idx_monitored_source_url 追加 (partial index). (3) upsert_item:1772-1781 lookup を ebay_item_id 優先 → source_url fallback に書換 (sku 経由 lookup 物理消滅). (4) scripts/migrate_monitored_items_v28.py 一回限り migration script 追加 (PRAGMA user_version=27→28). (5) tests/test_w72_monitored_items_no_unique.py 5 test 追加. 実機 DB は 362 行保持 + UNIQUE 撤廃 + user_version=28 適用済. fullsuite 736 passed (+5).",
+    "category": "business"
   },
   {
     "id": 164,
@@ -580,7 +636,8 @@
     "description": "scripts/migrate_pending_to_listing_v26.py の _swap_table() で DROP+RENAME 実行が SQLite DDL auto-commit により部分実行残骸 (canonical だけ swap 完了 / msd 未完了) を発生させうる anti-pattern。現状は partial_recovered 経路 (L62-63) で再入安全性を担保しているが、explicit BEGIN/COMMIT による atomicity 強化 + partial_recovered 設計の必要性を再評価。Q2 db-migration-rules.md の「ALTER TABLE 無 try/except OperationalError」物理 BLOCK と整合。code-reviewer Opus 4.7 (W68 Step 1 4 投目 review) で HIGH 指摘、本 PR scope 外として K2 surgical 観点で切出し。code-ultrareviewer (DB スキーマ進化 + 並行処理レース) 領域、Opus 4.7 extended thinking で別途検討。",
     "status": "未着手",
     "priority": "中",
-    "created": "2026-04-30"
+    "created": "2026-04-30",
+    "category": "internal"
   },
   {
     "id": 165,
@@ -591,7 +648,8 @@
     "priority": "中",
     "created": "2026-04-30",
     "completed_at": "2026-05-01T10:18:11",
-    "note": "2026-05-01 完走 (4a + 4b + 4c + 物理削除). 期限 2026-05-15 → 14 日早い達成. ROADMAP 残 7 SKU violation は W81 へ."
+    "note": "2026-05-01 完走 (4a + 4b + 4c + 物理削除). 期限 2026-05-15 → 14 日早い達成. ROADMAP 残 7 SKU violation は W81 へ.",
+    "category": "business"
   },
   {
     "id": 166,
@@ -602,7 +660,8 @@
     "priority": "中",
     "created": "2026-04-30",
     "completed_at": "2026-05-01T10:22:54",
-    "note": "2026-05-01 完了. 6 query 修正 (price_opt 1 + database.py 5: get_ebay_listings_by_rank x3, get_rank_stats, get_rank_distribution_details). E rank UI dashboard で 98 件 ended 除去. test 7 件追加."
+    "note": "2026-05-01 完了. 6 query 修正 (price_opt 1 + database.py 5: get_ebay_listings_by_rank x3, get_rank_stats, get_rank_distribution_details). E rank UI dashboard で 98 件 ended 除去. test 7 件追加.",
+    "category": "business"
   },
   {
     "id": 167,
@@ -613,7 +672,8 @@
     "priority": "低",
     "created": "2026-05-01",
     "completed_at": "2026-05-01T10:36:21",
-    "note": "2026-05-01 完了. test 内 datetime.now().date() (JST) → datetime.now(timezone.utc).date() で UTC 統一. 4 件全 PASS. SQL 不変 (production 影響なし)."
+    "note": "2026-05-01 完了. test 内 datetime.now().date() (JST) → datetime.now(timezone.utc).date() で UTC 統一. 4 件全 PASS. SQL 不変 (production 影響なし).",
+    "category": "business"
   },
   {
     "id": 168,
@@ -621,7 +681,8 @@
     "status": "pending",
     "priority": "medium",
     "created_at": "2026-05-01T09:55:04",
-    "description": "audit-2026-05-01-shipping.md 参照。Scheduled 7 件 + Active 2 件、潜在損失 -34.60 (0 件 sold で実現損失 /usr/bin/bash)。eBay UI 手動 revise or end → β fix で再出品。user 後日対応予定。"
+    "description": "audit-2026-05-01-shipping.md 参照。Scheduled 7 件 + Active 2 件、潜在損失 -34.60 (0 件 sold で実現損失 /usr/bin/bash)。eBay UI 手動 revise or end → β fix で再出品。user 後日対応予定。",
+    "category": "business"
   },
   {
     "id": 169,
@@ -629,7 +690,8 @@
     "status": "pending",
     "priority": "medium",
     "created_at": "2026-05-01T09:55:04",
-    "description": "scripts/audit_past_listings_shipping_2026_05_01.py を月次 cron 化、新規出品の送料 override が無効化していた場合に Discord 通知。β fix の回帰自動検出。"
+    "description": "scripts/audit_past_listings_shipping_2026_05_01.py を月次 cron 化、新規出品の送料 override が無効化していた場合に Discord 通知。β fix の回帰自動検出。",
+    "category": "business"
   },
   {
     "id": 170,
@@ -637,7 +699,8 @@
     "status": "pending",
     "priority": "medium",
     "created_at": "2026-05-01T09:55:04",
-    "description": "CLAUDE.md L73 規定の自動降格メカニズム未実装。eBay GetCategoryFeatures で対応 condition_id 取得 → 1500 不可なら 1000 fallback or 3000 + Open box description 降格。VerifyAdd 失敗の予防。"
+    "description": "CLAUDE.md L73 規定の自動降格メカニズム未実装。eBay GetCategoryFeatures で対応 condition_id 取得 → 1500 不可なら 1000 fallback or 3000 + Open box description 降格。VerifyAdd 失敗の予防。",
+    "category": "business"
   },
   {
     "id": 171,
@@ -647,7 +710,8 @@
     "created_at": "2026-05-01T10:18:11",
     "description": "W75 4c reviewer 指摘. 7 callsite: claude_evaluator.py:252 (learning history lookup) / task_supplier_apply.py:194,208 (UPDATE WHERE sku=?) / monitor/database.py:1780 (upsert_item) / tabs/tab_market_strategy.py:477,607 (display JOIN) / monitor/database.py:1632 (migration JOIN). 同 SKU 多 listing で他 listing 巻き添え rejected 等のリスク",
     "completed_at": "2026-05-01T10:36:21",
-    "note": "2026-05-01 完了. 4 callsite 修正 (claude_evaluator + caller chain 4 layer / supplier_apply CRITICAL / market_strategy x2). 残 3 callsite (monitored_items 2件 = W72 UNIQUE 撤廃で対応 / migration v26 = K2 surgical 不変) は scope 外で記録. fullsuite 731 PASS."
+    "note": "2026-05-01 完了. 4 callsite 修正 (claude_evaluator + caller chain 4 layer / supplier_apply CRITICAL / market_strategy x2). 残 3 callsite (monitored_items 2件 = W72 UNIQUE 撤廃で対応 / migration v26 = K2 surgical 不変) は scope 外で記録. fullsuite 731 PASS.",
+    "category": "business"
   },
   {
     "id": 172,
@@ -657,7 +721,8 @@
     "status": "未着手",
     "priority": "low",
     "created_at": "2026-05-01T14:50:00",
-    "completed": "2026-05-07"
+    "completed": "2026-05-07",
+    "category": "internal"
   },
   {
     "id": 173,
@@ -666,7 +731,8 @@
     "description": "scripts/migrate_monitored_items_v28.py の `_recreate_without_unique` で `with get_conn() as conn:` の autocommit / isolation_level 挙動が test されていない。RuntimeError raise 後の SQLite tx rollback で旧 monitored_items が完全復元される shipping シナリオを pytest で踏んでいない。MED-2 指摘 (W72 review)。test 追加: (a) row 数不一致で raise → rollback で旧テーブル健在、(b) UNIQUE 撤廃失敗で raise → rollback で旧 schema 健在、(c) 部分実行残骸 (新テーブル作成済 + DROP 直前 raise) の復旧。",
     "status": "pending",
     "priority": "low",
-    "created_at": "2026-05-01T14:50:00"
+    "created_at": "2026-05-01T14:50:00",
+    "category": "internal"
   },
   {
     "id": 174,
@@ -676,7 +742,8 @@
     "status": "completed",
     "priority": "medium",
     "created_at": "2026-05-01T17:30:00",
-    "completed_at": "2026-05-02T00:35:00"
+    "completed_at": "2026-05-02T00:35:00",
+    "category": "business"
   },
   {
     "id": 175,
@@ -685,7 +752,8 @@
     "description": "code-reviewer (送料関税横断 review 2026-05-01) MEDIUM 指摘の docs/UI 文言更新: docs/spec.md L56 / L162 (M-1) + docs/progress.md L66 (M-2) + app.py L2917, L2940 caption (M-3) + feedback_karpathy_principles.md L47 注記 (M-4) + scripts/audit_past_listings_shipping_2026_05_01.py docstring (M-5). W84 (候補 D ebay_lister 4 区分実装) と同時更新で K2 surgical 維持. NOTE: 候補 C review (2026-05-01) で追加発見した MEDIUM 2 件 (terapeak_scraper.py:88 dataclass docstring + database.py:1460,1465 migration コメント、3 区分→4 区分残存) は同 review session 内で即修正済 (W85 scope 外).",
     "status": "pending",
     "priority": "low",
-    "created_at": "2026-05-01T17:30:00"
+    "created_at": "2026-05-01T17:30:00",
+    "category": "internal"
   },
   {
     "id": 176,
@@ -695,7 +763,8 @@
     "status": "completed",
     "priority": "high",
     "created_at": "2026-05-01T16:00:00",
-    "completed_at": "2026-05-01T17:30:00"
+    "completed_at": "2026-05-01T17:30:00",
+    "category": "business"
   },
   {
     "id": 177,
@@ -705,7 +774,8 @@
     "status": "一部完了 (書き込み側のみ)",
     "priority": "medium",
     "created_at": "2026-05-01T22:40:00",
-    "completed": "2026-05-07"
+    "completed": "2026-05-07",
+    "category": "business"
   },
   {
     "id": 178,
@@ -714,7 +784,8 @@
     "description": "W84 候補 D scope 縮小版で関税額を `price * 0.20` 暫定近似値で運用継続中. strict 化サブモジュールが未実装. 仕様 (`reference_shipping_tariff_logic.md` § 6 / .company/ebay-knowledge/topics/section_232_tariff_2026_04.md): HS code 判定 (Annex I-A 50% / I-B 25% / III 15% / IEEPA reciprocal 15%) → metal weight ≥15% で派生品判定 → 重量算定 → 関税額計算. 実装イメージ: monitor/tariff_calculator.py 新設、calc_ddp_tariff(hs_code, price, weight_g, materials) -> float 関数 + customs_requests テーブル統合. ebay_lister._compute_shipping_override_for_market から呼び出し置換. 既存 `price * 0.20` 流用は近似値として継続維持 (HS unknown / 暫定 fallback). W84 (4 区分構造) 完了が前提.",
     "status": "pending",
     "priority": "medium",
-    "created_at": "2026-05-01T23:00:00"
+    "created_at": "2026-05-01T23:00:00",
+    "category": "business"
   },
   {
     "id": 179,
@@ -723,7 +794,8 @@
     "description": "W84 候補 D 実装後、既存 442 件 active listing は旧 `price * 0.20` 共通 override で出品済. 4 区分別 XML 反映には ReviseFixedPriceItem で一括上書き必要. scope: (1) ebay_listings.primary_market が判定済 (W88 fix 後の正値) listings を対象に loop (2) 各 listing で _compute_shipping_override_for_market を呼んで XML 構築 (3) ReviseFixedPriceItem で eBay に PUT (4) 結果を log + verify (eBay GetItem). pytest だけで完了宣言禁止 = Q1 DoD 11 step 適用. オペレーション cost: 442 件 × API call ~1s = ~10min. W84 + W88 完了が前提.",
     "status": "pending",
     "priority": "medium",
-    "created_at": "2026-05-01T23:00:00"
+    "created_at": "2026-05-01T23:00:00",
+    "category": "business"
   },
   {
     "id": 180,
@@ -732,36 +804,8 @@
     "description": "user 要求 (2026-05-02): 先週末〜今週頭の品質低下 (memory `session_2026_04_29_late_*` / `feedback_harness_reform_master_checklist.md`) からの構造改革を再発防止 + 定期検診 skill 化. 9 カテゴリ check: (1) `.claude/agents/*.md` YAML/tools/description 妥当性, (2) `.claude/rules/*.md` 相互参照 + 矛盾検出 (= 2026-04-30 SKU 事故型防御), (3) MEMORY.md 索引→file 実在 + 行長 + frontmatter, (4) CLAUDE.md root+subdir @import valid + stale 表現検出, (5) settings.json hooks パス valid + shell 実行可 (`feedback_hook_path_must_use_project_dir.md` 事故型防御), (6) 直近 invocation 健全性 (api_call_log success rate / task_execution_log silent skip), (7) 構造的 drift signal (file 肥大 split 候補 / 頻繁編集 / stale memory >30 日), (8) 改革提案 (rule 分離 / memory 統合 / 廃止), (9) **agent load 分析 + 専用化提案** (`~/.claude/projects/*/sessions/*.jsonl` 集計、月次 invocation top-N / avg context tokens / duration / 成功率 trend、context 多様性 high → 専用 agent split 提案、tasks 重複検出、e.g. research-brain-supplier / research-brain-listing 分離). 実行パターン 3 系統: (A) session start hook 軽量モード ~3s 致命 FAIL のみ, (B) 手動 `/harness-health-audit` full ~30s, (C) weekly cron deep ~60s + 構造改革提案 + Discord 通知 + `audit/YYYY-MM-DD.md` 履歴保存. 実装規模 ~3.5h: skill 骨組 + 9 check 実装 + output format + hook 統合 + cron 統合 + tests. 完成すれば過去事故 (SKU 規約誤読 / hook 失効 / memory 索引 stale) 自動防御 + 高負荷 agent 早期検出 + harness 改修 W37-W42 系列の継続的 health 担保.",
     "status": "pending",
     "priority": "high",
-    "created_at": "2026-05-02T00:15:00"
-  },
-  {
-    "id": 184,
-    "tag": "W99",
-    "title": "ライバルセラーチェック (新規ライバル発見 → W98 自動登録 feed 系)",
-    "description": "user 要望 (2026-05-03): W98 (最安値チェック) が事前登録 item id だけを巡回するのに対し、本 W99 は **未登録の新ライバル item id を自動発見** して W98 に登録 feed する radar 系。仕組み: 自分の出品商品の (brand + 型番) keyword で eBay 検索 → 競合 listing item id を抽出 → competitor_products テーブルに既存登録分を引いて差分が新ライバル → user 承認 (or auto threshold) で W98 に登録。既存資産: tasks/task_rival_detection.py 骨組 (4/30, 194 行 / Browse API キーワード検索 / known_rival_sellers.json 連携 / data/rival_detection/YYYY-MM-DD-rivals.json 出力) を流用。new_competitor_alerts テーブル既存。実装ギャップ: (1) keyword 抽出 (W7-A keyword_extractor 流用), (2) 検出された新 item id の重複排除と差分計算, (3) user 承認 UI (Streamlit), (4) 1 日 1 回程度の cron 統合, (5) Discord alert. 工数 ~4-5h. 前提: W98 完成 (登録先がないと意味なし). 着手目処: bg job (market analysis 残 172 件) 完了 + W98 完成後.",
-    "status": "pending",
-    "priority": "medium",
-    "created_at": "2026-05-03T22:00:00"
-  },
-  {
-    "id": 183,
-    "tag": "W98",
-    "title": "最安値チェック (事前登録 item id 巡回 → 自動値下げで eBay SEO ブースト)",
-    "description": "user 要望 (2026-05-03): eBay は最安値出品で検索順位が上がる (SEO ブースト) ため、商品ごとに事前登録したライバル item id の価格を定期巡回し、自分の出品価格が高ければ自動値下げする本体システム。アーキテクチャ: 事前登録 item id (1 自分商品 : N ライバル) → 6 時間ごと巡回 → ライバル価格 < 自分の価格 + min_price 制約満たす値段なら ReviseFixedPriceItem で自動値下げ → W22 Promoted Listings 2% 維持。既存資産: competitor_products テーブル (5/2 最終更新, 11 カラム) は本 W98 用に設計済で流用可能。tasks/task_price_optimization.py (5/1, 190 行) は在庫サイクル基準の別経路で本 W98 とは別軸 (ただし ReviseFixedPriceItem 実行ロジックは流用)。\n\n## 設計確定 (2026-05-05 user 決定)\n- L1 登録単位: 1 自分商品 : N ライバル (既存 schema 前提)\n- L2 巡回頻度: 6 時間ごと (eBay rate limit 安全側)\n- L3 値下げ幅: ライバル -0.01 USD (1 セント安く)\n- L3 床 (最低価格): 商品ごと user 指定 (competitor_products.min_price)\n\n## 床指定 UX (2026-05-05 user 要望)\nライバル登録 UI に商品ごと「利益計算」ボタンを配置。押下すると該当商品の値 (販売価格 / 仕入値 / 重量 / 寸法 / カテゴリーID / 関税率) を DB / Section 232 KB から自動読み出し → session_state 格納 → 既存の利益計算タブ (app.py L1434) にフォーカス遷移。user は事前入力済の値で計算実行 → 推奨最低販売価格 (床) を取得 → W98 の min_price に転記。手動入力負担を最小化。\n\n## 実装ギャップ 4 件\n- G1 ライバル登録 UI (Streamlit, ~2h)\n- G1.5 利益計算ボタン自動連携 (DB 読出 + session_state + tab 遷移, ~2-3h、5/5 追加)\n- G2 ライバル価格定期取得 (eBay Browse API, ~3h)\n- G3 価格比較 + 自動値下げ判定 (~2h)\n- G4 ReviseFixedPriceItem 実行 (~1h、ebay_lister.py 流用)\n合計 ~10-11h\n\n## 重要制約 3 件 (5/5 設計議論で追加)\n1. 関税整合性: 床は (原価 + 関税 buffer + 最低利益) を含めて計算。一律 -1 セント追随で関税分が削られて赤字化しないこと。米国向けは Section 232 (HS 73xx/74xx/76xx 純金属 50% / HS 8516.60.40 等派生品 25%) と IEEPA (15%) で関税大の商品あり、reference_shipping_tariff_logic.md v1.0 § 2 整合必須。\n2. eBay API rate limit: ReviseFixedPriceItem 連続実行に上限 (1h あたり N 件) + sleep を設けて API quota 浪費 / アカウント警告を防ぐ。ebay_lister.py 既存の rate limit logic を流用検討。\n3. Q-2 PoC SKU 確認: 最初は 1-2 商品 (PoC) で 1-2 週間運用して挙動確認 → 問題なければ拡大。いきなり全商品 (~400 件) ON にすると想定外挙動でアカウント停止リスク。段階導入で over-engineering 回避。\n\n前提: W22 (Promoted Listings 2% 標準) との整合性。SEO 効果検証は 2-4 週運用後。着手目処: bg job (W7-A market analysis) 完了 + 5/5 Phase 7 完走判定 が OK の後。\n\n[2026-05-07 独立検証] 完了済: G1 ライバル登録 UI + 再設計 (商品ごと 1 行表示 + ライバル ×10). 未実装: G1.5 利益計算ボタン自動連携, G2 6h cron 定期巡回 (現状 ad-hoc fetch のみ), G3 価格比較 + 自動値下げ判定, G4 ReviseFixedPriceItem 自動実行.",
-    "status": "一部完了 (G1 + 再設計)",
-    "priority": "high",
-    "created_at": "2026-05-03T22:00:00"
-  },
-  {
-    "id": 182,
-    "tag": "W95",
-    "title": "scheduler 多重起動防止 file lock (Windows msvcrt)",
-    "description": "出典 (2026-05-03): W94 Phase 7 Day 1 fix 中に scheduler 3 並列稼働事故 (PID 65408 / 1308 / 82880) を発見、Auto-Recharge $27 高頻度発火の主因 2 つのうち 1 つ (重複実行) として確認。本 W95 は構造的予防。実装: daily_scheduler.py main() 冒頭で msvcrt.locking() による OS-level file lock 取得 (data/scheduler.lock の 1 byte)、既存 instance 検出時は sys.exit(1) で終了。診断用 PID は別ファイル (data/scheduler.pid) で書き出し読み取り (lock byte と分離 = msvcrt は lock byte の read 自体も拒否するため)。tests/test_scheduler_singleton_lock.py 4 case (acquire OK / 競合時 SystemExit / 解放後再取得 / PID file 上書き防止) PASS。設計判断: --force flag は採用せず (K1 simplicity)、cross-platform 化は不要 (Platform: win32 fixed)、PC sleep / hard kill 時は OS が lock を auto-release するため stale 処理 unnecessary。本適用 = 5/4 02:30 batch verify 完了後の scheduler restart で反映 (W94 Phase 7 観察期間中の touching 最小化)。user 承認 (2026-05-03 09:45): 案 A msvcrt + Q1=No (--force 用意せず) + Q2=data/ 配下.",
-    "status": "完了",
-    "priority": "high",
-    "created_at": "2026-05-03T09:45:00",
-    "next_milestone": "5/4 verify 完了後 → scheduler restart で本適用 → 1 週間運用観察 → completed 化",
-    "completed": "2026-05-07"
+    "created_at": "2026-05-02T00:15:00",
+    "category": "business"
   },
   {
     "id": 181,
@@ -804,7 +848,40 @@
       }
     ],
     "next_milestone": "5/4 02:30 batch 後 verify (Phase 7 真の Day 1) → 5/5 夜 Phase 7 完走判定 → completed 化",
-    "completed_at": "2026-05-05T21:00:00"
+    "completed_at": "2026-05-05T21:00:00",
+    "category": "business"
+  },
+  {
+    "id": 182,
+    "tag": "W95",
+    "title": "scheduler 多重起動防止 file lock (Windows msvcrt)",
+    "description": "出典 (2026-05-03): W94 Phase 7 Day 1 fix 中に scheduler 3 並列稼働事故 (PID 65408 / 1308 / 82880) を発見、Auto-Recharge $27 高頻度発火の主因 2 つのうち 1 つ (重複実行) として確認。本 W95 は構造的予防。実装: daily_scheduler.py main() 冒頭で msvcrt.locking() による OS-level file lock 取得 (data/scheduler.lock の 1 byte)、既存 instance 検出時は sys.exit(1) で終了。診断用 PID は別ファイル (data/scheduler.pid) で書き出し読み取り (lock byte と分離 = msvcrt は lock byte の read 自体も拒否するため)。tests/test_scheduler_singleton_lock.py 4 case (acquire OK / 競合時 SystemExit / 解放後再取得 / PID file 上書き防止) PASS。設計判断: --force flag は採用せず (K1 simplicity)、cross-platform 化は不要 (Platform: win32 fixed)、PC sleep / hard kill 時は OS が lock を auto-release するため stale 処理 unnecessary。本適用 = 5/4 02:30 batch verify 完了後の scheduler restart で反映 (W94 Phase 7 観察期間中の touching 最小化)。user 承認 (2026-05-03 09:45): 案 A msvcrt + Q1=No (--force 用意せず) + Q2=data/ 配下.",
+    "status": "完了",
+    "priority": "high",
+    "created_at": "2026-05-03T09:45:00",
+    "next_milestone": "5/4 verify 完了後 → scheduler restart で本適用 → 1 週間運用観察 → completed 化",
+    "completed": "2026-05-07",
+    "category": "business"
+  },
+  {
+    "id": 183,
+    "tag": "W98",
+    "title": "最安値チェック (事前登録 item id 巡回 → 自動値下げで eBay SEO ブースト)",
+    "description": "user 要望 (2026-05-03): eBay は最安値出品で検索順位が上がる (SEO ブースト) ため、商品ごとに事前登録したライバル item id の価格を定期巡回し、自分の出品価格が高ければ自動値下げする本体システム。アーキテクチャ: 事前登録 item id (1 自分商品 : N ライバル) → 6 時間ごと巡回 → ライバル価格 < 自分の価格 + min_price 制約満たす値段なら ReviseFixedPriceItem で自動値下げ → W22 Promoted Listings 2% 維持。既存資産: competitor_products テーブル (5/2 最終更新, 11 カラム) は本 W98 用に設計済で流用可能。tasks/task_price_optimization.py (5/1, 190 行) は在庫サイクル基準の別経路で本 W98 とは別軸 (ただし ReviseFixedPriceItem 実行ロジックは流用)。\n\n## 設計確定 (2026-05-05 user 決定)\n- L1 登録単位: 1 自分商品 : N ライバル (既存 schema 前提)\n- L2 巡回頻度: 6 時間ごと (eBay rate limit 安全側)\n- L3 値下げ幅: ライバル -0.01 USD (1 セント安く)\n- L3 床 (最低価格): 商品ごと user 指定 (competitor_products.min_price)\n\n## 床指定 UX (2026-05-05 user 要望)\nライバル登録 UI に商品ごと「利益計算」ボタンを配置。押下すると該当商品の値 (販売価格 / 仕入値 / 重量 / 寸法 / カテゴリーID / 関税率) を DB / Section 232 KB から自動読み出し → session_state 格納 → 既存の利益計算タブ (app.py L1434) にフォーカス遷移。user は事前入力済の値で計算実行 → 推奨最低販売価格 (床) を取得 → W98 の min_price に転記。手動入力負担を最小化。\n\n## 実装ギャップ 4 件\n- G1 ライバル登録 UI (Streamlit, ~2h)\n- G1.5 利益計算ボタン自動連携 (DB 読出 + session_state + tab 遷移, ~2-3h、5/5 追加)\n- G2 ライバル価格定期取得 (eBay Browse API, ~3h)\n- G3 価格比較 + 自動値下げ判定 (~2h)\n- G4 ReviseFixedPriceItem 実行 (~1h、ebay_lister.py 流用)\n合計 ~10-11h\n\n## 重要制約 3 件 (5/5 設計議論で追加)\n1. 関税整合性: 床は (原価 + 関税 buffer + 最低利益) を含めて計算。一律 -1 セント追随で関税分が削られて赤字化しないこと。米国向けは Section 232 (HS 73xx/74xx/76xx 純金属 50% / HS 8516.60.40 等派生品 25%) と IEEPA (15%) で関税大の商品あり、reference_shipping_tariff_logic.md v1.0 § 2 整合必須。\n2. eBay API rate limit: ReviseFixedPriceItem 連続実行に上限 (1h あたり N 件) + sleep を設けて API quota 浪費 / アカウント警告を防ぐ。ebay_lister.py 既存の rate limit logic を流用検討。\n3. Q-2 PoC SKU 確認: 最初は 1-2 商品 (PoC) で 1-2 週間運用して挙動確認 → 問題なければ拡大。いきなり全商品 (~400 件) ON にすると想定外挙動でアカウント停止リスク。段階導入で over-engineering 回避。\n\n前提: W22 (Promoted Listings 2% 標準) との整合性。SEO 効果検証は 2-4 週運用後。着手目処: bg job (W7-A market analysis) 完了 + 5/5 Phase 7 完走判定 が OK の後。\n\n[2026-05-07 独立検証] 完了済: G1 ライバル登録 UI + 再設計 (商品ごと 1 行表示 + ライバル ×10). 未実装: G1.5 利益計算ボタン自動連携, G2 6h cron 定期巡回 (現状 ad-hoc fetch のみ), G3 価格比較 + 自動値下げ判定, G4 ReviseFixedPriceItem 自動実行.",
+    "status": "一部完了 (G1 + 再設計)",
+    "priority": "high",
+    "created_at": "2026-05-03T22:00:00",
+    "category": "business"
+  },
+  {
+    "id": 184,
+    "tag": "W99",
+    "title": "ライバルセラーチェック (新規ライバル発見 → W98 自動登録 feed 系)",
+    "description": "user 要望 (2026-05-03): W98 (最安値チェック) が事前登録 item id だけを巡回するのに対し、本 W99 は **未登録の新ライバル item id を自動発見** して W98 に登録 feed する radar 系。仕組み: 自分の出品商品の (brand + 型番) keyword で eBay 検索 → 競合 listing item id を抽出 → competitor_products テーブルに既存登録分を引いて差分が新ライバル → user 承認 (or auto threshold) で W98 に登録。既存資産: tasks/task_rival_detection.py 骨組 (4/30, 194 行 / Browse API キーワード検索 / known_rival_sellers.json 連携 / data/rival_detection/YYYY-MM-DD-rivals.json 出力) を流用。new_competitor_alerts テーブル既存。実装ギャップ: (1) keyword 抽出 (W7-A keyword_extractor 流用), (2) 検出された新 item id の重複排除と差分計算, (3) user 承認 UI (Streamlit), (4) 1 日 1 回程度の cron 統合, (5) Discord alert. 工数 ~4-5h. 前提: W98 完成 (登録先がないと意味なし). 着手目処: bg job (market analysis 残 172 件) 完了 + W98 完成後.",
+    "status": "pending",
+    "priority": "medium",
+    "created_at": "2026-05-03T22:00:00",
+    "category": "business"
   },
   {
     "id": 185,
@@ -813,7 +890,8 @@
     "description": "出典: 2026-05-05 daily_relist 6 日 silent skip 事故 + code-reviewer 指摘 (E 観点). race condition 起因の skip_time が normal skip と区別不能で 4 層防御が騙された. 本 W (W94 race fix とは別 task): (1) _record_skip 内で _batch_ctx[id] に task_key suffix が含まれる = isolated hijack 痕跡を検出して skip_kind=skip_race_suspected で別カウント (2) health_check で expected_today=True かつ execution_times に batch_hour が含まれない case を anomaly Discord 通知 (3) MonoDeck 定時実行タブで skip_race_suspected を別色可視化. 構造的二重防御で race fix が将来 regression しても検知可能. 工数 2-3h. 前提: 5/5 race fix scheduler restart 後着手.",
     "status": "pending",
     "priority": "medium",
-    "created_at": "2026-05-05T19:55:00"
+    "created_at": "2026-05-05T19:55:00",
+    "category": "internal"
   },
   {
     "id": 186,
@@ -822,7 +900,8 @@
     "description": "monitor/ebay_sync.py L199, L247 で source_items = {item[sku]: item for item in get_active_items()} と dict キー化されてる. 同 SKU 複数 entry (例: yahoo + mercari の 2 仕入先で同商品監視) で後勝ち上書きにより 前 entry が消失. SKU rule (.claude/rules/sku-rules.md) の禁止 pattern 直撃. 修正: (sku, source_url) 複合キー化 or list 化. 工数 1-2h. priority HIGH. 出典 2026-05-05 code-architect Opus 4.7 review (FINDING 3).",
     "status": "pending",
     "priority": "high",
-    "created_at": "2026-05-05T20:45:00"
+    "created_at": "2026-05-05T20:45:00",
+    "category": "business"
   },
   {
     "id": 187,
@@ -831,7 +910,8 @@
     "description": "出典: 2026-05-05 research-brain Opus 4.7 (Finding 3). supplier_candidates テーブルに alt_listing_note 471 件 (KEYENCE FL-001, ES-X38, IV4-G120 等) の AI 業務提案が 蓄積されているが user 動線が無い. business 機会損失極大. 実装: app.py に「別SKU出品機会」タブ新設、alt_listing_possible=1 の candidate を一覧表示、AI の出品理由 (alt_listing_note) を表示、「新規出品キューに送る」ボタン. 工数 4-6h. priority HIGH.",
     "status": "pending",
     "priority": "high",
-    "created_at": "2026-05-05T20:45:00"
+    "created_at": "2026-05-05T20:45:00",
+    "category": "business"
   },
   {
     "id": 188,
@@ -840,7 +920,8 @@
     "description": "出典: 2026-05-05 本日 5+ 件の SQL filter 抜け / 0 件誤判定 bug 多発の構造分析. SQL 書く時に「sku LIKE 'ebay/stock%' x alt_listing_possible=0/1」の 4 象限で「user に見えるべきか」を コード横にコメント明記する rule 制定. PreToolUse hook で機械検出強化検討. memory file: feedback_sql_business_axes_check.md 新設. 工数 1h.",
     "status": "pending",
     "priority": "medium",
-    "created_at": "2026-05-05T20:45:00"
+    "created_at": "2026-05-05T20:45:00",
+    "category": "business"
   },
   {
     "id": 189,
@@ -850,7 +931,8 @@
     "status": "pending",
     "priority": "medium",
     "created_at": "2026-05-05T21:00:00",
-    "due_date": "2026-06-04"
+    "due_date": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 190,
@@ -861,7 +943,8 @@
     "priority": "high",
     "created_at": "2026-05-06T08:30:00",
     "completed_at": "2026-05-06T09:55:00",
-    "completed": "2026-05-07"
+    "completed": "2026-05-07",
+    "category": "business"
   },
   {
     "id": 192,
@@ -873,7 +956,8 @@
     "created": "2026-05-08",
     "completed": null,
     "completed_at": "2026-05-09",
-    "completion_notes": "Anthropic Message Batches API 50% 割引を api_call_log で正しく反映 (is_batch カラム + auto-detect). 18 tests PASS, regression-free."
+    "completion_notes": "Anthropic Message Batches API 50% 割引を api_call_log で正しく反映 (is_batch カラム + auto-detect). 18 tests PASS, regression-free.",
+    "category": "business"
   },
   {
     "id": 193,
@@ -883,7 +967,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-08",
-    "completed": "2026-05-09"
+    "completed": "2026-05-09",
+    "category": "business"
   },
   {
     "id": 194,
@@ -893,7 +978,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-08",
-    "completed": "2026-05-09"
+    "completed": "2026-05-09",
+    "category": "business"
   },
   {
     "id": 195,
@@ -903,7 +989,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-08",
-    "completed": "2026-05-08"
+    "completed": "2026-05-08",
+    "category": "business"
   },
   {
     "id": 196,
@@ -913,7 +1000,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-08",
-    "completed": "2026-05-09"
+    "completed": "2026-05-09",
+    "category": "business"
   },
   {
     "id": 197,
@@ -923,7 +1011,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-09",
-    "completed": "2026-05-09"
+    "completed": "2026-05-09",
+    "category": "business"
   },
   {
     "id": 200,
@@ -933,7 +1022,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-09",
-    "completed": "2026-05-09"
+    "completed": "2026-05-09",
+    "category": "business"
   },
   {
     "id": 201,
@@ -943,7 +1033,8 @@
     "priority": "normal",
     "status": "保留",
     "created_at": "2026-05-09",
-    "origin": "5/9 22:30 user 議論 (UI 誤承認 50 件 rollback 後の方針変更)"
+    "origin": "5/9 22:30 user 議論 (UI 誤承認 50 件 rollback 後の方針変更)",
+    "category": "business"
   },
   {
     "id": 204,
@@ -954,7 +1045,8 @@
     "priority": "高",
     "created": "2026-05-12",
     "completed": "2026-06-04",
-    "completion_notes": "Phase 0 で既存 site_configs に Amazon (id=9) / 楽天 (id=6) が既登録判明 → migration v38 は monitored_items 列追加 + 楽天 text 補完のみで完結 (K1 Simplicity)。scrapers.py 1 行も変更せず (K2 Surgical)、価格抽出は新規 monitor/price_extractor.py に分離。code-reviewer 2 round で HIGH=0 (Wave D 3 件 + Wave E 6 件 fix)。pytest 1050 件 PASS / 新規 30 件。残: 実 HTML inspect (Phase 4 後 user 実機 verify)、bot 検知緩和 jitter sleep 確認。"
+    "completion_notes": "Phase 0 で既存 site_configs に Amazon (id=9) / 楽天 (id=6) が既登録判明 → migration v38 は monitored_items 列追加 + 楽天 text 補完のみで完結 (K1 Simplicity)。scrapers.py 1 行も変更せず (K2 Surgical)、価格抽出は新規 monitor/price_extractor.py に分離。code-reviewer 2 round で HIGH=0 (Wave D 3 件 + Wave E 6 件 fix)。pytest 1050 件 PASS / 新規 30 件。残: 実 HTML inspect (Phase 4 後 user 実機 verify)、bot 検知緩和 jitter sleep 確認。",
+    "category": "business"
   },
   {
     "id": 205,
@@ -965,7 +1057,8 @@
     "priority": "高",
     "created": "2026-05-12",
     "completed": "2026-06-04",
-    "completion_notes": "W120 と統合実装. migration v38 で monitored_items に 4 列追加 (baseline_price_jpy / current_price_jpy / baseline_at / price_alert_state)。tasks/task_inventory_check.py に 3 helper 追加 (_evaluate_restock_alerts / _fetch_and_store_prices / _update_price_and_evaluate_alert)。restock state は 24h で自動 normal 降格 (H4)。DASHBOARD「💰 仕入先 価格変動」section で 3 metric (急騰/急落/復活) + 上位 10 件表示。code-reviewer HIGH=0 達成 (確信度 high finding 全 fix)。"
+    "completion_notes": "W120 と統合実装. migration v38 で monitored_items に 4 列追加 (baseline_price_jpy / current_price_jpy / baseline_at / price_alert_state)。tasks/task_inventory_check.py に 3 helper 追加 (_evaluate_restock_alerts / _fetch_and_store_prices / _update_price_and_evaluate_alert)。restock state は 24h で自動 normal 降格 (H4)。DASHBOARD「💰 仕入先 価格変動」section で 3 metric (急騰/急落/復活) + 上位 10 件表示。code-reviewer HIGH=0 達成 (確信度 high finding 全 fix)。",
+    "category": "business"
   },
   {
     "id": 206,
@@ -975,7 +1068,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-13",
-    "completed": "2026-05-14"
+    "completed": "2026-05-14",
+    "category": "business"
   },
   {
     "id": 207,
@@ -984,7 +1078,8 @@
     "description": "MonoDeck のリサーチ結果・出品判断履歴・動画学習 KB を Obsidian vault と双方向同期し、外出先/iPad でも参照・追記可能にする. 候補方向: (a) Obsidian → MonoDeck (秘書 inbox 連携)、(b) MonoDeck → Obsidian (発掘候補 / morning_brief / 動画学習を md export)、(c) 双方向. 設計は /feature-dev で要件整理.",
     "status": "未着手",
     "priority": "通常",
-    "created": "2026-05-14"
+    "created": "2026-05-14",
+    "category": "business"
   },
   {
     "id": 208,
@@ -993,7 +1088,8 @@
     "description": "Claude (Opus/Sonnet/Haiku) と Gemini (動画) に加えて OpenAI Codex を選択可能に. 候補用途: (a) コード生成での 2nd opinion、(b) 翻訳/英語 listing 文章生成、(c) 関数呼び出し JSON 構造化. ANTHROPIC_API_KEY と並列で OPENAI_API_KEY 管理、cost tracking、quota 制限を整備.",
     "status": "未着手",
     "priority": "通常",
-    "created": "2026-05-14"
+    "created": "2026-05-14",
+    "category": "business"
   },
   {
     "id": 209,
@@ -1002,7 +1098,8 @@
     "description": "code-reviewer (Claude) HIGH=0 loop の最終段に Codex レビューを追加し、別系統 LLM での独立 2nd opinion を入手. 食い違い指摘があれば人間判断、合致なら自動 close. W124 OpenAI Codex 登録の後続.",
     "status": "未着手",
     "priority": "通常",
-    "created": "2026-05-14"
+    "created": "2026-05-14",
+    "category": "business"
   },
   {
     "id": 210,
@@ -1012,7 +1109,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-14",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 211,
@@ -1023,7 +1121,8 @@
     "priority": "高",
     "created": "2026-05-14",
     "progress_note": "(1) 永続 debug log = tools/ebay-manager/logs/sessionstart_hook.log に env+path+分岐結果記録 (2) ERROR grep から多重起動防止/concurrent_run_skip false positive 除外 (3) additionalContext 冒頭に [hook] ROOT_DIR/MEM_DIR を 1 行明示 (4) _NEXT_SESSION.md mtime が現在時刻+60s 以上未来なら [SANITY] warning",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 212,
@@ -1033,7 +1132,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-14",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 213,
@@ -1043,7 +1143,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-14",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 214,
@@ -1052,7 +1153,8 @@
     "description": "2026-05-14 W127 SessionStart hook 対策 4 件は事故対応 patch だったが、hook script 78 行追加 = 「中規模変更」か「軽修正」かの判定基準が不明確だった. CLAUDE.md Q3 は「新機能 / 外部 API / 見積不確実な変更は /feature-dev 必須」と書かれているが、本 case は事故対応 patch / 既存 hook 拡張で /feature-dev 起動するか判断分かれた. 対策: .claude/rules/feature-dev-judgement.md を新設し、起動判断基準を明文化 (e.g. ≥50 行追加 / 新規 file 作成 / 外部 API 呼出変更 / DB スキーマ変更 / scheduler cron 追加 → /feature-dev 起動必須). 関連 feedback_feature_dev_usage.md.",
     "status": "未着手",
     "priority": "中",
-    "created": "2026-05-14"
+    "created": "2026-05-14",
+    "category": "business"
   },
   {
     "id": 215,
@@ -1062,7 +1164,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-15",
-    "completed": "2026-05-15"
+    "completed": "2026-05-15",
+    "category": "business"
   },
   {
     "id": 216,
@@ -1071,7 +1174,8 @@
     "description": "2026-05-15 W124 P4 auto-restart loop 検証で、claude process が応答せず 2h+ 生き残るケースを観測 (Remote Control /bye 不発による). 対策: claude-loop.ps1 に max-session-duration 監視を追加. 例: (a) iteration 開始時に start_time 保存 (b) 別 thread or background job で N 分毎に経過時間チェック (c) 24h (要 user 議論) 超過なら Stop-Process で強制 kill して restart loop に戻す (d) 同時に Discord 通知で user に ghost-session 検出を報告. 副次効果: heartbeat も session 中継続更新できる (現状: iteration 開始時のみ更新 = 長時間 session 中は heartbeat stale で生死誤判定). 関連: claude-loop.ps1 L25-28 (Update-Heartbeat) / L33-76 (while loop).",
     "status": "未着手",
     "priority": "低",
-    "created": "2026-05-15"
+    "created": "2026-05-15",
+    "category": "internal"
   },
   {
     "id": 217,
@@ -1081,7 +1185,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-16",
-    "completed": "2026-05-16"
+    "completed": "2026-05-16",
+    "category": "business"
   },
   {
     "id": 218,
@@ -1091,7 +1196,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-16",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 219,
@@ -1101,7 +1207,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-16",
-    "completed": "2026-05-17"
+    "completed": "2026-05-17",
+    "category": "business"
   },
   {
     "id": 220,
@@ -1111,7 +1218,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-17",
-    "completed": "2026-05-17"
+    "completed": "2026-05-17",
+    "category": "business"
   },
   {
     "id": 221,
@@ -1121,7 +1229,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-17",
-    "completed": "2026-05-17"
+    "completed": "2026-05-17",
+    "category": "business"
   },
   {
     "id": 222,
@@ -1131,7 +1240,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-17",
-    "completed": "2026-05-17"
+    "completed": "2026-05-17",
+    "category": "business"
   },
   {
     "id": 224,
@@ -1143,7 +1253,8 @@
     "created": "2026-05-19",
     "completed": "2026-05-19",
     "origin": "user 口頭依頼 (2026-05-19、W139-fix セッション中)",
-    "progress_note": " || [Clarify 2026-05-19] scope確定=メモ+売却警告 W140フル: listing(ebay_item_id)単位 free-text メモ + メモ付きが売れたら MonoDeck/Discord 警告。設計要点: メモキー=ebay_item_id(relist id変化追従, sku-rules で sku キー化禁止)・売却検知トリガ(order_alert_check W7-A or ebay_sync)・warning lifecycle(ack/dismiss/再通知)・Discord二重通知回避・W147と同 hero/expander 改修=設計併合検討。 || [完了 2026-05-19] migration v44(listing_notes/listing_sale_warnings, claim-then-act二重通知防止, 自己修復版数bump)+メモUI/change-guard保存/📎/再出品引継(inherit_listing_on_relist)/売却検知hook(task_order_alert)/MonoDeckバナー。2段review=内部HIGH=0→Codex HIGH2(ItemID欠落Q0痕跡/v44版数自己修復)修正→再HIGH=0。Q1=pytest12+回帰312、Streamlit+Playwrightでメモ保存→DB往復・売却警告バナー→[了解]→acked を0 console errors実証。commit 09d8fe7 origin/main push済。scheduler PID83596再起動デプロイ済(W7-A注文アラート30分cron稼働)。"
+    "progress_note": " || [Clarify 2026-05-19] scope確定=メモ+売却警告 W140フル: listing(ebay_item_id)単位 free-text メモ + メモ付きが売れたら MonoDeck/Discord 警告。設計要点: メモキー=ebay_item_id(relist id変化追従, sku-rules で sku キー化禁止)・売却検知トリガ(order_alert_check W7-A or ebay_sync)・warning lifecycle(ack/dismiss/再通知)・Discord二重通知回避・W147と同 hero/expander 改修=設計併合検討。 || [完了 2026-05-19] migration v44(listing_notes/listing_sale_warnings, claim-then-act二重通知防止, 自己修復版数bump)+メモUI/change-guard保存/📎/再出品引継(inherit_listing_on_relist)/売却検知hook(task_order_alert)/MonoDeckバナー。2段review=内部HIGH=0→Codex HIGH2(ItemID欠落Q0痕跡/v44版数自己修復)修正→再HIGH=0。Q1=pytest12+回帰312、Streamlit+Playwrightでメモ保存→DB往復・売却警告バナー→[了解]→acked を0 console errors実証。commit 09d8fe7 origin/main push済。scheduler PID83596再起動デプロイ済(W7-A注文アラート30分cron稼働)。",
+    "category": "business"
   },
   {
     "id": 225,
@@ -1155,7 +1266,8 @@
     "created": "2026-05-19",
     "completed": "2026-06-04",
     "origin": "user 口頭依頼 (2026-05-19、W139-fix セッション中)",
-    "progress_note": null
+    "progress_note": null,
+    "category": "business"
   },
   {
     "id": 226,
@@ -1167,7 +1279,8 @@
     "created": "2026-05-19",
     "completed": "2026-05-19",
     "origin": "user 口頭依頼 (2026-05-19、最大ストレスとして優先要望)",
-    "progress_note": "2026-05-19 Clarify 完了: 方向性=同時変更可(Q-3撤廃) / 表示=DB値+乖離マーカー。根本原因 4 点を実コードで特定済 (tab_product_management.py:1865 Q-3 / :780 +each非表示 / :771,:1833 DB乖離 / _build_revise_with_shipping_xml ebay_client.py:896 が combined 可を docstring 明記)。次: code-architect 設計→Codex技術相談(combined revise の新BP適用順・無音失敗条件)→code-reviewer 2段→実装→Q1。 [追加根本原因#5 2026-05-19 item356700630309実証] 『送料+each(USD)』(new_ship_additional)は (a) _apply_to_ebay の変更検出 ship_changed が new_ship(Buyer pays)しか見ず new_add を一切判定に含めない (tab_product_management.py:1833-1836)、(b) ebay_listings に +each 保存列が無い (ship系列=shipping_cost/shipping_profile_id のみ) ため :780 value=None で常時空欄=表示source皆無。結果 +each のみ変更は永久に『差分なし』(L1850)→success=False→外側で『⚠️一部未反映 実eBayと差分なし』の紛らわしい warning。W142設計はこれを必須包含: +each を change-detection に追加 + 表示source確保 (DB列追加 or GetItem)。『DB値+乖離マーカー』方針は +each に DB列が無い前提を要再設計。 || [2026-05-19 実装+2段レビュー完了] 5ファイル実装 (database.py v43 +each列 / ebay_account_policy resolve_domestic_priority+sortOrder抽出 / ebay_listing_snapshot override存在+priority parse / ebay_client ship_priority+force_seller_profiles default後方互換 / tab_product_management Q-3撤廃+combined+統一安全ガード+ +each dirty-flag+乖離marker+sync)。内部code-reviewer Opus 4周→HIGH=0、Codex(gpt-5.5)2段=技術相談1+レビュー2周で計 3HIGH+1MED 検出→統一安全ガード(snapshot None=不確定→明示abort、0/default捏造を物理排除)で一括根治→Codex再確認 全resolved・誤abort無・偽装success無。pytest 1333 passed/2 skipped。Streamlit再起動(MonoDeck PID96540 W142コード)+Playwright UI検証 0 errors (eBay出品section/送料+each DB駆動/乖離caption/BP selectbox/↻ 全描画)。本番DB monitor.db は v43+ +each2列 適用済(additive nullable・冪等検証済、Q2 24h retrospective対象=非破壊最低リスク型)。**残: Q1実機 A1検証 保留** (combined revise を生eBay listingで実行→GetItemで override が新BPにbind+priority一致を実証、user指示待ち。設計上 A1偽でも Phase4 GetItem実値照合+abort degrade で無音損失は物理排除済)。**未commit→本commitで記録、未push(規約: user明示時のみ)**。学び: feedback_no_long_silent_autonomous_runs 制定(2h無言自走をuser2回指摘→重い多段工程は前後で短報告)。 || [2026-05-19 完了] Q1 A1 read-only 実証 CONFIRMED (既存override listing 6/6 実priority==BP derived sortOrder、生mutation不要=money-safe)。pytest1333/UI 0 errors/内部4周HIGH=0/Codex2段。commit faa8bb9 + 946bb25(W139-fix) を origin/main へ push 済 (user承認2026-05-19)。未実施=live mutating E2E のみ(money-safetyで意図的回避、A1核心リスク確定済+W136実証機構+多段review担保)。"
+    "progress_note": "2026-05-19 Clarify 完了: 方向性=同時変更可(Q-3撤廃) / 表示=DB値+乖離マーカー。根本原因 4 点を実コードで特定済 (tab_product_management.py:1865 Q-3 / :780 +each非表示 / :771,:1833 DB乖離 / _build_revise_with_shipping_xml ebay_client.py:896 が combined 可を docstring 明記)。次: code-architect 設計→Codex技術相談(combined revise の新BP適用順・無音失敗条件)→code-reviewer 2段→実装→Q1。 [追加根本原因#5 2026-05-19 item356700630309実証] 『送料+each(USD)』(new_ship_additional)は (a) _apply_to_ebay の変更検出 ship_changed が new_ship(Buyer pays)しか見ず new_add を一切判定に含めない (tab_product_management.py:1833-1836)、(b) ebay_listings に +each 保存列が無い (ship系列=shipping_cost/shipping_profile_id のみ) ため :780 value=None で常時空欄=表示source皆無。結果 +each のみ変更は永久に『差分なし』(L1850)→success=False→外側で『⚠️一部未反映 実eBayと差分なし』の紛らわしい warning。W142設計はこれを必須包含: +each を change-detection に追加 + 表示source確保 (DB列追加 or GetItem)。『DB値+乖離マーカー』方針は +each に DB列が無い前提を要再設計。 || [2026-05-19 実装+2段レビュー完了] 5ファイル実装 (database.py v43 +each列 / ebay_account_policy resolve_domestic_priority+sortOrder抽出 / ebay_listing_snapshot override存在+priority parse / ebay_client ship_priority+force_seller_profiles default後方互換 / tab_product_management Q-3撤廃+combined+統一安全ガード+ +each dirty-flag+乖離marker+sync)。内部code-reviewer Opus 4周→HIGH=0、Codex(gpt-5.5)2段=技術相談1+レビュー2周で計 3HIGH+1MED 検出→統一安全ガード(snapshot None=不確定→明示abort、0/default捏造を物理排除)で一括根治→Codex再確認 全resolved・誤abort無・偽装success無。pytest 1333 passed/2 skipped。Streamlit再起動(MonoDeck PID96540 W142コード)+Playwright UI検証 0 errors (eBay出品section/送料+each DB駆動/乖離caption/BP selectbox/↻ 全描画)。本番DB monitor.db は v43+ +each2列 適用済(additive nullable・冪等検証済、Q2 24h retrospective対象=非破壊最低リスク型)。**残: Q1実機 A1検証 保留** (combined revise を生eBay listingで実行→GetItemで override が新BPにbind+priority一致を実証、user指示待ち。設計上 A1偽でも Phase4 GetItem実値照合+abort degrade で無音損失は物理排除済)。**未commit→本commitで記録、未push(規約: user明示時のみ)**。学び: feedback_no_long_silent_autonomous_runs 制定(2h無言自走をuser2回指摘→重い多段工程は前後で短報告)。 || [2026-05-19 完了] Q1 A1 read-only 実証 CONFIRMED (既存override listing 6/6 実priority==BP derived sortOrder、生mutation不要=money-safe)。pytest1333/UI 0 errors/内部4周HIGH=0/Codex2段。commit faa8bb9 + 946bb25(W139-fix) を origin/main へ push 済 (user承認2026-05-19)。未実施=live mutating E2E のみ(money-safetyで意図的回避、A1核心リスク確定済+W136実証機構+多段review担保)。",
+    "category": "business"
   },
   {
     "id": 227,
@@ -1179,7 +1292,8 @@
     "created": "2026-05-19",
     "completed": "2026-06-04",
     "origin": "user 報告 2026-05-19 (item 356750811453 在庫反映 API エラー)",
-    "progress_note": "2026-05-19 調査: 根本原因=_build_revise_inventory_xml (ebay_client.py:366) が Variation SKU 非同梱。当該 listing が Multi-SKU(バリエーション)出品。未修正 (W139-fix 優先のため設計は後)。"
+    "progress_note": "2026-05-19 調査: 根本原因=_build_revise_inventory_xml (ebay_client.py:366) が Variation SKU 非同梱。当該 listing が Multi-SKU(バリエーション)出品。未修正 (W139-fix 優先のため設計は後)。",
+    "category": "business"
   },
   {
     "id": 228,
@@ -1191,7 +1305,8 @@
     "created": "2026-05-19",
     "completed": null,
     "origin": "W139-fix 派生 (Codex HIGH-1 で systemic 負債と判明、K2 で別 W 化)",
-    "progress_note": "2026-05-19: W139-fix で局所対処済 (mirror / 候補URL集合IN / upsert_item 優先順)。生成器1本化は本 W で別途。影響箇所は W139-fix コミットの test_w139fix_coverage_ebay_item_id.py TestSourceUrlGeneratorParityHigh1 が前提崩れ検知。"
+    "progress_note": "2026-05-19: W139-fix で局所対処済 (mirror / 候補URL集合IN / upsert_item 優先順)。生成器1本化は本 W で別途。影響箇所は W139-fix コミットの test_w139fix_coverage_ebay_item_id.py TestSourceUrlGeneratorParityHigh1 が前提崩れ検知。",
+    "category": "internal"
   },
   {
     "id": 229,
@@ -1203,7 +1318,8 @@
     "created": "2026-05-19",
     "completed": null,
     "origin": "user 口頭要望 2026-05-19 (CLI 一括検索 追加チェックの再読込 UX)",
-    "progress_note": "2026-05-19 登録のみ。対象画面/『読み込む』実体は次セッション Phase 3 Clarify で特定 (W119 st.form 既存実装 commit 70df222 を read-first、回帰注意)。"
+    "progress_note": "2026-05-19 登録のみ。対象画面/『読み込む』実体は次セッション Phase 3 Clarify で特定 (W119 st.form 既存実装 commit 70df222 を read-first、回帰注意)。",
+    "category": "business"
   },
   {
     "id": 230,
@@ -1215,7 +1331,8 @@
     "created": "2026-05-19",
     "completed": "2026-06-04",
     "origin": "2026-05-19 W139-fix Q1 DoD ライブ検証中に assistant が発見 (Q0 透明性で報告・user 承認で ROADMAP 化)",
-    "progress_note": "2026-05-19 登録のみ。W142 (本命) 着手のため後回し。着手時は _run_w139_coverage_check / find_coverage_gaps() / task_ensure_monitor_coverage.py の reconciliation lag モデルを read-first。"
+    "progress_note": "2026-05-19 登録のみ。W142 (本命) 着手のため後回し。着手時は _run_w139_coverage_check / find_coverage_gaps() / task_ensure_monitor_coverage.py の reconciliation lag モデルを read-first。",
+    "category": "business"
   },
   {
     "id": 231,
@@ -1227,7 +1344,8 @@
     "created": "2026-05-19",
     "completed": "2026-05-19",
     "origin": "user 口頭要望 2026-05-19 (利益表示の還付×仕向地 4区分わかりづらい)",
-    "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。 || [完了 2026-05-19] hero に 還付あり×USA向け(DDP)/US以外(DDU) 2値強調+還付なし/税還付/関税 折りたたみ。calculator を is_ddu 切替2回呼ぶ表示専用(計算式不変)、W134 cache(ttl=3+db_version+settings_mtime)。primary_market 連動=非該当グレーアウト+参考値。2段review=内部HIGH=0→Codex HIGH1(country_code US固定で'US以外'誤読リスク)→ラベル明確化+caption+docstring+test恒久固定→再HIGH=0。Q1=pytest9+回帰、Streamlit+Playwrightで全6値がcalculator直値一致・lp_breakeven不変=表示専用実証。commit 15c833c origin/main push済。"
+    "progress_note": "2026-05-19 登録のみ。calculator.py が4区分計算済を確認 (表示改修主体)。Clarify で表示方式・default強調区分・既存hero(現在粗利/競合最安/値下げsim)との整合を特定。W140(メモ)と同 tab_product_management hero 改修のため設計時に併合検討。 || [Clarify 2026-05-19] 表示方式確定=主要2区分強調+折りたたみ: hero に 還付あり×USA向け / 還付あり×US以外 を大きく2値、還付なし系は expander。既存 現在粗利/競合最安/値下げsim との整合・黒字赤字判定の基準区分・per-listing primary_market 連動有無は設計時詳細。W140 と同 hero 改修=設計併合検討。 || [完了 2026-05-19] hero に 還付あり×USA向け(DDP)/US以外(DDU) 2値強調+還付なし/税還付/関税 折りたたみ。calculator を is_ddu 切替2回呼ぶ表示専用(計算式不変)、W134 cache(ttl=3+db_version+settings_mtime)。primary_market 連動=非該当グレーアウト+参考値。2段review=内部HIGH=0→Codex HIGH1(country_code US固定で'US以外'誤読リスク)→ラベル明確化+caption+docstring+test恒久固定→再HIGH=0。Q1=pytest9+回帰、Streamlit+Playwrightで全6値がcalculator直値一致・lp_breakeven不変=表示専用実証。commit 15c833c origin/main push済。",
+    "category": "business"
   },
   {
     "id": 232,
@@ -1239,7 +1357,8 @@
     "created": "2026-05-20",
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-20 (AlertCrawler 同等機能を MonoDeck 搭載)",
-    "progress_note": "2026-05-20 登録、設計 v2.1 完成 push 済 (commit 699bd50)、5/21 実装着手 (前セッション=ファイル群作成→pytest crash で中断)、5/22 残り DoD 完走。実装: monitor/keyword_watch_db.py / tasks/task_keyword_watch_crawl.py / tabs/tab_keyword_watch.py / scripts/import_alertcrawler_legacy.py / tests/test_w148_keyword_watch_2026_05_21.py + monitor/database.py v46 + daily_scheduler.py + task_execution_log.py + schedule_config.json + app.py 修正。code-reviewer Opus HIGH=0/100点。**Codex 3 周で HIGH 5 件突破→全修正**: 1周目 HIGH-1 (search_url 未使用 = AlertCrawler 450 件 import の URL filter 全消失) / HIGH-2 (sentinel exception path Discord 不発火) / HIGH-3 (webhook 5xx で hit 永久 lost)、2周目 HIGH-A (resend DB error 偽装成功) / HIGH-B (resend pass 二重送信レース)、3周目 HIGH=0 verify。pytest 1388 PASS。本番 DB v46 適用済 keyword_watches/keyword_watch_hits 存在確認。Streamlit + Playwright タブ表示 0 errors。scheduler 再起動 + W148 cron 登録 (2h ごと :20) ログ確認。"
+    "progress_note": "2026-05-20 登録、設計 v2.1 完成 push 済 (commit 699bd50)、5/21 実装着手 (前セッション=ファイル群作成→pytest crash で中断)、5/22 残り DoD 完走。実装: monitor/keyword_watch_db.py / tasks/task_keyword_watch_crawl.py / tabs/tab_keyword_watch.py / scripts/import_alertcrawler_legacy.py / tests/test_w148_keyword_watch_2026_05_21.py + monitor/database.py v46 + daily_scheduler.py + task_execution_log.py + schedule_config.json + app.py 修正。code-reviewer Opus HIGH=0/100点。**Codex 3 周で HIGH 5 件突破→全修正**: 1周目 HIGH-1 (search_url 未使用 = AlertCrawler 450 件 import の URL filter 全消失) / HIGH-2 (sentinel exception path Discord 不発火) / HIGH-3 (webhook 5xx で hit 永久 lost)、2周目 HIGH-A (resend DB error 偽装成功) / HIGH-B (resend pass 二重送信レース)、3周目 HIGH=0 verify。pytest 1388 PASS。本番 DB v46 適用済 keyword_watches/keyword_watch_hits 存在確認。Streamlit + Playwright タブ表示 0 errors。scheduler 再起動 + W148 cron 登録 (2h ごと :20) ログ確認。",
+    "category": "business"
   },
   {
     "id": 233,
@@ -1251,7 +1370,8 @@
     "created": "2026-05-22",
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ①③)",
-    "progress_note": "**2026-05-22 完走**: ①sold 0件 = sales_history が完全に空 (add_sale 一度も呼ばれてない) と root cause 判明 → W149 (eBay 売却注文取得 + fulfillment 自動ひも付け) で根本解決 (sales_history 0→101 件 / sold>0 listings 0→66、commit 559f865)。③CLI チェック編集消失 = Streamlit data_editor の '✅' 列変更で全体 rerun → フィルタ・並び順再評価で編集中 listing 消失 → tabs/tab_product_management.py の `_render_cli_bulk_candidates` 内 data_editor + 警告 + form_submit_button を `st.form(key='pm_cli_form_{eid}')` でラップ + ボタン disabled 削除 (submit 後 server-side で 0 件/上限超過判定)。Streamlit hot reload + Playwright 商品管理タブ Console 0 errors 確認。"
+    "progress_note": "**2026-05-22 完走**: ①sold 0件 = sales_history が完全に空 (add_sale 一度も呼ばれてない) と root cause 判明 → W149 (eBay 売却注文取得 + fulfillment 自動ひも付け) で根本解決 (sales_history 0→101 件 / sold>0 listings 0→66、commit 559f865)。③CLI チェック編集消失 = Streamlit data_editor の '✅' 列変更で全体 rerun → フィルタ・並び順再評価で編集中 listing 消失 → tabs/tab_product_management.py の `_render_cli_bulk_candidates` 内 data_editor + 警告 + form_submit_button を `st.form(key='pm_cli_form_{eid}')` でラップ + ボタン disabled 削除 (submit 後 server-side で 0 件/上限超過判定)。Streamlit hot reload + Playwright 商品管理タブ Console 0 errors 確認。",
+    "category": "business"
   },
   {
     "id": 234,
@@ -1263,7 +1383,8 @@
     "created": "2026-05-22",
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ②)",
-    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (on/off 振る舞い) で user 判断 = シンプル 2 状態 (on→完了時刻 NOW, off→NULL に戻す, K1 simplicity). 実装: (1) DB migration v49 + Q2 自己修復 (ebay_listings.initial_registered INTEGER DEFAULT 0 + initial_registered_at TIMESTAMP, additive nullable). (2) set_initial_registered(ebay_item_id, registered) 関数 (database.py、UPDATE rowcount 判定). (3) tab_product_management.py _fetch_all_products SELECT に 2 列追加 (COALESCE 0 fallback). (4) フィルタ section fcols 5→6 列に拡張 + 「📝 初期未完了のみ」checkbox 追加. (5) _render_one_product hero 上部に「📝 初期登録済み」checkbox + 完了時刻 caption + on_change で set_initial_registered + bump_db_version + st.rerun. (6) test_w151 7 件 (migration 冪等性 / 自己修復 / set on/off / nonexistent / default). cascade pin v48→v49: test_w138a (3) / test_w68 (5) / test_w148 (1) / test_w149 (1). 61 PASS. 本番 DB v49 適用済 (2 列実在確認). Streamlit hot reload + Playwright 商品管理タブ Console 0 errors."
+    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (on/off 振る舞い) で user 判断 = シンプル 2 状態 (on→完了時刻 NOW, off→NULL に戻す, K1 simplicity). 実装: (1) DB migration v49 + Q2 自己修復 (ebay_listings.initial_registered INTEGER DEFAULT 0 + initial_registered_at TIMESTAMP, additive nullable). (2) set_initial_registered(ebay_item_id, registered) 関数 (database.py、UPDATE rowcount 判定). (3) tab_product_management.py _fetch_all_products SELECT に 2 列追加 (COALESCE 0 fallback). (4) フィルタ section fcols 5→6 列に拡張 + 「📝 初期未完了のみ」checkbox 追加. (5) _render_one_product hero 上部に「📝 初期登録済み」checkbox + 完了時刻 caption + on_change で set_initial_registered + bump_db_version + st.rerun. (6) test_w151 7 件 (migration 冪等性 / 自己修復 / set on/off / nonexistent / default). cascade pin v48→v49: test_w138a (3) / test_w68 (5) / test_w148 (1) / test_w149 (1). 61 PASS. 本番 DB v49 適用済 (2 列実在確認). Streamlit hot reload + Playwright 商品管理タブ Console 0 errors.",
+    "category": "business"
   },
   {
     "id": 235,
@@ -1275,7 +1396,8 @@
     "created": "2026-05-22",
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ④)",
-    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (UI 配置 + 反映方針 2 問) で user 判断 = 「仕入先候補の上に新規 URL 入力欄」+「生成後 preview → ✅eBay反映ボタン」確定. 実装: tabs/tab_product_management.py に `_render_url_direct_description_section(p)` 新規 helper (~80 LOC) + import 追加 + `_render_right_inventory_supplier_rival` 内で呼出. 既存 _supplier_description_pipeline.py の 3 関数 (prefetch_supplier_product_and_rank / generate_supplier_description / apply_description_to_ebay) を candidate_id=0 で流用 (K1 simplicity, supplier_candidates テーブルへの仮 INSERT なし). 有/無在庫は SKU prefix で自動判定 (in_stock 引数). UI: text_input + ①生成ボタン → spinner 中 scrape + rank 推定 + description 生成 → 画像 1 件 + Title (JP/EN) + Rank + 判定根拠 expander + description HTML preview (5000 文字 cap) → ✅eBay反映ボタン (ReviseItem) + 結果クリアボタン. Streamlit hot reload + Playwright 商品管理タブ Console 0 errors. K2 Surgical で既存採用済 candidate 経由の render_supplier_description_section (app.py:5472) は touch せず."
+    "progress_note": "**2026-05-22 完走**: Phase 3 Clarify (UI 配置 + 反映方針 2 問) で user 判断 = 「仕入先候補の上に新規 URL 入力欄」+「生成後 preview → ✅eBay反映ボタン」確定. 実装: tabs/tab_product_management.py に `_render_url_direct_description_section(p)` 新規 helper (~80 LOC) + import 追加 + `_render_right_inventory_supplier_rival` 内で呼出. 既存 _supplier_description_pipeline.py の 3 関数 (prefetch_supplier_product_and_rank / generate_supplier_description / apply_description_to_ebay) を candidate_id=0 で流用 (K1 simplicity, supplier_candidates テーブルへの仮 INSERT なし). 有/無在庫は SKU prefix で自動判定 (in_stock 引数). UI: text_input + ①生成ボタン → spinner 中 scrape + rank 推定 + description 生成 → 画像 1 件 + Title (JP/EN) + Rank + 判定根拠 expander + description HTML preview (5000 文字 cap) → ✅eBay反映ボタン (ReviseItem) + 結果クリアボタン. Streamlit hot reload + Playwright 商品管理タブ Console 0 errors. K2 Surgical で既存採用済 candidate 経由の render_supplier_description_section (app.py:5472) は touch せず.",
+    "category": "business"
   },
   {
     "id": 236,
@@ -1287,7 +1409,8 @@
     "created": "2026-05-22",
     "completed": "2026-05-22",
     "origin": "user 口頭依頼 2026-05-22 朝 (商品管理 7 項目修正依頼の ⑤⑥⑦)",
-    "progress_note": "2026-05-22 設計 v2.1 + 実装完了 + push 済 (commit a7d3653, origin/main). DB v50 (4 列追加 + listing_rival_discoveries + 3 index, drift recovery schema_ver 独立) + monitor/rival_keyword_generator.py (Haiku 4.5, title-only, apology/numbered/word-count filter, <3 valid raise) + tasks/task_rival_detection.py 全面書換 (354→350 LOC, errors>0 で success=False, 429/5xx status_code 直接判定で backoff retry 3 回, max_listings_per_run=30 + max_requests_per_run=150, bad_iid counter, 0 listings 週 1 reminder, early break sleep skip) + UI _render_rival_watch_section (~220 LOC, pending key, cooldown 60s, action 別 message, 件数バッジ) + add_or_reactivate_competitor helper (added/reactivated/conflict 3 action). Q3 構造化フロー完走: Phase 3 Clarify → 設計書 v1 → 2 段 review v1 (HIGH 9) → v2 改訂 → Codex 2 周目 v2 (HIGH 3) → v2.1 pinpoint → 実装 → code-reviewer Opus 4.7 (HIGH 4 including 5xx status_code 直接判定 silent gap) → 全 fix + regression test 追加。累計 silent gap 解消 16 件。pytest 1439 件 PASS / 2 skip。本番 scheduler PID 55956→54672 + MonoDeck PID 41352→5868 再起動済、execution_times=[2] (初期は朝のみ)、DB user_version 49→50 適用済 (731 listings 既存データ非破壊)。user 設計意図妥当性確認 OK で完了マーク (実画面視認は省略、pytest + Streamlit HTTP 200 + run_rival_detection success=True で十分担保)。\n\n[2026-05-22 PM v3 大改修] user 実画面 E2E 視認で重大欠陥 + 5 件業務要求発見 → v3 大改修完遂. (1) Black 単独 noise hit (改行区切り誤解で各行別 query union) → **空白区切り 1 query AND 検索** に統一 (Haiku prompt 書換 / list[str]→str / task_rival_detection 検索 loop 廃止 = 1 listing 1 call). (2) Economy 系 noise → seller block list 案は誤り (同 seller の高商品を巻き込む = reference_ebay_economy_shipping_seller_pattern.md 業務知識化) → **検索全件 record + UI hide** (delivery window > 10 日 OR shipping_service_code に 'Economy' 含む). (3) **DB v51 → v52** (listing_rival_discoveries に competitor_shipping_cost_usd / min_delivery_date / max_delivery_date / shipping_service_code 4 列追加). (4) **新規 rival のみ詳細 API enrich** (get_item_by_legacy_id で shipping_service_code 取得、quota 新規分のみ ~5 calls/run). (5) UI 4 項目表示 (商品価格 + 送料 + 合計 + 発送方法名 + 配達日数). (6) **UI 一括処理逆転** (☑=登録対象、未☑=自動却下、submit 1 回で 全処理 = rerun 1 回). (7) cleanup script v3 強化 (--ebay-item-id 必須 / --max-id auto fence / JSONL dump / self-rename .executed). (8) top-level except errors++ (Codex HIGH: 旧実装は cron 集約で silent skip). 内部 reviewer Opus HIGH 3 + Codex GPT-5.5 HIGH 1 + MED 2 全解消. pytest 1441 PASS + W153 47/47 PASS. 本番 DB user_version 50→52 適用 + MonoDeck/scheduler 再起動済. 設計書 v3 改訂 (§20 改訂履歴 += FIX-1〜FIX-12). 学び: pytest + reviewer は user E2E 視認の代替にならない (UI label の mental model gap は automated test 不能)."
+    "progress_note": "2026-05-22 設計 v2.1 + 実装完了 + push 済 (commit a7d3653, origin/main). DB v50 (4 列追加 + listing_rival_discoveries + 3 index, drift recovery schema_ver 独立) + monitor/rival_keyword_generator.py (Haiku 4.5, title-only, apology/numbered/word-count filter, <3 valid raise) + tasks/task_rival_detection.py 全面書換 (354→350 LOC, errors>0 で success=False, 429/5xx status_code 直接判定で backoff retry 3 回, max_listings_per_run=30 + max_requests_per_run=150, bad_iid counter, 0 listings 週 1 reminder, early break sleep skip) + UI _render_rival_watch_section (~220 LOC, pending key, cooldown 60s, action 別 message, 件数バッジ) + add_or_reactivate_competitor helper (added/reactivated/conflict 3 action). Q3 構造化フロー完走: Phase 3 Clarify → 設計書 v1 → 2 段 review v1 (HIGH 9) → v2 改訂 → Codex 2 周目 v2 (HIGH 3) → v2.1 pinpoint → 実装 → code-reviewer Opus 4.7 (HIGH 4 including 5xx status_code 直接判定 silent gap) → 全 fix + regression test 追加。累計 silent gap 解消 16 件。pytest 1439 件 PASS / 2 skip。本番 scheduler PID 55956→54672 + MonoDeck PID 41352→5868 再起動済、execution_times=[2] (初期は朝のみ)、DB user_version 49→50 適用済 (731 listings 既存データ非破壊)。user 設計意図妥当性確認 OK で完了マーク (実画面視認は省略、pytest + Streamlit HTTP 200 + run_rival_detection success=True で十分担保)。\n\n[2026-05-22 PM v3 大改修] user 実画面 E2E 視認で重大欠陥 + 5 件業務要求発見 → v3 大改修完遂. (1) Black 単独 noise hit (改行区切り誤解で各行別 query union) → **空白区切り 1 query AND 検索** に統一 (Haiku prompt 書換 / list[str]→str / task_rival_detection 検索 loop 廃止 = 1 listing 1 call). (2) Economy 系 noise → seller block list 案は誤り (同 seller の高商品を巻き込む = reference_ebay_economy_shipping_seller_pattern.md 業務知識化) → **検索全件 record + UI hide** (delivery window > 10 日 OR shipping_service_code に 'Economy' 含む). (3) **DB v51 → v52** (listing_rival_discoveries に competitor_shipping_cost_usd / min_delivery_date / max_delivery_date / shipping_service_code 4 列追加). (4) **新規 rival のみ詳細 API enrich** (get_item_by_legacy_id で shipping_service_code 取得、quota 新規分のみ ~5 calls/run). (5) UI 4 項目表示 (商品価格 + 送料 + 合計 + 発送方法名 + 配達日数). (6) **UI 一括処理逆転** (☑=登録対象、未☑=自動却下、submit 1 回で 全処理 = rerun 1 回). (7) cleanup script v3 強化 (--ebay-item-id 必須 / --max-id auto fence / JSONL dump / self-rename .executed). (8) top-level except errors++ (Codex HIGH: 旧実装は cron 集約で silent skip). 内部 reviewer Opus HIGH 3 + Codex GPT-5.5 HIGH 1 + MED 2 全解消. pytest 1441 PASS + W153 47/47 PASS. 本番 DB user_version 50→52 適用 + MonoDeck/scheduler 再起動済. 設計書 v3 改訂 (§20 改訂履歴 += FIX-1〜FIX-12). 学び: pytest + reviewer は user E2E 視認の代替にならない (UI label の mental model gap は automated test 不能).",
+    "category": "business"
   },
   {
     "id": 237,
@@ -1299,7 +1422,8 @@
     "created": "2026-05-21",
     "completed": "2026-05-22",
     "origin": "user 口頭判断 2026-05-22 朝 (W150 ①sold 0件 = sales_history populate 未実装 = W149 が根本基盤と判明、先行着手)",
-    "progress_note": "**2026-05-22 完走 (本日 1 セッション)**: 設計書 v1 (5/21 commit 5535715) を Phase A self-review で v2 改訂 (4 件根治: shipping/fee qty 比按分 / メール経由 task_sales_tracking OFF / 30min polling 失敗 retry queue / eBay GetOrders API 構造誤読修正). Phase B = DB migration v47 (sales_history.ebay_order_id + fulfillment_order_link + sales_history_fetch_failures) + fulfillment_order_matcher.py (link_unmatched/link_one_by_sale/link_one + FIFO 時系列ガード) + test 10 件. Phase C = task_order_alert.py 30min polling に W149 sales 充填 (order_id group+qty 比按分) + リアルタイムマッチ + retry queue (5 回連続失敗 Discord) + task_purchase_confirm.py kind='fulfillment' で link_one + schedule_config.json で sales_tracking OFF + backfill script. Phase D = pytest 1397 PASS + 本番 DB v48 適用 + backfill 完了 (101 件 sales_history、sold>0 listings 0→66). **self-discover で v48 silent gap 修正** (v47 UNIQUE(ebay_order_id) 単独 → 1 注文 N 商品で line item silent 消失 → v48 複合キー (ebay_order_id, ebay_item_id) で根治、backfill 101 transaction → 100 件 INSERT で 1 件 dup skip 実測で発見). **内部 code-reviewer Opus HIGH 2 件**: HIGH-1 paid_time 空 silent skip (sold_at='' で並び順破壊 + matcher 文字列比較で時系列ガード崩壊) / HIGH-2 INSERT OR IGNORE rowcount 欠落 (race で attempt_count 止まる) を修正 + 回帰 test 2 件追加. **Codex GPT-5.5 review = 0 件追加指摘** (HIGH=0 達成). cascade pin: test_w138a / test_w68 / test_w148 を v46→v48 更新. ebay_client.py に get_orders range 引数 (CreateTimeFrom/To) 追加 (90 日上限). 検証: top 5 sold = maxell カセット 7 売 / Razer 4 売 / Pixel Tablet 4 売. scheduler+MonoDeck 再起動済 + Playwright 商品管理タブ Console 0 errors."
+    "progress_note": "**2026-05-22 完走 (本日 1 セッション)**: 設計書 v1 (5/21 commit 5535715) を Phase A self-review で v2 改訂 (4 件根治: shipping/fee qty 比按分 / メール経由 task_sales_tracking OFF / 30min polling 失敗 retry queue / eBay GetOrders API 構造誤読修正). Phase B = DB migration v47 (sales_history.ebay_order_id + fulfillment_order_link + sales_history_fetch_failures) + fulfillment_order_matcher.py (link_unmatched/link_one_by_sale/link_one + FIFO 時系列ガード) + test 10 件. Phase C = task_order_alert.py 30min polling に W149 sales 充填 (order_id group+qty 比按分) + リアルタイムマッチ + retry queue (5 回連続失敗 Discord) + task_purchase_confirm.py kind='fulfillment' で link_one + schedule_config.json で sales_tracking OFF + backfill script. Phase D = pytest 1397 PASS + 本番 DB v48 適用 + backfill 完了 (101 件 sales_history、sold>0 listings 0→66). **self-discover で v48 silent gap 修正** (v47 UNIQUE(ebay_order_id) 単独 → 1 注文 N 商品で line item silent 消失 → v48 複合キー (ebay_order_id, ebay_item_id) で根治、backfill 101 transaction → 100 件 INSERT で 1 件 dup skip 実測で発見). **内部 code-reviewer Opus HIGH 2 件**: HIGH-1 paid_time 空 silent skip (sold_at='' で並び順破壊 + matcher 文字列比較で時系列ガード崩壊) / HIGH-2 INSERT OR IGNORE rowcount 欠落 (race で attempt_count 止まる) を修正 + 回帰 test 2 件追加. **Codex GPT-5.5 review = 0 件追加指摘** (HIGH=0 達成). cascade pin: test_w138a / test_w68 / test_w148 を v46→v48 更新. ebay_client.py に get_orders range 引数 (CreateTimeFrom/To) 追加 (90 日上限). 検証: top 5 sold = maxell カセット 7 売 / Razer 4 売 / Pixel Tablet 4 売. scheduler+MonoDeck 再起動済 + Playwright 商品管理タブ Console 0 errors.",
+    "category": "business"
   },
   {
     "id": 238,
@@ -1309,7 +1433,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-22",
-    "completed": "2026-05-23"
+    "completed": "2026-05-23",
+    "category": "business"
   },
   {
     "id": 239,
@@ -1319,7 +1444,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-22",
-    "completed": "2026-05-22"
+    "completed": "2026-05-22",
+    "category": "business"
   },
   {
     "id": 240,
@@ -1329,7 +1455,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-22",
-    "completed": "2026-05-22"
+    "completed": "2026-05-22",
+    "category": "business"
   },
   {
     "id": 241,
@@ -1339,7 +1466,8 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-05-22",
-    "completed": "2026-05-22"
+    "completed": "2026-05-22",
+    "category": "business"
   },
   {
     "id": 242,
@@ -1349,7 +1477,8 @@
     "status": "実装完了 (個別出品 refactor は K2 Surgical で別 W deferred)",
     "priority": "中",
     "created": "2026-05-22",
-    "completed": "2026-05-23"
+    "completed": "2026-05-23",
+    "category": "business"
   },
   {
     "id": 243,
@@ -1359,7 +1488,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-23",
-    "completed": "2026-05-24"
+    "completed": "2026-05-24",
+    "category": "business"
   },
   {
     "id": 244,
@@ -1369,7 +1499,8 @@
     "status": "完了",
     "priority": "中",
     "created": "2026-05-24",
-    "completed": "2026-05-24"
+    "completed": "2026-05-24",
+    "category": "internal"
   },
   {
     "id": 245,
@@ -1378,7 +1509,8 @@
     "description": "前 session 5/21 PM 発見の OOS retry 168 件 paypay 500 構造的 error の延長案件. 5/24 時点で paypay monitored_items 22 件中 14 件 (64%) が last_status=\"不明\" 状態. W139 ensure_monitor_coverage が履行不能 listing の発見遅延を生む silent gap. 案 A (Playwright headless ブラウザでレンダー後 DOM 取得、~150 LOC) を main path 採用、案 C (Yahoo Auction / Mercari の代替経路検索 fallback) を補助. 案 B (公式 Yahoo Shopping API) は paypay フリマ商品の API 公開状況次第. 設計書: .company/engineering/docs/2026-05-24-W161-paypay-500-alternate-detection.md (v1, Phase 4). 実装 Phase 6 は別 session 着手予定 (本 session は設計起票のみ).",
     "status": "未着手 (設計書 v1 起票済)",
     "priority": "中",
-    "created": "2026-05-24"
+    "created": "2026-05-24",
+    "category": "business"
   },
   {
     "id": 246,
@@ -1387,7 +1519,8 @@
     "description": "前 session 5/22 W148 (commit 3884361) 完成時に Codex 3 周 HIGH=0 で MED 5 件が残置. 本 W で一括対応. (1) **release 固着**: 採用済 candidate の status='released' 遷移後も watch_keyword が消えない bug (UI 上 active 表示残留, supplier_purchase 判定不能). monitored_items.released_at index + watch deactivate trigger. (2) **inactive watch leak**: keyword_watches で is_active=0 になった entry が crawl runner で skip されず scan list に残り、null route で warning ログ蓄積. fetch_active_watches WHERE is_active=1 強化. (3) **webhook burst**: Discord webhook の 5xx で resend pass 起動時に 同時刻に大量 retry 発生で rate limit hit. exponential backoff 追加. (4) **orphan fatigue**: sentinel_zero alert が DOM 改修毎に大量発生で user 通知疲れ. sentinel grace period 24h or weekday filter 検討. (5) **cron overlap**: keyword_watch_crawl (2h ごと :20) と main batch (02:30/11:00/15:00/18:00/22:00) の重なりで DB lock 競合. subprocess 内で BEGIN IMMEDIATE 強化 + cron schedule の minute オフセット拡大. 実装規模 ~250 LOC 想定 (5 件合計). pytest 各 fix で regression test 1-2 件追加.",
     "status": "未着手 (設計概要記載済、Phase 4 設計書は別 session)",
     "priority": "中",
-    "created": "2026-05-24"
+    "created": "2026-05-24",
+    "category": "business"
   },
   {
     "id": 247,
@@ -1396,7 +1529,8 @@
     "description": "前 session 5/22 PM W153 v3 (commit 99ffe1b) 完成後に user 要望 + 内部認識で 残置の 6 拡張. 本 W で一括対応. (1) **Brand/MPN 列追加**: listing_rival_discoveries に competitor_brand / competitor_mpn 2 列追加 (DB v53) + Haiku 生成精度向上 (現状 title-only)。(2) **N:1 監視緩和**: UNIQUE(competitor_item_id) 制約を緩めて 1 競合 N listing 監視可能化 (現状 conflict warning で disambiguate 不能)。 (3) **「監視解除」UI button**: monitoring_added → new 戻し (L-internal-2 deferred 分)。(4) **Browse API quota 共有 monitor**: W122 / W184 / W153 で 5K/day cap の 集中監視 dashboard (現状 task 別 cap で全体把握不能)。(5) **DB backend cooldown**: 現状 session_state での cooldown (60s) を DB row 化して別タブ/別プロセス共有可能化 (MED-5 deferred 分)。(6) **既存 rival retro-enrich script**: shipping_service_code が NULL の既存 rival 全件を fresh 化 (quota 圧迫注意 + dry-run flag 必須)。実装規模: DB migration v53 + 6 件合計 ~400 LOC 想定. Codex 2 段 review 必須 (money-direct 系: brand precision affects pricing decision).",
     "status": "未着手 (設計概要記載済、Phase 4 設計書は別 session)",
     "priority": "中",
-    "created": "2026-05-24"
+    "created": "2026-05-24",
+    "category": "business"
   },
   {
     "id": 248,
@@ -1407,7 +1541,8 @@
     "priority": "中",
     "created": "2026-05-25",
     "completed": "2026-05-25",
-    "source": "Codex Phase B review 2026-05-25 + Zenn article みーた"
+    "source": "Codex Phase B review 2026-05-25 + Zenn article みーた",
+    "category": "business"
   },
   {
     "id": 249,
@@ -1417,7 +1552,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-25",
-    "source": "Codex Phase B review 2026-05-25"
+    "source": "Codex Phase B review 2026-05-25",
+    "category": "internal"
   },
   {
     "id": 250,
@@ -1427,7 +1563,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-25",
-    "source": "Codex Phase B review 2026-05-25"
+    "source": "Codex Phase B review 2026-05-25",
+    "category": "internal"
   },
   {
     "id": 251,
@@ -1437,7 +1574,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-25",
-    "source": "Codex Phase B review 2026-05-25"
+    "source": "Codex Phase B review 2026-05-25",
+    "category": "internal"
   },
   {
     "id": 252,
@@ -1447,7 +1585,8 @@
     "status": "未着手",
     "priority": "中",
     "created": "2026-05-25",
-    "source": "Codex Phase B review 2026-05-25"
+    "source": "Codex Phase B review 2026-05-25",
+    "category": "internal"
   },
   {
     "id": 253,
@@ -1458,38 +1597,8 @@
     "priority": "高",
     "created": "2026-05-25",
     "completed": "2026-05-25",
-    "source": "5/25 朝 user 報告「定時実行 OK」だが DB 上 5 種類慢性失敗発覚の続き"
-  },
-  {
-    "id": 256,
-    "tag": "W172",
-    "title": "scheduler 起動時 orphan started 自動 cleanup (再発防止恒久策)",
-    "description": "2026-05-25 W164-pm Problem #5 で 5/02 / 5/21 / 5/22 inventory_check の started 残骸 3 件を one-shot script で cleanup。scheduler crash/kill 時に finished_at 未更新で残る構造的問題 = 今後も再発する。scheduler 起動時に「自分が知らない PID の started + finished_at NULL + started_at < now-2h」レコードを自動 failed 化するロジックを daily_scheduler 起動時 hook に追加。W164-pm では K2 越境で別 W 化。実装規模 ~30 LOC、Q2 6 step を hook 内で実施可能か別途検討要",
-    "status": "未着手",
-    "priority": "中",
-    "created": "2026-05-25",
-    "source": "W164-pm Phase C 検知後 cleanup を踏まえた再発防止案"
-  },
-  {
-    "id": 258,
-    "tag": "W174",
-    "title": "test_fixture DB schema 不足解消 (14 件 pre-existing pytest failure)",
-    "description": "2026-05-25 W170 fix verify 時に発覚した 14 件 pre-existing test 失敗を解消。customs_kb / customs_sender / customs_w14ext_draft / morning_discovery 系で `sqlite3.OperationalError: no such table: customs_kb_pending` 等の DB schema 不足 error。conftest.py で本番 DB 隔離 (tmp_path) は機能しているが init_db() が呼ばれていないか migration version が test では skip されている疑い。本来 W170 と無関係の pre-existing 問題だが、CI/regression coverage の盲点なので別 W で対応。修正規模: conftest.py の autouse fixture 内で init_db() を呼ぶ + 必要なら migration を test 環境で完走させるロジック追加 (~10-20 LOC)",
-    "status": "未着手",
-    "priority": "中",
-    "created": "2026-05-25",
-    "source": "W170 fix verify 時に発覚した pre-existing failures"
-  },
-  {
-    "id": 257,
-    "tag": "W173",
-    "title": "W164-pm 4 fix 完了 (morning_brief budget / fuel_surcharge HTML dump / rival_detection first_err / orphan cleanup)",
-    "description": "2026-05-25 19:00 health check で検出した 7 件の本番問題のうち 4 件を即時修正完了 (Codex review 経由)。(2) fuel_surcharge: 抽出失敗時 raw HTML を data/tmp/fuel_surcharge_failure_<date>_<source>.html に dump (3) morning_brief: max_budget_usd=1.0 (実 max=$0.36 / today $0.5099 + 100% buffer) + 超過時 Discord 明示通知 (R-11) (4) rival_detection: errors>0 時 task_execution_log.message に first error listing id + 100 chars 追記 (audit 用) (5) orphan 3 件 (id=674/3894/4201) Q2 6 step cleanup 完了 + rollback artifact (orphan_snapshot_2026_05_25.json) 保存。Codex review HIGH 4 (snapshot 不在 false alarm / regression test 0 件 / except 過広 / +12h 架空 duration) 全対応。pytest 8 件 PASS。残 (#1 daily_codex_lint / #6 W139 coverable / #7 rival_pricing misfire) は別 W (W171 / 観察) で対応",
-    "status": "完了",
-    "priority": "高",
-    "created": "2026-05-25",
-    "completed": "2026-05-25",
-    "source": "W164-pm Codex review 2026-05-25 + user 即時修正指示"
+    "source": "5/25 朝 user 報告「定時実行 OK」だが DB 上 5 種類慢性失敗発覚の続き",
+    "category": "internal"
   },
   {
     "id": 254,
@@ -1501,7 +1610,42 @@
     "created": "2026-05-25",
     "completed": "2026-05-25",
     "completion_note": "実 DB hour 分布 (過去 30日 4806 records で main slots 02/11/15/18/22 にきれいに集中) で JST naive 保存を確定。L296 を `DATE(started_at) = ?` に修正、コメント訂正、sqlite-timezone.md に例外節追加 (Python datetime.now() bind 系 vs SQL CURRENT_TIMESTAMP 系の表)、tests/test_w170_find_missed_tasks_tz.py 3 件 PASS、関連 13 tests 全件 PASS で regression なし。cascade scan: 他 file の `started_at, +9 hours` 参照は本 fix の説明文と test のみ",
-    "source": "W169 review で code-reviewer 指摘 (確信度 80%、別 W 推奨)"
+    "source": "W169 review で code-reviewer 指摘 (確信度 80%、別 W 推奨)",
+    "category": "business"
+  },
+  {
+    "id": 256,
+    "tag": "W172",
+    "title": "scheduler 起動時 orphan started 自動 cleanup (再発防止恒久策)",
+    "description": "2026-05-25 W164-pm Problem #5 で 5/02 / 5/21 / 5/22 inventory_check の started 残骸 3 件を one-shot script で cleanup。scheduler crash/kill 時に finished_at 未更新で残る構造的問題 = 今後も再発する。scheduler 起動時に「自分が知らない PID の started + finished_at NULL + started_at < now-2h」レコードを自動 failed 化するロジックを daily_scheduler 起動時 hook に追加。W164-pm では K2 越境で別 W 化。実装規模 ~30 LOC、Q2 6 step を hook 内で実施可能か別途検討要",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "W164-pm Phase C 検知後 cleanup を踏まえた再発防止案",
+    "category": "internal"
+  },
+  {
+    "id": 257,
+    "tag": "W173",
+    "title": "W164-pm 4 fix 完了 (morning_brief budget / fuel_surcharge HTML dump / rival_detection first_err / orphan cleanup)",
+    "description": "2026-05-25 19:00 health check で検出した 7 件の本番問題のうち 4 件を即時修正完了 (Codex review 経由)。(2) fuel_surcharge: 抽出失敗時 raw HTML を data/tmp/fuel_surcharge_failure_<date>_<source>.html に dump (3) morning_brief: max_budget_usd=1.0 (実 max=$0.36 / today $0.5099 + 100% buffer) + 超過時 Discord 明示通知 (R-11) (4) rival_detection: errors>0 時 task_execution_log.message に first error listing id + 100 chars 追記 (audit 用) (5) orphan 3 件 (id=674/3894/4201) Q2 6 step cleanup 完了 + rollback artifact (orphan_snapshot_2026_05_25.json) 保存。Codex review HIGH 4 (snapshot 不在 false alarm / regression test 0 件 / except 過広 / +12h 架空 duration) 全対応。pytest 8 件 PASS。残 (#1 daily_codex_lint / #6 W139 coverable / #7 rival_pricing misfire) は別 W (W171 / 観察) で対応",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-05-25",
+    "completed": "2026-05-25",
+    "source": "W164-pm Codex review 2026-05-25 + user 即時修正指示",
+    "category": "internal"
+  },
+  {
+    "id": 258,
+    "tag": "W174",
+    "title": "test_fixture DB schema 不足解消 (14 件 pre-existing pytest failure)",
+    "description": "2026-05-25 W170 fix verify 時に発覚した 14 件 pre-existing test 失敗を解消。customs_kb / customs_sender / customs_w14ext_draft / morning_discovery 系で `sqlite3.OperationalError: no such table: customs_kb_pending` 等の DB schema 不足 error。conftest.py で本番 DB 隔離 (tmp_path) は機能しているが init_db() が呼ばれていないか migration version が test では skip されている疑い。本来 W170 と無関係の pre-existing 問題だが、CI/regression coverage の盲点なので別 W で対応。修正規模: conftest.py の autouse fixture 内で init_db() を呼ぶ + 必要なら migration を test 環境で完走させるロジック追加 (~10-20 LOC)",
+    "status": "未着手",
+    "priority": "中",
+    "created": "2026-05-25",
+    "source": "W170 fix verify 時に発覚した pre-existing failures",
+    "category": "internal"
   },
   {
     "id": 261,
@@ -1513,7 +1657,8 @@
     "created": "2026-05-27",
     "completed": "2026-05-27",
     "source": "2026-05-27 user 依頼「eBay連携に item id 設定して 1 件だけ連携する機能」+ W176 補完",
-    "completion_note": "Q4 code-reviewer 2 周で HIGH 3→0 (価格 schema コメント / SQLite OperationalError friendly / button 連打防御)。Playwright で実機 verify: Fujikura 358602711505 (W176 trigger 商品) 同期成功、last_synced_at=2026-05-27 07:18:48 で確認"
+    "completion_note": "Q4 code-reviewer 2 周で HIGH 3→0 (価格 schema コメント / SQLite OperationalError friendly / button 連打防御)。Playwright で実機 verify: Fujikura 358602711505 (W176 trigger 商品) 同期成功、last_synced_at=2026-05-27 07:18:48 で確認",
+    "category": "business"
   },
   {
     "id": 263,
@@ -1524,7 +1669,8 @@
     "priority": "中",
     "created": "2026-05-27",
     "completed": null,
-    "source": "Codex GPT-5.5 P4 推奨。W178 完了時に user が実施判断"
+    "source": "Codex GPT-5.5 P4 推奨。W178 完了時に user が実施判断",
+    "category": "business"
   },
   {
     "id": 268,
@@ -1535,7 +1681,8 @@
     "priority": "低",
     "created": "2026-05-29",
     "completed": null,
-    "source": "2026-05-29 W185 24h retrospective code-reviewer MEDIUM 指摘 (backup table 恒久残置は害ないが Q2 別 one-shot で cleanup 推奨)。"
+    "source": "2026-05-29 W185 24h retrospective code-reviewer MEDIUM 指摘 (backup table 恒久残置は害ないが Q2 別 one-shot で cleanup 推奨)。",
+    "category": "internal"
   },
   {
     "id": 269,
@@ -1547,7 +1694,8 @@
     "created": "2026-05-29",
     "completed": "2026-05-29",
     "progress": "2026-05-29 完了。3 経路を全てテスト隔離側で修正 (本番コード変更なし): (1) test_customs_kb / test_customs_sender / test_customs_w14ext_draft の 3 ファイルに module-level autouse `_init_customs_schema(_isolate_monitor_db)` fixture 追加 (conftest の DB_PATH 隔離後に init_db、依存順序保証)。(2) test_morning_discovery の該当 1 件で monkeypatch により _tmd.DB_PATH を _db.DB_PATH (tmp) に揃え seed/update を同一 DB 化。(3) test_w139_monitor_coverage の該当 1 件で _resolve_webhook_url を '' に monkeypatch し実 Discord 送信副作用 + env 依存を除去。検証: 5 ファイル targeted 67 passed → フルスイート tests/ 1540 passed/2 skipped (411s) 回帰ゼロ。code-reviewer HIGH=0 (100点、逃避修正でないこと確認)。残: MEDIUM-1 task_morning_discovery 等 shadow DB_PATH モジュールの get_conn 統一 (別 W) / scripts/test_discord_w126.py が import 時 sys.exit(1) で `pytest -q` 無引数収集をクラッシュさせる件 (別 W、収集除外 or rename 推奨)。",
-    "source": "2026-05-29 W185 (Opus 4.8 総チェック) で pytest 1525 PASS 確認時に判明した pre-existing 15 件失敗。user 指示『修正してください』。"
+    "source": "2026-05-29 W185 (Opus 4.8 総チェック) で pytest 1525 PASS 確認時に判明した pre-existing 15 件失敗。user 指示『修正してください』。",
+    "category": "business"
   },
   {
     "id": 270,
@@ -1558,7 +1706,8 @@
     "priority": "通常",
     "created": "2026-05-29",
     "completed": null,
-    "source": "2026-05-29 user 依頼『dashbordが不要な情報であふれている。整理してかつその日実施すべき作業はdashbordを見ればいいようにしたい』。"
+    "source": "2026-05-29 user 依頼『dashbordが不要な情報であふれている。整理してかつその日実施すべき作業はdashbordを見ればいいようにしたい』。",
+    "category": "business"
   },
   {
     "id": 271,
@@ -1569,7 +1718,8 @@
     "priority": "通常",
     "created": "2026-05-29",
     "completed": null,
-    "source": "2026-05-29 user 依頼『設定タブに各処理ごとのdiscord通知のON/OFFを追加』。通知漏れ修正時に『個別に止めたい通知があれば対応する』と提案した流れを受けたもの。"
+    "source": "2026-05-29 user 依頼『設定タブに各処理ごとのdiscord通知のON/OFFを追加』。通知漏れ修正時に『個別に止めたい通知があれば対応する』と提案した流れを受けたもの。",
+    "category": "business"
   },
   {
     "id": 272,
@@ -1580,18 +1730,20 @@
     "priority": "高",
     "created": "2026-05-29",
     "completed": null,
-    "source": "2026-05-29 user 依頼『エラーになった際にこちらでdiscriptionや各設定値を修正できない。修正できるようにしてほしい』。VerifyAdd Ack=Failure (improper words / policy) の実例報告つき。"
+    "source": "2026-05-29 user 依頼『エラーになった際にこちらでdiscriptionや各設定値を修正できない。修正できるようにしてほしい』。VerifyAdd Ack=Failure (improper words / policy) の実例報告つき。",
+    "category": "business"
   },
   {
     "id": 273,
     "tag": "W191",
     "title": "個別出品の新規出品時に primary_market 区分 (US_only 等) を画面で設定できるようにする",
     "description": "個別出品タブで新規出品する際、現状 primary_market 区分は 'unknown' 固定 (ebay_lister.build_draft_params_from_phase3 の呼出側 tab_individual_listing._build_current_draft_params で listing_dict.get('primary_market') or 'unknown' を渡すだけ、UI からの指定手段なし)。この区分は出品価格・米国向け送料 (DDP 関税近似) の計算を左右する (US_only=価格に関税包含+送料$0 / global_only=価格のみ+送料$0 / mixed_global・unknown=価格のみ+US送料欄に関税近似)。STEP3 出品設定に 4 区分 (US_only / mixed_global / global_only / unknown) の選択 UI を追加し、選択値を _build_current_draft_params が primary_market として伝搬する。永続化の深さ (出品時計算のみ / listing_drafts 列追加 / 出品後 ebay_listings へ反映) は user clarify 待ち。既存コメント (tab_individual_listing.py L1900 'user UI override は別 W で検討') の積み残しを解消するもの。",
-    "status": "実装中",
+    "status": "完了",
     "priority": "高",
     "created": "2026-05-29",
-    "completed": null,
-    "source": "2026-05-29 user 依頼『個別出品などで新規出品する際に区分（US_Only）などを設定できるようにしてください』。W190 (失敗時編集) と同 session の追加依頼。"
+    "completed": "2026-06-05",
+    "source": "2026-05-29 user 依頼『個別出品などで新規出品する際に区分（US_Only）などを設定できるようにしてください』。W190 (失敗時編集) と同 session の追加依頼。",
+    "category": "business"
   },
   {
     "id": 274,
@@ -1602,7 +1754,8 @@
     "priority": "通常",
     "created": "2026-05-30",
     "completed": "2026-05-30",
-    "source": "2026-05-30 user 依頼『仕入れ候補にAmazon、楽天だけでなくヤフーショップも追加』。W193(価格変動通知)と同時依頼。 / 2026-05-30 clarify: ヤフーショッピング(通販モール)を指す、ヤフオクは対象外。"
+    "source": "2026-05-30 user 依頼『仕入れ候補にAmazon、楽天だけでなくヤフーショップも追加』。W193(価格変動通知)と同時依頼。 / 2026-05-30 clarify: ヤフーショッピング(通販モール)を指す、ヤフオクは対象外。",
+    "category": "business"
   },
   {
     "id": 275,
@@ -1613,7 +1766,8 @@
     "priority": "通常",
     "created": "2026-05-30",
     "completed": "2026-05-30",
-    "source": "2026-05-30 user 依頼『Amazon、楽天、ヤフーショップについては販売価格が変更になった場合は通知が来るように』。W192と同時依頼。 / 2026-05-30 clarify: しきい値±5%以上、値上がり値下がり両方通知。"
+    "source": "2026-05-30 user 依頼『Amazon、楽天、ヤフーショップについては販売価格が変更になった場合は通知が来るように』。W192と同時依頼。 / 2026-05-30 clarify: しきい値±5%以上、値上がり値下がり両方通知。",
+    "category": "business"
   },
   {
     "id": 276,
@@ -1624,7 +1778,8 @@
     "priority": "通常",
     "created": "2026-05-30",
     "completed": null,
-    "source": "2026-05-30 W193 実装の Codex (GPT-5.5) 外部レビュー由来。code-reviewer (Opus) は HIGH=0 だったが Codex が並行性 (baseline/通知 race) と restock 相互作用を追加検出。2段ループで valid 確認し、core (baseline race) は W193 内で即修正、残 4 件を本 W へ。feedback_codex_review_usage.md 『money/account 直結コードは Codex を第二眼』実証例。"
+    "source": "2026-05-30 W193 実装の Codex (GPT-5.5) 外部レビュー由来。code-reviewer (Opus) は HIGH=0 だったが Codex が並行性 (baseline/通知 race) と restock 相互作用を追加検出。2段ループで valid 確認し、core (baseline race) は W193 内で即修正、残 4 件を本 W へ。feedback_codex_review_usage.md 『money/account 直結コードは Codex を第二眼』実証例。",
+    "category": "business"
   },
   {
     "id": 277,
@@ -1635,7 +1790,8 @@
     "priority": "高",
     "created": "2026-05-31",
     "completed": null,
-    "source": "2026-05-31 user 口頭依頼(商品管理で無在庫の在庫数も変更したい、売れた後すぐ増やして販売継続)。秘書ディスパッチャーモデル実証の初回ディスパッチ案件。"
+    "source": "2026-05-31 user 口頭依頼(商品管理で無在庫の在庫数も変更したい、売れた後すぐ増やして販売継続)。秘書ディスパッチャーモデル実証の初回ディスパッチ案件。",
+    "category": "business"
   },
   {
     "id": 278,
@@ -1645,7 +1801,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-01",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 279,
@@ -1655,7 +1812,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-01",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 280,
@@ -1665,7 +1823,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-06-01",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 281,
@@ -1675,7 +1834,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-02",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 282,
@@ -1685,7 +1845,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-02",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 283,
@@ -1695,7 +1856,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-02",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 284,
@@ -1705,7 +1867,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-02",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 285,
@@ -1715,7 +1878,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-02",
-    "completed": null
+    "completed": null,
+    "category": "internal"
   },
   {
     "id": 286,
@@ -1725,7 +1889,8 @@
     "status": "未着手",
     "priority": "低",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 287,
@@ -1735,7 +1900,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 288,
@@ -1745,7 +1911,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 289,
@@ -1755,7 +1922,8 @@
     "status": "未着手",
     "priority": "通常",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 290,
@@ -1765,7 +1933,8 @@
     "status": "未着手",
     "priority": "通常",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 291,
@@ -1775,7 +1944,8 @@
     "status": "未着手",
     "priority": "高",
     "created": "2026-06-03",
-    "completed": null
+    "completed": null,
+    "category": "business"
   },
   {
     "id": 292,
@@ -1785,16 +1955,29 @@
     "status": "完了",
     "priority": "高",
     "created": "2026-06-04",
-    "completed": "2026-06-04"
+    "completed": "2026-06-04",
+    "category": "business"
   },
   {
     "id": 293,
     "tag": "W221",
     "title": "MonoDeck 体感速度改善 (Tier1: 商品管理 st.fragment化 + 閉商品skip + 一覧テーブル化)",
     "description": "2026-06-04 user「各処理が遅い、サクサクに」。Claude+Codex(gpt-5.5)協働診断: 主因は商品管理タブが st.fragment 未使用=1商品操作で表示中25商品が全再描画。アプリ化(wrap)は速度無意味と結論、現Streamlitのまま改善。Tier1: (1)1商品renderを@st.fragment化(form内包、widget key商品ID固定、fragment外はfull rerun) (2)閉expanderの重処理skip(開いた商品だけprofit/BP/rival計算) (3)一覧テーブル中心化+詳細は開時のみ (4)profit cache強化(ttl撤廃→db_version連動) (5)画像lazy。Phase0で実測(full rerun/1件/25件render時間)→各段Q1実測比較。money-direct UI=code-reviewer HIGH=0+Codex。Tier2(多ページ化)は速度効果限定的=保守性目的で後回し。設計: .company/engineering/docs/2026-06-04-monodeck-performance-improvement.md",
-    "status": "着手中",
+    "status": "完了",
     "priority": "高",
     "created": "2026-06-04",
-    "completed": null
+    "completed": "2026-06-05",
+    "category": "business"
+  },
+  {
+    "id": 294,
+    "tag": "W222",
+    "title": "商品ごとのカテゴリ別eBay手数料(FVF)を利益計算・自動値下げに反映",
+    "description": "2026-06-05 user指摘。eBay FVFはカテゴリで異なる(例 Computers 58058=9.35% / Laptop Accessories 31530=12.70%)が、現状ebay_listingsにcategoryID列が無く全商品が固定58248(≒12.7%)で計算されている。money-direct: 低FVFカテゴリは利益過小表示、高FVFカテゴリはbreakeven floorが甘く赤字リスク(対象active約532件/floor設定済60件)。対応: (1)ebay_listingsにcategory_id列追加(migration)+eBay同期(GetItem/Inventory)で各listingのCategoryID取得保存 (2)商品管理_cd_profit_breakdown・compute_breakeven_price_usd・find_min_listable_price_usdのor58248を実カテゴリ参照化 (3)EbayFeeRates.csv欠落カテゴリ(58058/31530等の主要カテゴリ特別レート)更新 (4)修正後breakeven全件再計算。Q3構造化フロー(設計→2段review→migration冪等→Q1)で着手。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-06-05",
+    "completed": null,
+    "category": "business"
   }
 ]
