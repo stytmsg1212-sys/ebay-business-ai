@@ -1302,96 +1302,115 @@ def render_inventory_monitor_tab(s: dict) -> None:
         if not all_items:
             st.info("監視アイテムがありません。eBay同期か手動追加で登録してください。\n\nSKUフォーマット例: `ebayme_m12345678` / `ebayrm_abc123` / `ebayh_xyz789`")
         else:
-            # テーブル表示
-            header_cols = st.columns([0.5, 1.2, 2.2, 1.8, 1.2, 0.6, 0.7, 0.6])
-            header_cols[0].markdown("**状態**")
-            header_cols[1].markdown("**Item ID**")
-            header_cols[2].markdown("**仕入元URL**")
-            header_cols[3].markdown("**SKU / メモ**")
-            header_cols[4].markdown("**最終確認**")
-            header_cols[5].markdown("**チェック**")
-            header_cols[6].markdown("**在庫0**")
-            header_cols[7].markdown("**削除**")
-            st.divider()
+            # W222-E (2026-06-05 user 要望): per-row columns+divider の冗長レイアウトを
+            # 確認不可一覧と同様のコンパクトな表 (st.dataframe) に変更。一覧は表で俯瞰し、
+            # 個別操作 (チェック/在庫0/削除) は下の selectbox で対象を選んで実行する。
+            import pandas as pd
 
+            _status_filter = st.multiselect(
+                "状態フィルタ",
+                options=list(STATUS_LABEL.values()),
+                default=[],
+                key="inv_watch_status_filter",
+                help="未選択 = 全件表示。在庫切れ/ページなし だけ見たい時に絞り込み。",
+            )
+            _label_to_status = {v: k for k, v in STATUS_LABEL.items()}
+            _wanted = {_label_to_status[v] for v in _status_filter} if _status_filter else None
+
+            _rows = []
+            _items_by_key = {}
             for item in all_items:
                 status = item.get("last_status", "unknown")
-                emoji = STATUS_EMOJI.get(status, "[?]")
-                label = STATUS_LABEL.get(status, status)
-                source_url = item.get("source_url", "")
-                last_check = item.get("last_check", "-")
-                sku = item.get("sku", "")
-                title = item.get("title", "")
-                ebay_item_id = item.get("ebay_item_id", "")
+                if _wanted is not None and status not in _wanted:
+                    continue
+                ebay_item_id = item.get("ebay_item_id", "") or ""
+                sku = item.get("sku", "") or ""
+                _key = sku or ebay_item_id or str(item.get("id"))
+                _items_by_key[_key] = item
+                _rows.append({
+                    "状態": f'{STATUS_EMOJI.get(status, "[?]")} {STATUS_LABEL.get(status, status)}',
+                    "Item ID": ebay_item_id or "-",
+                    "eBay": f"https://www.ebay.com/itm/{ebay_item_id}" if ebay_item_id else "",
+                    "SKU": sku,
+                    "メモ": (item.get("title") or "")[:40],
+                    "仕入元URL": item.get("source_url", "") or "",
+                    "最終確認": str(item.get("last_check") or "")[:16],
+                })
 
-                row = st.columns([0.5, 1.2, 2.2, 1.8, 1.2, 0.6, 0.7, 0.6])
-                with row[0]:
-                    st.markdown(f"{emoji}")
-                    st.caption(label)
-                with row[1]:
-                    if ebay_item_id:
-                        st.markdown(
-                            f"<a href='https://www.ebay.com/itm/{ebay_item_id}' target='_blank' "
-                            f"style='font-size:12px;'>{ebay_item_id}</a>",
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.caption("-")
-                with row[2]:
-                    if source_url:
-                        # URLを短縮表示
-                        display_url = source_url if len(source_url) <= 45 else source_url[:42] + "..."
-                        st.markdown(f"[{display_url}]({source_url})")
-                    else:
-                        st.caption("URL未解決")
-                with row[3]:
-                    st.code(sku, language=None)
-                    if title:
-                        st.caption(title)
-                with row[4]:
-                    st.caption(str(last_check)[:16] if last_check else "-")
-                with row[5]:
-                    if st.button("▶", key=f"chk_{item['id']}", help="今すぐチェック"):
-                        cfg = find_site_config_by_sku(sku)
-                        if cfg and source_url:
-                            with st.spinner("チェック中..."):
-                                new_status = check_item_by_config(item, cfg)
-                            update_item_status(item["id"], new_status)
-                            add_check_log(item["id"], new_status)
-                            st.rerun()
-                        else:
-                            st.error("サイト設定が見つかりません")
-                with row[6]:
-                    if st.button("X", key=f"qty0_{item['id']}", help="eBay在庫を0に変更"):
-                        if not ebay_item_id:
-                            st.error("Item IDなし")
-                        else:
-                            ebay_creds = {
-                                'app_id': s.get("ebay_app_id", ""),
-                                'dev_id': s.get("ebay_dev_id", ""),
-                                'cert_id': s.get("ebay_cert_id", ""),
-                                'user_token': s.get("ebay_user_token", ""),
-                            }
-                            if not all(ebay_creds.values()):
-                                st.error("eBay API未設定")
+            st.caption(f"監視 {len(_rows)} 件" + (f" / 全 {len(all_items)} 件中" if _wanted else ""))
+            st.dataframe(
+                pd.DataFrame(_rows),
+                hide_index=True,
+                width="stretch",
+                height=460,
+                column_config={
+                    "状態": st.column_config.TextColumn("状態", width="small"),
+                    "Item ID": st.column_config.TextColumn("Item ID", width="small"),
+                    "eBay": st.column_config.LinkColumn("eBay", display_text="開く", width="small"),
+                    "SKU": st.column_config.TextColumn("SKU", width="medium"),
+                    "メモ": st.column_config.TextColumn("メモ", width="medium"),
+                    "仕入元URL": st.column_config.LinkColumn("仕入元", display_text="リンク", width="small"),
+                    "最終確認": st.column_config.TextColumn("最終確認", width="small"),
+                },
+            )
+
+            # 個別操作 (対象を選んで チェック / 在庫0 / 削除)
+            st.caption("個別操作:")
+            _act_label = st.selectbox(
+                "操作対象",
+                options=["—"] + [
+                    f"{k} — {(_items_by_key[k].get('title') or '')[:30]}"
+                    for k in _items_by_key
+                ],
+                key="inv_watch_action_target",
+                label_visibility="collapsed",
+            )
+            if _act_label != "—":
+                _sel_key = _act_label.split(" — ")[0]
+                _it = _items_by_key.get(_sel_key)
+                if _it:
+                    _sku = _it.get("sku", "") or ""
+                    _src = _it.get("source_url", "") or ""
+                    _eid = _it.get("ebay_item_id", "") or ""
+                    _ac1, _ac2, _ac3 = st.columns(3)
+                    with _ac1:
+                        if st.button("▶ 今すぐチェック", key=f"chk_{_it['id']}"):
+                            cfg = find_site_config_by_sku(_sku)
+                            if cfg and _src:
+                                with st.spinner("チェック中..."):
+                                    new_status = check_item_by_config(_it, cfg)
+                                update_item_status(_it["id"], new_status)
+                                add_check_log(_it["id"], new_status)
+                                st.rerun()
                             else:
-                                from monitor.ebay_client import revise_inventory_quantity
-                                result = revise_inventory_quantity(
-                                    ebay_item_id, 0, **ebay_creds
-                                )
-                                if result['success']:
-                                    update_ebay_listing_quantity(ebay_item_id, 0)
-                                    bump_db_version()  # W134 Step2: 在庫0化後 read-cache 無効化
-                                    st.success(f"{ebay_item_id} qty set to 0")
-                                    st.rerun()
+                                st.error("サイト設定が見つかりません")
+                    with _ac2:
+                        if st.button("eBay在庫を0に", key=f"qty0_{_it['id']}"):
+                            if not _eid:
+                                st.error("Item IDなし")
+                            else:
+                                ebay_creds = {
+                                    'app_id': s.get("ebay_app_id", ""),
+                                    'dev_id': s.get("ebay_dev_id", ""),
+                                    'cert_id': s.get("ebay_cert_id", ""),
+                                    'user_token': s.get("ebay_user_token", ""),
+                                }
+                                if not all(ebay_creds.values()):
+                                    st.error("eBay API未設定")
                                 else:
-                                    st.error(result['message'])
-                with row[7]:
-                    if st.button("DEL", key=f"del_{item['id']}", help="削除"):
-                        delete_item(item["id"])
-                        st.rerun()
-
-                st.divider()
+                                    from monitor.ebay_client import revise_inventory_quantity
+                                    result = revise_inventory_quantity(_eid, 0, **ebay_creds)
+                                    if result['success']:
+                                        update_ebay_listing_quantity(_eid, 0)
+                                        bump_db_version()  # W134 Step2: 在庫0化後 read-cache 無効化
+                                        st.success(f"{_eid} qty set to 0")
+                                        st.rerun()
+                                    else:
+                                        st.error(result['message'])
+                    with _ac3:
+                        if st.button("削除", key=f"del_{_it['id']}"):
+                            delete_item(_it["id"])
+                            st.rerun()
 
         # チェック履歴
         _show_check_logs = st.checkbox("チェックログ（直近20件）", key="chk_check_logs")
