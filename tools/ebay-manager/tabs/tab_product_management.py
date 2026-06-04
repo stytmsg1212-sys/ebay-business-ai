@@ -645,7 +645,8 @@ def _render_profit_value(label: str, yen: float, dim: bool) -> None:
         )
 
 
-@st.cache_data(ttl=3, show_spinner=False)
+@st.cache_data(show_spinner=False)  # W221 T1-3: ttl=3 撤廃。key (入力+settings_mtime
+# +db_version+actual_duty+point_yen) が完備の純関数 = ttl 不要、3秒毎の無駄 miss を解消。
 def _cd_profit_breakdown(
     price: float, pyen: float, weight_g: float,
     length_cm: float, width_cm: float, height_cm: float,
@@ -3371,7 +3372,7 @@ def _render_one_product(p: dict, config: dict) -> None:
             if messages:
                 st.success(" | ".join(messages))
 
-            # 保存後も expander を開いたままにする
+            # 保存後もアコーディオンを開いたままにする
             st.session_state["pm_keep_open_eid"] = eid
 
 
