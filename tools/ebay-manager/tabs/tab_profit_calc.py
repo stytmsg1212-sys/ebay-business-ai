@@ -33,6 +33,16 @@ def render_profit_calc_tab(s: dict) -> None:
         purchase = st.number_input("仕入れ値（円）", min_value=0, value=52400, step=100)
         item_price = st.number_input("販売価格（USD）", min_value=0.0, value=500.0, step=1.0, format="%.2f")
         category_id = st.number_input("カテゴリーID", min_value=0, value=58248, step=1)
+        # W222 (2026-06-05): カテゴリID入力時に落札手数料(FVF)実効レートをライブ表示。
+        # CSV未収録カテゴリは既定 12.7%(Store)/13.6%(NoStore) にフォールバック (その旨明示)。
+        from calculator import get_ebay_fvf_rate, category_in_fee_table as _category_in_fee_table
+        _store_plan = s.get("store_plan", "Premium")
+        _fvf_preview = get_ebay_fvf_rate(int(category_id), float(item_price) or 1.0, _store_plan)
+        _in_csv = _category_in_fee_table(int(category_id))
+        st.caption(
+            f"落札手数料 (このカテゴリ): **{_fvf_preview*100:.2f}%**"
+            + ("" if _in_csv else " ⚠️ カテゴリ未収録のため既定レート")
+        )
         duty_pattern_label = st.selectbox(
             "関税パターン",
             [

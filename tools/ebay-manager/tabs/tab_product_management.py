@@ -1366,15 +1366,42 @@ def _render_left_basic_and_physical(
     # eBay への反映は slice3 の「📤 eBay反映」(ReviseItem) 経由で明示実行 (即時 push
     # しない=安全側)。内容あれば見出しに「入力あり」、本文は折りたたみ既定。
     _desc_body = p.get("listing_description") or ""
+    # C-fix (2026-06-05): listing_description は eBay から一度も取得しておらず
+    # (W220 は編集+ReviseItem 送出のみ)、全 listing で空 → 編集欄が空白だった。
+    # 「📥 eBayから現在の説明を取得」で GetItem の Description を引いて欄に流し込む。
+    # session_state key 方式 (value= 併用は警告 + 上書き不可のため不使用)。
+    _desc_key = f"pm_desc_{eid}"
+    if _desc_key not in st.session_state:
+        st.session_state[_desc_key] = _desc_body
     with st.expander(
         "📝 説明文 (description) 編集"
-        + (" — 入力あり" if _desc_body.strip() else " — 空"),
+        + (" — 入力あり" if (st.session_state.get(_desc_key) or "").strip() else " — 空"),
         expanded=False,
     ):
+        if st.button(
+            "📥 eBayから現在の説明を取得", key=f"pm_desc_fetchbtn_{eid}",
+            help="eBay GetItem で現在の商品説明 (Description) を取得して下の欄に表示。"
+                 "保存すると MonoDeck DB に保持されます (eBay へは未送信)。",
+        ):
+            from monitor.ebay_client import get_single_listing
+            _creds = get_ebay_credentials(config or {})
+            if not all(_creds.get(k) for k in ("app_id", "dev_id", "cert_id", "user_token")):
+                st.error("eBay API 認証情報が未設定です (設定タブ参照)")
+            else:
+                with st.spinner("eBay から説明を取得中..."):
+                    _snap = get_single_listing(
+                        eid, _creds["app_id"], _creds["dev_id"],
+                        _creds["cert_id"], _creds["user_token"],
+                    )
+                if _snap is not None and _snap.get("description") is not None:
+                    st.session_state[_desc_key] = _snap.get("description") or ""
+                    st.success("取得しました。下の欄に表示中。保存で DB に保持します。")
+                    st.rerun()
+                else:
+                    st.error("取得失敗 (GetItem 応答なし / Description 空)")
         editing["listing_description"] = st.text_area(
             "description",
-            value=_desc_body,
-            key=f"pm_desc_{eid}",
+            key=_desc_key,
             max_chars=8000,
             height=160,
             help="商品説明文の下書き (HTML 可)。保存で MonoDeck DB に保持。eBay へは "

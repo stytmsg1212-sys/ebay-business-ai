@@ -131,6 +131,19 @@ def get_additional_fees(service_id: int, country_code: str, charged_kg: float = 
     return total, details
 
 # ---- eBay手数料率取得 ----
+def category_in_fee_table(category_id: int) -> bool:
+    """W222 (2026-06-05): category_id が EbayFeeRates.csv に収録されているか。
+
+    False の場合 get_ebay_fvf_rate は既定 12.7%/13.6% にフォールバックする
+    (= 実レートと乖離し得る)。UI で「未収録のため既定レート」警告を出すのに使う。
+    """
+    _load_data()
+    try:
+        return bool((_cache['ebay_fee_rates']['CategoryID'] == int(category_id)).any())
+    except (ValueError, TypeError):
+        return False
+
+
 def get_ebay_fvf_rate(category_id: int, total_sale_usd: float, store_plan: str = "Premium") -> float:
     """カテゴリとストアプランに応じたFVF実効レートを返す"""
     _load_data()

@@ -446,6 +446,15 @@ def get_single_listing(
         selling_status.findtext("ns:QuantitySold", namespaces=ns)
     ) if selling_status is not None else 0
 
+    # W222/C-fix (2026-06-05): 商品説明 (description) と eBay カテゴリ ID を抽出。
+    # DetailLevel=ReturnAll なので両方とも応答に含まれる。
+    # - description: 商品管理の「📥 eBayから現在の説明を取得」用 (listing_description が空の解消)
+    # - category_id: カテゴリ別 FVF 計算用 (W222)。PrimaryCategory が leaf カテゴリ
+    description = item.findtext("ns:Description", namespaces=ns) or ""
+    category_id = _safe_int(
+        item.findtext("ns:PrimaryCategory/ns:CategoryID", namespaces=ns)
+    )
+
     return {
         "item_id": item_id,
         "title": title,
@@ -456,6 +465,8 @@ def get_single_listing(
         "watch_count": watch_count,
         "view_count": view_count,
         "sales_count_30d": sales_count,
+        "description": description,
+        "category_id": category_id,
     }
 
 

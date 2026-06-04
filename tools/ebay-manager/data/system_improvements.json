@@ -1974,7 +1974,7 @@
     "tag": "W222",
     "title": "商品ごとのカテゴリ別eBay手数料(FVF)を利益計算・自動値下げに反映",
     "description": "2026-06-05 user指摘。eBay FVFはカテゴリで異なる(例 Computers 58058=9.35% / Laptop Accessories 31530=12.70%)が、現状ebay_listingsにcategoryID列が無く全商品が固定58248(≒12.7%)で計算されている。money-direct: 低FVFカテゴリは利益過小表示、高FVFカテゴリはbreakeven floorが甘く赤字リスク(対象active約532件/floor設定済60件)。対応: (1)ebay_listingsにcategory_id列追加(migration)+eBay同期(GetItem/Inventory)で各listingのCategoryID取得保存 (2)商品管理_cd_profit_breakdown・compute_breakeven_price_usd・find_min_listable_price_usdのor58248を実カテゴリ参照化 (3)EbayFeeRates.csv欠落カテゴリ(58058/31530等の主要カテゴリ特別レート)更新 (4)修正後breakeven全件再計算。Q3構造化フロー(設計→2段review→migration冪等→Q1)で着手。",
-    "status": "未着手",
+    "status": "着手中",
     "priority": "高",
     "created": "2026-06-05",
     "completed": null,
