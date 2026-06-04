@@ -31,7 +31,10 @@ def _settings() -> dict:
 # exchange_rate / fuel_surcharge は運用で随時更新される (fuel は毎週) ため、live settings の
 # まま絶対値を固定すると本テストが運用更新の度に壊れる。captured 時点の値に pin し、本テストを
 # 「duty_pattern 分岐コード自体の回帰検知」に純化する (settings drift とは分離)。
-_GOLDEN_SETTINGS_BASELINE = dict(exchange_rate=157, fuel_surcharge_fedex=45.5, fuel_surcharge_dhl=48.0)
+# duty_rate も運用で動く config (W215 2026-06-03: 20→11%)。golden HEAD は捕捉時点の 20% で
+# 算出済 (shipping_usd=100=item500×0.20) のため duty_rate=20 も pin し、本テストを duty_rate
+# 改定から隔離する (live 11% を使うと shipping pattern の revenue/shipping_usd が変わり恒偽化)。
+_GOLDEN_SETTINGS_BASELINE = dict(exchange_rate=157, fuel_surcharge_fedex=45.5, fuel_surcharge_dhl=48.0, duty_rate=20.0)
 
 
 def _golden_settings() -> dict:

@@ -137,20 +137,16 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
         ).fetchone()
     if not row:
         return None
-    # W212: per-listing 実関税率 (Section 232 該当品) があれば washing 撤廃で breakeven 算出。
-    # None (非該当) は従来 global duty_rate 20% (washed)。duty_rate_pct はパーセント → 小数化。
-    # 範囲ガード (Codex 2段レビュー): 0.30 のような小数誤入力を /100 すると 0.003 = 過小 floor
-    # (赤字出品リスク)。実関税率はパーセント (I-B 30 / I-A 55) のため [1,100] 外は誤入力疑いで
-    # global にフォールバック + warning (silent な過小 floor を防ぐ)。
+    # W215 (2026-06-03): Section 232 該当品の per-listing 実関税率 (duty_rate_pct
+    # 25-55%) は **適用しない** (= global duty_rate 11% で washed)。CPaSS 実請求全数
+    # 調査 (US配送208件) で OC SpeedPAK DDP は原産国別 flat 率 (日本発10%) を課金し、
+    # Section 232 該当品 (炊飯器8516.60等) も例外なく flat 10% だったため、25-55% を
+    # 載せると当該品の floor が過大 = 機会損失になる (Codex/user 承認 2026-06-03)。
+    # duty_rate_pct / section232_class は DB に保持 (法定分類の記録 + 警告バッジ用) し、
+    # true-up リスクは UI 警告で別管理する (率には畳み込まない)。詳細:
+    # .company/engineering/docs/2026-06-03-cpass-us-duty-actuals.md / settings.us_duty。
+    # row[5] (duty_rate_pct) は SELECT のみ残置 (将来の警告ロジック用)、breakeven 率には不使用。
     actual_duty_rate = None
-    if row[5] is not None:
-        if 1 <= row[5] <= 100:
-            actual_duty_rate = row[5] / 100.0
-        else:
-            logger.warning(
-                f"duty_rate_pct={row[5]} for {ebay_item_id} がパーセント範囲[1,100]外 "
-                f"(小数で入力された誤り疑い)。global duty にフォールバック."
-            )
     # W212 (2026-06-03): global_only (非US客中心) は DDU 基準で floor を出す = US 関税
     # (Section 232 含む) を載せない (reference_shipping_tariff_logic §4.3、user 承認 2026-06-03)。
     # US_only/mixed_global/unknown/NULL は従来どおり US DDP (保守、関税込)。
