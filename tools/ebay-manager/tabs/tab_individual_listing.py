@@ -378,13 +378,49 @@ def _load_draft_into_form(draft: dict) -> None:
 
 
 # =========================================================================
+# 表示 helpers (見た目の DRY 化、ロジック不変)
+# =========================================================================
+
+# JARVIS スタイル STEP ラベル (letter-spacing 2px、淡い水色)。
+# 8 箇所の重複インライン markdown を 1 関数化したもので、文言・色・letter-spacing は完全に維持する。
+# margin だけは箇所ごとに異なるため引数で受ける (Step 1 は冒頭で詰めて 4px、他は 16-20px の縦間)。
+_IL_STEP_LABEL_STYLE = (
+    "font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;"
+)
+
+
+def _il_step_label(num: str, title_en: str, margin: str = "16px 0 6px") -> str:
+    """JARVIS STEP ラベル HTML を返す純関数 (副作用なし).
+
+    既存の `S T E P  N  —  TITLE` 表現を 1 か所に集約するための DRY ヘルパー.
+
+    Args:
+        num: STEP 番号 (例 "1", "2", "2.5", "2.6", "2.7", "3", "4", "5"). そのまま 1 文字
+             ずつスペースで挟んで表示する.
+        title_en: ラベル本体. 既存実装に合わせて `&nbsp;` 区切り済の HTML 断片を渡す
+                  (例 "S O U R C E &nbsp; U R L"). escape されない前提なので呼出元は
+                  リテラル定数のみを渡し、外部入力は流し込まないこと.
+        margin: <div> の CSS margin (既存 8 箇所の差分を維持するため引数化).
+
+    Returns:
+        `st.markdown(..., unsafe_allow_html=True)` に渡す HTML 文字列.
+    """
+    # 番号も 1 文字ずつスペースで挟む (既存実装と同じ JARVIS 表現)。
+    # "2.5" → "2 . 5"、"1" → "1" のように、各文字を半角スペースで連結する。
+    spaced_num = " ".join(num)
+    return (
+        f'<div style="{_IL_STEP_LABEL_STYLE}margin:{margin};">'
+        f"S T E P &nbsp; {spaced_num} &nbsp; — &nbsp; {title_en}</div>"
+    )
+
+
+# =========================================================================
 # Step 1: URL 入力 + スクレイプ
 # =========================================================================
 
 def _render_step1_urls() -> None:
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:4px 0 6px;">S T E P &nbsp; 1 &nbsp; — &nbsp; S O U R C E &nbsp; U R L</div>',
+        _il_step_label("1", "S O U R C E &nbsp; U R L", margin="4px 0 6px"),
         unsafe_allow_html=True,
     )
     # load / クリア からの programmatic 設定を widget 生成前に widget key へ反映する。
@@ -521,8 +557,7 @@ def _render_step2_scrape_result() -> None:
         return
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:16px 0 6px;">S T E P &nbsp; 2 &nbsp; — &nbsp; S C R A P E D &nbsp; D A T A</div>',
+        _il_step_label("2", "S C R A P E D &nbsp; D A T A"),
         unsafe_allow_html=True,
     )
 
@@ -632,9 +667,10 @@ def _render_hero_compose_section() -> None:
         return
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:20px 0 6px;">S T E P &nbsp; 2 . 5 &nbsp; — &nbsp; B R A N D &nbsp; '
-        'H E R O &nbsp; C O M P O S E</div>',
+        _il_step_label(
+            "2.5", "B R A N D &nbsp; H E R O &nbsp; C O M P O S E",
+            margin="20px 0 6px",
+        ),
         unsafe_allow_html=True,
     )
 
@@ -642,7 +678,8 @@ def _render_hero_compose_section() -> None:
     candidates = st.session_state.get(f"{_SS}hero_candidates") or []
     last_source = st.session_state.get(f"{_SS}hero_source_url")
 
-    with st.container(border=True):
+    # 課金ゾーン: Photoroom + Gemini で 1 回 $0.14。CSS で amber 左ラインを付ける.
+    with st.container(border=True, key=f"{_SS}cost_hero"):
         st.caption(
             "選択画像の 1 枚目に MonoHonpo プレートを合成して eBay hero 画像を "
             "生成します (約 $0.14 = 21 円 / 回、所要 30-50 秒)"
@@ -744,13 +781,15 @@ def _render_eps_upload_section() -> None:
     total_local = (1 if hero else 0) + len(additional)
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:18px 0 6px;">S T E P &nbsp; 2 . 7 &nbsp; — &nbsp; E B A Y &nbsp; '
-        'E P S &nbsp; U P L O A D</div>',
+        _il_step_label(
+            "2.7", "E B A Y &nbsp; E P S &nbsp; U P L O A D",
+            margin="18px 0 6px",
+        ),
         unsafe_allow_html=True,
     )
 
-    with st.container(border=True):
+    # 課金ゾーン: EPS upload (重複は DB cache で skip、初回のみ料金発生). CSS で amber 左ラインを付ける.
+    with st.container(border=True, key=f"{_SS}cost_eps"):
         st.caption(
             f"加工画像 {total_local} 枚を eBay EPS (公式画像ホスト) にアップロードし、"
             f"出品時に公開 URL として使用します。Phase D 実装済 (2026-04-23)。"
@@ -793,13 +832,16 @@ def _render_additional_photoroom_section() -> None:
 
     processed = st.session_state.get(f"{_SS}additional_processed")
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:18px 0 6px;">S T E P &nbsp; 2 . 6 &nbsp; — &nbsp; O T H E R &nbsp; '
-        'I M A G E S &nbsp; B A C K G R O U N D &nbsp; U N I F Y</div>',
+        _il_step_label(
+            "2.6",
+            "O T H E R &nbsp; I M A G E S &nbsp; B A C K G R O U N D &nbsp; U N I F Y",
+            margin="18px 0 6px",
+        ),
         unsafe_allow_html=True,
     )
 
-    with st.container(border=True):
+    # 課金ゾーン: Photoroom $0.02/枚。CSS で amber 左ラインを付ける.
+    with st.container(border=True, key=f"{_SS}cost_additional"):
         cost = len(others) * 0.02
         st.caption(
             f"hero 以外の {len(others)} 枚を Photoroom で同一背景 (#c0c0c0 + depth) に "
@@ -1109,8 +1151,7 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
         return
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:16px 0 6px;">S T E P &nbsp; 3 &nbsp; — &nbsp; L I S T I N G &nbsp; S E T T I N G S</div>',
+        _il_step_label("3", "L I S T I N G &nbsp; S E T T I N G S"),
         unsafe_allow_html=True,
     )
 
@@ -1568,8 +1609,7 @@ def _render_step4_generation_preview() -> None:
         return
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:16px 0 6px;">S T E P &nbsp; 4 &nbsp; — &nbsp; G E N E R A T E D &nbsp; P R E V I E W</div>',
+        _il_step_label("4", "G E N E R A T E D &nbsp; P R E V I E W"),
         unsafe_allow_html=True,
     )
 
@@ -1810,8 +1850,7 @@ def _render_step5_verify_add(settings: dict) -> None:
         return
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
-        'margin:16px 0 6px;">S T E P &nbsp; 5 &nbsp; — &nbsp; V E R I F Y &nbsp; &amp; &nbsp; S A V E</div>',
+        _il_step_label("5", "V E R I F Y &nbsp; &amp; &nbsp; S A V E"),
         unsafe_allow_html=True,
     )
 
@@ -2548,6 +2587,23 @@ def render_tab(settings: dict) -> None:
         settings: app.py の st.session_state.settings (dict)
     """
     _init_session_state()
+
+    # タブ固有 CSS: 課金ゾーン (Step 2.5/2.6/2.7) の container を視覚的に隔離する.
+    # `st.container(key=...)` (Streamlit 1.56+) が付与する DOM クラス
+    # `st-key-<key>` に対して amber 左ライン + 薄背景 (JARVIS トーン) を当てるだけで、
+    # 中身のボタン・コスト表記・API 呼出ロジックには一切触れない (K2 surgical).
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-il_cost_"] > div[data-testid="stVerticalBlockBorderWrapper"],
+        div[class*="st-key-il_cost_"] {
+            border-left: 3px solid rgba(255, 176, 60, 0.55) !important;
+            background: rgba(255, 176, 60, 0.04) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         '<div style="font-size:13px;color:rgba(180,220,255,0.75);margin-bottom:14px;">'

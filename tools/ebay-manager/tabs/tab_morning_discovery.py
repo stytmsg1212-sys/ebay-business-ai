@@ -72,6 +72,75 @@ def _decision_label(decision: str) -> str:
     }.get(decision or "", "—")
 
 
+def _render_discovery_economics_html(
+    sup_jpy, ebay_usd, profit_usd, sold_30d, comp_jp
+) -> str:
+    """採算ブロックを 2 軸 HTML で返す (self-contained、表示のみ).
+
+    軸:
+      左 (input):  仕入 ¥sup_jpy  →  eBay 想定 $ebay_usd
+      右 (output): 想定粗利 $profit_usd  /  類似 sold(30d) sold_30d 件  /  JP 競合 comp_jp 人
+
+    色 (粗利):
+      profit > 0  → 緑系 (#7ac17a)
+      profit == 0 → セピア中立 (#bfb59a) + "見積不能" 表現 (W129 保持、$0 を赤字と誤読させない)
+      profit < 0  → 赤系 (#d05858)
+      None/非数値 → セピア中立 (#bfb59a) + "—"
+
+    money-direct 表示の安全弁: profit_usd が 0 のときは金額 "$0" を出さず、見積不能シグナル
+    (W129、prompt 制約由来) を保持する。本ヘルパーは表示専用、判定ロジック不変。
+    """
+    # 仕入 ¥
+    sup_str = f"¥{sup_jpy:,}" if isinstance(sup_jpy, (int, float)) else "—"
+    # eBay 想定 $
+    ebay_str = f"${ebay_usd:.0f}" if isinstance(ebay_usd, (int, float)) else "—"
+    # 想定粗利 $ (W129 sentinel 保持)
+    if isinstance(profit_usd, (int, float)):
+        if profit_usd == 0:
+            profit_str = "見積不能 (理由は根拠欄)"
+            profit_color = "#bfb59a"
+        elif profit_usd > 0:
+            profit_str = f"${profit_usd:.0f}"
+            profit_color = "#7ac17a"
+        else:
+            profit_str = f"-${abs(profit_usd):.0f}"
+            profit_color = "#d05858"
+    else:
+        profit_str = "—"
+        profit_color = "#bfb59a"
+    # 類似 sold / 競合
+    sold_str = f"{sold_30d} 件" if isinstance(sold_30d, (int, float)) else "—"
+    comp_str = f"{comp_jp} 人" if isinstance(comp_jp, (int, float)) else "—"
+
+    # 2 軸レイアウト (self-contained inline CSS、pm-* 共有 class 非依存)
+    label_style = "color:#a89d8a;font-size:11px;letter-spacing:0.04em;"
+    axis_style = (
+        "flex:1;padding:8px 10px;border:1px solid #3a342a;"
+        "border-radius:4px;background:rgba(40,36,30,0.35);"
+    )
+    return (
+        f'<div style="display:flex;gap:10px;margin:6px 0 4px 0;">'
+        # 軸 1: input (仕入 → eBay 想定)
+        f'<div style="{axis_style}">'
+        f'<div style="{label_style}">仕入 → eBay 想定</div>'
+        f'<div style="color:#e8dcc4;font-size:14px;font-weight:600;'
+        f'margin-top:2px;">{sup_str} → {ebay_str}</div>'
+        f'</div>'
+        # 軸 2: output (想定粗利 / sold / 競合)
+        f'<div style="{axis_style}">'
+        f'<div style="{label_style}">想定粗利 / 類似 sold(30d) / JP 競合</div>'
+        f'<div style="margin-top:2px;font-size:14px;">'
+        f'<span style="color:{profit_color};font-weight:700;">{profit_str}</span>'
+        f'<span style="color:#7a6e5f;"> / </span>'
+        f'<span style="color:#e8dcc4;">{sold_str}</span>'
+        f'<span style="color:#7a6e5f;"> / </span>'
+        f'<span style="color:#e8dcc4;">{comp_str}</span>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
 def _render_candidate(cand: dict) -> None:
     """1 候補の表示 + フィードバック UI."""
     cid = cand["id"]
@@ -93,14 +162,16 @@ def _render_candidate(cand: dict) -> None:
     vero = cand.get("vero_risk_level") or "unknown"
 
     with st.container(border=True):
-        # ヘッダ
+        # ヘッダ (セピアトーン維持、letter-spacing で視認性向上)
         st.markdown(
             f'<div style="display:flex;gap:10px;align-items:center;'
-            f'font-family:JetBrains Mono;font-size:12px;">'
+            f'font-family:JetBrains Mono;font-size:12px;'
+            f'letter-spacing:0.03em;">'
             f'<span style="color:#a89d8a;">#{rank}</span>'
             f'<span style="color:#7a6e5f;">{_layer_label(origin)}</span>'
-            f'<span style="color:{_vero_color(vero)};font-weight:600;">'
-            f'VeRO: {vero}</span>'
+            f'<span style="color:{_vero_color(vero)};font-weight:700;'
+            f'padding:1px 6px;border:1px solid {_vero_color(vero)};'
+            f'border-radius:3px;">VeRO: {vero}</span>'
             f'<span style="color:#c89b2a;margin-left:auto;">'
             f'{_star_str(star)}</span>'
             f'</div>',
@@ -120,38 +191,14 @@ def _render_candidate(cand: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-        # 価格・競合情報 (3 列)
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            sup_str = f"¥{sup_jpy:,}" if isinstance(sup_jpy, (int, float)) else "—"
-            ebay_str = (
-                f"${ebay_usd:.0f}" if isinstance(ebay_usd, (int, float)) else "—"
-            )
-            st.markdown(
-                f"**仕入** {sup_str}<br>**eBay 想定** {ebay_str}",
-                unsafe_allow_html=True,
-            )
-        with col2:
-            # W129 (2026-05-15): profit=0 は「見積不能シグナル」(prompt 制約).
-            # $0 表示は赤字と誤読されるため明示表現に切替.
-            if isinstance(profit_usd, (int, float)):
-                prof_str = (
-                    "見積不能 (理由は根拠欄)"
-                    if profit_usd == 0 else f"${profit_usd:.0f}"
-                )
-            else:
-                prof_str = "—"
-            sold_str = f"{sold_30d} 件" if sold_30d is not None else "—"
-            st.markdown(
-                f"**想定粗利** {prof_str}<br>**類似 sold(30d)** {sold_str}",
-                unsafe_allow_html=True,
-            )
-        with col3:
-            comp_str = f"{comp_jp} 人" if comp_jp is not None else "—"
-            st.markdown(
-                f"**競合 JP セラー** {comp_str}",
-                unsafe_allow_html=True,
-            )
+        # 採算 2 軸 (仕入¥→eBay想定$ / 想定粗利$・類似sold・JP競合)
+        # W129 sentinel (profit==0 = 見積不能) はヘルパー内で保持、挙動不変
+        st.markdown(
+            _render_discovery_economics_html(
+                sup_jpy, ebay_usd, profit_usd, sold_30d, comp_jp
+            ),
+            unsafe_allow_html=True,
+        )
 
         # 次アクション
         if next_action:
@@ -170,9 +217,10 @@ def _render_candidate(cand: dict) -> None:
             url_md = " / ".join(f"[出典]({u})" for u in urls[:5])
             st.markdown(url_md)
 
-        # フィードバック UI
+        # フィードバック UI (セピアトーン維持、letter-spacing で視認性向上)
         st.markdown(
-            '<div style="margin-top:8px;color:#a89d8a;font-size:11px;">'
+            '<div style="margin-top:8px;color:#a89d8a;font-size:11px;'
+            'letter-spacing:0.06em;font-weight:600;">'
             'フィードバック</div>',
             unsafe_allow_html=True,
         )
