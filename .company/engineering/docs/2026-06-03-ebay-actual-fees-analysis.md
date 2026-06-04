@@ -129,6 +129,24 @@ NON_SALE_CHARGE 合計 (net): $2116.02
 
 ⚠️ 本 W219 段1-2 は分析のみ. calculator/settings/task_order_alert は ★ 触っていない ★. 較正は分析結果を user が確認後、別段で実施.
 
+---
+
+## 【2026-06-04 訂正・追補】真の系統 FVF gap 再算定 (scripts/analyze_fvf_true_gap_2026_06_04.py)
+
+**変更理由**: 上記「核心結論」の **FVF +$453.94 (+8.5%)** と「含意 3.」の「CSV 再検証 + Top Rated Plus 10% 割引確認」は、計測アーティファクトを真の率ズレと誤認していた。正しいベースで再算定したところ較正不要と判明 (user 確認 2026-06-04、money-direct floor 誤上昇の回避)。
+
+**過去の見解 (2026-06-03)**: FVF 実 vs 予測が +8.5% ズレ。rate% は最大 95.20%。→ EbayFeeRates.csv の rate/threshold 再検証 + Top Rated Plus 10% 割引適用を候補とした。
+
+**現状の見解 (2026-06-04、訂正)**: 「+8.5% / 95%」は **較正対象でない 2 つのアーティファクト**がほぼ全て:
+1. **rate% の分母が商品代のみ (buyer 送料を除外)**。FVF は「商品代 + buyer 送料」に課金されるため、高送料の重量物 (Oriental Motor BMUD200-A 等) ほど率が膨張する。正しいベース (商品代 + 実 buyer 送料) で再算定すると平均 15.19% → **13.51%**、max 88.38% → 46.18% に収束。
+2. **真の異常値 4 件** (BMUD200-A ×2 / Leica / Razer) は正ベース補正後も CSV を大きく超過 (26–46%) = 返金/紛争/調整 (REFUND/DISPUTE/ADJUSTMENT) の混入。BMUD200-A は 2 回出現・$186+$75 の fee で**返品+紛争**濃厚 = calculator 較正でなく運用案件。
+
+**真の系統 FVF gap (clean 115 件、正ベース)**: 実 **12.87%** vs CSV 12.70% = **+0.17 絶対pt (+1.4% 相対) = 実質ゼロ**。→ **calculator の FVF 12.7% はほぼ正確、一律較正は不要 (実施は floor 過大上昇の money-direct エラー)**。
+
+**残る低優先の改善余地** (今回は見送り):
+- calculator の category 別 FVF は機能していない (ebay_listings に eBay `category_id` 列が無く `classification` のみ → 全件 default 12.7% で予測)。aggregate は正確だがカテゴリ別精度は将来課題。
+- `sales_history.ebay_fee_usd=0.0` の実値 backfill は **eBay Finances API token 失効** (2026-06-04 `refresh token invalid` 401) で保留。再 backfill には token 再認証が必要 (Finances scope は trading token と別系統の可能性、scheduler の eBay 運用は健全)。
+
 ## 注: Payoneer 手数料は eBay Finances API には現れない
 
 calculator の payoneer 2% は eBay → Payoneer 口座への送金時に Payoneer 側で控除される手数料で、eBay の totalFeeAmount には含まれない. 本分析の "calculator 予測" は Payoneer 込みで予測値が膨らむが、実 (actual_by_type) は eBay 控除分のみで Payoneer 分は含まない. gap を見るときは PAYONEER component を除外して FVF/INTL/AD のみで比較するのが正しい.
