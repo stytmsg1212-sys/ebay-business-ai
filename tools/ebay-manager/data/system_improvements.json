@@ -1776,5 +1776,15 @@
     "priority": "高",
     "created": "2026-06-03",
     "completed": null
+  },
+  {
+    "id": 292,
+    "tag": "W220",
+    "title": "商品管理 編集機能拡張 — ポイント額(¥)/商品ランク/description 編集",
+    "description": "2026-06-04 user要望。商品管理タブの編集ゾーンに3機能追加: ①per-listingポイント額(¥)直接入力欄(仕入先/カードで還元率が違うため実額入力。採算パネルのポイント還元に反映、calculator point_return を per-listing 額対応化。現状 settings.point_reward_rate=0 で機能せず)。②商品ランク8段階(N/S/A/B/C/D/PO/As-Is)編集selector(ebay_listings.rank 列更新 + description の Rank Definition Table 再生成)。③description 編集テキスト欄(ローカルDB列 listing_description 新設に保存 → 既存📤eBay反映ボタン経由で ReviseItem、即時反映でなく明示ボタン=安全側)。DB migration必須(point_yen/listing_description 列、Q2冪等)。money/account-direct = 2段review + Q1(Streamlit+Playwright+DB+eBay GetItem)必須。出典: 2026-06-04。",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-06-04",
+    "completed": "2026-06-04"
   }
 ]
