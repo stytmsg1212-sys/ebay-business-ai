@@ -63,50 +63,36 @@ def main(days: int = 180) -> int:
 
     matched = _load_matched_from_doc()
     print(f"[doc] matched 行 読込: {len(matched)} 件 ({DOC.name})")
-    order_ids = {m["order_id"] for m in matched if m.get("order_id")}
 
-    # DB: order_id -> buyer送料合計 (sales_history)。
-    # 注: ebay_listings に eBay category_id 列は無い (classification のみ) ため、
-    # category 別 FVF 率は取得不能。元分析も category=0 fallback = default 率
-    # (store 12.7% / nostore 13.6%) で予測していた。本診断も同じ default 率を
-    # 「calculator が実際に使った CSV 率」として比較する (同条件で gap を見る)。
-    sh_by_order: dict[str, dict] = {}
-    with get_conn() as c:
-        ph = ",".join("?" * len(order_ids))
-        for r in c.execute(
-            f"""SELECT ebay_order_id,
-                       SUM(COALESCE(shipping_cost_usd,0)) AS ship_sum
-                FROM sales_history
-                WHERE ebay_order_id IN ({ph})
-                GROUP BY ebay_order_id""",
-            tuple(order_ids),
-        ).fetchall():
-            d = dict(r)
-            sh_by_order[d["ebay_order_id"]] = d
-
-    # ── per-order: 正しいベースで actual FVF 率 vs CSV 率 ──
+    # ── per-order: FVF 課金ベース = 総額(gross) = amount_usd(純入金) + total_fee。
+    # これは「単価×個数 + buyer送料」に等しい (qty/送料を sales_history に頼らず
+    # Finances 実額のみで正しく出せる)。
+    # 注: sales_history.sold_price_usd は **単価1個分・qty列なし** のため、これで
+    #     割ると複数個購入で率が膨張する (2026-06-04 user 指摘: BMUD200-A は 5個/
+    #     2個のバルク販売だった)。よって旧 rate_item(単価割り) は誤り。
+    # CSV 率: ebay_listings に eBay category_id 列が無く category 別取得不能 →
+    #     元分析と同じ default 率 (store 12.7%) を「calculator が使った値」として比較。
     recs: list[dict] = []
     for m in matched:
         oid = m.get("order_id")
-        price = float(m.get("sold_price_usd") or 0.0)
-        if not price:
-            continue  # DB 未登録 = 価格不明で率算定不能
+        amount = float(m.get("amount_usd") or 0.0)       # 純入金 (= gross - 全fee)
+        total_fee = float(m.get("total_fee_usd") or 0.0)
+        unit_price = float(m.get("sold_price_usd") or 0.0)  # 単価1個分 (参考)
+        gross = amount + total_fee                        # 総額 = 単価×個数 + 送料
         fvf_actual = sum(v for k, v in (m.get("fees_by_type") or {}).items()
                          if "FINAL_VALUE_FEE" in k.upper()
                          and "FIXED" not in k.upper())  # 率部分のみ (固定 $0.44 除外)
-        if fvf_actual <= 0:
+        if fvf_actual <= 0 or gross <= 0:
             continue
-        sh = sh_by_order.get(oid, {})
-        ship = float(sh.get("ship_sum") or 0.0)
-        cat = int(sh.get("cat") or 0)
-        base_with_ship = price + ship
-        csv_rate = get_ebay_fvf_rate(cat, base_with_ship, store_plan)
-        rate_on_item = fvf_actual / price                      # 旧 (送料除外) = 膨張
-        rate_on_base = fvf_actual / base_with_ship if base_with_ship else 0.0
+        cat = 0  # category 別不能 → default 率
+        csv_rate = get_ebay_fvf_rate(cat, gross, store_plan)
+        rate_on_unit = fvf_actual / unit_price if unit_price else 0.0  # 旧(誤): 単価割り
+        rate_on_gross = fvf_actual / gross                            # 正: 総額割り
         recs.append({
             "oid": (oid or "")[-10:], "title": (m.get("title") or "")[:28],
-            "price": price, "ship": ship, "fvf": fvf_actual,
-            "rate_item": rate_on_item, "rate_base": rate_on_base,
+            "price": unit_price, "ship": round(gross - unit_price, 1),  # gross-単価(参考)
+            "fvf": fvf_actual,
+            "rate_item": rate_on_unit, "rate_base": rate_on_gross,
             "csv": csv_rate, "cat": cat,
         })
 
@@ -128,9 +114,9 @@ def main(days: int = 180) -> int:
     print(f"FVF 真の系統 gap 診断 (n={len(recs)} matched / clean={len(clean)} "
           f"/ 異常={len(anom)})  store_plan={store_plan}")
     print("=" * 72)
-    print(f"[旧] 実FVF率 (÷商品代のみ, 送料除外)     平均 {_mean([r['rate_item'] for r in recs])*100:6.2f}%  "
-          f"max {max(r['rate_item'] for r in recs)*100:6.2f}%   ← 膨張アーティファクト")
-    print(f"[新] 実FVF率 (÷商品代+実buyer送料=正base) 平均 {_mean([r['rate_base'] for r in recs])*100:6.2f}%  "
+    print(f"[誤] 実FVF率 (÷単価1個分, 個数/送料無視) 平均 {_mean([r['rate_item'] for r in recs])*100:6.2f}%  "
+          f"max {max(r['rate_item'] for r in recs)*100:6.2f}%   ← qty無視で膨張(誤)")
+    print(f"[正] 実FVF率 (÷総額gross=単価×個数+送料)  平均 {_mean([r['rate_base'] for r in recs])*100:6.2f}%  "
           f"max {max(r['rate_base'] for r in recs)*100:6.2f}%")
     print(f"[基準] CSV カテゴリ率 (calculator が使う値)  平均 {_mean([r['csv'] for r in recs])*100:6.2f}%")
     print("")

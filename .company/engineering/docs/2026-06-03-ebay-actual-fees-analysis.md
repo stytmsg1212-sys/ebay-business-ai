@@ -137,15 +137,16 @@ NON_SALE_CHARGE 合計 (net): $2116.02
 
 **過去の見解 (2026-06-03)**: FVF 実 vs 予測が +8.5% ズレ。rate% は最大 95.20%。→ EbayFeeRates.csv の rate/threshold 再検証 + Top Rated Plus 10% 割引適用を候補とした。
 
-**現状の見解 (2026-06-04、訂正)**: 「+8.5% / 95%」は **較正対象でない 2 つのアーティファクト**がほぼ全て:
-1. **rate% の分母が商品代のみ (buyer 送料を除外)**。FVF は「商品代 + buyer 送料」に課金されるため、高送料の重量物 (Oriental Motor BMUD200-A 等) ほど率が膨張する。正しいベース (商品代 + 実 buyer 送料) で再算定すると平均 15.19% → **13.51%**、max 88.38% → 46.18% に収束。
-2. **真の異常値 4 件** (BMUD200-A ×2 / Leica / Razer) は正ベース補正後も CSV を大きく超過 (26–46%) = 返金/紛争/調整 (REFUND/DISPUTE/ADJUSTMENT) の混入。BMUD200-A は 2 回出現・$186+$75 の fee で**返品+紛争**濃厚 = calculator 較正でなく運用案件。
+**現状の見解 (2026-06-04 v2、再訂正)**: 「+8.5% / 95%」は **較正対象でない計測アーティファクト**がほぼ全て。当初「異常値 4 件 = 返金/紛争」と書いたが、これも **qty (販売個数) 見落としによる誤判定**だった (user 指摘 2026-06-04):
+1. **rate% の分母が単価1個分**。`sales_history` は **qty 列が無く、複数個購入でも 1 行・単価のみ**記録するため、`fee ÷ 単価` だと複数個オーダーで率が膨張する。FVF は「総額 = 単価×個数 + buyer 送料」に課金される。正しいベース = **Finances の amount_usd (純入金) + total_fee = 総額(gross)** で再算定すると平均 15.19% → **12.89%**、max 88.38% → **18.57%** に収束。
+2. **「異常値」は 0 件**。当初 anomaly とした BMUD200-A (2/24 **5 個**バルク / 4/8 **2 個**)・Leica・Razer は、qty/送料を総額に含めれば実 FVF 率 **10–18.6%** = 全て正常。**返金/紛争は存在しない** (損失なし)。例: BMUD200-A 2/24 は fee $186 / gross ~$1,246 = **14.9%** = 正常。
 
-**真の系統 FVF gap (clean 115 件、正ベース)**: 実 **12.87%** vs CSV 12.70% = **+0.17 絶対pt (+1.4% 相対) = 実質ゼロ**。→ **calculator の FVF 12.7% はほぼ正確、一律較正は不要 (実施は floor 過大上昇の money-direct エラー)**。
+**真の系統 FVF gap (clean 119/119 件、総額ベース)**: 実 **12.89%** vs CSV 12.70% = **+0.19 絶対pt (+1.5% 相対) = 実質ゼロ**。→ **calculator の FVF 12.7% は正確、一律較正は不要 (実施は floor 過大上昇の money-direct エラー)**。
 
-**残る低優先の改善余地** (今回は見送り):
+**残る改善余地・別問題**:
+- **データ欠陥 (要対応)**: `sales_history` に **qty 列が無い** (複数個販売が 1 行・単価のみ)。`ebay_fee_usd=0.0` / `profit_jpy=0.0` も task_order_alert で 0 ハードコード。手数料/利益/個数の正確な記録を妨げる = 別 W で qty 列追加 + 実値 populate を検討。
 - calculator の category 別 FVF は機能していない (ebay_listings に eBay `category_id` 列が無く `classification` のみ → 全件 default 12.7% で予測)。aggregate は正確だがカテゴリ別精度は将来課題。
-- `sales_history.ebay_fee_usd=0.0` の実値 backfill は **eBay Finances API token 失効** (2026-06-04 `refresh token invalid` 401) で保留。再 backfill には token 再認証が必要 (Finances scope は trading token と別系統の可能性、scheduler の eBay 運用は健全)。
+- ⚠️ **eBay token は hard expired (2026-06-04 実機ログで確認)**。当初「trading token は別系統で健全」と書いたが**誤り**: `EBAY_USER_TOKEN` を Trading API も共有し、GetOrders が `Auth token is hard expired` で失敗 (注文検知/relist/値下げに波及)。`EBAY_REFRESH_TOKEN` invalid で auto-refresh 不能 → **要 OAuth 再 consent** (user 作業)。Finances backfill もこれ次第。
 
 ## 注: Payoneer 手数料は eBay Finances API には現れない
 
