@@ -166,9 +166,13 @@ def test_refresh_competitor_pricing_rate_sleep_contract():
 
 
 def test_caption_no_longer_lies():
-    """② app.py の嘘 caption が実態整合に修正されたこと (regression)."""
+    """② 最安値チェックタブの嘘 caption が実態整合に修正されたこと (regression).
+
+    W221 Tier2 (2026-06-05): 最安値チェック UI は app.py から
+    tabs/tab_lowest_price.py へ移動。検証先を更新。
+    """
     app_src = (
-        Path(__file__).resolve().parents[1] / "app.py"
+        Path(__file__).resolve().parents[1] / "tabs" / "tab_lowest_price.py"
     ).read_text(encoding="utf-8")
     assert "保存時に Browse API で価格・送料を取得します" not in app_src, (
         "未実装の嘘 caption が復活している"

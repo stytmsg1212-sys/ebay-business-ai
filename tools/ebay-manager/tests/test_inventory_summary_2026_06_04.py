@@ -18,7 +18,9 @@ import ast
 import html as _html_mod
 from pathlib import Path
 
-APP_PY = Path(__file__).resolve().parent.parent / "app.py"
+# W221 Tier2 (2026-06-05): _render_inventory_summary_html は app.py から
+# tabs/tab_inventory_monitor.py へ移動 (タブ分割)。AST 抽出先を更新。
+APP_PY = Path(__file__).resolve().parent.parent / "tabs" / "tab_inventory_monitor.py"
 
 
 def _load_summary_func():

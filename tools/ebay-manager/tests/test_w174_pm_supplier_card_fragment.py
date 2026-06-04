@@ -19,7 +19,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-APP_PY = Path(__file__).resolve().parent.parent / "app.py"
+# W221 Tier2 (2026-06-05): 仕入先候補タブ (_render_candidate_card 含む) は
+# app.py から tabs/tab_supplier_candidates.py へ移動。AST 検証先を更新。
+APP_PY = Path(__file__).resolve().parent.parent / "tabs" / "tab_supplier_candidates.py"
 
 
 def _find_function_def(name: str) -> ast.FunctionDef | None:

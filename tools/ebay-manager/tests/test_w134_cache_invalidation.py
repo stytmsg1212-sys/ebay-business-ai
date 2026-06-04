@@ -25,7 +25,11 @@ import pytest
 
 _APP = pathlib.Path(__file__).resolve().parents[1] / "app.py"
 
-# cached reader が読むデータを変更する writer 呼出パターン (app.py inline handler).
+# W221 Tier2 (2026-06-05): 21 タブを tabs/tab_*.py へ分割。writer / cache は
+# app.py から各タブモジュールへ移動したため、番人は app.py + 全タブを対象にする。
+_SOURCES = [_APP] + sorted((_APP.parent / "tabs").glob("tab_*.py"))
+
+# cached reader が読むデータを変更する writer 呼出パターン (inline handler).
 # update_ebay_listing_* / risk_confirmed: 在庫数/SKU/ランク (_cd_supply_risk /
 #   _cd_listings_by_rank / _cd_fetch_all_products)
 # set_email_confirmed: メール confirmed flag (_cd_dash_emails)
@@ -70,33 +74,45 @@ def test_ui_cache_holds_no_sqlite_connection():
 
 
 def test_ebay_listings_writers_invalidate_cache_before_rerun():
-    """app.py: ebay_listings 書込 → その後最初の st.rerun() の間に
-    bump_db_version() が必ず存在すること (HIGH-1 不変条件)."""
-    src = _APP.read_text(encoding="utf-8").splitlines()
+    """ebay_listings 書込 → その後最初の st.rerun() の間に bump_db_version()
+    が必ず存在すること (HIGH-1 不変条件)。app.py + 全タブを対象 (W221 分割後)."""
+    # W221 Tier2 (2026-06-05): 番人を全タブへ広げた際、W221 以前から存在する
+    # 既存タブで bump 未配線の writer→rerun が表面化した。これらは ttl<=3s が
+    # correctness を backstop する (本 test の docstring 参照 = bump は UX 最適化)
+    # ため correctness バグではなく、W221 (タブ分割) のスコープ外の既存債務。
+    # 別途 bump 配線する W で扱う (silent skip ではなく明示除外)。
+    _PREEXISTING_UNWIRED = {
+        "tab_data_fix.py",          # upsert_listing_competitors / update_listing_breakeven
+        "tab_research_wizard.py",   # upsert_listing_competitors / update_listing_breakeven
+        "tab_purchase_confirm.py",  # set_email_confirmed (W133、W221 以前)
+    }
     failures: list[str] = []
-
-    for i, line in enumerate(src):
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            continue  # コメント中の言及は対象外
-        if "def " in line:
-            continue  # 定義行 (呼出ではない) は対象外
-        if not any(w in line for w in _WRITERS):
+    for path in _SOURCES:
+        if path.name in _PREEXISTING_UNWIRED:
             continue
+        src = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(src):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue  # コメント中の言及は対象外
+            if "def " in line:
+                continue  # 定義行 (呼出ではない) は対象外
+            if not any(w in line for w in _WRITERS):
+                continue
 
-        seen_bump = False
-        hit_rerun = False
-        for j in range(i + 1, min(i + 200, len(src))):
-            cur = src[j].strip()
-            if "bump_db_version()" in cur:
-                seen_bump = True
-            if cur.startswith("st.rerun()"):
-                hit_rerun = True
-                break
-        # st.rerun が後続 200 行に無い writer は「再描画を伴わない経路」
-        # (helper 等) とみなしスキップ。再描画する経路だけ不変条件を課す。
-        if hit_rerun and not seen_bump:
-            failures.append(f"L{i + 1}: {stripped}")
+            seen_bump = False
+            hit_rerun = False
+            for j in range(i + 1, min(i + 200, len(src))):
+                cur = src[j].strip()
+                if "bump_db_version()" in cur:
+                    seen_bump = True
+                if cur.startswith("st.rerun()"):
+                    hit_rerun = True
+                    break
+            # st.rerun が後続 200 行に無い writer は「再描画を伴わない経路」
+            # (helper 等) とみなしスキップ。再描画する経路だけ不変条件を課す。
+            if hit_rerun and not seen_bump:
+                failures.append(f"{path.name} L{i + 1}: {stripped}")
 
     assert not failures, (
         "ebay_listings 書込のあと st.rerun() までに bump_db_version() が無い "
@@ -106,15 +122,17 @@ def test_ebay_listings_writers_invalidate_cache_before_rerun():
 
 
 def test_at_least_one_writer_checked():
-    """テストの空振り防止: writer 呼出を実際に検出できていること."""
-    src = _APP.read_text(encoding="utf-8").splitlines()
-    n = sum(
-        1
-        for ln in src
-        if not ln.strip().startswith("#")
-        and "def " not in ln
-        and any(w in ln for w in _WRITERS)
-    )
+    """テストの空振り防止: writer 呼出を実際に検出できていること (app.py + 全タブ)."""
+    n = 0
+    for path in _SOURCES:
+        src = path.read_text(encoding="utf-8").splitlines()
+        n += sum(
+            1
+            for ln in src
+            if not ln.strip().startswith("#")
+            and "def " not in ln
+            and any(w in ln for w in _WRITERS)
+        )
     assert n >= 10, f"writer 呼出検出数が想定より少ない (n={n})"
 
 
@@ -153,10 +171,9 @@ def test_cache_ttl_is_short():
     # 各 @st.cache_data(ttl=N) の直後の def 名を紐付けて判定する
     dec_pat = re.compile(r"@st\.cache_data\(\s*ttl\s*=\s*(\d+)")
     def_pat = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
-    targets = [
-        _APP,
-        _APP.parent / "tabs" / "tab_product_management.py",
-    ]
+    # W221 Tier2: cache 関数は app.py から各タブへ分散したため全タブを対象
+    # (_SOURCES は app.py + tabs/tab_*.py = tab_product_management 含む)。
+    targets = _SOURCES
     found = 0
     for path in targets:
         lines = path.read_text(encoding="utf-8").splitlines()
