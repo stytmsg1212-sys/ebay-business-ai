@@ -1979,5 +1979,27 @@
     "created": "2026-06-05",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 296,
+    "tag": "W224",
+    "title": "ダッシュボードのニュースに参照元の投稿日付を表示(鮮度重視)",
+    "description": "2026-06-05 user要望。ニュースは鮮度が命=古いニュースは無意味。ダッシュボードNEWS欄に各ニュースの参照元の投稿日付を表示する。news_items.published_at が存在(RSS由来でフォーマット混在: 'Wed, 29 Apr 2026...' / ISO等)→ 複数フォーマットをparseしJST表示+相対(N日前)併記。古いものは視覚的に弱める/フィルタも検討。取得時刻(checked_at)でなく『元投稿日(published_at)』を出すこと。assistant自身もニュース/情報の投稿日を常に意識する(古い情報を持ってこない)。W223現作業+W222の後に実施(優先度通常)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-05",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 295,
+    "tag": "W223",
+    "title": "仕入先候補検索のコスト効率化(検索数増+コスト据置) — 人間ワークフロー模倣",
+    "description": "2026-06-05 user要望+Codex協働設計。仕入先候補検索は評価~270回/日・月~$47だが保存候補~4件/日(評価98%がハズレ消費)。人間の探索(メーカー+品番で新着順検索→一覧でざっと絞る→画像で同一確認)を模倣しAIコスト削減、同コストで検索数5-10倍化。実装順: (1)eBay画像をAI評価に渡す穴修正(現状candidate画像+eBayタイトル文字のみ→eBay画像も渡し画像対画像の角度ロバスト判定=accuracy土台) (2)生成済search_keyword(Brand+品番)を仕入先検索に接続(現状ebay_title全文でノイズ) (3)前回AI判定済み候補スキップ(supplier_candidate_evaluations台帳新設、ebay_item_id+platform_item_id 30日内既評価skip、価格のみ変動は利益再計算) (4)一覧テキストスキャンAI(候補一覧をタイトル+価格でまとめAIに渡し詳細評価する数件のindexだけ返す→詳細visionは上位1-3件のみ。alt/aria-label全文タイトル使用)。AI最終判定維持(型番一致でも付属品/色/状態差→AIスキップ禁止)。画像embeddingハードフィルタは角度に弱く不使用。code-reviewer HIGH=0+Codex 2段+api_call_logでコスト実測。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-06-05",
+    "completed": null,
+    "category": "business"
   }
 ]

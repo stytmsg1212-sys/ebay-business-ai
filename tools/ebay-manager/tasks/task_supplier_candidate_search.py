@@ -322,8 +322,18 @@ def run_supplier_candidate_search(
     # check_candidate_availability は module-level import (HIGH-2 fix、monkeypatch 互換).
     excluded_unavailable = 0
     url_avail_map: dict[str, dict] = {}
+    # W223 (2026-06-05): 生成済み search_keyword (Brand+品番) を優先使用。人間の
+    # 「メーカー名+品番で検索」を模倣し、ebay_title 全文検索のノイズ候補を削減。
+    # strict (search_keyword) で 0 件なら ebay_title に fallback (取りこぼし=退行防止)。
+    _strict_kw = (listing.get('search_keyword') or '').strip()
     for plat in platforms:
-        hits = search_candidates_on_platform(plat, ebay_title)
+        hits = search_candidates_on_platform(plat, _strict_kw or ebay_title)
+        if not hits and _strict_kw:
+            logger.info(
+                f"[W223] strict kw 0件 → title fallback: eid={ebay_item_id} "
+                f"plat={plat} kw={_strict_kw!r}"
+            )
+            hits = search_candidates_on_platform(plat, ebay_title)
         for h in hits:
             # 元仕入先 URL と一致する候補は除外 (売り切れた元商品ページを再提示しない)
             if listing_url_norm and _normalize_url(h.url) == listing_url_norm:

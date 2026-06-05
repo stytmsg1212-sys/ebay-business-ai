@@ -275,11 +275,16 @@ def run_supplier_sweep_batch(config: dict) -> dict:
         ebay_title = listing.get("title") or ""
         ebay_image_url = listing.get("ebay_image_url")  # W9 後の image url、無ければ None
         listing_url_norm = _normalize_url(listing.get("source_url") or "")
+        # W223 (2026-06-05): search_keyword (Brand+品番) 優先、0件で ebay_title fallback。
+        _strict_kw = (listing.get("search_keyword") or "").strip()
         items_by_eid[eid] = []
 
         for plat in platforms:
             try:
-                hits = search_candidates_on_platform(plat, ebay_title)
+                hits = search_candidates_on_platform(plat, _strict_kw or ebay_title)
+                if not hits and _strict_kw:
+                    logger.info(f"[W223] strict kw 0件 → title fallback: eid={eid} plat={plat}")
+                    hits = search_candidates_on_platform(plat, ebay_title)
             except Exception as e:
                 logger.warning(f"[W94 batch] scrape failed eid={eid} plat={plat}: {e}")
                 scrape_errors += 1
