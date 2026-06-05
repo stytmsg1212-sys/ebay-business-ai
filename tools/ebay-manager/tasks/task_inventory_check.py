@@ -189,7 +189,10 @@ def detect_inventory_changes(current_results: list, previous_results: dict) -> d
 def _classify_yahoo_grace(
     target_pairs: list,
 ) -> tuple:
-    """W100 (2026-05-06): ヤフオク URL の OOS listing を 24h 猶予対象と即リサーチに分類.
+    """[DEPRECATED 2026-06-05] W100 24h 再出品猶予は user 要望で撤廃。本関数は未使用
+    (呼出箇所削除済)。Yahoo 終了/売切も即リサーチ。将来 grace を完全削除する際に本関数も除去。
+
+    W100 (2026-05-06): ヤフオク URL の OOS listing を 24h 猶予対象と即リサーチに分類.
 
     - 落札者なし終了 + end_time あり → yahoo_grace_until = end_time + 24h セット (探索 skip)
     - 落札済 / 進行中 / 取得失敗 → 即リサーチ対象 (target に残す)
@@ -344,16 +347,14 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
                 # qty=0 は「既に販売停止済で RISK ではない」=監視対象外（2026-04-20 業務確認）。
                 # FINDING 2 (2026-05-05): sku GLOB 'ebay*' で stock prefix 除外
                 # + NOT EXISTS を ebay_item_id 単位に (兄弟 listing silent 抜け解消).
-                # W100 (2026-05-06): yahoo_grace_until > now の listing は除外
-                # (ヤフオク終了 + 24h の再出品慣行待機).
-                # 2026-06-05 user 要望: 「ページなし」(仕入先ページ消滅) も 「在庫無」(売切)
-                # と同じ OOS 扱い → 代替仕入先候補の探索対象に含める。
+                # 2026-06-05 user 要望: 「ページなし」も「在庫無」と同じ OOS 扱い +
+                # Yahoo 24h 再出品猶予 (W100 grace) 撤廃 → yahoo_grace_until 除外条件も削除
+                # (Yahoo 終了も即リサーチ対象)。
                 """SELECT l.ebay_item_id, l.sku FROM ebay_listings l
                     WHERE l.source_status IN ('在庫無', 'ページなし')
                       AND (l.is_ended IS NULL OR l.is_ended=0)
                       AND l.quantity_ebay >= 1
                       AND l.sku GLOB 'ebay*'
-                      AND (l.yahoo_grace_until IS NULL OR l.yahoo_grace_until <= datetime('now'))
                       AND NOT EXISTS (
                           SELECT 1 FROM supplier_candidates sc
                           WHERE sc.ebay_item_id = l.ebay_item_id
@@ -381,23 +382,11 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
     newly_eids = {eid for eid, _ in newly_pairs}
 
     def _do_search():
-        # W100 H-2 fix (2026-05-06): _classify_yahoo_grace を daemon thread 内に移動.
-        # 旧実装は foreground で同期 HTTP fetch (max 30 件 × 15s = 7.5 分ブロック) し、
-        # scheduler 本体や Streamlit UI を hang させる risk があった.
-        # 新実装は daemon thread 内で実行 → run_inventory_check 本体は即 return.
-        # H-NEW-2 fix: 想定外 Exception を catch して即リサーチに fallback (Q0 silent skip 防止).
-        try:
-            immediate_pairs, grace_set_count = _classify_yahoo_grace(target_pairs)
-        except Exception as e:
-            logger.exception(
-                f"[grace] _classify_yahoo_grace 全体失敗: {e} "
-                f"target_pairs ({len(target_pairs)} 件) を即リサーチに fallback"
-            )
-            immediate_pairs, grace_set_count = target_pairs, 0
-        if not immediate_pairs:
-            if grace_set_count:
-                logger.info(f"[grace] 全 target が 24h 猶予対象 (grace_set={grace_set_count})")
-            return
+        # 2026-06-05 user 要望: Yahoo 24h 再出品猶予 (W100 grace) を撤廃。
+        # Yahoo 終了/売切も メルカリ等と同様に即リサーチ (= 全 target を即探索)。
+        # 「再出品されたら次回在庫チェックで在庫有に戻る + 仕入先候補が拾う」ため
+        # 待機不要。grace 分類 (_classify_yahoo_grace) は廃止 (関数は dead code として残置)。
+        immediate_pairs = target_pairs
 
         from tasks.task_supplier_candidate_search import run_supplier_candidate_search
         for eid, sku in immediate_pairs:

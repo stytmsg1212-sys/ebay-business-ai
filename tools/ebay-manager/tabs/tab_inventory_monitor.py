@@ -147,51 +147,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
         )
         st.caption("eBay在庫が1以上あるのに、仕入先で購入できない商品です。出品停止または仕入先変更を検討してください。")
 
-        # W100 (2026-05-06): ヤフオク再出品待ち listing 表示
-        # ヤフオクで落札者なし終了 → 1日後の再出品慣行を待ってからリサーチする listing
-        try:
-            from datetime import datetime as _dt_w100, timezone as _tz_w100, timedelta as _td_w100
-            import sqlite3 as _sqlite3_w100
-            from monitor.database import get_conn as _w100_get_conn
-            with _w100_get_conn() as _w100_conn:
-                _w100_conn.row_factory = _sqlite3_w100.Row
-                _w100_rows = _w100_conn.execute(
-                    "SELECT ebay_item_id, sku, title, yahoo_grace_until "
-                    "FROM ebay_listings "
-                    "WHERE yahoo_grace_until IS NOT NULL "
-                    "  AND yahoo_grace_until > datetime('now') "
-                    "  AND COALESCE(is_ended,0)=0 "
-                    "ORDER BY yahoo_grace_until ASC"
-                ).fetchall()
-            if _w100_rows:
-                with st.expander(f"再出品待ち {len(_w100_rows)}件", expanded=(len(_w100_rows) > 0)):
-                    st.caption(
-                        "ヤフオクで **落札者なし終了** → 1日後の再出品慣行を待ってからリサーチします。"
-                        "ヤフオク終了 + 24時間後に supplier_sweep が自動的にリサーチを実行します。"
-                    )
-                    for _r_w100 in _w100_rows[:20]:
-                        _until_raw = _r_w100["yahoo_grace_until"]
-                        try:
-                            _until_dt = _dt_w100.fromisoformat(_until_raw)
-                            if _until_dt.tzinfo is None:
-                                _until_dt = _until_dt.replace(tzinfo=_tz_w100.utc)
-                            _now_w100 = _dt_w100.now(_tz_w100.utc)
-                            _remain_w100 = _until_dt - _now_w100
-                            _h_w100 = int(_remain_w100.total_seconds() // 3600)
-                            _m_w100 = int((_remain_w100.total_seconds() % 3600) // 60)
-                            _jst_w100 = _until_dt.astimezone(_tz_w100(_td_w100(hours=9))).strftime("%m/%d %H:%M JST")
-                        except (ValueError, TypeError):
-                            _jst_w100 = _until_raw
-                            _h_w100, _m_w100 = "?", "?"
-                        _title_w100 = (_r_w100["title"] or "")[:50]
-                        st.caption(
-                            f"- {_title_w100} (`{_r_w100['ebay_item_id']}`) "
-                            f"残り {_h_w100}時間{_m_w100}分 / リサーチ予定: {_jst_w100}"
-                        )
-                    if len(_w100_rows) > 20:
-                        st.caption(f"...他 {len(_w100_rows) - 20} 件")
-        except Exception:
-            pass  # 表示失敗は UI 破綻させない (Q0: scheduler.log の [grace] 行で観測可能)
+        # 2026-06-05 user 要望: Yahoo 24h 再出品猶予 (W100 grace) 撤廃により
+        # 「再出品待ち」表示セクションを削除。Yahoo 終了/売切も即 OOS 扱い (要対応/確認不可に出る)。
 
         def _render_risk_table_with_actions(items: list[dict], section_key: str) -> None:
             """要対応商品を編集可能テーブルで表示（二段階チェック方式・DB永続化）+ 候補URL最大3件併記"""
