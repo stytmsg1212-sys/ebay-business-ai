@@ -2001,5 +2001,27 @@
     "created": "2026-06-05",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 297,
+    "tag": "W226",
+    "title": "Amazon/楽天等(非フリマ)からの出品時 description 自動生成 — SKU/URLで振り分け+AI URL解析",
+    "description": "2026-06-06 user要望。現状 description 自動生成はメルカリ/メルカリショップ/ラクマ/PayPayフリマ/ヤフオク(SKU prefix ebayme_/ebayMS_/ebayrm_/ebayPF_/ebayyh_/ebayh_)の専用スクレイパーのみ対応。Amazon(ebayAM_)/楽天市場(ebayRT_)/楽天ブックス(ebayRB_)/Yahooショッピング(ebayYS_)/未知ドメインは generate_listing 前段の scrape_supplier_url が unsupported_platform で停止し description 生成不可。対応: SKU prefix(無在庫)またはURLドメイン(新規/URL直接投入)で振り分け、上記5フリマ=既存スクレイパー、それ以外=AIがURL解析。AI解析は既存 monitor/scrapers.py(W120/W192のEC直URL在庫監視=httpx→Playwright→実Chrome anti-bot escalation)のページ取得を再利用してHTML取得→Claude(Haiku/Sonnet)で title_ja/brand/specs/condition_ja/description_ja/image_urls を構造抽出→ScrapedProduct化→既存 generate_listing(rank=商品ランク, in_stock=True) で英語description生成→既存 apply_listing_update_to_ebay で eBay反映。商品ランクは新品=N既定+手動上書き(既存UI流用)。新規スクレイパー不要・既存資産(generate_listing/apply/画像加工パイプライン/scrapers取得)を最大流用。リスク: Amazon anti-bot厳しめ(Playwright/Chrome必須・低速)、画像URLはCDN/hotlink保護で best-effort、AI抽出1コール増(Haikuで安価)。Q3構造化フロー(code-architect設計→code-reviewer+Codex 2段→実装→Q1: Streamlit+Playwright+実Amazon/楽天URLで生成検証)。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-06-06",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 298,
+    "tag": "W227",
+    "title": "【緊急/事故】商品ランク列の二重使用解消 — eBay実Conditionを別管理し誤Condition上書きを根治",
+    "description": "2026-06-06 user報告(大至急)。商品管理で価格編集すると勝手にeBay Conditionが Open Box(S/1500) に書き換わり、S->N修正も価格差分なし時の早期returnで反映されない。真因: ebay_listings.rank 列が(1)eBay連携タブ自動ランク更新の人気度グレード(S/A/B/C/D/E)と(2)W220商品状態ランク(N/S/A/B/C/D/PO/As-Is→ConditionID)で二重使用。DB分布 E=193/C=113/D=94/S=48/A=42/B=39/N=2。_apply_listing_content_to_ebay が人気度Sを Condition1500 と誤読しsave_ebay毎にpush=Condition破壊。緊急一次対応: (a)Condition push dirty-flag化(user明示変更時のみ) (b)no_change時早期return回避でCondition/説明文反映継続 (c)_apply_to_ebay no_changeフラグ。根治: 人気度と状態を別列化(ebay_condition_id新設migration)、GetItem実condition_id事前同期+backfill、状態widgetをebay_condition_id由来化、condition/description事前反映(user要望)、誤push済Condition棚卸し復旧。Q3+Q2冪等+Q1実機。account-risk最優先。",
+    "status": "着手中(緊急一次対応)",
+    "priority": "高",
+    "created": "2026-06-06",
+    "completed": null,
+    "category": "business"
   }
 ]

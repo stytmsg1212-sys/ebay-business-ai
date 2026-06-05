@@ -1163,13 +1163,23 @@ def _render_left_basic_and_physical(
             )
         with mk3:
             editing["lp_min_price"] = st.number_input(
-                "下限価格 (USD)",
+                "下限価格 商品のみ (USD)",
                 min_value=0.0,
                 value=float(p["lp_min_price"]) if p.get("lp_min_price") else None,
                 step=1.0, format="%.2f",
                 key=f"pm_minp_{eid}",
-                help="W183 自動値下げの絶対下限. 未入力なら breakeven が下限.",
+                help="W183 自動値下げの絶対下限。**商品価格のみ・送料は含みません**。"
+                     "自動値下げはこの商品価格を下回りません。買い手の総額下限 = "
+                     "下限価格 + 送料。未入力なら breakeven (損益分岐の商品価格) が下限。",
             )
+        # 補足: 下限価格 / breakeven は「商品価格(送料別)」軸 (eBay 出品価格=StartPrice)。
+        # 自動値下げ(W183)は competitor 総額 -$0.01 から自社送料を引いた商品価格を狙い、
+        # この下限でクランプする (task_rival_pricing._compute_target_price / floor 比較)。
+        st.caption(
+            "💡 **下限価格・損益分岐は「商品価格」のみ**（送料は含みません）。"
+            "買い手が払う**総額の下限 = 下限価格 + 送料**。"
+            "自動値下げは商品価格がこの下限を下回らない範囲で実行されます。"
+        )
 
         # W220 (2026-06-04): per-listing ポイント実額(¥)。仕入先/カードで還元率が
         # 違うため実額を入力。採算パネルの「ポイント還元」に反映 (手取り判断材料、
@@ -1365,6 +1375,13 @@ def _render_left_basic_and_physical(
              "PO=通電のみ / As-Is=未確認。保存で DB 更新 (eBay Condition 反映は別途)。",
     )
     editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
+    # W227 (2026-06-06 緊急): rank→eBay Condition push の dirty-flag 用に render 時の
+    # 現 rank (= DB 値) を保持。⚠️ ebay_listings.rank は eBay連携タブ「自動ランク更新」
+    # の人気度グレード(S/A/B/C/D/E)と商品状態ランク(N/S/A/B/C/D/PO/As-Is)が同居して
+    # いるため、無条件 push すると人気度Sを Condition Open Box(1500) として eBay に
+    # 誤上書きする事故になる。_apply_listing_content_to_ebay は user が widget を
+    # **実際に変更した時のみ** Condition を push する (BP/+each dirty-flag と同型)。
+    editing["rank_render_initial"] = _cur_rank or None
 
     # W220 slice3 (2026-06-04): Condition 理由 (eBay ConditionDescription)。
     # ランクを Used(A/B/C/D/PO) / As-Is に変えて 📤eBay反映 する時に送る状態説明。
@@ -3357,6 +3374,13 @@ def _render_product_editor(p: dict, config: dict) -> None:
                     _sync_db_to_actual(eid, snap2)
                 if ebay_result["success"]:
                     messages.append(f"eBay 反映成功 → {_msg}")
+                elif ebay_result.get("no_change"):
+                    # W227 (2026-06-06 緊急): 価格/送料は差分なし (benign no-op)。
+                    # ここで早期 return すると、user が商品ランク (Condition) や説明文を
+                    # 変更しても反映されない (S→N 修正不能の不具合)。DB は post_snapshot
+                    # で実 eBay へ同期済 (上の _sync_db_to_actual)。Condition/説明文の
+                    # 反映 (_apply_listing_content_to_ebay) へ **継続する**。
+                    messages.append("価格/送料は eBay と差分なし (反映不要)")
                 else:
                     if snap2 is not None:
                         st.warning(
@@ -3497,7 +3521,14 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
     """
     new_desc = editing.get("listing_description")
     new_rank = editing.get("rank")
-    target_cid = _RANK_TO_CONDITION_ID.get(new_rank) if new_rank else None
+    # W227 (2026-06-06 緊急 / account-risk): rank→Condition は user が rank widget を
+    # **実際に変更した時のみ** push する (dirty-flag)。ebay_listings.rank は人気度
+    # グレード(自動ランク更新)と商品状態ランクが同居しており、無操作の stale rank を
+    # eBay Condition へ誤上書き (人気度S→Open Box 1500 等) する事故を遮断する。
+    # BP/+each dirty-flag と完全同型 (render が rank_render_initial を無条件 set)。
+    _rank_initial = editing.get("rank_render_initial")
+    _rank_user_changed = bool(new_rank) and new_rank != _rank_initial
+    target_cid = _RANK_TO_CONDITION_ID.get(new_rank) if _rank_user_changed else None
 
     # description は「draft が DB 現値 (上書き前) と異なり非空」の時だけ push。
     desc_changed = False
@@ -3712,6 +3743,9 @@ def _apply_to_ebay(
         # 正しく抑止しても DB が古いままだと次 render で stale 表示が残り
         # HIGH を助長するため、no-diff でも heal させる (Codex#1 補完)。
         return {**base,
+                # W227 (2026-06-06): 価格/送料の「差分なし」は失敗ではなく benign な
+                # no-op。呼出側はこれを早期 return せず Condition/説明文の反映へ継続する。
+                "no_change": True,
                 "post_snapshot": snap,
                 "message": "実 eBay と差分なし (反映不要、DB は実 eBay へ"
                 "同期)。"
