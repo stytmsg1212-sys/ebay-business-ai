@@ -33,8 +33,9 @@ from calculator import (  # noqa: E402
 )
 from monitor.database import (  # noqa: E402
     add_supplier_candidate, get_ebay_listing_by_item_id,
+    get_recent_candidate_evaluation, record_candidate_evaluation,
 )
-from monitor.claude_evaluator import evaluate_match, EvaluationResult  # noqa: E402
+from monitor.claude_evaluator import evaluate_match, EvaluationResult, CLAUDE_MODEL  # noqa: E402
 # W182 HIGH-2 fix (2026-05-28 code-reviewer): module-level import で既存 test の
 # monkeypatch.setattr(t, "check_candidate_availability", ...) pattern 互換維持.
 # 旧コードは関数内 local import で task module attribute に存在せず monkeypatch 不能、
@@ -116,6 +117,9 @@ class ScoredCandidate:
     junk_likely_untested: bool = False
     alt_listing_possible: bool = False
     alt_listing_note: str = ""
+    # W223 step3: AI 評価が API エラーで失敗したか。True の候補は台帳に記録しない
+    # (一時失敗の match_score=0 を 30 日固定して候補を silent 抑制しないため)。
+    eval_error: bool = False
 
 
 def _estimate_profit_for_candidate(
@@ -272,6 +276,7 @@ def evaluate_candidate_with_claude(
         junk_likely_untested=result.junk_likely_untested,
         alt_listing_possible=result.alt_listing_possible,
         alt_listing_note=result.alt_listing_note,
+        eval_error=bool(result.error),  # W223 step3: 台帳記録の要否判定に使用
     )
 
 
@@ -329,6 +334,9 @@ def run_supplier_candidate_search(
     # check_candidate_availability は module-level import (HIGH-2 fix、monkeypatch 互換).
     excluded_unavailable = 0
     url_avail_map: dict[str, dict] = {}
+    # W223 step3 (2026-06-05): 既評価 (ebay_item_id + 正規化URL, 30日窓) の AI 判定を
+    # 再利用して AI 呼出をスキップした件数。
+    reused_eval = 0
     # W223 (2026-06-05): 生成済み search_keyword (Brand+品番) を優先使用。人間の
     # 「メーカー名+品番で検索」を模倣し、ebay_title 全文検索のノイズ候補を削減。
     # strict (search_keyword) で 0 件なら ebay_title に fallback (取りこぼし=退行防止)。
@@ -363,12 +371,46 @@ def run_supplier_candidate_search(
                     f"url={h.url} signal={_avail.get('signal')}"
                 )
                 continue
+            # W223 step3: 既評価 (同 ebay_item_id + 正規化URL を 30 日以内に AI 評価済) なら
+            # 過去 AI 判定を再利用し AI 呼出をスキップ (コスト削減)。初回は必ず AI で評価する
+            # ため「型番一致でも AI スキップ禁止」の制約に抵触しない (同一候補の過去判定流用)。
+            # title が変わっていれば別状態の可能性 → 再評価。価格変動は下の save loop で
+            # profit を都度再計算するため hit (= 現在価格) をそのまま使えばよい。
+            _norm_url = _normalize_url(h.url)
+            _prior = get_recent_candidate_evaluation(ebay_item_id, _norm_url)
+            if _prior and (_prior.get('candidate_title') or '') == (h.title or ''):
+                reused_eval += 1
+                all_scored.append(ScoredCandidate(
+                    hit=h,
+                    match_score=_prior.get('match_score') or 0,
+                    match_reasoning=_prior.get('match_reasoning') or '',
+                    junk_likely_untested=bool(_prior.get('junk_likely_untested')),
+                    alt_listing_possible=bool(_prior.get('alt_listing_possible')),
+                    alt_listing_note=_prior.get('alt_listing_note') or '',
+                ))
+                continue
             # ebay_item_id を渡すことで同 listing の過去判断履歴が Claude プロンプトに
             # 注入される (Phase 1 学習). sku は brand 検索の自己除外と DB record で使用.
-            all_scored.append(evaluate_candidate_with_claude(
+            _sc = evaluate_candidate_with_claude(
                 h, ebay_title, ebay_image_url=ebay_image_url,
                 sku=sku, ebay_item_id=ebay_item_id,
-            ))
+            )
+            all_scored.append(_sc)
+            # W223 step3: AI 評価結果を台帳に記録 (却下含む)。API エラー時は記録しない
+            # (一時失敗の match_score=0 を 30 日固定して候補を silent 抑制しないため)。
+            if not _sc.eval_error:
+                record_candidate_evaluation(
+                    ebay_item_id, _norm_url,
+                    source_platform=h.source_platform,
+                    candidate_title=h.title,
+                    candidate_price_jpy=h.price_jpy,
+                    match_score=_sc.match_score,
+                    match_reasoning=_sc.match_reasoning,
+                    junk_likely_untested=int(_sc.junk_likely_untested),
+                    alt_listing_possible=int(_sc.alt_listing_possible),
+                    alt_listing_note=_sc.alt_listing_note or None,
+                    eval_model=CLAUDE_MODEL,
+                )
 
     # settings.json から閾値を動的取得 (T6 で UI から変更可能)
     _alt0_threshold = _get_threshold(settings, "supplier_alt0_score_threshold", MATCH_SCORE_THRESHOLD)
@@ -453,7 +495,7 @@ def run_supplier_candidate_search(
         f"仕入先候補探索: sku={sku} found={len(all_scored)} persisted={persisted} "
         f"alt_listed={alt_listed} skipped_unprofitable={skipped_unprofitable} "
         f"skipped_low_score={skipped_low_score} excluded_self={excluded_self} "
-        f"excluded_unavailable={excluded_unavailable}"
+        f"excluded_unavailable={excluded_unavailable} reused_eval={reused_eval}"
     )
 
     # W100 (2026-05-06): リサーチ完了 = grace 待機の役目終了 → yahoo_grace_until クリア
@@ -476,6 +518,7 @@ def run_supplier_candidate_search(
         'skipped_low_score': skipped_low_score,
         'excluded_self': excluded_self,
         'excluded_unavailable': excluded_unavailable,
+        'reused_eval': reused_eval,
         'message': (
             f'{persisted}/{len(all_scored)} persisted '
             f'(alt0>={_alt0_threshold}, alt1>={_alt1_threshold}, '

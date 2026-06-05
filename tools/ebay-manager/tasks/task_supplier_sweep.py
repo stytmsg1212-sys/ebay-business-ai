@@ -33,7 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from monitor.database import (  # noqa: E402
     get_conn, get_ebay_listing_by_item_id, add_supplier_candidate,
+    get_recent_candidate_evaluation, record_candidate_evaluation,
 )
+from monitor.claude_evaluator import EvaluationResult  # noqa: E402
 from tasks.task_supplier_candidate_search import (  # noqa: E402
     run_supplier_candidate_search,
     search_candidates_on_platform,
@@ -267,6 +269,12 @@ def run_supplier_sweep_batch(config: dict) -> dict:
     excluded_unavailable = 0
     url_avail_map: dict[str, dict] = {}
     scrape_errors = 0
+    # W223 step3 (2026-06-05): 既評価 (ebay_item_id + 正規化URL, 30日窓) の候補は AI batch に
+    # 積まず過去 AI 判定を再利用 (コスト削減)。reused_results は custom_id -> 過去判定の
+    # EvaluationResult。reused_custom_ids は Phase 4 で「台帳へ再記録しない」判定に使う。
+    reused_results: dict[str, EvaluationResult] = {}
+    reused_custom_ids: set[str] = set()
+    reused_eval = 0
 
     for eid, sku in targets:
         listing = get_ebay_listing_by_item_id(eid)
@@ -312,6 +320,24 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                         f"eid={eid} url={h.url} signal={_avail.get('signal')}"
                     )
                     continue
+                # W223 step3: 既評価 (同 eid + 正規化URL を 30 日以内に AI 評価済) なら
+                # 過去 AI 判定を再利用し AI batch に積まない (コスト削減)。title 変更時は
+                # 再評価。価格変動は Phase 4 の save で profit 再計算される。
+                _norm_url = _normalize_url(h.url)
+                _prior = get_recent_candidate_evaluation(eid, _norm_url)
+                if _prior and (_prior.get("candidate_title") or "") == (h.title or ""):
+                    reused_eval += 1
+                    custom_id = _build_batch_custom_id(eid, plat, idx)
+                    reused_custom_ids.add(custom_id)
+                    reused_results[custom_id] = EvaluationResult(
+                        match_score=_prior.get("match_score") or 0,
+                        reasoning=_prior.get("match_reasoning") or "",
+                        junk_likely_untested=bool(_prior.get("junk_likely_untested")),
+                        alt_listing_possible=bool(_prior.get("alt_listing_possible")),
+                        alt_listing_note=_prior.get("alt_listing_note") or "",
+                    )
+                    items_by_eid[eid].append((custom_id, h))
+                    continue
                 # KB 注入 (動画学習で関連知識があれば prompt に追加)
                 kb_text = ""
                 if find_related_knowledge and format_knowledge_for_prompt:
@@ -343,29 +369,39 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                 batch_items.append(bi)
                 items_by_eid[eid].append((custom_id, h))
 
-    if not batch_items:
+    if not batch_items and not reused_results:
         logger.info("[W94 batch] スクレイプ結果ゼロ件、batch submit せず終了")
         return {
             "success": True, "processed": len(targets), "candidates_found": 0,
             "errors": scrape_errors, "message": "候補ゼロ件", "batch_id": "",
             "batch_dlq": 0, "batch_fallback": 0, "cache_read_total": 0,
+            "reused_eval": reused_eval,
         }
 
-    # Phase 2: min_batch_size 未満は realtime fallback (Q0: 失敗を silent skip しない)
-    if len(batch_items) < min_batch:
+    # Phase 2: min_batch_size 未満は realtime fallback (Q0: 失敗を silent skip しない)。
+    # batch_items が空 (= 全件 W223 reused) の場合は AI 評価不要なので fallback せず
+    # Phase 4 で reused を persist する。
+    if batch_items and len(batch_items) < min_batch:
         logger.info(
             f"[W94 batch] {len(batch_items)} 件 < min_batch_size {min_batch}、"
-            f"realtime API fallback で各 listing 処理"
+            f"realtime API fallback で各 listing 処理 (reused={reused_eval})"
         )
         return _run_supplier_sweep_realtime_fallback(targets, config)
 
-    # Phase 3: batch submit
-    poll_interval = int(eval_batch_cfg.get("poll_interval_sec", 60))
-    hard_timeout = int(eval_batch_cfg.get("hard_timeout_sec", 4 * 3600))
-    batch_result = evaluate_batch(
-        batch_items, model=_eval_model,
-        poll_interval_sec=poll_interval, hard_timeout_sec=hard_timeout,
-    )
+    # Phase 3: batch submit (全件 reused で batch_items 空なら submit せず空 result)
+    if batch_items:
+        poll_interval = int(eval_batch_cfg.get("poll_interval_sec", 60))
+        hard_timeout = int(eval_batch_cfg.get("hard_timeout_sec", 4 * 3600))
+        batch_result = evaluate_batch(
+            batch_items, model=_eval_model,
+            poll_interval_sec=poll_interval, hard_timeout_sec=hard_timeout,
+        )
+    else:
+        from monitor.supplier_batch_evaluator import BatchResult
+        batch_result = BatchResult(batch_id="", results={}, submitted=0)
+        logger.info(
+            f"[W94 batch] 全 {reused_eval} 件が既評価 (W223 reused)、batch submit 不要"
+        )
 
     # Phase 4: result を eid 単位に persist
     settings = load_settings()
@@ -380,10 +416,29 @@ def run_supplier_sweep_batch(config: dict) -> dict:
     for eid, listing in listing_by_eid.items():
         sku = listing.get("sku") or ""
         for custom_id, hit in items_by_eid.get(eid, []):
+            # W223 step3: batch 結果が無ければ reused (既評価) 結果を引く。
             eval_r = batch_result.results.get(custom_id)
+            if eval_r is None:
+                eval_r = reused_results.get(custom_id)
             if eval_r is None or eval_r.error:
                 # batch 経路で評価失敗 (DLQ 行き or fallback で復旧不能)
                 continue
+            # W223 step3: 新規 AI 評価 (reused でない) は却下含め全件台帳に記録する
+            # (rejects=98% を 30 日間 再評価しないことがコスト削減の主眼。閾値フィルタの
+            # 前に記録するのが必須 — 後ろだと却下候補が台帳に残らず毎回再評価される)。
+            if custom_id not in reused_custom_ids:
+                record_candidate_evaluation(
+                    eid, _normalize_url(hit.url),
+                    source_platform=hit.source_platform,
+                    candidate_title=hit.title,
+                    candidate_price_jpy=hit.price_jpy,
+                    match_score=eval_r.match_score,
+                    match_reasoning=eval_r.reasoning,
+                    junk_likely_untested=int(eval_r.junk_likely_untested),
+                    alt_listing_possible=int(eval_r.alt_listing_possible),
+                    alt_listing_note=eval_r.alt_listing_note or None,
+                    eval_model=_eval_model,
+                )
             total_found += 1
             # 既存 persist filter (task_supplier_candidate_search.py L334-403 と同等)
             if eval_r.match_score < alt0_threshold and not eval_r.alt_listing_possible:
@@ -426,7 +481,10 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                 alt_listing_possible=int(eval_r.alt_listing_possible),
                 alt_listing_note=eval_r.alt_listing_note or None,
                 eval_model=(
-                    f"{_eval_model}-batch-fallback"
+                    # W223 step3: reused は過去判定の流用 → -batch と区別 (監査用)
+                    f"{_eval_model}-reused"
+                    if custom_id in reused_custom_ids
+                    else f"{_eval_model}-batch-fallback"
                     if custom_id in batch_result.fallback_custom_ids
                     else f"{_eval_model}-batch"
                 ),
@@ -440,18 +498,23 @@ def run_supplier_sweep_batch(config: dict) -> dict:
 
     msg = (
         f"W94 batch sweep: targets={len(targets)} batch_items={len(batch_items)} "
-        f"persisted={total_persisted} fallback={batch_result.fallback_used} "
-        f"dlq={batch_result.pending_dlq} cache_read={batch_result.cache_read_total}"
+        f"reused={reused_eval} persisted={total_persisted} "
+        f"fallback={batch_result.fallback_used} dlq={batch_result.pending_dlq} "
+        f"cache_read={batch_result.cache_read_total}"
     )
     logger.info(msg)
     # H-3 (2026-05-02 code-reviewer): BatchResult.errored は既に fallback_used 控除済.
     # 二重控除しないよう scrape_errors + batch_result.errored のみ.
     # success = errored < submitted (= 何か残った件がある) AND timeout 無し AND DLQ ゼロ.
-    success = (
-        batch_result.errored < batch_result.submitted
-        and not batch_result.timeout
-        and batch_result.pending_dlq == 0
-    )
+    # W223 step3: batch_items 空 (全件 reused) は AI submit 無し = 失敗要素なし → success.
+    if batch_items:
+        success = (
+            batch_result.errored < batch_result.submitted
+            and not batch_result.timeout
+            and batch_result.pending_dlq == 0
+        )
+    else:
+        success = True
     return {
         "success": success,
         "processed": len(targets),
@@ -462,6 +525,7 @@ def run_supplier_sweep_batch(config: dict) -> dict:
         "batch_dlq": batch_result.pending_dlq,
         "batch_fallback": batch_result.fallback_used,
         "cache_read_total": batch_result.cache_read_total,
+        "reused_eval": reused_eval,
     }
 
 

@@ -3005,6 +3005,49 @@ def init_db():
                     "ebay_image_fetched_at 未追加。次回 init_db で再試行。"
                 )
 
+        # ---- v64 (W223 step3, 2026-06-05): 仕入先候補 AI 評価の台帳 ----
+        # 同一 (ebay_item_id, 正規化候補URL) を 30 日以内に再評価しない (AI コスト削減)。
+        # 却下含む全 AI 評価を記録し、再出現時は過去 AI 判定を再利用 (初回は必ず AI =
+        # 「型番一致でも AI スキップ禁止」の制約に抵触しない。再利用は同一候補の過去 AI
+        # 判定の流用であって新規候補の AI 省略ではない)。価格変動は呼出側 save loop で
+        # profit 再計算するため score のみ再利用。candidate_url は _normalize_url 済を
+        # 保存 (scheme/query 揺れ吸収)。listing 識別は ebay_item_id (sku-rules.md)。
+        # UNIQUE(ebay_item_id, candidate_url) が lookup index を兼ねる。
+        # 冪等: CREATE TABLE IF NOT EXISTS + 実在確認後 bump (v60 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 63:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS supplier_candidate_evaluations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ebay_item_id TEXT NOT NULL,
+                    candidate_url TEXT NOT NULL,
+                    source_platform TEXT,
+                    candidate_title TEXT,
+                    candidate_price_jpy INTEGER,
+                    match_score INTEGER,
+                    match_reasoning TEXT,
+                    junk_likely_untested INTEGER DEFAULT 0,
+                    alt_listing_possible INTEGER DEFAULT 0,
+                    alt_listing_note TEXT,
+                    eval_model TEXT,
+                    evaluated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(ebay_item_id, candidate_url)
+                )
+            """)
+            _v64_tables = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if "supplier_candidate_evaluations" in _v64_tables:
+                conn.execute("PRAGMA user_version = 64")
+                logger.info("[init_db v64] schema_ver bumped to 64")
+            else:
+                logger.warning(
+                    "[init_db v64] 部分適用: supplier_candidate_evaluations "
+                    "未作成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4727,6 +4770,105 @@ def add_supplier_candidate(
              availability_signal),
         )
         return cur.lastrowid if cur.rowcount else None
+
+
+def record_candidate_evaluation(
+    ebay_item_id: str,
+    candidate_url: str,
+    *,
+    source_platform: Optional[str] = None,
+    candidate_title: Optional[str] = None,
+    candidate_price_jpy: Optional[int] = None,
+    match_score: Optional[int] = None,
+    match_reasoning: Optional[str] = None,
+    junk_likely_untested: int = 0,
+    alt_listing_possible: int = 0,
+    alt_listing_note: Optional[str] = None,
+    eval_model: Optional[str] = None,
+) -> None:
+    """W223 step3: 仕入先候補の AI 評価結果を台帳 (却下含む全件) に upsert.
+
+    candidate_url は呼出側で `_normalize_url` 済を渡すこと (scheme/query 揺れ吸収)。
+    再評価時は score 等と evaluated_at を更新 (30 日窓を最新評価から測る)。
+    **API エラー評価 (match_score=0/error) は記録しない**こと = 呼出側責務
+    (一時失敗を 30 日固定すると次回再評価されず候補が silent 抑制される)。
+    listing 識別は ebay_item_id (sku-rules.md)。ebay_item_id/candidate_url 必須。
+    """
+    if not ebay_item_id or not ebay_item_id.strip():
+        raise ValueError("record_candidate_evaluation: ebay_item_id は必須です")
+    if not candidate_url or not candidate_url.strip():
+        raise ValueError("record_candidate_evaluation: candidate_url は必須です")
+    try:
+        _record_candidate_evaluation_row(
+            ebay_item_id, candidate_url, source_platform, candidate_title,
+            candidate_price_jpy, match_score, match_reasoning,
+            junk_likely_untested, alt_listing_possible, alt_listing_note,
+            eval_model,
+        )
+    except sqlite3.OperationalError as e:
+        # 台帳テーブル未作成 (migration v64 未適用) 時は no-op で degrade。
+        # prod は init_db で必ず作成済。fail-open でも評価自体は実行される (Q0)。
+        logger.debug(f"[sce] record skipped (schema?): {e}")
+
+
+def _record_candidate_evaluation_row(
+    ebay_item_id, candidate_url, source_platform, candidate_title,
+    candidate_price_jpy, match_score, match_reasoning,
+    junk_likely_untested, alt_listing_possible, alt_listing_note, eval_model,
+) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO supplier_candidate_evaluations
+               (ebay_item_id, candidate_url, source_platform, candidate_title,
+                candidate_price_jpy, match_score, match_reasoning,
+                junk_likely_untested, alt_listing_possible, alt_listing_note,
+                eval_model, evaluated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(ebay_item_id, candidate_url) DO UPDATE SET
+                 source_platform=excluded.source_platform,
+                 candidate_title=excluded.candidate_title,
+                 candidate_price_jpy=excluded.candidate_price_jpy,
+                 match_score=excluded.match_score,
+                 match_reasoning=excluded.match_reasoning,
+                 junk_likely_untested=excluded.junk_likely_untested,
+                 alt_listing_possible=excluded.alt_listing_possible,
+                 alt_listing_note=excluded.alt_listing_note,
+                 eval_model=excluded.eval_model,
+                 evaluated_at=CURRENT_TIMESTAMP""",
+            (ebay_item_id, candidate_url, source_platform, candidate_title,
+             candidate_price_jpy, match_score, match_reasoning,
+             int(junk_likely_untested), int(alt_listing_possible),
+             alt_listing_note, eval_model),
+        )
+
+
+def get_recent_candidate_evaluation(
+    ebay_item_id: str,
+    candidate_url: str,
+    within_days: int = 30,
+) -> Optional[dict]:
+    """W223 step3: (ebay_item_id, 正規化URL) の直近評価を返す (within_days 以内のみ)。
+
+    無ければ None。candidate_url は `_normalize_url` 済を渡すこと。
+    SQLite TIMESTAMP は UTC (sqlite-timezone.md)。CURRENT_TIMESTAMP 保存・
+    datetime('now','-N days') (UTC) 比較で TZ 整合。
+    """
+    if not ebay_item_id or not candidate_url:
+        return None
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM supplier_candidate_evaluations "
+                "WHERE ebay_item_id=? AND candidate_url=? "
+                "AND evaluated_at >= datetime('now', ?) "
+                "ORDER BY evaluated_at DESC LIMIT 1",
+                (ebay_item_id, candidate_url, f"-{int(within_days)} days"),
+            ).fetchone()
+    except sqlite3.OperationalError as e:
+        # 台帳テーブル未作成時は「過去評価なし」として degrade (= 必ず AI 評価へ)。
+        logger.debug(f"[sce] lookup skipped (schema?): {e}")
+        return None
+    return dict(row) if row else None
 
 
 def get_supplier_candidates(
