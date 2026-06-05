@@ -283,7 +283,10 @@ def _notify_auto_zero(done: list, config) -> None:
 
 
 def auto_zero_supplier_oos(ebay_item_ids: list, config) -> Dict:
-    """仕入先OOS 検知 listing の eBay 在庫を 0 化 (履行不能販売の防止、2026-06-05)。
+    """[DEPRECATED 2026-06-05] user 決定で eBay在庫0化は手動運用に変更 → 本関数は未使用
+    (run_sync_data_stores からの呼出を撤去)。緊急時の一括0化は scripts/zero_oos_*.py を参照。
+
+    仕入先OOS 検知 listing の eBay 在庫を 0 化 (履行不能販売の防止、2026-06-05)。
 
     候補 (sync で収集: ページなし=即時 / 在庫無=2回連続) のうち、
     **qty>=1 + ebay* SKU + 未退役 + 未確認** のみ実 0 化 (account-direct = 厳格絞り込み)。
@@ -365,11 +368,10 @@ def run_sync_data_stores(config) -> Dict:
         # Step 2: 在庫ステータス統合
         inv_result = sync_inventory_status_to_db()
 
-        # Step 2b (2026-06-05): 仕入先OOS → eBay在庫 自動0化 (履行不能販売の防止)。
-        # source_status が今 fresh なので直後に実行。creds は config 経由。
-        zero_result = auto_zero_supplier_oos(inv_result.get('oos_to_zero', []), config)
-        if zero_result.get('zeroed'):
-            logger.info(f"[auto-zero] 仕入先OOS {zero_result['zeroed']} 件の eBay在庫を0化")
+        # 2026-06-05 (user 決定): eBay在庫0化は手動運用に戻す → 自動0化を無効化。
+        # 仕入先OOS は在庫監視に表示するのみ。0化は user が手動で実施 (対応完了の判断も user)。
+        # (旧 Step 2b auto_zero_supplier_oos 呼出を撤去。関数は dead code として残置)。
+        zero_result = {'zeroed': 0, 'skipped': 0, 'failed': 0, 'disabled': True}
 
         # Step 3: 物理データ統合
         enrich_result = sync_enrichment_to_db()

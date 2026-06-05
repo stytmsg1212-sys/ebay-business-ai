@@ -86,8 +86,9 @@ def _fetch_sweep_targets(
     # FINDING 1 (2026-05-05): sku GLOB 'ebay*' で stock prefix 除外 (case-sensitive).
     # NOT EXISTS 重複検出も sc.ebay_item_id 単位に変更 (= SKU rule 違反予防、
     # 同 SKU 兄弟 listing が探索済時に残り全部 skip される silent 抜けの解消).
-    # 2026-06-05 user 要望: Yahoo 24h 再出品猶予 (W100 grace) 撤廃 →
-    # yahoo_grace_until 除外条件を削除 (Yahoo 終了も即探索)。
+    # 2026-06-05 user 検索timing matrix: Yahoo「落札なし終了」は 24h 後検索のため
+    # yahoo_grace_until 除外を再追加 (落札なし終了は inventory_check の _classify_yahoo_grace が
+    # grace セット)。ページなし(削除)の 24h は本 sweep の source_out_of_stock_since threshold で担保。
     sql = """
         SELECT l.ebay_item_id, l.sku
         FROM ebay_listings l
@@ -96,6 +97,7 @@ def _fetch_sweep_targets(
           AND l.source_status IN ('在庫無', 'ページなし')
           AND (l.is_ended IS NULL OR l.is_ended=0)
           AND l.sku GLOB 'ebay*'
+          AND (l.yahoo_grace_until IS NULL OR l.yahoo_grace_until <= datetime('now'))
           AND NOT EXISTS (
               SELECT 1 FROM supplier_candidates sc
               WHERE sc.ebay_item_id = l.ebay_item_id
