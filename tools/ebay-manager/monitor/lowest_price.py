@@ -131,7 +131,7 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
     with get_conn() as conn:
         row = conn.execute(
             "SELECT purchase_yen, weight_g, length_cm, width_cm, height_cm, "
-            "duty_rate_pct, primary_market "
+            "duty_rate_pct, primary_market, category_id "
             "FROM ebay_listings WHERE ebay_item_id=?",
             (ebay_item_id,)
         ).fetchone()
@@ -151,6 +151,15 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
     # (Section 232 含む) を載せない (reference_shipping_tariff_logic §4.3、user 承認 2026-06-03)。
     # US_only/mixed_global/unknown/NULL は従来どおり US DDP (保守、関税込)。
     is_ddu = (row[6] == "global_only")
+    # W222 (2026-06-05): per-listing 実カテゴリで FVF を計算 (従来は固定 58248=12.7%)。
+    # ⚠️ money-direct (floor=自動値下げ下限)。settings.use_category_fvf_floor=True で
+    # 初めて実カテゴリを使う (default False = 従来 58248 固定で floor 不変)。
+    # 「category_id の保存 (列/backfill/同期)」と「floor 計算での利用」を分離し、
+    # DRY-RUN→user 承認後に flag を ON にして全件再計算する安全ロールアウト
+    # (use_batch_api / use_candidate_ranker と同じ pattern)。flag OFF の間は
+    # backfill 済み category_id があっても floor は従来値のまま = 共同検証ゲートを守る。
+    _use_cat = bool((settings or {}).get("use_category_fvf_floor", False))
+    _cat_id = (int(row[7]) if row[7] else 58248) if _use_cat else 58248
     try:
         breakeven = compute_breakeven_price_usd(
             purchase_yen=row[0] or 0,
@@ -159,6 +168,7 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
             width_cm=row[3] or 0,
             height_cm=row[4] or 0,
             settings=settings,
+            category_id=_cat_id,
             actual_duty_rate=actual_duty_rate,
             is_ddu=is_ddu,
         )

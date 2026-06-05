@@ -3048,6 +3048,35 @@ def init_db():
                     "未作成。次回 init_db で再試行。"
                 )
 
+        # ---- v65 (W222, 2026-06-05): ebay_listings.category_id (カテゴリ別 FVF floor) ----
+        # floor(lp_breakeven_usd) は従来 compute_breakeven_price_usd の固定 category_id=
+        # 58248 (Store FVF 12.7%) で計算。実カテゴリ (例 Headphones/Home Audio 9.35%) は
+        # FVF が安く floor が下がる = 自動値下げ下限が下がる (money-direct)。本列で
+        # per-listing 実カテゴリを保持し update_listing_breakeven が引く。NULL は 58248
+        # fallback (後方互換)。v59 流儀: ALTER 試行 → table_info 列実在確認 → bump。
+        # ⚠️ 列追加のみでは floor 不変 (update_listing_breakeven が明示再計算されるまで
+        #   lp_breakeven_usd は旧値)。floor 全件再計算は DRY-RUN→user 承認後の別 script。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 64:
+            try:
+                conn.execute("ALTER TABLE ebay_listings ADD COLUMN category_id INTEGER")
+                logger.info("[init_db v65] ebay_listings.category_id added")
+            except sqlite3.OperationalError:
+                pass  # カラム既存
+            _v65_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if "category_id" in _v65_cols:
+                conn.execute("PRAGMA user_version = 65")
+                logger.info("[init_db v65] schema_ver bumped to 65")
+            else:
+                logger.warning(
+                    "[init_db v65] 部分適用: ebay_listings.category_id 未追加。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -3363,7 +3392,8 @@ def _normalize_primary_market(value: Optional[str]) -> Optional[str]:
 def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                         current_price: float = 0.0, quantity_ebay: int = 0,
                         shipping_cost: float = 0.0,
-                        primary_market: Optional[str] = None) -> int:
+                        primary_market: Optional[str] = None,
+                        category_id: Optional[int] = None) -> int:
     """eBay出品を挿入または更新。
 
     重要: eBay 側で SKU が変更された場合 (既存 vs 今回のSKUが異なる):
@@ -3381,6 +3411,11 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
     や lowest_price 表示層と表記を揃える.
     """
     pm_norm = _normalize_primary_market(primary_market)
+    # W222 (2026-06-05): category_id は COALESCE(?, category_id) で保存 (None/0 は
+    # 既存維持 = primary_market と同 semantics)。同期で取得失敗 (None) 時に既存実カテゴリ
+    # を潰さない。category_id は floor の SELECT のみで使い、変更時の lp_breakeven_usd
+    # 無効化はしない (同期毎 NULL 化で auto-pricedown が常時 skip するのを避ける)。
+    _cat_id = int(category_id) if category_id else None
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id, sku, primary_market FROM ebay_listings WHERE ebay_item_id=?",
@@ -3431,10 +3466,11 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                           source_status='unknown',
                           source_last_checked=NULL,
                           risk_confirmed=0,
-                          primary_market=COALESCE(?, primary_market)
+                          primary_market=COALESCE(?, primary_market),
+                          category_id=COALESCE(?, category_id)
                        WHERE ebay_item_id=?""",
                     (sku, title, current_price, quantity_ebay, shipping_cost, now,
-                     new_source_url, pm_norm, ebay_item_id),
+                     new_source_url, pm_norm, _cat_id, ebay_item_id),
                 )
                 # W139-fix (2026-05-18): eBay 側 SKU 変更検知時も monitored_items
                 # を追従 (同一 conn 原子的)。汚染源 2 経路目 (user 承認済)。
@@ -3449,27 +3485,29 @@ def upsert_ebay_listing(ebay_item_id: str, sku: str, title: str = "",
                     """UPDATE ebay_listings SET
                           sku=?, title=?, current_price=?, quantity_ebay=?,
                           shipping_cost=?, last_synced_at=?,
-                          primary_market=COALESCE(?, primary_market)
+                          primary_market=COALESCE(?, primary_market),
+                          category_id=COALESCE(?, category_id)
                        WHERE ebay_item_id=?""",
                     (sku, title, current_price, quantity_ebay, shipping_cost, now,
-                     pm_norm, ebay_item_id),
+                     pm_norm, _cat_id, ebay_item_id),
                 )
                 _sync_monitored_items_sku(conn, ebay_item_id, sku)
             else:
                 conn.execute(
                     """UPDATE ebay_listings SET title=?, current_price=?, quantity_ebay=?,
                        shipping_cost=?, last_synced_at=?,
-                       primary_market=COALESCE(?, primary_market)
+                       primary_market=COALESCE(?, primary_market),
+                       category_id=COALESCE(?, category_id)
                        WHERE ebay_item_id=?""",
                     (title, current_price, quantity_ebay, shipping_cost, now,
-                     pm_norm, ebay_item_id),
+                     pm_norm, _cat_id, ebay_item_id),
                 )
             return existing["id"]
 
         conn.execute(
-            """INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, last_synced_at, primary_market)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, now, pm_norm),
+            """INSERT INTO ebay_listings (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, last_synced_at, primary_market, category_id)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (ebay_item_id, sku, title, current_price, quantity_ebay, shipping_cost, now, pm_norm, _cat_id),
         )
         return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 

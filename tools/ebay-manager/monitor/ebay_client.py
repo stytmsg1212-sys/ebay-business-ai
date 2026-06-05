@@ -309,11 +309,19 @@ def get_item_details_batch(
                 # QuantitySold は SellingStatus の子要素
                 selling_status = item.find("ns:SellingStatus", namespaces=ns)
                 quantity_sold = _safe_int(selling_status.findtext("ns:QuantitySold", namespaces=ns)) if selling_status is not None else 0
+                # W222 (2026-06-05): bulk sync で category_id も埋める (daily 02:30 で全件
+                # GetItem 済 = 追加 API 無し)。enrich_listings_with_metrics の
+                # listing.update() で listing dict にマージ → upsert_ebay_listing が保存。
+                # これが無いと bulk path の category_id は常に None で永久 backfill されない。
+                category_id = _safe_int(
+                    item.findtext("ns:PrimaryCategory/ns:CategoryID", namespaces=ns)
+                )
 
                 results[item_id] = {
                     "watch_count": watch_count,
                     "view_count": hit_count,
                     "sales_count_30d": quantity_sold,
+                    "category_id": category_id,
                 }
 
                 if (idx + 1) % 50 == 0:

@@ -120,7 +120,7 @@ def sync_listings_from_ebay(app_id: str, dev_id: str, cert_id: str, user_token: 
             price = listing.get('current_price', 0.0)
             shipping = listing.get('shipping_cost', 0.0)
 
-            # DBに登録
+            # DBに登録 (W222: category_id があれば保存、無ければ None=COALESCE で既存維持)
             upsert_ebay_listing(
                 ebay_item_id=ebay_item_id,
                 sku=sku,
@@ -128,6 +128,7 @@ def sync_listings_from_ebay(app_id: str, dev_id: str, cert_id: str, user_token: 
                 current_price=price,
                 quantity_ebay=qty,
                 shipping_cost=shipping,
+                category_id=listing.get("category_id"),
             )
 
             # メトリクスを保存（Watch数、View数、販売数）
@@ -337,6 +338,7 @@ def sync_single_listing(
             current_price=price,
             quantity_ebay=qty,
             shipping_cost=shipping,
+            category_id=listing.get("category_id"),  # W222: GetItem の実カテゴリを保存
         )
         update_ebay_listing_metrics(str(ebay_item_id), {
             "watch_count": listing.get("watch_count", 0),
