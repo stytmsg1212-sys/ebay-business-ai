@@ -3077,6 +3077,43 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v66 (W227, 2026-06-06): 商品状態 Condition を rank 列から物理分離 ----
+        # 事故: ebay_listings.rank 列が「人気度グレード(S/A/B/C/D/E、自動ランク更新が
+        # watch/売上で付与)」と「商品状態ランク(N/S/A/B/C/D/PO/As-Is→eBay ConditionID)」
+        # で二重使用され、価格編集毎に人気度Sを Open Box(1500) として eBay へ誤上書き
+        # していた (account-risk)。本 migration で商品状態を rank から分離:
+        #   ebay_condition_id: GetItem の実 eBay ConditionID (1000/1500/3000/7000)。商品
+        #     管理「状態」widget の表示・dirty-flag 比較の真実源 (DB は eBay の写し)。
+        #   condition_rank: 3000(Used) のサブランク (A/B/C/D/PO) を user 指定で保持
+        #     (ConditionID 3000→サブランク逆引き不能を補う表示/push 用の意図値)。
+        # ⚠️ rank 列は **一切触らない** (eBay連携タブ「自動ランク更新」/優先度表示が継続
+        #   使用 = K2 surgical)。列追加のみでは ebay_condition_id は NULL = GetItem 同期/
+        #   backfill (scripts/w227_backfill_condition.py) で充填されるまで「未取得」表示。
+        # v59/v65 流儀: ALTER 試行 → table_info 列実在確認 → bump。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 65:
+            for _col, _typ in (("ebay_condition_id", "TEXT"),
+                               ("condition_rank", "TEXT")):
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ}")
+                    logger.info(f"[init_db v66] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # カラム既存 (重複適用)
+            _v66_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if {"ebay_condition_id", "condition_rank"} <= _v66_cols:
+                conn.execute("PRAGMA user_version = 66")
+                logger.info("[init_db v66] schema_ver bumped to 66")
+            else:
+                logger.warning(
+                    "[init_db v66] 部分適用: ebay_condition_id/condition_rank "
+                    "未追加。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4057,7 +4094,13 @@ def mark_alert_as_notified(alert_id: int):
 # ---- 商品ランク管理 ----
 
 def update_ebay_listing_rank(ebay_item_id: str, rank: str):
-    """eBay出品のランクを更新 (S, A, B, C, D, E)"""
+    """eBay出品の **人気度グレード** を更新 (S, A, B, C, D, E)。
+
+    ⚠️ W227 (2026-06-06): この `rank` 列は eBay連携タブ「自動ランク更新」が付ける
+    人気度グレード (watch/売上ベース) 専用。**商品状態 Condition とは別物**。商品
+    状態は `ebay_condition_id` / `condition_rank` 列 (update_ebay_listing_condition)
+    で管理する。両者を混同して eBay Condition を誤上書きする事故を防ぐため列を分離。
+    """
     if rank not in ('S', 'A', 'B', 'C', 'D', 'E'):
         raise ValueError(f"Invalid rank: {rank}")
 
@@ -4065,6 +4108,51 @@ def update_ebay_listing_rank(ebay_item_id: str, rank: str):
         conn.execute(
             "UPDATE ebay_listings SET rank=? WHERE ebay_item_id=?",
             (rank, ebay_item_id)
+        )
+
+
+# W227 (2026-06-06): 商品状態ランク (人気度 rank とは別軸)。
+VALID_CONDITION_RANKS: tuple[str, ...] = (
+    'N', 'S', 'A', 'B', 'C', 'D', 'PO', 'As-Is',
+)
+
+
+def update_ebay_listing_condition(
+    ebay_item_id: str,
+    ebay_condition_id: Optional[str] = None,
+    condition_rank: Optional[str] = None,
+) -> None:
+    """eBay出品の **商品状態 Condition** を更新 (W227 root-cause)。
+
+    人気度グレード (`rank` 列) とは完全に独立。listing 識別は ebay_item_id
+    (sku-rules)。部分更新: None の引数は据置 (既存値維持)。
+
+    Args:
+        ebay_condition_id: eBay 実 ConditionID (GetItem の写し、1000/1500/3000/7000
+            等)。商品管理「状態」widget 表示・dirty-flag 比較の真実源。
+        condition_rank: 8 段階の商品状態ランク (N/S/A/B/C/D/PO/As-Is)。ConditionID
+            3000(Used) のサブランク補完 (逆引き不能を埋める user 意図値)。
+    """
+    sets: list[str] = []
+    params: list = []
+    if ebay_condition_id is not None:
+        sets.append("ebay_condition_id=?")
+        params.append(str(ebay_condition_id))
+    if condition_rank is not None:
+        if condition_rank not in VALID_CONDITION_RANKS:
+            raise ValueError(
+                f"Invalid condition_rank: {condition_rank!r} "
+                f"(valid: {VALID_CONDITION_RANKS})"
+            )
+        sets.append("condition_rank=?")
+        params.append(condition_rank)
+    if not sets:
+        return
+    params.append(ebay_item_id)
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE ebay_listings SET {', '.join(sets)} WHERE ebay_item_id=?",
+            tuple(params),
         )
 
 

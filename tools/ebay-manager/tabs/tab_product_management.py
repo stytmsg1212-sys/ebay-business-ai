@@ -155,6 +155,9 @@ def _fetch_all_products() -> list[dict]:
                 -- 58248 fallback = 全 listing 既定 FVF 12.7%/13.6% で表示していた。floor は
                 -- 既に実カテゴリ反映済 = lowest_price L161、表示をそれに一致させる)。
                 el.category_id,
+                -- W227 (2026-06-06): 商品状態 Condition (人気度 rank とは別軸)。
+                -- ebay_condition_id=GetItem 実値(真実源) / condition_rank=Used サブランク補完。
+                el.ebay_condition_id, el.condition_rank,
                 el.rank, el.includes, el.warranty,
                 el.point_yen, el.listing_description,
                 el.total_sold_count, el.watch_count, el.view_count,
@@ -4195,6 +4198,13 @@ def _sync_db_to_actual(eid: str, snap) -> None:
     if snap.sku is not None:
         sets.append("sku=?")
         params.append(str(snap.sku))
+    # W227 (2026-06-06): eBay 実 ConditionID を DB へ同期 (商品状態 widget の真実源)。
+    # snap.condition_id は GetItem 抽出済 (ebay_listing_snapshot)。None-skip 慣習。
+    # 人気度 rank 列は触らない (別軸)。これで価格/送料反映のたびに condition も
+    # eBay 実値へ resync = 表示が常に eBay と一致 (誤 push 後も自己治癒)。
+    if getattr(snap, "condition_id", None):
+        sets.append("ebay_condition_id=?")
+        params.append(str(snap.condition_id))
     if getattr(snap, "ok", False):
         sets.append("shipping_profile_id=?")
         params.append(
