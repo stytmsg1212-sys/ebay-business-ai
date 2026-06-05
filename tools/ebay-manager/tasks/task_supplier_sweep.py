@@ -48,6 +48,10 @@ from tasks.task_supplier_candidate_search import (  # noqa: E402
 # W223 step1 (2026-06-05): eBay 商品画像 URL を AI 評価に渡す穴を塞ぐ。
 # 旧 listing.get("ebay_image_url") は列が無く常に None だった (画像対画像が未稼働)。
 from monitor.ebay_listing_image import get_ebay_image_url  # noqa: E402
+# W223 step4 (2026-06-05): 一覧テキストスキャン ranker (Haiku) で vision 精査対象を絞込。
+from monitor.supplier_candidate_ranker import (  # noqa: E402
+    rank_candidates_for_vision, DEFAULT_MAX_KEEP as RANKER_DEFAULT_MAX_KEEP,
+)
 from calculator import (  # noqa: E402
     check_supplier_candidate_profitable, load_settings,
 )
@@ -275,6 +279,10 @@ def run_supplier_sweep_batch(config: dict) -> dict:
     reused_results: dict[str, EvaluationResult] = {}
     reused_custom_ids: set[str] = set()
     reused_eval = 0
+    # W223 step4 (2026-06-05): ranker で vision (batch) 対象を絞込 (default OFF)。
+    _use_ranker = bool(task_cfg.get("use_candidate_ranker", False))
+    _ranker_max_keep = int(task_cfg.get("candidate_ranker_max_keep", RANKER_DEFAULT_MAX_KEEP))
+    ranked_out = 0
 
     for eid, sku in targets:
         listing = get_ebay_listing_by_item_id(eid)
@@ -291,6 +299,8 @@ def run_supplier_sweep_batch(config: dict) -> dict:
         # W223 (2026-06-05): search_keyword (Brand+品番) 優先、0件で ebay_title fallback。
         _strict_kw = (listing.get("search_keyword") or "").strip()
         items_by_eid[eid] = []
+        # W223 step4: 新規候補 (非 reused) を一旦貯めて、platform loop 後に ranker で絞込。
+        _pending_new: list[tuple[str, int, object]] = []
 
         for plat in platforms:
             try:
@@ -338,36 +348,56 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                     )
                     items_by_eid[eid].append((custom_id, h))
                     continue
-                # KB 注入 (動画学習で関連知識があれば prompt に追加)
-                kb_text = ""
-                if find_related_knowledge and format_knowledge_for_prompt:
-                    try:
-                        related = find_related_knowledge(
-                            f"{ebay_title} {h.title or ''}", max_videos=2,
-                        )
-                        if related:
-                            kb_text = "\n\n" + format_knowledge_for_prompt(
-                                related, max_chars=1500,
-                            )
-                    except Exception as e:
-                        logger.debug(f"[W94 batch] KB skip eid={eid}: {e}")
+                # W223 step4: 新規候補は収集のみ (BatchItem 構築は ranker 絞込後)。
+                _pending_new.append((plat, idx, h))
 
-                custom_id = _build_batch_custom_id(eid, plat, idx)
-                bi = BatchItem(
-                    custom_id=custom_id,
-                    ebay_title=ebay_title,
-                    candidate_title=h.title or "",
-                    platform=h.source_platform,
-                    price_jpy=h.price_jpy,
-                    url=h.url,
-                    ebay_image_url=ebay_image_url,
-                    candidate_image_url=h.image_url,
-                    sku=sku,
-                    ebay_item_id=eid,
-                    knowledge_block=kb_text,
-                )
-                batch_items.append(bi)
-                items_by_eid[eid].append((custom_id, h))
+        # W223 step4: 新規候補を ranker (Haiku) で vision (batch) 対象に絞込 (default OFF)。
+        # 間引きは取りこぼし=機会損失リスクのため明示有効化まで全件通す。件数<=max_keep は
+        # ranker を呼ばない (内部でも二重ガード)。
+        if _use_ranker and len(_pending_new) > _ranker_max_keep:
+            _keep = set(rank_candidates_for_vision(
+                ebay_title,
+                [{"title": _h.title, "price_jpy": _h.price_jpy}
+                 for (_p, _ix, _h) in _pending_new],
+                max_keep=_ranker_max_keep,
+            ))
+        else:
+            _keep = set(range(len(_pending_new)))
+        ranked_out += len(_pending_new) - len(_keep)
+
+        for _j, (plat, idx, h) in enumerate(_pending_new):
+            if _j not in _keep:
+                continue  # ranker が vision 不要と判断 (捨てた候補は ranker 内で log 済)
+            # KB 注入 (動画学習で関連知識があれば prompt に追加)
+            kb_text = ""
+            if find_related_knowledge and format_knowledge_for_prompt:
+                try:
+                    related = find_related_knowledge(
+                        f"{ebay_title} {h.title or ''}", max_videos=2,
+                    )
+                    if related:
+                        kb_text = "\n\n" + format_knowledge_for_prompt(
+                            related, max_chars=1500,
+                        )
+                except Exception as e:
+                    logger.debug(f"[W94 batch] KB skip eid={eid}: {e}")
+
+            custom_id = _build_batch_custom_id(eid, plat, idx)
+            bi = BatchItem(
+                custom_id=custom_id,
+                ebay_title=ebay_title,
+                candidate_title=h.title or "",
+                platform=h.source_platform,
+                price_jpy=h.price_jpy,
+                url=h.url,
+                ebay_image_url=ebay_image_url,
+                candidate_image_url=h.image_url,
+                sku=sku,
+                ebay_item_id=eid,
+                knowledge_block=kb_text,
+            )
+            batch_items.append(bi)
+            items_by_eid[eid].append((custom_id, h))
 
     if not batch_items and not reused_results:
         logger.info("[W94 batch] スクレイプ結果ゼロ件、batch submit せず終了")
@@ -498,7 +528,7 @@ def run_supplier_sweep_batch(config: dict) -> dict:
 
     msg = (
         f"W94 batch sweep: targets={len(targets)} batch_items={len(batch_items)} "
-        f"reused={reused_eval} persisted={total_persisted} "
+        f"reused={reused_eval} ranked_out={ranked_out} persisted={total_persisted} "
         f"fallback={batch_result.fallback_used} dlq={batch_result.pending_dlq} "
         f"cache_read={batch_result.cache_read_total}"
     )
@@ -526,6 +556,7 @@ def run_supplier_sweep_batch(config: dict) -> dict:
         "batch_fallback": batch_result.fallback_used,
         "cache_read_total": batch_result.cache_read_total,
         "reused_eval": reused_eval,
+        "ranked_out": ranked_out,
     }
 
 

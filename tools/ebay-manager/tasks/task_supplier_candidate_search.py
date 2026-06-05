@@ -44,6 +44,10 @@ from monitor.scrapers import check_candidate_availability  # noqa: E402
 # W223 step1 (2026-06-05): eBay 商品画像 URL を AI 評価に渡す穴を塞ぐ。
 # module-level import で test monkeypatch 互換 (W182 と同流儀)。
 from monitor.ebay_listing_image import get_ebay_image_url  # noqa: E402
+# W223 step4 (2026-06-05): 一覧テキストスキャン ranker (Haiku) で vision 精査対象を絞込。
+from monitor.supplier_candidate_ranker import (  # noqa: E402
+    rank_candidates_for_vision, DEFAULT_MAX_KEEP as RANKER_DEFAULT_MAX_KEEP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +341,9 @@ def run_supplier_candidate_search(
     # W223 step3 (2026-06-05): 既評価 (ebay_item_id + 正規化URL, 30日窓) の AI 判定を
     # 再利用して AI 呼出をスキップした件数。
     reused_eval = 0
+    # W223 step4 (2026-06-05): vision 評価候補は一旦 pending_new に貯め、ranker で絞込む。
+    pending_new: list[CandidateHit] = []
+    ranked_out = 0
     # W223 (2026-06-05): 生成済み search_keyword (Brand+品番) を優先使用。人間の
     # 「メーカー名+品番で検索」を模倣し、ebay_title 全文検索のノイズ候補を削減。
     # strict (search_keyword) で 0 件なら ebay_title に fallback (取りこぼし=退行防止)。
@@ -389,28 +396,53 @@ def run_supplier_candidate_search(
                     alt_listing_note=_prior.get('alt_listing_note') or '',
                 ))
                 continue
-            # ebay_item_id を渡すことで同 listing の過去判断履歴が Claude プロンプトに
-            # 注入される (Phase 1 学習). sku は brand 検索の自己除外と DB record で使用.
-            _sc = evaluate_candidate_with_claude(
-                h, ebay_title, ebay_image_url=ebay_image_url,
-                sku=sku, ebay_item_id=ebay_item_id,
+            # W223 step4: 新規候補は一旦 pending_new に収集 (ここでは評価しない)。
+            # 後段で ranker (Haiku) が vision 精査すべき候補を絞り込む。
+            pending_new.append(h)
+
+    # W223 step4 (2026-06-05): 一覧テキストスキャン ranker で vision 精査対象を絞込む。
+    # default OFF (use_candidate_ranker)。間引きは取りこぼし=機会損失リスクがあるため
+    # 明示有効化まで全件 vision 評価 (= step3 までの挙動を維持)。件数<=max_keep は
+    # ranker を呼ばず全件 (ranker 内でも二重ガード)。
+    _ranker_cfg = (config or {}).get("tasks_enabled", {}).get("supplier_sweep", {}) or {}
+    _use_ranker = bool(_ranker_cfg.get("use_candidate_ranker", False))
+    _max_keep = int(_ranker_cfg.get("candidate_ranker_max_keep", RANKER_DEFAULT_MAX_KEEP))
+    if _use_ranker and len(pending_new) > _max_keep:
+        _keep_idx = set(rank_candidates_for_vision(
+            ebay_title,
+            [{"title": h.title, "price_jpy": h.price_jpy} for h in pending_new],
+            max_keep=_max_keep,
+        ))
+    else:
+        _keep_idx = set(range(len(pending_new)))
+    ranked_out = len(pending_new) - len(_keep_idx)
+
+    for _i, h in enumerate(pending_new):
+        if _i not in _keep_idx:
+            continue  # ranker が vision 不要と判断 (捨てた候補は ranker 内で log 済)
+        _norm_url = _normalize_url(h.url)
+        # ebay_item_id を渡すことで同 listing の過去判断履歴が Claude プロンプトに
+        # 注入される (Phase 1 学習). sku は brand 検索の自己除外と DB record で使用.
+        _sc = evaluate_candidate_with_claude(
+            h, ebay_title, ebay_image_url=ebay_image_url,
+            sku=sku, ebay_item_id=ebay_item_id,
+        )
+        all_scored.append(_sc)
+        # W223 step3: AI 評価結果を台帳に記録 (却下含む)。API エラー時は記録しない
+        # (一時失敗の match_score=0 を 30 日固定して候補を silent 抑制しないため)。
+        if not _sc.eval_error:
+            record_candidate_evaluation(
+                ebay_item_id, _norm_url,
+                source_platform=h.source_platform,
+                candidate_title=h.title,
+                candidate_price_jpy=h.price_jpy,
+                match_score=_sc.match_score,
+                match_reasoning=_sc.match_reasoning,
+                junk_likely_untested=int(_sc.junk_likely_untested),
+                alt_listing_possible=int(_sc.alt_listing_possible),
+                alt_listing_note=_sc.alt_listing_note or None,
+                eval_model=CLAUDE_MODEL,
             )
-            all_scored.append(_sc)
-            # W223 step3: AI 評価結果を台帳に記録 (却下含む)。API エラー時は記録しない
-            # (一時失敗の match_score=0 を 30 日固定して候補を silent 抑制しないため)。
-            if not _sc.eval_error:
-                record_candidate_evaluation(
-                    ebay_item_id, _norm_url,
-                    source_platform=h.source_platform,
-                    candidate_title=h.title,
-                    candidate_price_jpy=h.price_jpy,
-                    match_score=_sc.match_score,
-                    match_reasoning=_sc.match_reasoning,
-                    junk_likely_untested=int(_sc.junk_likely_untested),
-                    alt_listing_possible=int(_sc.alt_listing_possible),
-                    alt_listing_note=_sc.alt_listing_note or None,
-                    eval_model=CLAUDE_MODEL,
-                )
 
     # settings.json から閾値を動的取得 (T6 で UI から変更可能)
     _alt0_threshold = _get_threshold(settings, "supplier_alt0_score_threshold", MATCH_SCORE_THRESHOLD)
@@ -495,7 +527,8 @@ def run_supplier_candidate_search(
         f"仕入先候補探索: sku={sku} found={len(all_scored)} persisted={persisted} "
         f"alt_listed={alt_listed} skipped_unprofitable={skipped_unprofitable} "
         f"skipped_low_score={skipped_low_score} excluded_self={excluded_self} "
-        f"excluded_unavailable={excluded_unavailable} reused_eval={reused_eval}"
+        f"excluded_unavailable={excluded_unavailable} reused_eval={reused_eval} "
+        f"ranked_out={ranked_out}"
     )
 
     # W100 (2026-05-06): リサーチ完了 = grace 待機の役目終了 → yahoo_grace_until クリア
@@ -519,6 +552,7 @@ def run_supplier_candidate_search(
         'excluded_self': excluded_self,
         'excluded_unavailable': excluded_unavailable,
         'reused_eval': reused_eval,
+        'ranked_out': ranked_out,
         'message': (
             f'{persisted}/{len(all_scored)} persisted '
             f'(alt0>={_alt0_threshold}, alt1>={_alt1_threshold}, '
