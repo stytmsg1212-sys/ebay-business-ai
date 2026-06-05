@@ -51,6 +51,8 @@ from monitor.database import (
 from calculator import (
     load_settings as _load_calc_settings,
     SETTINGS_FILE as _SETTINGS_FILE,
+    get_ebay_fvf_rate as _get_ebay_fvf_rate,
+    category_in_fee_table as _category_in_fee_table,
 )
 from monitor.credentials import get_ebay_credentials
 from monitor.ebay_client import (
@@ -81,7 +83,6 @@ def _calc_settings() -> dict:
 
 logger = logging.getLogger(__name__)
 
-_PAGE_SIZE = 25
 _MAX_COMPETITORS = 10       # 登録 active 競合の上限 (eBay business logic)
 _DISPLAY_CANDIDATES = 20    # CLI 候補 / W184 alerts 表示上限 (登録判断材料を増やすため拡大)
 
@@ -149,6 +150,11 @@ def _fetch_all_products() -> list[dict]:
                 el.weight_g, el.length_cm, el.width_cm, el.height_cm,
                 el.purchase_yen, el.lp_min_price, el.lp_breakeven_usd,
                 el.primary_market, el.duty_rate_pct, el.section232_class,
+                -- W222 (2026-06-05): per-listing 実カテゴリ。利益計算 (_cd_profit_breakdown)
+                -- と一覧「カテゴリ」列で実カテゴリ FVF を反映 (従来は SELECT 漏れで常に
+                -- 58248 fallback = 全 listing 既定 FVF 12.7%/13.6% で表示していた。floor は
+                -- 既に実カテゴリ反映済 = lowest_price L161、表示をそれに一致させる)。
+                el.category_id,
                 el.rank, el.includes, el.warranty,
                 el.point_yen, el.listing_description,
                 el.total_sold_count, el.watch_count, el.view_count,
@@ -766,12 +772,19 @@ def _profit_breakdown(p: dict) -> Optional[dict]:
     # W220 MEDIUM-1: DB の 0 (ポイント無し明示) を None に潰さない (is not None)。
     _point_yen = (_f_point if _f_point is not None
                   else (float(p["point_yen"]) if p.get("point_yen") is not None else None))
+    # W222 (2026-06-05): 利益計算の FVF カテゴリは floor (lowest_price) と同じ
+    # `use_category_fvf_floor` flag に連動 (ON=実カテゴリ / OFF=58248 固定)。flag を
+    # 揃えることで「hero 表示利益」「一覧粗利 (lp_breakeven 由来)」「自動値下げ下限
+    # (floor)」が同一 regime になり、表示と実下限の根拠が乖離しない (code-reviewer
+    # MEDIUM: flag OFF 復帰時の hero↔floor 乖離予防)。
+    _use_cat_fvf = bool(_calc_settings().get("use_category_fvf_floor", False))
+    _cat_for_calc = int(p.get("category_id") or 58248) if _use_cat_fvf else 58248
     bd = _cd_profit_breakdown(
         float(price), float(pyen), float(wt),
         float(f_l if f_l is not None else (p.get("length_cm") or 0)),
         float(f_wd if f_wd is not None else (p.get("width_cm") or 0)),
         float(f_h if f_h is not None else (p.get("height_cm") or 0)),
-        int(p.get("category_id") or 58248),
+        _cat_for_calc,
         _smt,
         get_db_version(),
         _adr,
@@ -833,11 +846,40 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
     else:
         bp_pill = ""
 
+    # W222 (2026-06-05): 実カテゴリ + FVF 実効率 pill。
+    # ⚠️ 利益計算 (_profit_breakdown) は floor (lowest_price) と同じ
+    # `use_category_fvf_floor` flag に連動する: ON=実カテゴリ FVF / OFF=58248 固定。
+    # pill は **実際に計算で使う率** を表示する (flag OFF や CSV 未収録は "既定" 明示で
+    # 誤認防止)。flag を hero/floor/一覧粗利で揃え、表示と自動値下げ下限の根拠を一致させる。
+    _cs = _calc_settings()
+    _use_cat_fvf = bool(_cs.get("use_category_fvf_floor", False))
+    _cat = p.get("category_id")
+    cat_pill = ""
+    if _cat:
+        _eff_cat = int(_cat) if _use_cat_fvf else 58248
+        try:
+            _crate = _get_ebay_fvf_rate(
+                _eff_cat, float(total), _cs.get("store_plan", "Premium"))
+            _in_tbl = _category_in_fee_table(_eff_cat)
+            if not _use_cat_fvf:
+                _note, _cls = " 既定(floor未連動)", "pm-pill-warn"
+            elif not _in_tbl:
+                _note, _cls = " 既定(CSV未収録)", "pm-pill-warn"
+            else:
+                _note, _cls = "", "pm-pill-info"
+            cat_pill = (
+                f'<span class="pm-pill {_cls}">'
+                f'カテゴリ: {_cat} (FVF {_crate * 100:.1f}%{_note})</span>'
+            )
+        except (ValueError, TypeError, KeyError):
+            cat_pill = f'<span class="pm-pill pm-pill-info">カテゴリ: {_cat}</span>'
+
     st.markdown(
         f'<div style="margin: 4px 0 12px 0;">'
         f'<span class="pm-pill pm-pill-info">ID: {p["ebay_item_id"]}</span>'
         f'<span class="pm-pill pm-pill-info">SKU: {sku}</span>'
         f'<span class="pm-pill pm-pill-info">区分: {market}</span>'
+        f'{cat_pill}'
         f'<span class="pm-pill pm-pill-info">Rank: {rank}</span>'
         f'<span class="pm-pill {"pm-pill-bad" if src_status == "out_of_stock" else "pm-pill-ok" if src_status == "in_stock" else "pm-pill-warn"}">仕入先: {src_emoji} {src_status}</span>'
         f'{bp_pill}'
@@ -1378,27 +1420,13 @@ def _render_left_basic_and_physical(
         + (" — 入力あり" if (st.session_state.get(_desc_key) or "").strip() else " — 空"),
         expanded=False,
     ):
-        if st.button(
-            "📥 eBayから現在の説明を取得", key=f"pm_desc_fetchbtn_{eid}",
-            help="eBay GetItem で現在の商品説明 (Description) を取得して下の欄に表示。"
-                 "保存すると MonoDeck DB に保持されます (eBay へは未送信)。",
-        ):
-            from monitor.ebay_client import get_single_listing
-            _creds = get_ebay_credentials(config or {})
-            if not all(_creds.get(k) for k in ("app_id", "dev_id", "cert_id", "user_token")):
-                st.error("eBay API 認証情報が未設定です (設定タブ参照)")
-            else:
-                with st.spinner("eBay から説明を取得中..."):
-                    _snap = get_single_listing(
-                        eid, _creds["app_id"], _creds["dev_id"],
-                        _creds["cert_id"], _creds["user_token"],
-                    )
-                if _snap is not None and _snap.get("description") is not None:
-                    st.session_state[_desc_key] = _snap.get("description") or ""
-                    st.success("取得しました。下の欄に表示中。保存で DB に保持します。")
-                    st.rerun()
-                else:
-                    st.error("取得失敗 (GetItem 応答なし / Description 空)")
+        # W225 (2026-06-05): 旧「📥 eBayから現在の説明を取得」ボタンはここ (st.form 内)
+        # にあり、st.form 内に st.button は置けず editor 展開時に StreamlitAPIException
+        # でクラッシュしていた (今朝の C-fix で混入、表行選択で必ず開く本 W で顕在化)。
+        # 取得は即時アクションのため form **外** ボタン (_render_desc_fetch_button) へ
+        # 移設。ここは編集欄のみ。取得値は session_state[pm_desc_{eid}] 経由で連携。
+        st.caption("eBay から現在の説明を取り込むには、フォーム上部の "
+                   "「📥 eBayから現在の説明を取得」を使用 (取得後この欄に表示)。")
         editing["listing_description"] = st.text_area(
             "description",
             key=_desc_key,
@@ -3167,31 +3195,57 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
 # Per-product render
 # =============================================================================
 
-def _render_one_product(p: dict, config: dict) -> None:
-    """1 商品アコーディオン (トグルボタン + if is_open) + 2 列 layout + st.form + 3 submit.
+def _render_desc_fetch_button(eid: str, config: dict) -> None:
+    """description を eBay GetItem で取得し編集欄 (session_state[pm_desc_{eid}])
+    に流し込む form **外** ボタン (W225 2026-06-05).
+
+    st.form 内に st.button は置けないため、フォーム外の即時アクションとして分離
+    (旧 C-fix は form 内に置き editor 展開時クラッシュしていた)。取得値は form 内
+    description text_area (key=pm_desc_{eid}) が次 rerun で読む (同 key 連携)。
+    """
+    _desc_key = f"pm_desc_{eid}"
+    with st.expander("📥 eBay から現在の説明を取得 (description)", expanded=False):
+        if st.button(
+            "📥 eBayから現在の説明を取得", key=f"pm_desc_fetchbtn_{eid}",
+            help="eBay GetItem で現在の商品説明 (Description) を取得し、下の編集"
+                 "フォームの説明欄に表示。保存で MonoDeck DB に保持 (eBay へは未送信)。",
+        ):
+            from monitor.ebay_client import get_single_listing
+            _creds = get_ebay_credentials(config or {})
+            if not all(_creds.get(k) for k in ("app_id", "dev_id", "cert_id", "user_token")):
+                st.error("eBay API 認証情報が未設定です (設定タブ参照)")
+            else:
+                with st.spinner("eBay から説明を取得中..."):
+                    _snap = get_single_listing(
+                        eid, _creds["app_id"], _creds["dev_id"],
+                        _creds["cert_id"], _creds["user_token"],
+                    )
+                if _snap is not None and _snap.get("description") is not None:
+                    st.session_state[_desc_key] = _snap.get("description") or ""
+                    st.success("取得しました。下の編集フォームの説明欄に表示中。"
+                               "保存で DB に保持します。")
+                    st.rerun()
+                else:
+                    st.error("取得失敗 (GetItem 応答なし / Description 空)")
+
+
+def _render_product_editor(p: dict, config: dict) -> None:
+    """表で選択された 1 商品の編集ゾーンを描画 (2 列 layout + st.form + 3 submit).
 
     UI 改修 (2026-05-11 v3):
       - 編集 inputs は `st.form` で囲み、submit まで rerun が走らない (user 入力中の画面暗化解消)
       - submit button 3 種: 💾 DB保存 / 📤 DB + eBay 反映 / 💡 利益計算 (breakeven 再計算)
-    W221 (2026-06-04 perf): 旧 `st.expander` をトグルボタン + `if is_open:` に置換。
-      閉じた商品は body (入れ子 expander 含む) を描画せず = 25商品 228 expander →
-      開いた 1 商品分のみ (tab 描画 4.5s→1.0s)。単一 open は pm_keep_open_eid で管理
-      (トグルが set/clear、保存後も submit handler が同 state を維持)。
+    W225 (2026-06-05): 一覧を eBay連携タブと同じ st.dataframe 表形式に変更。
+      旧 W221 のトグルボタン + `if is_open:` アコーディオンは廃止し、表の行選択
+      (render_product_management 側の single-row 選択) で開いた 1 商品だけを
+      この関数で描画する。body は従来の `if is_open:` 内容を不変で実行 (K2)。
+      body 内の `pm_keep_open_eid` 書込は表選択 (widget state) と役割が重なるが
+      実害なしのため残置。
     """
     eid = p["ebay_item_id"]
-    header = _build_expander_header(p)
-
-    # W221 (2026-06-04 perf): アコーディオン化。閉じた商品は body を描画せず
-    # トグルボタンのみ = 25商品で 228 expander → 開いた 1 商品分のみに激減
-    # (tab 描画 ~4.5s の主因 = 閉商品も入れ子 expander 9個を全描画していた)。
-    # 単一 open (既存 pm_keep_open_eid を再利用、保存後も handler が維持)。
-    keep_open_eid = st.session_state.get("pm_keep_open_eid")
-    is_open = (eid == keep_open_eid)
-    if st.button(("🔽 " if is_open else "▶️ ") + header,
-                 key=f"pm_toggle_{eid}", use_container_width=True):
-        st.session_state["pm_keep_open_eid"] = None if is_open else eid
-        st.rerun()
-    if is_open:
+    # W225: 呼出元が選択行の 1 商品のみを渡す = 常に編集ゾーンを描画する。
+    # body を再 indent しないため guard を残す (差分最小・K2 surgical)。
+    if True:
         # ── Title (商品名 full text) ──
         st.markdown(f"### {p.get('title', '')}")
 
@@ -3244,6 +3298,13 @@ def _render_one_product(p: dict, config: dict) -> None:
         left, right = st.columns([1, 1], gap="medium")
 
         with left:
+            # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
+            # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
+            # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
+            # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
+            # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
+            # form 内 description text_area (同 key) が次 rerun で読む。
+            _render_desc_fetch_button(eid, config)
             # 左列上段: 編集 inputs + submit buttons (form 内、rerun 抑制)
             with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
                 editing = _render_left_basic_and_physical(
@@ -4143,6 +4204,45 @@ def _render_sale_warning_banner() -> None:
     st.markdown("---")
 
 
+def _build_list_dataframe(products: list[dict]) -> pd.DataFrame:
+    """一覧表 (eBay連携タブと同じ st.dataframe 形式) 用の DataFrame を返す
+    (W225 2026-06-05).
+
+    行順 = products の順 (= _apply_filter_and_sort 済)。"Item ID" 列に ebay_item_id
+    を持たせ、行選択後はこの列値で listing を解決する (sku-rules: SKU で束ねず
+    ebay_item_id で識別)。金額・粗利は eBay連携タブと同じく整形済文字列で表示
+    (見た目を揃える、計算は既存 helper を流用)。
+    """
+    rows: list[dict] = []
+    for p in products:
+        cp, sh, total = _total_price(p)
+        profit = _estimate_profit_usd(p)
+        cmin = p.get("competitor_min_price")
+        title = p.get("title") or ""
+        rows.append({
+            "在庫": _status_emoji(p.get("source_status")),
+            "📎": "📎" if p.get("has_note") else "",
+            "Title": (title[:50] + "…") if len(title) > 50 else title,
+            "Item ID": str(p.get("ebay_item_id") or ""),
+            "SKU": p.get("sku") or "",
+            "区分": p.get("primary_market") or "-",
+            # W222: 実カテゴリ (利益計算 FVF の根拠)。未設定は "-"。
+            "カテゴリ": str(p.get("category_id")) if p.get("category_id") else "-",
+            "Rank": p.get("rank") or "-",
+            "価格": f"${cp:,.2f}",
+            "送料": f"${sh:,.2f}",
+            "総額": f"${total:,.2f}",
+            "粗利": (
+                f"{'+' if profit >= 0 else '-'}${abs(profit):,.0f}"
+                if profit is not None else "—"
+            ),
+            "競合最安": (f"${float(cmin):,.2f}" if cmin else "—"),
+            "sold": int(p.get("total_sold_count") or 0),
+            "watch": int(p.get("watch_count") or 0),
+        })
+    return pd.DataFrame(rows)
+
+
 def render_product_management(config: dict) -> None:
     """商品管理 main tab エントリーポイント."""
     # ========================================================================
@@ -4521,9 +4621,9 @@ def render_product_management(config: dict) -> None:
 
     st.title("商品管理")
     st.caption(
-        "全 active listing を一覧表示. expander で展開すると 1 商品の "
-        "基本情報 / 物理属性 / 仕入先候補 / 在庫監視 / 利益計算 / ライバル を 2 列 layout で表示. "
-        "編集 + 保存で DB 反映 + breakeven 自動再計算."
+        "全 active listing を表形式で一覧表示 (eBay連携タブと同じ). 行をクリックすると "
+        "1 商品の基本情報 / 物理属性 / 仕入先候補 / 在庫監視 / 利益計算 / ライバル を "
+        "表の下に 2 列 layout で展開. 編集 + 保存で DB 反映 + breakeven 自動再計算."
     )
 
     # W140: メモ付き listing 売却の未対応警告を最上部に表示 (発送見落とし防止)
@@ -4565,20 +4665,89 @@ def render_product_management(config: dict) -> None:
     filtered = _apply_filter_and_sort(products)
     st.caption(f"表示: {len(filtered)} / {n} listing")
 
-    # ── ページング ──
-    total_pages = max(1, (len(filtered) + _PAGE_SIZE - 1) // _PAGE_SIZE)
-    page = st.number_input(
-        "ページ",
-        min_value=1,
-        max_value=total_pages,
-        value=1,
-        key="pm_page",
+    # ── 一覧 (W225: eBay連携タブと同じ st.dataframe 表形式。行クリックで編集) ──
+    # 旧: page_items を _render_one_product でトグル縦積み (W221 アコーディオン)。
+    # 新: filtered 全件を 1 つの表に出し、行選択 (single-row) でその商品の
+    # 編集ゾーンを表の下に展開する。表は仮想スクロールで全件描画コストが軽い
+    # ため、ページング (旧 _PAGE_SIZE) は廃止。listing 識別は ebay_item_id
+    # (sku-rules: SKU で束ねない)。
+    #
+    # ⚠️ money-direct ガード (W225 code-reviewer HIGH-1/HIGH-2):
+    #  HIGH-2: フィルタ/並び順を変えると filtered が再構成され行数・順序が変わる。
+    #          dataframe の選択 (selection.rows) は widget key に紐づき rerun を跨いで
+    #          残留するため、残留 index が **別 listing** を指して誤って編集ゾーンを
+    #          開く恐れ (価格/送料の誤編集 = 金銭直結)。→ フィルタ/並び順の signature
+    #          変化を検出したら選択を破棄 (dataframe 再描画前に widget state を削除)。
+    #  HIGH-1: st.dataframe は組込みカラムソート (ヘッダクリック) を無効化できない
+    #          (Streamlit 未対応)。組込みソート後は selection.rows index と視覚行が
+    #          ずれ得る (streamlit#11345)。→ 解決を **表示中の Item ID 列値** で行い、
+    #          編集ゾーン冒頭に「編集中 listing」を明示 (クリック行と不一致を即視認)。
+    #          並び順は本タブの「並び順」selectbox を使う運用を推奨 (caption で案内)。
+    _filter_sig = (
+        st.session_state.get("pm_search", ""),
+        st.session_state.get("pm_sort", ""),
+        st.session_state.get("pm_only_missing", False),
+        st.session_state.get("pm_only_no_comp", False),
+        st.session_state.get("pm_only_oos", False),
+        st.session_state.get("pm_only_us", False),
+        st.session_state.get("pm_only_neg", False),
+        st.session_state.get("pm_only_initial_pending", False),
     )
-    start = (int(page) - 1) * _PAGE_SIZE
-    page_items = filtered[start : start + _PAGE_SIZE]
-    st.caption(f"ページ {int(page)} / {total_pages} ({len(page_items)} 件表示)")
-
-    # ── 一覧 ──
+    if st.session_state.get("pm_list_filter_sig") != _filter_sig:
+        st.session_state["pm_list_filter_sig"] = _filter_sig
+        # フィルタ/並び順が変わった = 行集合が変わった → 残留選択を破棄
+        # (dataframe 再描画前に widget state を削除し選択を空に戻す)。
+        st.session_state.pop("pm_list_table", None)
     st.markdown("---")
-    for p in page_items:
-        _render_one_product(p, config)
+    st.caption(
+        "📋 行をクリックすると、その商品の編集ゾーンが下に開きます。"
+        "並び替えは上の「並び順」を使用してください "
+        "(表ヘッダのソートは選択行とずれる場合があります)。"
+    )
+    _list_df = _build_list_dataframe(filtered)
+    _event = st.dataframe(
+        _list_df,
+        width="stretch",
+        hide_index=True,
+        height=560,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="pm_list_table",
+        column_config={
+            "在庫": st.column_config.TextColumn("在庫", width="small"),
+            "📎": st.column_config.TextColumn("📎", width="small"),
+            "Title": st.column_config.TextColumn("Title", width="large"),
+            "粗利": st.column_config.TextColumn(
+                "粗利", help="現在価格 − 損益分岐 (USD)。未入力は —"),
+            "競合最安": st.column_config.TextColumn(
+                "競合最安", help="競合の最安総額 (商品+送料)。未登録は —"),
+        },
+    )
+
+    # 行選択 → その listing の編集ゾーンを表の下に描画。解決は **表示中の DataFrame の
+    # Item ID 列値** (iloc[idx]) で行う = 表示と一致 (sku-rules: ebay_item_id で識別)。
+    _sel_rows = list(_event.selection.rows) if _event and _event.selection else []
+    st.markdown("---")
+    if _sel_rows:
+        _idx = _sel_rows[0]
+        _sel_p = None
+        _sel_eid = None
+        if 0 <= _idx < len(_list_df):
+            _sel_eid = str(_list_df.iloc[_idx]["Item ID"])
+            _sel_p = next(
+                (x for x in filtered
+                 if str(x.get("ebay_item_id")) == _sel_eid),
+                None,
+            )
+        if _sel_p is not None:
+            # money-direct 確認バナー: どの listing を編集中か明示 (HIGH-1 視認防御)
+            _bt = (_sel_p.get("title") or "")[:70]
+            st.success(
+                f"✏️ 編集中: **{_bt}** — Item ID `{_sel_eid}` "
+                f"／ クリックした行と一致するか確認のうえ編集してください。"
+            )
+            _render_product_editor(_sel_p, config)
+        else:
+            st.info("選択した行の商品が見つかりません (フィルタ変更後は行を再選択してください)。")
+    else:
+        st.info("☝️ 上の表から商品の行をクリックすると、ここに編集ゾーンが開きます。")
