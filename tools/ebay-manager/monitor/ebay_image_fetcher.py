@@ -154,7 +154,10 @@ def _api_image_urls(ebay_item_id: str) -> list[str]:
     except Exception as e:  # noqa: BLE001 API 例外多様
         logger.debug(f"GetItem call failed: {e}")
         return []
-    body = (resp or {}).get("body", "") or ""
+    # 2026-06-05 fix: _call_trading_api はレスポンス XML を "raw" キーで返す
+    # ("body" キーは存在せず常に空 → PictureURL 0 件で API 経路が無言で死んでいた)。
+    # W223 step1 の実機 verify (GetItem Ack=Success・PictureURL 4 枚あるのに None) で発覚。
+    body = (resp or {}).get("raw", "") or ""
     return re.findall(r"<PictureURL>(https?://[^<]+)</PictureURL>", body)
 
 
