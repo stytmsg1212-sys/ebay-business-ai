@@ -91,6 +91,20 @@ def sync_sku_conversion_to_db() -> Dict:
     return {'updated': updated, 'not_found': not_found}
 
 
+def _should_auto_zero(status: str, prev_status) -> bool:
+    """仕入先OOS → eBay在庫 自動0化 の候補判定 (純関数、2026-06-05)。
+
+    - ページなし: 即時 (Yahoo等のページ消滅 = 確定終了。'エラー'(fetch失敗) とは別分類で信頼度高)。
+    - 在庫無: prev も在庫無 = 2回連続検知のみ (一時的 scrape 誤検知で正常listingを0化しない)。
+    - それ以外 (在庫有/unknown/エラー/初回在庫無): 0化しない。
+    """
+    if status == 'ページなし':
+        return True
+    if status == '在庫無' and prev_status == '在庫無':
+        return True
+    return False
+
+
 def sync_inventory_status_to_db() -> Dict:
     """
     inventory_check_results.json → ebay_listings テーブルに反映
@@ -112,6 +126,10 @@ def sync_inventory_status_to_db() -> Dict:
     conn = get_conn()
     updated = 0
     not_found = 0
+    # 2026-06-05: 仕入先OOS → eBay在庫 自動0化 の候補 (履行不能販売の防止)。
+    # 仕入先(Yahoo等)が売切なのに eBay在庫が残り売れてしまう事故の恒久対策。
+    # ページなし = 即時 (ページ消滅 = 確定終了)。在庫無 = prev も在庫無 (2回連続) で誤検知回避。
+    oos_to_zero: list[str] = []
 
     for item in results:
         sku = item.get('sku', '')  # log 用 (識別 key としては使わない、SKU rule 準拠)
@@ -182,13 +200,18 @@ def sync_inventory_status_to_db() -> Dict:
                 "WHERE ebay_item_id=? AND source_out_of_stock_since IS NOT NULL",
                 (ebay_item_id,),
             )
+
+        # 仕入先OOS → eBay在庫 自動0化 の候補収集 (実 0化は run_sync_data_stores で creds 使用)。
+        if _should_auto_zero(status, prev_status):
+            oos_to_zero.append(ebay_item_id)
+
         updated += 1
 
     conn.commit()
     conn.close()
 
     logger.info(f"在庫ステータス統合: {updated}件更新, {not_found}件未一致")
-    return {'updated': updated, 'not_found': not_found}
+    return {'updated': updated, 'not_found': not_found, 'oos_to_zero': oos_to_zero}
 
 
 def sync_enrichment_to_db() -> Dict:
@@ -236,6 +259,86 @@ def sync_enrichment_to_db() -> Dict:
     return {'updated': updated}
 
 
+def _notify_auto_zero(done: list, config) -> None:
+    """auto-zero した listing を 1 メッセージで Discord 通知 (R-11: 到達は user 視認)."""
+    try:
+        webhook = ((config or {}).get("notifications", {})
+                   .get("discord", {}).get("webhook_url") or "").strip()
+        if not webhook:
+            logger.warning(f"[auto-zero] Discord webhook 未設定 = {len(done)} 件通知 skip")
+            return
+        from notifiers.discord_notifier import DiscordNotifier
+        lines = [f"⚠️ 仕入先OOS → eBay在庫0化 (履行不能防止) {len(done)} 件"]
+        for r in done[:20]:
+            lines.append(
+                f"・[{r.get('source_status')}] {r['ebay_item_id']} "
+                f"{(r.get('title') or '')[:40]}"
+            )
+        if len(done) > 20:
+            lines.append(f"...他 {len(done) - 20} 件")
+        DiscordNotifier(webhook).send_message("\n".join(lines))
+    except Exception as e:  # noqa: BLE001 — 通知失敗は本処理を止めない (0化は完了済)
+        logger.warning(f"[auto-zero] Discord 通知失敗: {e}")
+
+
+def auto_zero_supplier_oos(ebay_item_ids: list, config) -> Dict:
+    """仕入先OOS 検知 listing の eBay 在庫を 0 化 (履行不能販売の防止、2026-06-05)。
+
+    候補 (sync で収集: ページなし=即時 / 在庫無=2回連続) のうち、
+    **qty>=1 + ebay* SKU + 未退役 + 未確認** のみ実 0 化 (account-direct = 厳格絞り込み)。
+    仕入先ページ消滅・在庫切れ = 仕入不可なので 0 化に損失なし (安全側)。各件 log + Discord 通知。
+    """
+    if not ebay_item_ids:
+        return {'zeroed': 0, 'skipped': 0, 'failed': 0}
+    from monitor.credentials import get_ebay_credentials
+    from monitor.database import get_conn, update_ebay_listing_quantity
+    from monitor.ebay_client import revise_inventory_quantity
+    from ui_cache import bump_db_version
+
+    creds = get_ebay_credentials(config or {})
+    if not all(creds.get(k) for k in ("app_id", "dev_id", "cert_id", "user_token")):
+        logger.warning("[auto-zero] eBay 認証情報不足 = 0化 skip (silent skip 防止のため明示)")
+        return {'zeroed': 0, 'skipped': len(ebay_item_ids), 'failed': 0, 'reason': 'no_creds'}
+
+    with get_conn() as conn:
+        ph = ",".join("?" * len(ebay_item_ids))
+        rows = [dict(r) for r in conn.execute(
+            f"""SELECT ebay_item_id, sku, title, quantity_ebay, source_status
+                FROM ebay_listings
+                WHERE ebay_item_id IN ({ph})
+                  AND quantity_ebay >= 1 AND COALESCE(is_ended,0)=0
+                  AND sku GLOB 'ebay*' AND COALESCE(risk_confirmed,0)=0""",
+            ebay_item_ids,
+        ).fetchall()]
+
+    zeroed = failed = 0
+    done = []
+    for r in rows:
+        eid = r["ebay_item_id"]
+        res = revise_inventory_quantity(
+            eid, 0, creds["app_id"], creds["dev_id"], creds["cert_id"], creds["user_token"],
+        )
+        if res.get("success"):
+            update_ebay_listing_quantity(eid, 0)
+            bump_db_version()
+            zeroed += 1
+            done.append(r)
+            logger.info(
+                f"[auto-zero] {eid} 仕入先{r.get('source_status')} → eBay在庫0 "
+                f"| {(r.get('title') or '')[:40]}"
+            )
+        else:
+            failed += 1
+            logger.warning(f"[auto-zero] {eid} 0化失敗: {res.get('message')}")
+    if done:
+        _notify_auto_zero(done, config)
+    logger.info(
+        f"[auto-zero] 完了: 0化 {zeroed} 件 / 対象外 {len(ebay_item_ids) - len(rows)} 件 "
+        f"(qty=0等) / 失敗 {failed} 件"
+    )
+    return {'zeroed': zeroed, 'skipped': len(ebay_item_ids) - len(rows), 'failed': failed}
+
+
 def run_sync_data_stores(config) -> Dict:
     """
     データストア統合タスク
@@ -261,6 +364,12 @@ def run_sync_data_stores(config) -> Dict:
         # Step 2: 在庫ステータス統合
         inv_result = sync_inventory_status_to_db()
 
+        # Step 2b (2026-06-05): 仕入先OOS → eBay在庫 自動0化 (履行不能販売の防止)。
+        # source_status が今 fresh なので直後に実行。creds は config 経由。
+        zero_result = auto_zero_supplier_oos(inv_result.get('oos_to_zero', []), config)
+        if zero_result.get('zeroed'):
+            logger.info(f"[auto-zero] 仕入先OOS {zero_result['zeroed']} 件の eBay在庫を0化")
+
         # Step 3: 物理データ統合
         enrich_result = sync_enrichment_to_db()
 
@@ -271,6 +380,7 @@ def run_sync_data_stores(config) -> Dict:
             'success': True,
             'sku_sync': sku_result,
             'inventory_sync': inv_result,
+            'auto_zero': zero_result,
             'enrichment_sync': enrich_result,
             'total_updated': total,
             'message': f'データストア統合完了: {total}件更新'
