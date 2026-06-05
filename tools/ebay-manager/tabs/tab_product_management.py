@@ -1382,6 +1382,28 @@ def _render_left_basic_and_physical(
     # 誤上書きする事故になる。_apply_listing_content_to_ebay は user が widget を
     # **実際に変更した時のみ** Condition を push する (BP/+each dirty-flag と同型)。
     editing["rank_render_initial"] = _cur_rank or None
+    # W227 (2026-06-06 user 要望): ランク選択時に迷わないよう 8 段階の早見表を
+    # 折りたたみで掲示 (CLAUDE.md コンディションランク 8 段階)。eBay Condition との
+    # 対応も併記 (N=New / S=Open Box / A-PO=Used / As-Is=For parts)。
+    with st.expander("📖 商品ランク早見表 (どれにするか迷ったら)", expanded=False):
+        st.markdown(
+            "| ランク | 意味 | 外観 × 動作 | eBay Condition |\n"
+            "|---|---|---|---|\n"
+            "| **N** | 新品・未開封 | シュリンク / 工場出荷 | New (1000) |\n"
+            "| **S** | 新品同様 | 開封済だが未使用・使用痕なし | Open Box (1500※) |\n"
+            "| **A** | 美品・動作確認済 | 小さな使用痕、全機能動作 | Used (3000) |\n"
+            "| **B** | 並品・動作確認済 | 目立つ使用痕、全機能動作 | Used (3000) |\n"
+            "| **C** | 使用感あり・動作確認済 | 使用感強い、全機能動作 | Used (3000) |\n"
+            "| **D** | 難あり・動作確認済 | 外観/機能に問題、動作は限定的 | Used (3000) |\n"
+            "| **PO** | 通電のみ | 電源 ON 確認だけ・動作未確認 | Used (3000) |\n"
+            "| **As-Is** | 未確認 / 部品取り | 無保証販売・**理由必須** | For parts (7000) |\n"
+        )
+        st.caption(
+            "判別のコツ: 新品シュリンク=**N** / 未使用だが開封・保管長め=**S** / "
+            "動作確認済の中古は使用痕の程度で **A→B→C→D** / 通電だけ=**PO** / "
+            "ジャンク・部品取りは**As-Is(理由必須)**。"
+            "※ S(Open Box=1500) は一部カテゴリで不可 → eBay 反映時に Used(3000) へ自動降格 (通知あり)。"
+        )
 
     # W220 slice3 (2026-06-04): Condition 理由 (eBay ConditionDescription)。
     # ランクを Used(A/B/C/D/PO) / As-Is に変えて 📤eBay反映 する時に送る状態説明。
