@@ -93,7 +93,7 @@ def detect_long_term_out_of_stock(
             """SELECT sku, ebay_item_id, source, source_url,
                       source_out_of_stock_since, source_last_checked
                FROM ebay_listings
-               WHERE source_status='在庫無'
+               WHERE source_status IN ('在庫無', 'ページなし')
                  AND (is_ended IS NULL OR is_ended=0)
                  AND source_out_of_stock_since IS NOT NULL
                  AND source_out_of_stock_since <= datetime('now', ?)""",

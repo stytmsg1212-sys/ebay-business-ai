@@ -232,9 +232,12 @@ def match_source_status_to_ebay() -> int:
         update_ebay_listing_status(ebay_item_id, source_status)
 
         # source_out_of_stock_since の同期ロジック
+        # 2026-06-05 user 要望: 「ページなし」(仕入先ページ消滅) も 「在庫無」(売切) と
+        # 同じ OOS 扱い (long-term OOS 追跡 → supplier_sweep/select の研究対象化)。
+        _oos_states = ('在庫無', 'ページなし')
         try:
-            if source_status == '在庫無' and prev_status != '在庫無':
-                # 新規に在庫切れ → 開始日セット
+            if source_status in _oos_states and prev_status not in _oos_states:
+                # 新規に仕入先OOS (在庫無 or ページなし) → 開始日セット
                 with _get_conn() as conn:
                     conn.execute(
                         "UPDATE ebay_listings SET source_out_of_stock_since=CURRENT_TIMESTAMP "

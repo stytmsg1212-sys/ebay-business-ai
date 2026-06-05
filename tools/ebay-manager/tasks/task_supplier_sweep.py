@@ -93,7 +93,7 @@ def _fetch_sweep_targets(
         FROM ebay_listings l
         WHERE l.source_out_of_stock_since IS NOT NULL
           AND l.source_out_of_stock_since <= datetime('now', ? )
-          AND l.source_status = '在庫無'
+          AND l.source_status IN ('在庫無', 'ページなし')
           AND (l.is_ended IS NULL OR l.is_ended=0)
           AND l.sku GLOB 'ebay*'
           AND (l.yahoo_grace_until IS NULL OR l.yahoo_grace_until <= datetime('now'))

@@ -186,8 +186,9 @@ def sync_inventory_status_to_db() -> Dict:
         )
 
         # 在庫切れ開始日は、ebay_sync が未処理 (source_out_of_stock_since IS NULL) かつ
-        # ここで新規に在庫無になる場合のみ、フォールバックで checked_at をセット
-        if status == '在庫無' and prev_status != '在庫無':
+        # ここで新規に仕入先OOS になる場合のみ、フォールバックで checked_at をセット。
+        # 2026-06-05: 「ページなし」も「在庫無」と同じ OOS 扱い (long-term OOS 追跡)。
+        if status in ('在庫無', 'ページなし') and prev_status not in ('在庫無', 'ページなし'):
             conn.execute(
                 """UPDATE ebay_listings SET source_out_of_stock_since=?
                    WHERE ebay_item_id=? AND source_out_of_stock_since IS NULL""",

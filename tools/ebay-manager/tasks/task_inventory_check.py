@@ -167,8 +167,11 @@ def detect_inventory_changes(current_results: list, previous_results: dict) -> d
                     'changed_at': datetime.now().isoformat()
                 })
 
-                # 特に「在庫有 → 在庫無」を追跡
-                if prev_status == '在庫有' and current_status == '在庫無':
+                # 「在庫有 → 仕入先OOS」を追跡。2026-06-05 user 要望: 仕入先ページ消滅
+                # (ページなし) も 在庫無(売切) と同じ OOS 扱い → 代替仕入先の候補探索を起動。
+                # Yahoo の grace (24h 再出品待ち) は下流 _classify_yahoo_grace が判定するため
+                # ここで両方含めても整合 (ページ消滅で end_status 読めない時は即リサーチに倒れる)。
+                if prev_status == '在庫有' and current_status in ('在庫無', 'ページなし'):
                     became_out_of_stock.append({
                         'url': url,
                         'sku': current.get('sku'),
@@ -343,8 +346,10 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
                 # + NOT EXISTS を ebay_item_id 単位に (兄弟 listing silent 抜け解消).
                 # W100 (2026-05-06): yahoo_grace_until > now の listing は除外
                 # (ヤフオク終了 + 24h の再出品慣行待機).
+                # 2026-06-05 user 要望: 「ページなし」(仕入先ページ消滅) も 「在庫無」(売切)
+                # と同じ OOS 扱い → 代替仕入先候補の探索対象に含める。
                 """SELECT l.ebay_item_id, l.sku FROM ebay_listings l
-                    WHERE l.source_status = '在庫無'
+                    WHERE l.source_status IN ('在庫無', 'ページなし')
                       AND (l.is_ended IS NULL OR l.is_ended=0)
                       AND l.quantity_ebay >= 1
                       AND l.sku GLOB 'ebay*'
