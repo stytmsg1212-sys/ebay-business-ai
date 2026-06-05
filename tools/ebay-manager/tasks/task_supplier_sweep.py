@@ -43,6 +43,9 @@ from tasks.task_supplier_candidate_search import (  # noqa: E402
     MATCH_SCORE_THRESHOLD,
     ALT_LISTING_SCORE_THRESHOLD,
 )
+# W223 step1 (2026-06-05): eBay 商品画像 URL を AI 評価に渡す穴を塞ぐ。
+# 旧 listing.get("ebay_image_url") は列が無く常に None だった (画像対画像が未稼働)。
+from monitor.ebay_listing_image import get_ebay_image_url  # noqa: E402
 from calculator import (  # noqa: E402
     check_supplier_candidate_profitable, load_settings,
 )
@@ -273,7 +276,9 @@ def run_supplier_sweep_batch(config: dict) -> dict:
             continue
         listing_by_eid[eid] = listing
         ebay_title = listing.get("title") or ""
-        ebay_image_url = listing.get("ebay_image_url")  # W9 後の image url、無ければ None
+        # W223 step1 (2026-06-05): DB cache (30日) → miss 時 GetItem。取得失敗は None。
+        # 旧: listing.get("ebay_image_url") は列欠落で常に None = 画像対画像が未稼働だった。
+        ebay_image_url = get_ebay_image_url(eid)
         listing_url_norm = _normalize_url(listing.get("source_url") or "")
         # W223 (2026-06-05): search_keyword (Brand+品番) 優先、0件で ebay_title fallback。
         _strict_kw = (listing.get("search_keyword") or "").strip()

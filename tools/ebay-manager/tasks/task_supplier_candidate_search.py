@@ -40,6 +40,9 @@ from monitor.claude_evaluator import evaluate_match, EvaluationResult  # noqa: E
 # 旧コードは関数内 local import で task module attribute に存在せず monkeypatch 不能、
 # 結果 test_supplier_candidate_self_exclude.py が実 HTTP fetch を発火して壊れていた.
 from monitor.scrapers import check_candidate_availability  # noqa: E402
+# W223 step1 (2026-06-05): eBay 商品画像 URL を AI 評価に渡す穴を塞ぐ。
+# module-level import で test monkeypatch 互換 (W182 と同流儀)。
+from monitor.ebay_listing_image import get_ebay_image_url  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +305,10 @@ def run_supplier_candidate_search(
                 'message': f'ebay_item_id not found: {ebay_item_id}'}
 
     ebay_title = listing.get('title') or ''
+    # W223 step1 (2026-06-05): eBay 商品画像を AI 評価に渡す (画像対画像で精度向上)。
+    # 旧: ebay_image_url 未指定 = 候補画像 vs eBay タイトル文字の非対称比較で精度低下。
+    # DB cache (30 日) → miss 時のみ GetItem 1 回。取得失敗は None で fail-open。
+    ebay_image_url = get_ebay_image_url(ebay_item_id)
 
     settings = load_settings()
     fx = float(settings.get('exchange_rate', 155.0))
@@ -359,7 +366,8 @@ def run_supplier_candidate_search(
             # ebay_item_id を渡すことで同 listing の過去判断履歴が Claude プロンプトに
             # 注入される (Phase 1 学習). sku は brand 検索の自己除外と DB record で使用.
             all_scored.append(evaluate_candidate_with_claude(
-                h, ebay_title, sku=sku, ebay_item_id=ebay_item_id,
+                h, ebay_title, ebay_image_url=ebay_image_url,
+                sku=sku, ebay_item_id=ebay_item_id,
             ))
 
     # settings.json から閾値を動的取得 (T6 で UI から変更可能)

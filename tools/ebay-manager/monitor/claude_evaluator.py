@@ -404,13 +404,18 @@ def evaluate_match(
     """
     Claude API で仕入先候補の一致度を評価。
 
-    STABLE部分(ebay_image + 判定基準)にプロンプトキャッシュを効かせる。
+    STABLE部分(判定基準 = _SYSTEM_PROMPT)に system prompt キャッシュを効かせる。
     同一SKUのN候補を評価する場合、2件目以降は cache hit でコスト約1/4。
+    ※ eBay/候補画像は user content の dynamic 側に置くため cache 対象外
+      (評価毎にフル課金。W223 step1 で eBay 画像が常時流れるようになった)。
 
     Phase 1 学習: sku を渡すと過去の accept/reject 判断履歴をプロンプトに注入し、
     ユーザー個別の判断パターンを反映させる。
 
     API未設定・失敗時は match_score=0 を返し、error にメッセージを格納。
+    W223 step1: 画像 URL fetch 失敗 (BadRequest) 時は画像を外して 1 回だけ
+      テキスト再評価し、画像不正で候補を全件 match_score=0 reject する silent
+      機能停止 (= その listing の仕入先候補が 0 件化) を防ぐ。
     """
     client = _get_client()
     if not client:
@@ -480,32 +485,58 @@ def evaluate_match(
 
     # 2026-05-01 W86: model override (A/B test 用)。指定なければ CLAUDE_MODEL.
     _model_used = model or CLAUDE_MODEL
-    try:
-        with _Timer() as _t:
-            msg = client.messages.create(
-                model=_model_used,
-                max_tokens=800,
-                system=[
-                    {
-                        "type": "text",
-                        "text": _SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[{"role": "user", "content": content}],
-            )
-        log_anthropic_response("candidate_evaluate", _model_used, msg,
-                               duration_ms=_t.duration_ms, success=True)
-    except anthropic.APIError as e:
-        logger.warning(f"Claude API error: {e}")
-        log_anthropic_response("candidate_evaluate", _model_used, None,
-                               success=False, error_message=str(e)[:500])
-        return EvaluationResult(match_score=0, reasoning="API error", error=str(e))
-    except Exception as e:
-        logger.warning(f"evaluate_match unexpected: {e}")
-        log_anthropic_response("candidate_evaluate", _model_used, None,
-                               success=False, error_message=str(e)[:500])
-        return EvaluationResult(match_score=0, reasoning="unknown error", error=str(e))
+    # W223 step1 (2026-06-05): 画像 URL fetch 失敗 (eBay/候補画像が 404/期限切れ等で
+    # Anthropic が取得不能 → BadRequest) 時に、画像を外して 1 回だけテキスト再評価する。
+    # eBay 画像 URL は listing 共通で 1 本 + 30 日 cache されるため、無効化すると
+    # その listing の全候補が match_score=0 で reject され続ける silent 機能停止に陥る。
+    _retried_without_images = False
+    while True:
+        try:
+            with _Timer() as _t:
+                msg = client.messages.create(
+                    model=_model_used,
+                    max_tokens=800,
+                    system=[
+                        {
+                            "type": "text",
+                            "text": _SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    messages=[{"role": "user", "content": content}],
+                )
+            log_anthropic_response("candidate_evaluate", _model_used, msg,
+                                   duration_ms=_t.duration_ms, success=True)
+            break
+        except anthropic.BadRequestError as e:
+            # 画像つき request の 400 は画像 fetch 失敗が最有力。画像を外して 1 回再評価。
+            _has_image = any(c.get("type") == "image" for c in content)
+            if _has_image and not _retried_without_images:
+                _retried_without_images = True
+                logger.warning(
+                    f"evaluate_match BadRequest with image, retry text-only "
+                    f"(ebay_item_id={ebay_item_id}): {e}"
+                )
+                log_anthropic_response(
+                    "candidate_evaluate", _model_used, None, success=False,
+                    error_message=f"img_retry: {str(e)[:480]}",
+                )
+                content = [c for c in content if c.get("type") != "image"]
+                continue
+            logger.warning(f"Claude API error: {e}")
+            log_anthropic_response("candidate_evaluate", _model_used, None,
+                                   success=False, error_message=str(e)[:500])
+            return EvaluationResult(match_score=0, reasoning="API error", error=str(e))
+        except anthropic.APIError as e:
+            logger.warning(f"Claude API error: {e}")
+            log_anthropic_response("candidate_evaluate", _model_used, None,
+                                   success=False, error_message=str(e)[:500])
+            return EvaluationResult(match_score=0, reasoning="API error", error=str(e))
+        except Exception as e:
+            logger.warning(f"evaluate_match unexpected: {e}")
+            log_anthropic_response("candidate_evaluate", _model_used, None,
+                                   success=False, error_message=str(e)[:500])
+            return EvaluationResult(match_score=0, reasoning="unknown error", error=str(e))
 
     text = "".join(
         getattr(b, "text", "") for b in msg.content

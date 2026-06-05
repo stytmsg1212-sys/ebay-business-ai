@@ -62,3 +62,12 @@ def _block_news_ai_calls(monkeypatch):
         lambda *args, **kwargs: [],
         raising=False,
     )
+    # W223 step1 (2026-06-05): eBay GetItem (Trading API) を block。
+    # ebay_listing_image.get_ebay_image_url が cache miss 時に _api_image_urls を
+    # 叩く → 実 eBay API HTTP を発火し flake + 課金。最下層を [] 固定で hermetic 化
+    # (search_x_posts と同流儀)。画像 fetch 挙動を見たい個別 test は再 setattr で上書き可能。
+    monkeypatch.setattr(
+        "monitor.ebay_image_fetcher._api_image_urls",
+        lambda *args, **kwargs: [],
+        raising=False,
+    )

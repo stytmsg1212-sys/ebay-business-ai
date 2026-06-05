@@ -2970,6 +2970,41 @@ def init_db():
                     "listing_description 未追加。次回 init_db で再試行。"
                 )
 
+        # ---- v63 (W223 step1, 2026-06-05): eBay 商品画像 URL cache 列 ----
+        # 仕入先候補の AI 評価に eBay 側商品画像を渡す穴を塞ぐための cache。
+        # eBay 画像は DB に保持されておらず GetItem API 経由でしか取れない
+        #   (ebay_image_fetcher.py 前例) → 評価毎に API を叩くとコスト/レイテンシ増。
+        # ebay_image_url: 取得済 eBay 代表画像 URL (GetItem PictureURL の 1 枚目)。
+        # ebay_image_fetched_at: 取得時刻 (UTC, CURRENT_TIMESTAMP)。30 日 cache の鮮度判定。
+        # listing 識別は ebay_item_id (sku-rules.md)。冪等: ALTER は try/except
+        #   sqlite3.OperationalError、bump は列実在確認後 (v60/v61/v62 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 62:
+            for _col, _typ in [
+                ("ebay_image_url", "TEXT"),
+                ("ebay_image_fetched_at", "TEXT"),
+            ]:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ} DEFAULT NULL"
+                    )
+                    logger.info(f"[init_db v63] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # カラム既存
+            _v63_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if "ebay_image_url" in _v63_cols and "ebay_image_fetched_at" in _v63_cols:
+                conn.execute("PRAGMA user_version = 63")
+                logger.info("[init_db v63] schema_ver bumped to 63")
+            else:
+                logger.warning(
+                    "[init_db v63] 部分適用: ebay_listings の ebay_image_url/"
+                    "ebay_image_fetched_at 未追加。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
