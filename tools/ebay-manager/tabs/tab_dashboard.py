@@ -16,6 +16,61 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 
+def _parse_news_published(s: str):
+    """W224 (2026-06-05): news_items.published_at を datetime(UTC, aware) に parse。
+
+    RSS 由来でフォーマット混在: ISO 8601 (例 '2026-06-04T16:15:12Z') と
+    RFC822 (例 'Fri, 17 Apr 2026 00:00:00 +0000')。両対応。parse 不能/空は None。
+    """
+    from datetime import datetime, timezone
+    s = (s or "").strip()
+    if not s:
+        return None
+    # ISO 8601 ('Z' を +00:00 に置換して fromisoformat)。外部 (RSS) 由来の汚染文字列を
+    # 扱うため parse 例外は全て None に倒す (chip 非表示で degrade = 仕様)。
+    # OverflowError: 極端な未来/過去日付の astimezone で発生し得る。
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError, OverflowError):
+        pass
+    # RFC822
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(s)
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _fmt_news_freshness(dt_utc, now_utc):
+    """W224: 投稿日時を JST 絶対表示 + 相対表示 + 経過日数 で返す。
+
+    Returns: (jst_abs: str 'M/D HH:MM', relative: str 'N分前'/'N時間前'/'N日前'/'M/D', age_days: float)
+    """
+    from datetime import timezone, timedelta
+    jst = dt_utc.astimezone(timezone(timedelta(hours=9)))
+    secs = (now_utc - dt_utc).total_seconds()
+    if secs < 0:  # 未来日付 (feed 側の時計ズレ) は 0 扱い
+        secs = 0
+    if secs < 3600:
+        rel = f"{int(secs // 60)}分前"
+    elif secs < 86400:
+        rel = f"{int(secs // 3600)}時間前"
+    elif secs < 7 * 86400:
+        rel = f"{int(secs // 86400)}日前"
+    else:
+        rel = f"{jst.month}/{jst.day}"
+    jst_abs = f"{jst.month}/{jst.day} {jst.hour:02d}:{jst.minute:02d}"
+    return jst_abs, rel, secs / 86400.0
+
+
 @st.cache_data(ttl=3, show_spinner=False)
 def _cd_execution_summary(db_version: int):
     from scheduler_integration import get_execution_summary
@@ -1386,6 +1441,7 @@ def render_dashboard_tab(s: dict) -> None:
             with _get_conn_news() as _c:
                 _news_db_rows = [dict(r) for r in _c.execute(
                     """SELECT source, title, url, summary_ja, impact_ja, impact_level, categories, checked_at,
+                              published_at,
                               COALESCE(source_type, 'web') AS source_type,
                               COALESCE(source_handle, '') AS source_handle,
                               COALESCE(engagement_count, 0) AS engagement_count
@@ -1417,6 +1473,10 @@ def render_dashboard_tab(s: dict) -> None:
                 'hn': 'rgba(255,180,60,0.9)',
                 'web': 'rgba(160,180,200,0.85)',
             }
+            # W224 (2026-06-05): 参照元の投稿日 (published_at) を JST + 相対表示。
+            # 鮮度重視 = 古い記事 (投稿から N 日経過) はカード全体を視覚的に弱める。
+            from datetime import datetime as _dt224, timezone as _tz224
+            _now_utc224 = _dt224.now(_tz224.utc)
             for _n in _news_db_rows[:8]:
                 _lvl = _n.get('impact_level') or 'low'
                 _accent = {'high': 'rgba(240,64,80,0.55)', 'medium': 'rgba(240,200,48,0.55)',
@@ -1437,6 +1497,30 @@ def render_dashboard_tab(s: dict) -> None:
                     f'<span style="color:rgba(180,220,255,0.45);font-size:10px;'
                     f'margin-left:6px;">♥ {_eng:,}</span>'
                 ) if _eng > 0 else ''
+                # W224: 投稿日 (published_at) を JST + 相対表示。古いほど色を弱める。
+                # 二重防御: parse/format の想定外例外を握って 1 記事の異常が NEWS section
+                # 全体 render を落とさないよう隔離 (chip 非表示で degrade)。
+                _date_html = ''
+                _card_opacity = 1.0
+                try:
+                    _pub_dt = _parse_news_published(_n.get('published_at') or '')
+                    if _pub_dt is not None:
+                        _jst_abs, _rel, _age_d = _fmt_news_freshness(_pub_dt, _now_utc224)
+                        # 鮮度: 3 日以内は明るく、それ以降は段階的に弱める (下限 0.5)。
+                        _date_color = 'rgba(150,210,255,0.75)' if _age_d < 3 else 'rgba(150,170,190,0.5)'
+                        if _age_d >= 7:
+                            _card_opacity = 0.5
+                        elif _age_d >= 3:
+                            _card_opacity = 0.7
+                        _date_html = (
+                            f'<span style="color:{_date_color};font-size:10px;margin-left:6px;" '
+                            f'title="{html.escape(_jst_abs)} (JST)">{html.escape(_jst_abs)} '
+                            f'({html.escape(_rel)})</span>'
+                        )
+                except Exception as _e224:
+                    logger.warning(f"[W224] news date render skip: {_e224}")
+                    _date_html = ''
+                    _card_opacity = 1.0
                 _src = html.escape(_n.get('source') or '')
                 _sum = html.escape((_n.get('summary_ja') or _n.get('title') or '')[:200])
                 _imp = html.escape((_n.get('impact_ja') or '')[:150])
@@ -1447,11 +1531,12 @@ def render_dashboard_tab(s: dict) -> None:
                 ) if _url else html.escape((_n.get('title') or '')[:80])
                 st.markdown(
                     f'<div style="border-left:2px solid {_accent};padding:6px 12px;margin-bottom:8px;'
-                    f'background:rgba(80,120,180,0.03);border-radius:0 4px 4px 0;">'
+                    f'background:rgba(80,120,180,0.03);border-radius:0 4px 4px 0;opacity:{_card_opacity};">'
                     f'<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap;">'
                     f'{_src_html}'
                     f'<span style="color:rgba(180,220,255,0.55);font-size:10px;letter-spacing:1px;">{_badge}</span>'
                     f'{_eng_html}'
+                    f'{_date_html}'
                     f'</div>'
                     f'<span style="font-size:13px;color:#e0ecfa;line-height:1.5;">{_sum}</span>'
                     + (f'<br><span style="color:rgba(160,220,255,0.7);font-size:11px;">▸ 影響: {_imp}</span>' if _imp else '')
