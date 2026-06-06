@@ -10,7 +10,8 @@ eBay アクティブセラー評価を高め、検索順位の底上げを狙う
   - is_ended=0 かつ quantity_ebay>=1
   - watch_count=0 (売れていない)
   - rank='E' (低ランク)
-  - 直近 30日に relist_history に新規 ItemID として出現していない (cooldown)
+  - 直近 cooldown_days (既定30 / 現行 config=10) 内に relist_history に
+    old/new ItemID として出現していない (cooldown、config で調整可)
 
 並び順:
   1. time_left_seconds 小 → 大 (自動relistが近いもの先取り)
@@ -57,10 +58,17 @@ logger = logging.getLogger(__name__)
 END_REASON = "Incorrect"  # "listing details are incorrect" = SEO boost 目的に無難
 
 
-def _select_relist_targets(limit: int = 7) -> list[dict]:
-    """選出クエリ。条件: watch=0 / rank=E / cooldown 30日 / active / SKU有効。
+def _select_relist_targets(limit: int = 7, cooldown_days: int = 30) -> list[dict]:
+    """選出クエリ。条件: watch=0 / rank=E / cooldown N日 / active / SKU有効。
     並び順: time_left 小 → start_time 古。
+
+    cooldown_days (2026-06-07 config 化): 同一 listing を再 relist しない日数。
+    プール(watch=0 & rank=E)が小さいと 30 日では供給不足で max_per_run に届かない
+    ため config で調整可能にした (実効上限 ≒ プール件数 / cooldown_days)。
+    SQL injection 防止のため int 化して `datetime('now', ?)` にバインドする。
     """
+    # int 化で安全な modifier 文字列を構築 (例: '-10 days')。負値/0 は最小 1 日に矯正。
+    cd = f"-{max(1, int(cooldown_days))} days"
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT ebay_item_id, sku, title, watch_count, rank,
@@ -73,20 +81,20 @@ def _select_relist_targets(limit: int = 7) -> list[dict]:
                  AND sku IS NOT NULL AND sku != ''
                  AND ebay_item_id NOT IN (
                      SELECT old_item_id FROM relist_history
-                     WHERE created_at >= datetime('now', '-30 days')
+                     WHERE created_at >= datetime('now', ?)
                        AND success = 1  -- FINDING 4: 失敗 relist で cooldown 発火させない
                  )
                  AND ebay_item_id NOT IN (
                      SELECT new_item_id FROM relist_history
                      WHERE new_item_id IS NOT NULL
-                       AND created_at >= datetime('now', '-30 days')
+                       AND created_at >= datetime('now', ?)
                        AND success = 1  -- 同上
                  )
                ORDER BY
                  COALESCE(time_left_seconds, 9999999) ASC,
                  COALESCE(start_time, '9999-12-31') ASC
                LIMIT ?""",
-            (limit,),
+            (cd, cd, limit),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -443,13 +451,17 @@ def run_daily_relist(config: dict) -> dict:
     dry_run = bool(task_cfg.get("dry_run", False))
     skip_verify = bool(task_cfg.get("skip_verify", True))  # 本番は active listing から開始でVerify不要
     sleep_between = float(task_cfg.get("sleep_between_sec", 3))
+    cooldown_days = int(task_cfg.get("cooldown_days", 30))  # 2026-06-07 config 化 (既定30、現行10)
 
     creds = get_ebay_credentials(config)
     if not ebay_credentials_ok(creds):
         return {"success": False, "message": "eBay 認証情報不足", "processed": 0}
 
-    targets = _select_relist_targets(limit=max_per_run)
-    logger.info(f"End→Relist 対象: {len(targets)}件 (dry_run={dry_run}, max={max_per_run})")
+    targets = _select_relist_targets(limit=max_per_run, cooldown_days=cooldown_days)
+    logger.info(
+        f"End→Relist 対象: {len(targets)}件 "
+        f"(dry_run={dry_run}, max={max_per_run}, cooldown={cooldown_days}日)"
+    )
 
     if not targets:
         return {"success": True, "message": "対象listingなし", "processed": 0, "results": []}

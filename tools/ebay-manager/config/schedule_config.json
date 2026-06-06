@@ -84,10 +84,12 @@
       ],
       "oos_days_threshold": 3,
       "skip_if_searched_within_days": 7,
-      "max_skus_per_run": 30,
+      "max_skus_per_run": 60,
       "sleep_between_skus_sec": 3,
       "use_batch_api": true,
-      "note": "朝02:30のみ実行。Pattern 1 async で拾えなかった既存の長期OOSを定期スイープ. W94 Phase 7 (2026-05-02 開始, 3 日間 shadow run): use_batch_api=true で Anthropic Batch API + 1h Cache 経路に切替。緊急停止条件: supplier_eval_pending 累計 5 件超 → 即 false へ戻す"
+      "use_candidate_ranker": true,
+      "candidate_ranker_max_keep": 3,
+      "note": "朝02:30のみ実行。Pattern 1 async で拾えなかった既存の長期OOSを定期スイープ. W94 Phase 7 (2026-05-02 開始, 3 日間 shadow run): use_batch_api=true で Anthropic Batch API + 1h Cache 経路に切替。緊急停止条件: supplier_eval_pending 累計 5 件超 → 即 false へ戻す。W223 step4 (2026-06-05 有効化): use_candidate_ranker=true で候補一覧を Haiku triage→vision 精査を上位 candidate_ranker_max_keep(=3) 件に絞る。取りこぼし懸念時は max_keep を上げるか false へ戻す。W223 (2026-06-05): step4 のコスト削減(~43%)分を件数増に充当し max_skus_per_run 30→50 (同コストで ~1.7倍、eligible OOS プール105件のバックログ解消)。step3 reused 実測後さらに増やす余地あり"
     },
     "enrich_listings_physical": {
       "enabled": true,
@@ -190,10 +192,11 @@
         2
       ],
       "max_per_run": 7,
+      "cooldown_days": 10,
       "dry_run": false,
       "skip_verify": true,
       "sleep_between_sec": 3,
-      "note": "朝02:30のみ実行。time_left が少ないものから優先。shipping override は API経由で自動継承される"
+      "note": "朝02:30のみ実行。time_left が少ないものから優先。shipping override は API経由で自動継承される。cooldown_days=10 (2026-06-07: 30→10、プール70件で7件/日を回すため)"
     },
     "cleanup_old_relisted": {
       "enabled": true,
