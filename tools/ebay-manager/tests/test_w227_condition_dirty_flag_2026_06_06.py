@@ -64,6 +64,26 @@ def test_condition_target_set_when_rank_changed(monkeypatch):
     assert res["success"] is False, res  # creds 不在で push できず
 
 
+def test_condition_widget_initial_ignores_popularity_rank():
+    """W227 根治の核心: 状態 widget の初期値は eBay Condition 由来であり、
+    人気度 rank 列を **混ぜない** (これが誤 push 事故の根因だった)。"""
+    # condition_rank (user 意図) 優先
+    assert pm._condition_widget_initial(
+        {"condition_rank": "B", "ebay_condition_id": "3000"}) == "B"
+    # ebay_condition_id 由来 (一意確定)
+    assert pm._condition_widget_initial({"ebay_condition_id": "1000"}) == "N"
+    assert pm._condition_widget_initial({"ebay_condition_id": "1500"}) == "S"
+    assert pm._condition_widget_initial({"ebay_condition_id": "7000"}) == "As-Is"
+    # 3000(Used) はサブランク逆引き不能 → "" (未設定)
+    assert pm._condition_widget_initial({"ebay_condition_id": "3000"}) == ""
+    # ★ 人気度 rank 列は完全無視 (S が混ざらない = 事故根治の保証)
+    assert pm._condition_widget_initial({"rank": "S"}) == ""
+    assert pm._condition_widget_initial(
+        {"rank": "A", "ebay_condition_id": "1000"}) == "N"
+    # eBay 未取得
+    assert pm._condition_widget_initial({}) == ""
+
+
 def test_no_change_flag_present_on_no_diff():
     """_apply_to_ebay の差分なし戻り値に no_change=True が付く (早期return回避用)。
 

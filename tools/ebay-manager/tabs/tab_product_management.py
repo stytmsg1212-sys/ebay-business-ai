@@ -268,6 +268,31 @@ def _total_price(p: dict) -> tuple[float, float, float]:
     return cp, sh, cp + sh
 
 
+# W227 (2026-06-06): eBay ConditionID → 表示ラベル。
+_CONDITION_ID_LABEL = {
+    "1000": "New", "1500": "Open Box", "2000": "Manufacturer refurb",
+    "2500": "Seller refurb", "2750": "Like New", "3000": "Used",
+    "4000": "Very Good", "5000": "Good", "6000": "Acceptable",
+    "7000": "For parts/As-Is", "未取得": "未取得",
+}
+
+
+def _condition_widget_initial(p: dict) -> str:
+    """商品管理「状態」widget の初期値 (8 段階 N/S/A/B/C/D/PO/As-Is or "")。
+
+    W227 根治: 人気度 rank 列ではなく **商品状態** を返す。優先順位:
+      1. condition_rank (user が保存した状態意図) が 8 段階なら それ。
+      2. ebay_condition_id (eBay 実値) 由来: 1000→N / 1500→S / 7000→As-Is。
+         3000(Used) はサブランク(A/B/C/D/PO)逆引き不能 → "" (未設定、user 選択を促す)。
+      3. いずれも無し (eBay 未取得 / 書籍 condition 等) → "".
+    """
+    sub = (p.get("condition_rank") or "").strip()
+    if sub in ("N", "S", "A", "B", "C", "D", "PO", "As-Is"):
+        return sub
+    cid = str(p.get("ebay_condition_id") or "").strip()
+    return {"1000": "N", "1500": "S", "7000": "As-Is"}.get(cid, "")
+
+
 def _status_emoji(src_status: str) -> str:
     """source_status から emoji を返す."""
     return {
@@ -818,7 +843,10 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
 
     # SKU + ID + 区分 + Rank を 1 行で簡潔表示
     sku = p.get("sku") or "-"
-    rank = p.get("rank") or "-"
+    # W227: hero は eBay 実 Condition (商品状態) を表示 (人気度 rank 列は混ぜない)。
+    _hero_cond_rank = _condition_widget_initial(p)
+    _hero_cid = str(p.get("ebay_condition_id") or "").strip()
+    rank = _hero_cond_rank or _CONDITION_ID_LABEL.get(_hero_cid, "未取得")
     sold = p.get("total_sold_count") or 0
     watch = p.get("watch_count") or 0
     view = p.get("view_count") or 0
@@ -883,7 +911,7 @@ def _render_hero_metrics(p: dict, bp_state: Optional[dict] = None) -> None:
         f'<span class="pm-pill pm-pill-info">SKU: {sku}</span>'
         f'<span class="pm-pill pm-pill-info">区分: {market}</span>'
         f'{cat_pill}'
-        f'<span class="pm-pill pm-pill-info">Rank: {rank}</span>'
+        f'<span class="pm-pill pm-pill-info">状態: {rank}</span>'
         f'<span class="pm-pill {"pm-pill-bad" if src_status == "out_of_stock" else "pm-pill-ok" if src_status == "in_stock" else "pm-pill-warn"}">仕入先: {src_emoji} {src_status}</span>'
         f'{bp_pill}'
         f'<span class="pm-pill pm-pill-info">📊 sold {sold} / watch {watch} / view {view}</span>'
@@ -1358,33 +1386,38 @@ def _render_left_basic_and_physical(
             step=1.0, key=f"pm_height_{eid}",
         )
 
-    # W220 (2026-06-04): 商品ランク編集 (CLAUDE.md 8段階)。既存 DB に 'E' 等
-    # 8段階外の値もあるため、現在値が候補に無ければ先頭保持で非破壊。未設定は
-    # sentinel「（未設定）」で stale write 防止 (selectbox 無操作で None 化)。
-    # slice2 は DB 保存のみ。eBay Condition 反映は slice3 (📤 eBay反映 経由)。
-    _RANK_BLANK = "（未設定）"
+    # W227 (2026-06-06 根治): 商品「状態」ランク編集。⚠️ 以前は人気度 rank 列
+    # (自動ランク更新の S/A/B/C/D/E) を表示していたため、価格編集で人気度Sを eBay
+    # Condition Open Box(1500) へ誤上書きする事故が起きた。本 widget は **eBay 実
+    # Condition 由来** (_condition_widget_initial: condition_rank 優先 → ebay_condition_id
+    # 由来 1000→N/1500→S/7000→As-Is/3000→未設定) を表示し、人気度 rank 列は一切
+    # 読み書きしない。未設定 (Used サブランク不明 / eBay未取得) は sentinel で
+    # stale write 防止。eBay Condition 反映は 📤eBay反映 (dirty-flag、user 変更時のみ)。
+    _RANK_BLANK = "（未設定 / eBay未取得）"
     _RANK_CHOICES = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
-    _cur_rank = (p.get("rank") or "").strip()
+    _cur_rank = _condition_widget_initial(p)
     _rank_opts = [_RANK_BLANK] + _RANK_CHOICES
-    if _cur_rank and _cur_rank not in _RANK_CHOICES:
-        _rank_opts = [_RANK_BLANK, _cur_rank] + _RANK_CHOICES  # legacy値(E等)保持
-    _rank_default = _cur_rank if _cur_rank in _rank_opts else _RANK_BLANK
+    _rank_default = _cur_rank if _cur_rank in _RANK_CHOICES else _RANK_BLANK
+    _cid_disp = str(p.get("ebay_condition_id") or "").strip() or "未取得"
     _rank_sel = st.selectbox(
-        "商品ランク",
+        "商品ランク (eBay 状態)",
         options=_rank_opts,
         index=_rank_opts.index(_rank_default),
         key=f"pm_rank_{eid}",
-        help="N=新品 / S=新品同様 / A=美品 / B=良品 / C=使用感 / D=難あり / "
-             "PO=通電のみ / As-Is=未確認。保存で DB 更新 (eBay Condition 反映は別途)。",
+        help="eBay 実 Condition 由来 (人気度グレードとは別)。N=新品 / S=新品同様 / "
+             "A=美品 / B=良品 / C=使用感 / D=難あり / PO=通電のみ / As-Is=未確認。"
+             "変更を 📤eBay反映 すると eBay Condition も更新 (変更時のみ)。"
+             "Used品は A-PO すべて eBay 上は Used(3000)。",
     )
     editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
-    # W227 (2026-06-06 緊急): rank→eBay Condition push の dirty-flag 用に render 時の
-    # 現 rank (= DB 値) を保持。⚠️ ebay_listings.rank は eBay連携タブ「自動ランク更新」
-    # の人気度グレード(S/A/B/C/D/E)と商品状態ランク(N/S/A/B/C/D/PO/As-Is)が同居して
-    # いるため、無条件 push すると人気度Sを Condition Open Box(1500) として eBay に
-    # 誤上書きする事故になる。_apply_listing_content_to_ebay は user が widget を
-    # **実際に変更した時のみ** Condition を push する (BP/+each dirty-flag と同型)。
+    # dirty-flag: render 時の状態 (eBay Condition 由来) を保持。
+    # _apply_listing_content_to_ebay は user が widget を **実際に変更した時のみ**
+    # Condition を push する (人気度 stale 値の誤上書き事故を構造的に遮断)。
     editing["rank_render_initial"] = _cur_rank or None
+    st.caption(f"現在の eBay Condition: **{_cid_disp}** "
+               f"({_CONDITION_ID_LABEL.get(_cid_disp, '—')})"
+               + ("　※ Used はサブランク(A-PO)を選ぶと MonoDeck に記録 (eBay は Used のまま)"
+                  if _cid_disp == "3000" else ""))
     # W227 (2026-06-06 user 要望): ランク選択時に迷わないよう 8 段階の早見表を
     # 折りたたみで掲示 (CLAUDE.md コンディションランク 8 段階)。eBay Condition との
     # 対応も併記 (N=New / S=Open Box / A-PO=Used / As-Is=For parts)。
@@ -2543,21 +2576,20 @@ def _save_product_data(
                 (float(_pt), ebay_item_id),
             )
 
-    # W220: 商品ランク。change-guard (実変更時のみ。None=「（未設定）」は触らない)。
-    # eBay Condition 反映は slice3 (本 slice は DB のみ)。
+    # W227 (2026-06-06 根治): 商品状態ランクは **condition_rank** 列へ保存する
+    # (人気度 rank 列には書かない = 二重使用解消。事故根治)。change-guard (実変更
+    # 時のみ。None=「未設定」sentinel は触らない)。eBay Condition 反映は 📤eBay反映
+    # (本 DB 保存は user の状態意図を condition_rank に記録するのみ)。
     _rank = editing.get("rank")
     if _rank is not None:
         with get_conn() as conn:
             _cr = conn.execute(
-                "SELECT rank FROM ebay_listings WHERE ebay_item_id=?",
+                "SELECT condition_rank FROM ebay_listings WHERE ebay_item_id=?",
                 (ebay_item_id,),
             ).fetchone()
         if (_cr[0] if _cr else None) != _rank:
-            with get_conn() as conn:
-                conn.execute(
-                    "UPDATE ebay_listings SET rank=? WHERE ebay_item_id=?",
-                    (_rank, ebay_item_id),
-                )
+            from monitor.database import update_ebay_listing_condition
+            update_ebay_listing_condition(ebay_item_id, condition_rank=_rank)
 
     # W220: description 下書き。change-guard (note と同型)。eBay 非送信 (slice3 で送信)。
     _desc = editing.get("listing_description")
@@ -3584,6 +3616,7 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
 
     from monitor.ebay_client import revise_item_condition, revise_item_description
     from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+    from monitor.database import update_ebay_listing_condition
 
     ok = True
     msgs: list[str] = []
@@ -3619,7 +3652,10 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
                 ok = False
                 msgs.append(f"Condition 反映中止 (現状 GetItem 失敗): {snap.error}")
             elif (snap.condition_id or "") == target_cid:
-                pass  # 既に一致 = 反映不要 (cond_ok は None のまま = 未変更)
+                # 既に一致 = eBay 変更不要。DB を実値 + user 意図へ同期 (表示一致)。
+                # 例: Used(3000) 品に user が初めてサブランク(B 等)を付与するケース。
+                update_ebay_listing_condition(
+                    eid, ebay_condition_id=target_cid, condition_rank=new_rank)
             else:
                 _rc = revise_item_condition(
                     eid, target_cid, app_id, dev_id, cert_id, token,
@@ -3628,6 +3664,9 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
                 actual = snap2.condition_id if snap2.ok else None
                 if actual == target_cid:
                     cond_ok = True
+                    # W227: 検証済み実 ConditionID + user 状態を DB へ同期。
+                    update_ebay_listing_condition(
+                        eid, ebay_condition_id=target_cid, condition_rank=new_rank)
                     msgs.append(f"Condition を {new_rank} ({target_cid}) に反映")
                 elif target_cid == "1500":
                     # S=1500 が category 不可 → 3000 (Used) へ fallback (明示通知)
@@ -3638,8 +3677,15 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
                         eid, app_id, dev_id, cert_id, token)
                     if snap3.ok and snap3.condition_id == "3000":
                         cond_ok = True
+                        # eBay 実値は 3000(Used)。user 意図"S"は実態と乖離するので
+                        # condition_rank に "S" を残さない: ebay_condition_id のみ実値
+                        # 同期し、editing["rank"]=None で下流 _save_product_data の
+                        # condition_rank="S" 誤保存を抑止 (user が後で Used サブランク指定)。
+                        update_ebay_listing_condition(eid, ebay_condition_id="3000")
+                        editing["rank"] = None
                         msgs.append("Condition: S(新品同様)はこのカテゴリで不可の"
-                                    "ため Used(3000) で反映しました (要確認)")
+                                    "ため Used(3000) で反映しました (Used サブランクは"
+                                    "別途指定してください)")
                     else:
                         cond_ok = False
                         ok = False
@@ -4294,7 +4340,13 @@ def _build_list_dataframe(products: list[dict]) -> pd.DataFrame:
             "区分": p.get("primary_market") or "-",
             # W222: 実カテゴリ (利益計算 FVF の根拠)。未設定は "-"。
             "カテゴリ": str(p.get("category_id")) if p.get("category_id") else "-",
-            "Rank": p.get("rank") or "-",
+            # W227: eBay 実 Condition (商品状態)。人気度 rank 列は混ぜない
+            # (editor/hero と一貫)。N/S/A-PO/As-Is or eBay Condition ラベル。
+            "状態": (
+                _condition_widget_initial(p)
+                or _CONDITION_ID_LABEL.get(
+                    str(p.get("ebay_condition_id") or "").strip(), "-")
+            ),
             "価格": f"${cp:,.2f}",
             "送料": f"${sh:,.2f}",
             "総額": f"${total:,.2f}",

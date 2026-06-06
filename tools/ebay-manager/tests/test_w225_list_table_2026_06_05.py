@@ -57,7 +57,7 @@ def _sample_products():
 def test_build_list_dataframe_columns_and_ids():
     df = pm._build_list_dataframe(_sample_products())
     assert list(df.columns) == [
-        "在庫", "📎", "Title", "Item ID", "SKU", "区分", "カテゴリ", "Rank",
+        "在庫", "📎", "Title", "Item ID", "SKU", "区分", "カテゴリ", "状態",
         "価格", "送料", "総額", "粗利", "競合最安", "sold", "watch",
     ]
     # 行順 = 入力順 / Item ID 列に ebay_item_id (sku-rules: ebay_item_id 識別)
