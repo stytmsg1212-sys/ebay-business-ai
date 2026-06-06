@@ -2018,10 +2018,10 @@
     "tag": "W227",
     "title": "【緊急/事故】商品ランク列の二重使用解消 — eBay実Conditionを別管理し誤Condition上書きを根治",
     "description": "2026-06-06 user報告(大至急)。商品管理で価格編集すると勝手にeBay Conditionが Open Box(S/1500) に書き換わり、S->N修正も価格差分なし時の早期returnで反映されない。真因: ebay_listings.rank 列が(1)eBay連携タブ自動ランク更新の人気度グレード(S/A/B/C/D/E)と(2)W220商品状態ランク(N/S/A/B/C/D/PO/As-Is→ConditionID)で二重使用。DB分布 E=193/C=113/D=94/S=48/A=42/B=39/N=2。_apply_listing_content_to_ebay が人気度Sを Condition1500 と誤読しsave_ebay毎にpush=Condition破壊。緊急一次対応: (a)Condition push dirty-flag化(user明示変更時のみ) (b)no_change時早期return回避でCondition/説明文反映継続 (c)_apply_to_ebay no_changeフラグ。根治: 人気度と状態を別列化(ebay_condition_id新設migration)、GetItem実condition_id事前同期+backfill、状態widgetをebay_condition_id由来化、condition/description事前反映(user要望)、誤push済Condition棚卸し復旧。Q3+Q2冪等+Q1実機。account-risk最優先。",
-    "status": "中核完了(止血+別列化migration v66+backfill529+状態widget切替, code-reviewer HIGH=0×3, commit 1b44bba/8cc041f/1916992)。残: 誤push14件復旧(user保留)・editor実機1クリックverify",
+    "status": "完了(止血+別列化migration v66+backfill529+状態widget切替, code-reviewer HIGH=0×3, commit 1b44bba/8cc041f/1916992)。誤push14件は2026-06-06 user 1件ずつ確認で復旧完了: 9件Condition修正(8→New1000/1件GRAPHTEC→Used3000)+5件Open Box1500維持, 全9件 revise_item_condition→GetItem実反映検証OK+DB同期(ebay_condition_id/condition_rank)。残: editor実機1クリックverify(glide自動化不可)のみ",
     "priority": "高",
     "created": "2026-06-06",
-    "completed": null,
+    "completed": "2026-06-06",
     "category": "business"
   }
 ]
