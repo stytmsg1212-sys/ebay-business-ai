@@ -58,6 +58,8 @@ from monitor.listing_generator import GeneratedListing, generate_listing
 from monitor.rank_classifier import VALID_RANKS, RankClassification, classify_rank
 from monitor.shipping_policy_selector import select_shipping_policy
 from monitor.supplier_scraper import ScrapedProduct, scrape_supplier_url
+# W226 (2026-06-06): URL 振り分け (フリマ→専用 / 汎用 EC→AI) + title-only 生成
+from monitor.product_resolver import resolve_product_from_url, build_title_only_product
 
 logger = logging.getLogger(__name__)
 
@@ -437,10 +439,11 @@ def _render_step1_urls() -> None:
     _c1, _c2 = st.columns([3, 3])
     with _c1:
         supplier = st.text_input(
-            "仕入先URL (必須)",
-            placeholder="https://auctions.yahoo.co.jp/jp/auction/xxxxx",
+            "仕入先URL または 商品タイトル (必須)",
+            placeholder="https://auctions.yahoo.co.jp/... / https://www.amazon.co.jp/dp/... / 商品名",
             key=f"{_SS}input_supplier_url",
-            help="ヤフオク / メルカリ / PayPayフリマ の商品ページURL",
+            help="ヤフオク/メルカリ/PayPay=専用解析、Amazon/楽天/Yahoo!ショッピング/ラクマ等=AI解析。"
+                 "URL が無い場合は商品タイトルを直接入力すると title-only で生成 (W226)。",
         )
     with _c2:
         reference = st.text_input(
@@ -480,7 +483,7 @@ def _render_step1_urls() -> None:
     if scrape_clicked:
         url = (supplier or "").strip()
         if not url:
-            st.error("仕入先URLは必須です。")
+            st.error("仕入先URL または 商品タイトル を入力してください。")
             return
         _do_scrape(url, (reference or "").strip())
         st.rerun()
@@ -489,12 +492,19 @@ def _render_step1_urls() -> None:
 def _do_scrape(supplier_url: str, reference_url: str) -> None:
     """スクレイプと参考 listing fetch を実行し session_state に格納する。"""
     with st.status("スクレイプ中...", expanded=True) as status:
-        # 仕入先スクレイプ
-        st.write(f"仕入先URL を解析中: {html.escape(supplier_url[:80])}")
+        # 仕入先スクレイプ (W226: URL なら振り分け解析、URL でなければ title-only)
+        is_url = supplier_url.lower().startswith(("http://", "https://"))
         try:
-            product = scrape_supplier_url(supplier_url)
+            if is_url:
+                st.write(f"仕入先URL を解析中: {html.escape(supplier_url[:80])}")
+                product = resolve_product_from_url(supplier_url)
+            else:
+                # W226 (2026-06-06): URL でなく商品タイトルが入力された場合は
+                # title-only でベース生成 (Amazon/楽天等の完全 URL が無い時の経路)。
+                st.write(f"商品タイトルから生成 (URL なし): {html.escape(supplier_url[:80])}")
+                product = build_title_only_product(supplier_url)
         except Exception as e:  # noqa: BLE001
-            logger.exception("scrape_supplier_url raised")
+            logger.exception("resolve_product_from_url raised")
             status.update(label="スクレイプで例外発生", state="error")
             st.session_state[f"{_SS}last_error"] = f"scrape exception: {e}"
             return

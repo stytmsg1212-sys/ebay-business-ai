@@ -62,7 +62,10 @@ def prefetch_supplier_product_and_rank(
          'rank_reasoning': str,
          'message': str}
     """
-    from monitor.supplier_scraper import scrape_supplier_url
+    # W226 (2026-06-06): scrape_supplier_url → resolve_product_from_url。
+    # フリマ (ヤフオク/メルカリ/PayPay) は内部で従来 scrape に流れる (回帰ゼロ)、
+    # Amazon/楽天/Yahoo!ショッピング/ラクマ等は HTML 取得 + AI 解析に切替。
+    from monitor.product_resolver import resolve_product_from_url
     from monitor.rank_classifier import classify_rank
 
     out = {
@@ -71,13 +74,19 @@ def prefetch_supplier_product_and_rank(
         'rank_reasoning': '', 'message': '',
     }
     try:
-        product = scrape_supplier_url(candidate_url, timeout_sec=15)
+        product = resolve_product_from_url(candidate_url, timeout_sec=15)
     except Exception as e:
-        logger.exception("prefetch scrape failed cid=%s", candidate_id)
+        logger.exception("prefetch resolve failed cid=%s", candidate_id)
         out['message'] = f'スクレイプ失敗: {type(e).__name__}: {e}'
         return out
     if not product or not getattr(product, 'title_ja', None):
-        out['message'] = 'スクレイプ結果が空 (URL を再確認してください)'
+        # W226: 失敗理由 (fetch_failed / ai_unavailable / ai_parse_empty 等) を
+        # UI に透過させる (Q0 痕跡可視化、user が原因を切り分けられるように)。
+        _serr = getattr(product, 'scrape_error', None) if product else None
+        out['message'] = (
+            f'取得結果が空 (理由: {_serr})' if _serr
+            else '取得結果が空 (URL を再確認してください)'
+        )
         return out
 
     try:
@@ -129,7 +138,8 @@ def generate_supplier_description(
          'title_en': str,            # Claude 生成 英語タイトル (preview 用)
          'message': str}
     """
-    from monitor.supplier_scraper import scrape_supplier_url
+    # W226 (2026-06-06): scrape_supplier_url → resolve_product_from_url。
+    from monitor.product_resolver import resolve_product_from_url
     from monitor.rank_classifier import classify_rank, _build_result
     from monitor.listing_generator import generate_listing
     from monitor.database import (
@@ -140,9 +150,9 @@ def generate_supplier_description(
     product = prefetched_product
     if product is None:
         try:
-            product = scrape_supplier_url(candidate_url, timeout_sec=15)
+            product = resolve_product_from_url(candidate_url, timeout_sec=15)
         except Exception as e:
-            logger.exception("scrape_supplier_url failed cid=%s", candidate_id)
+            logger.exception("resolve_product_from_url failed cid=%s", candidate_id)
             return {
                 'success': False,
                 'message': f'スクレイプ失敗: {type(e).__name__}: {e}',

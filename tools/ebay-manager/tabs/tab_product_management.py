@@ -1537,48 +1537,91 @@ def _render_url_direct_description_section(p: dict) -> None:
     url_key = f"pm_url_direct_input_{eid}"
     result_key = f"pm_url_direct_result_{eid}"
 
-    with st.expander("🔗 新規 URL 直接投入 → 画像 + description 生成 → eBay 反映",
+    with st.expander("🔗 引用元 URL / 商品タイトルから description 生成 → eBay 反映",
                      expanded=False):
         st.caption(
-            "仕入先 URL (メルカリ / ヤフオク / 楽天 等) を投入すると、個別出品と "
-            "同じ流れで scrape + rank 自動推定 + description HTML 生成. "
-            "preview を確認後、画像加工 (Step B-D) + 3 通りの反映 button で運用 (W158, 2026-05-23)."
+            "引用元 URL (メルカリ/ヤフオク/PayPay=専用解析、Amazon/楽天/Yahoo!ショッピング/"
+            "ラクマ等=AI解析) を投入すると scrape/AI + rank 推定 + description HTML 生成 (W226)。"
+            "URL を空欄にすると商品タイトルから title-only 生成。preview 確認後、画像加工 "
+            "(Step B-D) + 3 通りの反映 button で運用 (W158)。"
         )
+        product_title = (p.get("title") or "").strip()
         url_input = st.text_input(
-            "新規 URL",
+            "引用元 URL (空欄なら商品タイトルから生成)",
             value=st.session_state.get(url_key, ""),
             key=url_key,
-            placeholder="https://jp.mercari.com/item/m... or https://page.auctions.yahoo.co.jp/...",
+            placeholder="https://www.amazon.co.jp/dp/... / https://item.rakuten.co.jp/... (空欄=title-only)",
         )
+        _url = url_input.strip()
+        _is_title_only = not _url
+
+        # W226 (2026-06-06 決定4): title-only 時のみランク選択 (既定 N、変更可)。
+        # URL 経路は引用元から rank を AI 判断するが、いずれも eBay Condition へは
+        # 自動 push しない (状態は商品エディタの『状態』widget で user が確定 / W227)。
+        _rank_override: Optional[str] = None
+        if _is_title_only:
+            from monitor.product_resolver import TITLE_ONLY_DEFAULT_RANK
+            _rank_opts = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
+            _rank_override = st.selectbox(
+                "商品ランク (URL が無く AI 判断できないため手動指定。既定 N)",
+                options=_rank_opts,
+                index=_rank_opts.index(TITLE_ONLY_DEFAULT_RANK),
+                key=f"pm_url_direct_rank_{eid}",
+                help="title-only 生成時のランク。eBay Condition へは自動反映しません "
+                     "(状態は商品エディタ『状態』で確定)。",
+            )
+            if not product_title:
+                st.warning("この商品にはタイトルがありません。URL を入力してください。")
+
         if st.button(
             "① 画像 + description 生成 (eBay 反映はまだ)",
             key=f"pm_url_direct_gen_{eid}",
-            disabled=not url_input.strip(),
+            disabled=(_is_title_only and not product_title),
         ):
-            with st.spinner("仕入先 scrape + Claude rank 推定 + description 生成中..."):
-                prefetch = prefetch_supplier_product_and_rank(0, url_input.strip())
-                if not prefetch.get("success"):
-                    st.error(f"❌ 取得失敗: {prefetch.get('message') or '(原因不明)'}")
-                    st.session_state.pop(result_key, None)
-                    return
-                gen = generate_supplier_description(
-                    candidate_id=0,
-                    candidate_url=url_input.strip(),
-                    in_stock=is_in_stock,
-                    prefetched_product=prefetch.get("product"),
-                    rank_override_code=None,
-                )
+            with st.spinner("scrape/AI 解析 + Claude rank 推定 + description 生成中..."):
+                rank_reasoning = ""
+                if _is_title_only:
+                    # title-only: URL fetch せず商品タイトルだけで生成 (捏造しない)
+                    from monitor.product_resolver import build_title_only_product
+                    product = build_title_only_product(product_title)
+                    rank_reasoning = "title-only 生成 (ランクは手動指定)"
+                    gen = generate_supplier_description(
+                        candidate_id=0,
+                        candidate_url="",
+                        in_stock=is_in_stock,
+                        prefetched_product=product,
+                        rank_override_code=_rank_override,
+                    )
+                else:
+                    prefetch = prefetch_supplier_product_and_rank(0, _url)
+                    if not prefetch.get("success"):
+                        # Q0: URL 取得失敗は明示エラー + title-only フォールバック誘導
+                        st.error(
+                            f"❌ 取得失敗: {prefetch.get('message') or '(原因不明)'}\n\n"
+                            f"→ URL 欄を空にすると、この商品のタイトルから title-only で生成できます。"
+                        )
+                        st.session_state.pop(result_key, None)
+                        return
+                    product = prefetch.get("product")
+                    rank_reasoning = prefetch.get("rank_reasoning") or ""
+                    gen = generate_supplier_description(
+                        candidate_id=0,
+                        candidate_url=_url,
+                        in_stock=is_in_stock,
+                        prefetched_product=product,
+                        rank_override_code=None,
+                    )
                 if not gen.get("success"):
                     st.error(f"❌ description 生成失敗: {gen.get('message') or '(原因不明)'}")
                     st.session_state.pop(result_key, None)
                     return
-                product = prefetch.get("product")
                 st.session_state[result_key] = {
-                    "url": url_input.strip(),
+                    "url": _url,
+                    "title_only": _is_title_only,
                     "title_ja": getattr(product, "title_ja", "") or "",
                     "title_en": gen.get("title_en") or "",
                     "rank_code": gen.get("rank_code") or "",
-                    "rank_reasoning": prefetch.get("rank_reasoning") or "",
+                    "rank_reasoning": rank_reasoning,
                     "image_urls": list(getattr(product, "image_urls", []) or []),
                     "description_html": gen.get("description_html") or "",
                     "message": gen.get("message") or "",

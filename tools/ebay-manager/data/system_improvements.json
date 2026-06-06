@@ -2007,10 +2007,10 @@
     "tag": "W226",
     "title": "Amazon/楽天等(非フリマ)からの出品時 description 自動生成 — SKU/URLで振り分け+AI URL解析",
     "description": "2026-06-06 user要望。現状 description 自動生成はメルカリ/メルカリショップ/ラクマ/PayPayフリマ/ヤフオク(SKU prefix ebayme_/ebayMS_/ebayrm_/ebayPF_/ebayyh_/ebayh_)の専用スクレイパーのみ対応。Amazon(ebayAM_)/楽天市場(ebayRT_)/楽天ブックス(ebayRB_)/Yahooショッピング(ebayYS_)/未知ドメインは generate_listing 前段の scrape_supplier_url が unsupported_platform で停止し description 生成不可。対応: SKU prefix(無在庫)またはURLドメイン(新規/URL直接投入)で振り分け、上記5フリマ=既存スクレイパー、それ以外=AIがURL解析。AI解析は既存 monitor/scrapers.py(W120/W192のEC直URL在庫監視=httpx→Playwright→実Chrome anti-bot escalation)のページ取得を再利用してHTML取得→Claude(Haiku/Sonnet)で title_ja/brand/specs/condition_ja/description_ja/image_urls を構造抽出→ScrapedProduct化→既存 generate_listing(rank=商品ランク, in_stock=True) で英語description生成→既存 apply_listing_update_to_ebay で eBay反映。商品ランクは新品=N既定+手動上書き(既存UI流用)。新規スクレイパー不要・既存資産(generate_listing/apply/画像加工パイプライン/scrapers取得)を最大流用。リスク: Amazon anti-bot厳しめ(Playwright/Chrome必須・低速)、画像URLはCDN/hotlink保護で best-effort、AI抽出1コール増(Haikuで安価)。Q3構造化フロー(code-architect設計→code-reviewer+Codex 2段→実装→Q1: Streamlit+Playwright+実Amazon/楽天URLで生成検証)。",
-    "status": "未着手",
+    "status": "中核完了",
     "priority": "高",
     "created": "2026-06-06",
-    "completed": null,
+    "completed": "2026-06-06",
     "category": "business"
   },
   {

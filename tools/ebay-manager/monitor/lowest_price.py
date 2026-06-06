@@ -158,7 +158,11 @@ def update_listing_breakeven(ebay_item_id: str, settings: dict) -> Optional[floa
     # DRY-RUN→user 承認後に flag を ON にして全件再計算する安全ロールアウト
     # (use_batch_api / use_candidate_ranker と同じ pattern)。flag OFF の間は
     # backfill 済み category_id があっても floor は従来値のまま = 共同検証ゲートを守る。
-    _use_cat = bool((settings or {}).get("use_category_fvf_floor", False))
+    # 防御 (2026-06-06 W226 全件test で発覚): settings が dict 以外 (float 誤渡し等)
+    # でも try 前で AttributeError を出さず、{} に畳んで try 内の compute で TypeError
+    # → graceful None + warning log に倒す (C-1 regression guard 契約の復旧)。
+    _use_cat = bool((settings if isinstance(settings, dict) else {}).get(
+        "use_category_fvf_floor", False))
     _cat_id = (int(row[7]) if row[7] else 58248) if _use_cat else 58248
     try:
         breakeven = compute_breakeven_price_usd(
