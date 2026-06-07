@@ -67,31 +67,19 @@ def render_profit_calc_tab(s: dict) -> None:
         else:  # ②③
             duty_pattern = "shipping"
             _prefill = round(item_price * duty_rate_input / 100, 2)
-            st.markdown("**① お客様から徴収する額（＝eBay送料欄に設定する額・収入）**")
             shipping_override = st.number_input(
                 "① 送料＝バイヤー徴収関税（USD・手入力）",
                 min_value=0.0, value=float(_prefill), step=1.0, format="%.2f",
-                help="eBayの送料欄に設定してバイヤーから受け取る額（=収入）。"
-                     "初期値=商品価格×関税率。実際の出品送料に変更してください。",
                 # 販売価格 or 関税率を変えたら prefill を再計算（widget state の古い値固定を防ぐ）
                 key=f"calc_ship_ovr_{item_price}_{duty_rate_input}",
             )
-            st.caption(f"自動算出値: ${_prefill:.2f}（商品価格 × {duty_rate_input:.0f}%）")
-
             # ② 自分が実際に払う関税（コスト）。レート設定の関税率(%)から自動計算、手で変更可。
             # ①(収入)と②(コスト)を分離計上 = 相殺しない (W212)。floor には非適用 (本タブ表示専用)。
             _duty_prefill = round(item_price * duty_rate_input / 100, 2)
-            st.markdown("**② 自分が実際に払う関税（コスト・自動=販売価格×関税率・変更可）**")
             actual_duty_usd = st.number_input(
                 "② 実際に払う関税（USD・自動計算）",
                 min_value=0.0, value=float(_duty_prefill), step=1.0, format="%.2f",
-                help="あなたが通関で実際に払う関税（=コスト）。レート設定の関税率(%)から"
-                     "自動計算(販売価格×関税率)。違う場合は手で変更できます。",
                 key=f"calc_actual_duty_{item_price}_{duty_rate_input}",
-            )
-            st.caption(
-                f"自動算出値: ${_duty_prefill:.2f}（販売価格 × {duty_rate_input:.0f}%）／"
-                "①(お客様から徴収=収入) と ②(実際に払う関税=コスト) は相殺せず別々に計上します。"
             )
             actual_duty_rate_for_calc = (
                 actual_duty_usd / item_price if item_price > 0 else 0.0
