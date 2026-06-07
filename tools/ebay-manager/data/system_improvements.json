@@ -2045,5 +2045,16 @@
     "created": "2026-06-07",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 301,
+    "tag": "W230",
+    "title": "ライバルセラー新規出品モニター (JP優良セラーの新規出品を発掘供給)",
+    "description": "2026-06-07 user提案。日本の優良eBayセラー(5-15名)を手動登録し、そのセラーの新規出品を差分検知→Haiku一次フィルタ(自社扱える/利益見込み)→Discord通知。自社未踏ジャンルの発掘(W153自社listing別競合/W148仕入新着とは別軸)。実装済(2026-06-07, commit 2fcac6b): migration v68(monitored_sellers/monitored_seller_listings), rival_seller_monitor.py(Browse API sellers:フィルタ+JP判定itemLocation=JP+claim-then-act dedupe), task_rival_seller_sweep.py+TASK_SCHEDULE, tab_rival_sellers.py+ナビ。code-reviewer+Codex 2段でHIGH3件修正(JP未確認skip/取得失敗のsilent skip防止/偽通知防止)。通知のみ(購入/出品/値下げなし)。残: (1)daily_scheduler未配線=手動「今すぐチェック」のみ自動実行されない (2)Browse API q=*の実機挙動要検証 (3)Discord R-11実視認未完了。",
+    "status": "実装済・配線残(手動チェック動作、scheduler未接続)",
+    "priority": "通常",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
   }
 ]
