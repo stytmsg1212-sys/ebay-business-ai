@@ -145,6 +145,8 @@ metadata:
 
 ### 価格・eBaymag多国展開
 - eBaymagはUS在庫と連動(US在庫管理できていればeStocksでOK)、各国版は別リスティング。リミット少ない時は売れやすい英/豪/独に絞る。同期バグ(US0でも他国在庫有)あり→目視チェック。
+- **(2026-06-07 実証) eBaymag各国版はMonoDeck管理外**: eBaymag全国ONで各国サイト(CA/UK/DE/AU)の複製listingが同一アカウントのGetMyeBaySellingに`currency`=CAD/GBP/EUR/AUDで混入(1 SKU最大8 item_id=約8倍)。各国版はeBaymagがUS在庫連動で自前管理するため、MonoDeck定時処理(relist/値下げ/在庫/仕入先)が触ると二重管理で破壊する。**根治: ebay_sync で `currency!=USD` を取り込まない**(`<Site>`はGetMyeBaySelling非返却、通貨で判別。US本体=USDのみ)。商品増減やリスト数が数倍になったら本件を疑う。
+- **(2026-06-07) 出品上限到達=料金は発生しない**: 販売リミット(出品数/額の上限)は到達しても課金されず「新規出品が止まる」だけ。無料出品枠(insertion fee)とは独立。越境セラーは「Sell Abroad With No Insertion Fee」で国際サイト月400件無料(Basic Store+eBaymag利用条件)、eBaymagは無料枠超過で自動停止(超過1件のみ課金)=暴走課金なし。
 - 申告価格は商品単体価格(送料・関税・手数料を除く、FOB的)が原則だが「100%正しいとは言えない」運用。**アンダーバリュー依頼は応じない**(税関の輸出事後調査あり)。テンプレ: `If this is not acceptable for you, please feel free to cancel the order request.`
 - eBay手数料には消費税10%上乗せ(×1.1)。利益計算は確定CPaSS送料で記録(推定値は不正確)。
 
