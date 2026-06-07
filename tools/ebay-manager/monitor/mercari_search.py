@@ -108,9 +108,14 @@ def search_mercari(
             try:
                 page.wait_for_selector(_CARD_SELECTOR, timeout=timeout_ms)
             except PWTimeoutError:
+                # 2026-06-07: item-cell が timeout 内に出ない = (a)検索結果0件 or
+                # (b)セレクタ変更 の両方があり得る。実機点検でセレクタは健全と確認済
+                # (英語キーワードが日本フリマで0件だっただけ)。両者を断定せず併記し、
+                # 「selector changed」だけと誤読して無駄な debug を誘発しないようにする (Q0)。
                 logger.warning(
-                    f"Mercari search: no product cards found for {keyword!r}. "
-                    "Selector may have changed."
+                    f"Mercari search: no product cards for {keyword!r} within "
+                    f"{timeout_ms}ms (= 0 results, or selector changed). "
+                    "日本語キーワード/型番だとヒット率が上がる場合あり。"
                 )
                 browser.close()
                 return []
