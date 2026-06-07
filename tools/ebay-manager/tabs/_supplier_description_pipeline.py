@@ -509,6 +509,24 @@ def render_supplier_description_section(
     sk_prefetch = f"{_SS}prefetch_{candidate_id}"          # 2026-05-21: scrape+rank キャッシュ
     sk_rank_override = f"{_SS}rank_override_{candidate_id}"  # 2026-05-21: user 手動 rank
 
+    # 2026-06-07 fix: 商品エディタ『状態』(condition_rank) を rank 選択の初期値にする。
+    # 旧挙動の事故: 初期値が「(Claude 自動推定)」固定で、user が状態=B にしていても
+    # 生成すると AI 判定で上書きされた (item 358274830101 と同根)。listing 設定が
+    # あればそれを既定にして尊重 (変更可)。eBay Condition 自動 push しない方針は不変。
+    if sk_rank_override not in st.session_state:
+        try:
+            from monitor.database import get_conn
+            with get_conn() as _c:
+                _row = _c.execute(
+                    "SELECT condition_rank FROM ebay_listings WHERE ebay_item_id=?",
+                    (str(ebay_item_id),),
+                ).fetchone()
+            _cr = ((_row[0] if _row else "") or "").strip()
+            if _cr in _RANK_CHOICES:
+                st.session_state[sk_rank_override] = _cr
+        except Exception as _e:  # noqa: BLE001 — 初期値補助、失敗時は auto 既定で続行
+            logger.warning("condition_rank 初期値取得失敗 cid=%s: %s", candidate_id, _e)
+
     with st.container(border=True):
         st.markdown(
             f'<div style="font-size:11px;color:rgba(180,255,200,0.7);'

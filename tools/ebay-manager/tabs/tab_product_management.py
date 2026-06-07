@@ -1555,23 +1555,44 @@ def _render_url_direct_description_section(p: dict) -> None:
         _url = url_input.strip()
         _is_title_only = not _url
 
-        # W226 (2026-06-06 決定4): title-only 時のみランク選択 (既定 N、変更可)。
-        # URL 経路は引用元から rank を AI 判断するが、いずれも eBay Condition へは
-        # 自動 push しない (状態は商品エディタの『状態』widget で user が確定 / W227)。
+        # 商品ランク選択 (2026-06-07 fix): 商品エディタ『状態』(condition_rank) で
+        # 既に設定済みのランクを既定値にして尊重する。
+        # 旧挙動の事故: URL 経路が rank_override_code=None で毎回 AI 再判定し、user が
+        # 状態=B にしていても description が AI 判定 (例 C) で上書きされ修正不能だった
+        # (item 358274830101)。URL/title-only どちらも listing 設定ランクを既定にし、
+        # URL 経路では「引用元から AI 自動判定」も選べるようにする (変更可)。
+        # eBay Condition へは自動 push しない方針は不変 (W227、状態は商品エディタで確定)。
+        from monitor.product_resolver import TITLE_ONLY_DEFAULT_RANK
+        _rank_opts = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
+        _listing_rank = (p.get("condition_rank") or "").strip()
         _rank_override: Optional[str] = None
         if _is_title_only:
-            from monitor.product_resolver import TITLE_ONLY_DEFAULT_RANK
-            _rank_opts = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
+            # title-only は URL fetch しない = AI 判定不可。listing 設定 > 既定 N。
+            _default = _listing_rank if _listing_rank in _rank_opts else TITLE_ONLY_DEFAULT_RANK
             _rank_override = st.selectbox(
-                "商品ランク (URL が無く AI 判断できないため手動指定。既定 N)",
+                "商品ランク (商品エディタ『状態』の設定が既定。変更可)",
                 options=_rank_opts,
-                index=_rank_opts.index(TITLE_ONLY_DEFAULT_RANK),
+                index=_rank_opts.index(_default),
                 key=f"pm_url_direct_rank_{eid}",
-                help="title-only 生成時のランク。eBay Condition へは自動反映しません "
+                help="生成する description のランク。eBay Condition へは自動反映しません "
                      "(状態は商品エディタ『状態』で確定)。",
             )
             if not product_title:
                 st.warning("この商品にはタイトルがありません。URL を入力してください。")
+        else:
+            # URL 経路: listing 設定ランクを既定で尊重。「引用元から AI 自動判定」も選択可。
+            _opts_url = ["(引用元 URL から AI 自動判定)"] + _rank_opts
+            _default_idx = _opts_url.index(_listing_rank) if _listing_rank in _rank_opts else 0
+            _sel_url = st.selectbox(
+                "商品ランク (商品エディタ『状態』の設定が既定。変更可 / AI 自動判定も選択可)",
+                options=list(range(len(_opts_url))),
+                format_func=lambda i: _opts_url[i],
+                index=_default_idx,
+                key=f"pm_url_direct_rank_url_{eid}",
+                help="既定は商品エディタ『状態』のランク。これで生成すれば AI 判定で"
+                     "上書きされません。eBay Condition へは自動反映しません (W227)。",
+            )
+            _rank_override = _opts_url[_sel_url] if _sel_url > 0 else None
 
         # 必ず入れたい文言/方針 (任意)。AI が意味を理解し description に自然反映。
         _extra_key = f"pm_url_direct_extra_{eid}"
@@ -1615,13 +1636,19 @@ def _render_url_direct_description_section(p: dict) -> None:
                         st.session_state.pop(result_key, None)
                         return
                     product = prefetch.get("product")
-                    rank_reasoning = prefetch.get("rank_reasoning") or ""
+                    # 2026-06-07 fix: listing 設定ランク(or user 選択)を尊重。
+                    # _rank_override=None の時のみ引用元から AI 自動判定にフォールバック。
+                    rank_reasoning = (
+                        f"商品エディタ『状態』/手動選択のランク {_rank_override} を使用"
+                        if _rank_override
+                        else (prefetch.get("rank_reasoning") or "")
+                    )
                     gen = generate_supplier_description(
                         candidate_id=0,
                         candidate_url=_url,
                         in_stock=is_in_stock,
                         prefetched_product=product,
-                        rank_override_code=None,
+                        rank_override_code=_rank_override,
                         extra_instructions=(_extra_instructions or None),
                     )
                 if not gen.get("success"):
