@@ -718,3 +718,57 @@ class TestGeneratedListingDataclass:
             mode_class="gadget",
         )
         assert g.item_specifics["Brand"] == "Sony"
+
+
+# =========================================================================
+# extra_instructions (2026-06-07 user 要望: 必ず入れたい文言を AI に渡す)
+# =========================================================================
+
+class TestExtraInstructions:
+    """出品者の自由文言を _compose_user_prompt が正しく注入/省略すること。"""
+
+    def _args(self):
+        return (
+            _ScrapedProduct(title_ja="テスト商品", price_jpy=1000),
+            None,
+            _Rank(),
+        )
+
+    def test_section_present_when_set(self):
+        from monitor.listing_generator import _compose_user_prompt
+        p = _compose_user_prompt(*self._args(),
+                                 extra_instructions="ギフト包装対応可と必ず書いて")
+        assert "出品者からの追加指示" in p
+        assert "ギフト包装対応可" in p
+
+    def test_section_absent_when_none(self):
+        from monitor.listing_generator import _compose_user_prompt
+        p = _compose_user_prompt(*self._args(), extra_instructions=None)
+        assert "出品者からの追加指示" not in p
+
+    def test_section_absent_when_blank(self):
+        from monitor.listing_generator import _compose_user_prompt
+        p = _compose_user_prompt(*self._args(), extra_instructions="   ")
+        assert "出品者からの追加指示" not in p
+
+    def test_generate_listing_threads_extra_instructions(self):
+        """generate_listing が extra_instructions を Claude prompt まで届けること。"""
+        captured = {}
+
+        def _fake_create(*a, **kw):
+            captured["msgs"] = kw.get("messages")
+            return _make_claude_response({
+                "title": "Test", "category_id": "293",
+                "item_specifics": {}, "description_sections": {},
+            })
+
+        product, reference, rank = self._args()
+        with patch("monitor.listing_generator._get_client") as mock_client:
+            mock_client.return_value.messages.create.side_effect = _fake_create
+            generate_listing(
+                product, reference, rank, "<div>{{product_name}}</div>",
+                extra_instructions="バンドル品である点を強調",
+            )
+        sent = captured["msgs"][0]["content"]
+        assert "バンドル品である点を強調" in sent
+        assert "出品者からの追加指示" in sent

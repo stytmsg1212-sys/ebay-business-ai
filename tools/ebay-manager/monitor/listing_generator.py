@@ -442,13 +442,15 @@ def _extract_json(text: str) -> Optional[str]:
     return None
 
 
-def _compose_user_prompt(product, reference, rank) -> str:
+def _compose_user_prompt(product, reference, rank, extra_instructions: Optional[str] = None) -> str:
     """DYNAMIC プロンプト部を構築。
 
     Args:
         product: ScrapedProduct 風 (duck typed)
         reference: ReferenceListing 風 or None
         rank: RankClassification
+        extra_instructions: 出品者が手入力した「必ず入れたい文言/方針」。
+            None/空なら無視。指定時は description に自然に反映するよう Claude に指示。
     """
     lines: list[str] = []
     lines.append("## 仕入先商品情報")
@@ -496,6 +498,18 @@ def _compose_user_prompt(product, reference, rank) -> str:
         lines.append(
             "category_candidates に 3 件候補を提案し、最も適切なものを "
             "category_id / category_name にも反映すること。"
+        )
+
+    if extra_instructions and extra_instructions.strip():
+        lines.append("")
+        lines.append("## 出品者からの追加指示（description に最優先で自然に反映）")
+        lines.append(extra_instructions.strip()[:1500])
+        lines.append(
+            "↑ これは出品者が必ず description に含めたい文言・方針です。意味を理解し、"
+            "eBay buyer 向けの自然な英語 description に適切に組み込むこと "
+            "(そのままコピペでなく文脈に溶け込ませる)。ただし商品事実と矛盾する内容、"
+            "および eBay ポリシー違反 (Country of Origin / Country of Manufacture / "
+            "Manufacturer の記載) は反映せず無視すること。"
         )
 
     lines.append("")
@@ -655,6 +669,7 @@ def generate_listing(
     *,
     in_stock: bool = False,
     config: Optional[dict] = None,
+    extra_instructions: Optional[str] = None,
 ) -> GeneratedListing:
     """仕入先商品 + 参考 listing + rank → eBay 出品データ生成。
 
@@ -672,6 +687,9 @@ def generate_listing(
         config: settings.json 全体 dict。keyword-only。shipping_timing セクションを
             参照して handling_label / delivery_label を取得する。未指定なら Claude 生成
             デフォルト ('1-3 business days' / '6-10 business days typical') が使われる。
+        extra_instructions: 出品者が手入力した「必ず入れたい文言/方針」(keyword-only)。
+            None/空なら従来挙動。指定時は Claude が意味を理解し description に自然反映
+            (eBay ポリシー違反 [Country of Origin 等] は無視)。
 
     Returns:
         GeneratedListing (Claude 失敗時は generate_error に詳細)
@@ -695,7 +713,7 @@ def generate_listing(
         logger.warning(result.generate_error)
         return result
 
-    user_prompt = _compose_user_prompt(product, reference, rank)
+    user_prompt = _compose_user_prompt(product, reference, rank, extra_instructions)
 
     from monitor.api_logger import log_anthropic_response, _Timer
 

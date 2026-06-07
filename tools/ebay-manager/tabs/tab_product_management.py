@@ -1573,6 +1573,17 @@ def _render_url_direct_description_section(p: dict) -> None:
             if not product_title:
                 st.warning("この商品にはタイトルがありません。URL を入力してください。")
 
+        # 必ず入れたい文言/方針 (任意)。AI が意味を理解し description に自然反映。
+        _extra_key = f"pm_url_direct_extra_{eid}"
+        _extra_instructions = st.text_area(
+            "description に入れたい文言・指示（任意）",
+            value=st.session_state.get(_extra_key, ""),
+            key=_extra_key,
+            placeholder="例: ギフト包装対応可と必ず書いて / バンドル品である点を強調 / 専用ケース付属を明記",
+            help="自由記入。AI がこの内容を理解し自然な英語 description に組み込みます。"
+                 "（原産国/製造国/Manufacturer の記載は eBay ポリシー上、入れても無視されます）",
+        )
+
         if st.button(
             "① 画像 + description 生成 (eBay 反映はまだ)",
             key=f"pm_url_direct_gen_{eid}",
@@ -1591,6 +1602,7 @@ def _render_url_direct_description_section(p: dict) -> None:
                         in_stock=is_in_stock,
                         prefetched_product=product,
                         rank_override_code=_rank_override,
+                        extra_instructions=(_extra_instructions or None),
                     )
                 else:
                     prefetch = prefetch_supplier_product_and_rank(0, _url)
@@ -1610,6 +1622,7 @@ def _render_url_direct_description_section(p: dict) -> None:
                         in_stock=is_in_stock,
                         prefetched_product=product,
                         rank_override_code=None,
+                        extra_instructions=(_extra_instructions or None),
                     )
                 if not gen.get("success"):
                     st.error(f"❌ description 生成失敗: {gen.get('message') or '(原因不明)'}")

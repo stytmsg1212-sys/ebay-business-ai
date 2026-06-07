@@ -124,12 +124,16 @@ def generate_supplier_description(
     template_id: Optional[int] = None,
     prefetched_product=None,
     rank_override_code: Optional[str] = None,
+    extra_instructions: Optional[str] = None,
 ) -> dict:
     """仕入先 URL から description HTML を生成 (eBay 反映はしない、純生成のみ).
 
     2026-05-21 user 要望: prefetched_product / rank_override_code を受け取り
     section open 時の事前取得結果を再利用 + user 手動 rank 上書き対応。
     両方 None なら旧挙動 (内部で scrape + auto-classify)。
+
+    extra_instructions: 出品者が必ず入れたい文言/方針 (任意)。AI が意味を理解し
+        description に自然反映 (eBay ポリシー違反 [Country of Origin 等] は無視)。
 
     Returns:
         {'success': bool,
@@ -272,6 +276,7 @@ def generate_supplier_description(
             template_body=template_body,
             in_stock=in_stock,
             config=config,
+            extra_instructions=extra_instructions,
         )
     except Exception as e:
         logger.exception("generate_listing failed cid=%s", candidate_id)
@@ -589,6 +594,18 @@ def render_supplier_description_section(
         # 実際に generate で使う rank (override > auto)
         _effective_rank = _rank_override_chosen or auto_rank
 
+        # 必ず入れたい文言/方針 (任意)。AI が意味を理解し description に自然反映。
+        sk_extra = f"{_SS}extra_instr_{candidate_id}"
+        _extra_instructions = st.text_area(
+            "description に入れたい文言・指示（任意）",
+            value=st.session_state.get(sk_extra) or "",
+            key=f"{_SS}input_extra_{candidate_id}",
+            placeholder="例: ギフト包装対応可と必ず書いて / バンドル品である点を強調 / 専用ケース付属を明記",
+            help="自由記入。AI がこの内容を理解し自然な英語 description に組み込みます。"
+                 "（原産国/製造国/Manufacturer の記載は eBay ポリシー上、入れても無視されます）",
+        )
+        st.session_state[sk_extra] = _extra_instructions
+
         gen_result = st.session_state.get(sk_result)
         sk_gen_lock = f"{_SS}gen_lock_{candidate_id}"
         _is_generating = bool(st.session_state.get(sk_gen_lock, False))
@@ -619,6 +636,9 @@ def render_supplier_description_section(
                                 in_stock=False,
                                 prefetched_product=prefetch.get('product'),
                                 rank_override_code=_effective_rank,
+                                extra_instructions=(
+                                    st.session_state.get(sk_extra) or None
+                                ),
                             )
                         st.session_state[sk_result] = res
                     finally:

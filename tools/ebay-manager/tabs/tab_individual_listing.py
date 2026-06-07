@@ -140,6 +140,7 @@ def _init_session_state() -> None:
         f"{_SS}selected_template_id": None,
         f"{_SS}rank_manual_override": "",    # "" = auto, else rank_code
         f"{_SS}manual_category_id": "",
+        f"{_SS}extra_instructions": "",      # 出品者が必ず入れたい文言/方針 (description 反映)
         # Step 4 (生成結果)
         f"{_SS}rank_classification": None,   # dict
         f"{_SS}generated_listing": None,     # dict
@@ -222,6 +223,10 @@ def _clear_from_step(step: int) -> None:
                     st.session_state[k] = False
                 else:
                     st.session_state[k] = None
+        # URL 変更 = 別商品 → 追加文言 (description 指示) を残留させない。
+        # 値 key + widget key の両方を破棄 (Streamlit は widget key 経由で前入力を保持)。
+        st.session_state[f"{_SS}extra_instructions"] = ""
+        st.session_state.pop(f"{_SS}input_extra_instructions", None)
     if step <= 3:
         for k in step4_keys:
             st.session_state[k] = None if k in (
@@ -1331,6 +1336,16 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
             help="空欄なら参考listing / Claude 候補 / Claude 自動選択 の優先順で決定",
         )
 
+    # 必ず入れたい文言/方針 (任意)。AI が意味を理解して description に自然反映する。
+    extra_instructions = st.text_area(
+        "description に入れたい文言・指示（任意）",
+        value=st.session_state.get(f"{_SS}extra_instructions") or "",
+        key=f"{_SS}input_extra_instructions",
+        placeholder="例: ギフト包装対応可と必ず書いて / バンドル品である点を強調 / 専用ケース付属を明記",
+        help="自由記入。AI がこの内容を理解し、自然な英語 description に組み込みます。"
+             "（原産国/製造国/Manufacturer の記載は eBay ポリシー上、入れても無視されます）",
+    )
+
     # 状態変更を反映
     st.session_state[f"{_SS}sku"] = sku
     st.session_state[f"{_SS}qty"] = int(qty)
@@ -1340,6 +1355,7 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
     st.session_state[f"{_SS}selected_template_id"] = selected_template_id
     st.session_state[f"{_SS}rank_manual_override"] = rank_manual
     st.session_state[f"{_SS}manual_category_id"] = manual_cat
+    st.session_state[f"{_SS}extra_instructions"] = extra_instructions
 
     # 生成ボタン
     _b1, _b2 = st.columns([1, 5])
@@ -1459,6 +1475,7 @@ def _do_generate() -> None:
                 template_body=template_body,
                 in_stock=_gen_in_stock,
                 config=_gen_cfg,
+                extra_instructions=(st.session_state.get(f"{_SS}extra_instructions") or None),
             )
         except Exception as e:  # noqa: BLE001
             logger.exception("generate_listing raised")
