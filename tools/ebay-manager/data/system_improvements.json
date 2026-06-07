@@ -2023,5 +2023,27 @@
     "created": "2026-06-06",
     "completed": "2026-06-06",
     "category": "business"
+  },
+  {
+    "id": 299,
+    "tag": "W228",
+    "title": "商品リサーチ→仕入判定→出品 半自動パイプライン (フェーズB MVP)",
+    "description": "2026-06-07 user とチャットで仕様確定(決定ロック)。コンサル(けいすけ)流リサーチの自動化。フェーズA発掘は当面手動(userがTerapeakで商品名取得)、フェーズB(検証〜出品)を半自動Wizard化。フロー: 商品名貼付→[売れ行きゲート: 直近90日2個以上=対象/出品あり開始90日以上で売れてない=死に筋除外/出品あり90日未満=今回skip/出品ゼロ+1〜2年2個以上=在庫0対象/1〜2年2個未満=除外]→[フリマ仕入探索(メルカリ/ヤフオク/PayPayのみ、Amazon/楽天EC対象外)で同一商品+同状態を探す、今の最安値+過去取引履歴取得]→[利益計算: eBay見込み売値(Terapeak平均)-(仕入+国内送+国際送+関税+eBay手数料)、還付抜き、けいすけ基準=利益率6%または利益額600円のどちらか片方]→[仕分け: 見つかる&利益=在庫あり/今ダメだが過去価格で利益=在庫0+監視/見つからないが過去取引で利益=在庫0+監視/それ以外=skip]→[人間が同一性+状態を最終承認]→[在庫あり=draft/verify出品(W226 desc流用)/在庫0=出品+キーワード新着監視を自動登録]。仕入購入と初回出品公開は人間承認(完全自動購入なし)。既存資産流用: task_supplier_candidate_search/claude_evaluator(match_score)/lowest_price/keyword_watch_db/ebay_lister/terapeak_scraper(出品開始日・結果リスト読取は要拡張)。新規: research_candidates テーブル+Wizard UI+出品→watch自動紐付け。コスト: Claude約$0.015-0.03/候補(Batch半額)、開発4-6週。仕様書: .company/engineering/docs/2026-06-07-product-research-automation-spec.md。Q3構造化フローで実装。",
+    "status": "設計確定・実装未着手",
+    "priority": "高",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 300,
+    "tag": "W229",
+    "title": "フェーズA Terapeak Product Research 新着順ハーベスト自動化 PoC",
+    "description": "2026-06-07 仕様確定。発掘フェーズの自動化。Terapeak Product Research を 除外KW(ブランド物)/カテゴリ(Business&Industrial/Consumer Electronics/Computers Tablets Networking)/価格$100+/Seller Country=Japan/Date last sold新着順 でハーベストし上位N件を候補化→W228パイプラインへ。公式API不可(Marketplace Insights=Limited Release本番認可困難・90日のみ、Browse=active専用)のためTerapeak UIをCDPスクレイプ(既存terapeak_scraper拡張、出品開始年月も読取)。最大リスク=eBay/Terapeak規約・anti-bot(Akamai)・UI変更・暗黙日次上限(250件/日は未実証)。後回し: まずW228(フェーズB半自動)を完成させ、本PoC(1-2週)で規約/安定性を実証してから本格自動化を判断。危険なら発掘は手動維持。仕様書: .company/engineering/docs/2026-06-07-product-research-automation-spec.md。",
+    "status": "構想(後回し・PoCで規約/anti-bot実証後判断)",
+    "priority": "通常",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
   }
 ]
