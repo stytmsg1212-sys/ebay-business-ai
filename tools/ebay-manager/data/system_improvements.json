@@ -2056,5 +2056,38 @@
     "created": "2026-06-07",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 302,
+    "tag": "W231",
+    "title": "利益計算 Phase1: 表示利益のbuyer徴収送料を実出品送料化",
+    "description": "2026-06-07 利益計算を実態に近づける (item 357039873158 maxell の実売検証で MonoDeck -793 vs 実績+152[Payoneer込] の約945円ギャップを検算特定。Codex協議+Opus判断)。最大要因(¥956): calculate() duty_pattern='shipping' が buyer徴収送料=item×11%($9.90)と仮定→実出品送料($15.99)に。既存 CalcInput.shipping_usd_override / ebay_listings.shipping_cost を渡す最小工数。**表示利益のみ**(lp_breakeven floorは触らない=shipping_cost stale/0で下限下げ過ぎ原価割れ事故防止)。floor反映はflag+dry-runで別途。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 303,
+    "tag": "W232",
+    "title": "利益計算 Phase2: 売却後の実績利益パネル(eBay実入金+実CPaSS+Payoneer)",
+    "description": "2026-06-07 利益計算を実態に近づける (item 357039873158 maxell の実売検証で MonoDeck -793 vs 実績+152[Payoneer込] の約945円ギャップを検算特定。Codex協議+Opus判断)。本命。事前見積りを実績に完全一致させるのは筋が悪い(為替/送料/手数料がブレる=過剰フィット)。売却済みは eBay order earnings(GetOrders/Finances API)+実CPaSS請求+Payoneer手数料 から実績利益を別表示。見積り=出品前判断/実績=売却後検証 と用途分離。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 304,
+    "tag": "W233",
+    "title": "利益計算 Phase3: FVF分解+CPaSS送料校正+為替stale対応",
+    "description": "2026-06-07 利益計算を実態に近づける (item 357039873158 maxell の実売検証で MonoDeck -793 vs 実績+152[Payoneer込] の約945円ギャップを検算特定。Codex協議+Opus判断)。FVF: 実効率一括上書き(11.6%)は国際/固定手数料の二重計上→base FVF+international fee+per-order $0.40+広告 に分解(flag付きdry-run, cat15053で比較)。CPaSS送料CSV(shipping_rate_last_updated 2026-04-19 stale)更新or実請求校正。為替¥157固定→更新日明示+自動更新(floor連動はflag必須)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-07",
+    "completed": null,
+    "category": "business"
   }
 ]
