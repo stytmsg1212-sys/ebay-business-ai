@@ -164,6 +164,14 @@ def get_active_listings(
             if price_text == "0":
                 price_text = item.findtext("ns:BuyItNowPrice", namespaces=ns) or "0"
 
+            # 通貨抽出 (CurrentPrice の currencyID 属性)。
+            # eBaymag 各国版判別の唯一の安価な signal: USD=US本体 / CAD・GBP・EUR・AUD=国際版。
+            # GetMyeBaySelling は <Site> を返さない (実機確認 2026-06-07) ため通貨で判別する。
+            cur_el = item.find("ns:CurrentPrice", namespaces=ns)
+            if cur_el is None:
+                cur_el = item.find(".//ns:SellingStatus/ns:CurrentPrice", namespaces=ns)
+            currency = (cur_el.get("currencyID") if cur_el is not None else "") or ""
+
             # USA向け送料抽出
             shipping_cost = 0.0
             shipping_details = item.find(".//ns:ShippingDetails", namespaces=ns)
@@ -215,6 +223,7 @@ def get_active_listings(
                 "view_count": _safe_int(hit_count_text),
                 "sales_count_30d": _safe_int(quantity_sold_text),
                 "current_price": _safe_float(price_text),
+                "currency": currency,
                 "shipping_cost": shipping_cost,
                 "time_left_seconds": parse_time_left_to_seconds(time_left_text),
                 "start_time": start_time_text,
@@ -404,10 +413,15 @@ def get_single_listing(
     # 最終 fallback は BuyItNowPrice (Fixed-Price 出品の主要 field)。
     selling_status = item.find("ns:SellingStatus", namespaces=ns)
     price_text = "0"
+    cur_el = None
     if selling_status is not None:
+        cur_el = selling_status.find("ns:CurrentPrice", namespaces=ns)
         price_text = selling_status.findtext("ns:CurrentPrice", namespaces=ns) or "0"
     if price_text == "0":
         price_text = item.findtext("ns:BuyItNowPrice", namespaces=ns) or "0"
+
+    # 通貨 (eBaymag 各国版判別、get_active_listings と同 signal)。
+    currency = (cur_el.get("currencyID") if cur_el is not None else "") or ""
 
     # 送料: get_active_listings と同じ 3 段階 fallback
     shipping_cost = 0.0
@@ -469,6 +483,7 @@ def get_single_listing(
         "sku": sku,
         "quantity": _safe_int(qty_text),
         "current_price": _safe_float(price_text),
+        "currency": currency,
         "shipping_cost": shipping_cost,
         "watch_count": watch_count,
         "view_count": view_count,

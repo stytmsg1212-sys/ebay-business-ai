@@ -186,6 +186,7 @@
     },
     "daily_relist": {
       "enabled": true,
+      "_kill_switch_history": "2026-06-07 緊急停止→同日再開: eBaymag各国版約500件がDB流入しdaily_relist選定条件に合致(各国listングをend/relistでeBaymag管理破壊のリスク)→ 根治(ebay_sync currency≠USD除外+既存637行cleanup)完了で再開。currency判別で各国版は今後DBに入らない。",
       "description": "End→Relist SEO ブースト: watch=0 かつ rank=E の listing を毎日最大7件、手動で終了→再出品して検索順位を底上げ",
       "priority": 13,
       "execution_times": [

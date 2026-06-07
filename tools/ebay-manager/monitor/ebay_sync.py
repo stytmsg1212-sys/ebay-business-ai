@@ -50,7 +50,8 @@ def sync_listings_from_ebay(app_id: str, dev_id: str, cert_id: str, user_token: 
     init_db()
     stats = {
         "synced": 0, "matched": 0, "ended": 0, "reactivated": 0,
-        "errors": 0, "retirement_skipped": False, "messages": [],
+        "errors": 0, "retirement_skipped": False, "intl_skipped": 0,
+        "messages": [],
     }
 
     if not all([app_id, dev_id, cert_id, user_token]):
@@ -73,13 +74,25 @@ def sync_listings_from_ebay(app_id: str, dev_id: str, cert_id: str, user_token: 
         # False となり「在庫種別なし」扱い = 既存挙動と互換 (元々 DB に無かった = 全
         # 経路で無視されていたのが、DB 存在 + SKU 空 = 同じく全経路で無視 + 商品管理
         # にだけは表示される、というのが本変更の目的)。
-        listings_with_sku = all_listings  # 変数名は downstream 互換のため維持
+        # 2026-06-07: eBaymag 各国版を除外。eBaymag を全国 ON にすると各国サイト
+        # (CA/UK/DE/AU 等) の複製 listing が同一アカウントの GetMyeBaySelling に
+        # currency=CAD/GBP/EUR/AUD で混入する (1 SKU が最大 8 item_id に複製)。
+        # これらは eBaymag が US 在庫連動で自前管理するため、MonoDeck の定時処理
+        # (relist/値下げ/在庫/仕入先) が触ると二重管理で破壊する。currency!=USD は
+        # 取り込まない (US 本体のみ処理 = user 承認 2026-06-07)。<Site> は
+        # GetMyeBaySelling が返さないため通貨で判別 (ebay_client 実機確認済)。
+        usd_listings = [l for l in all_listings if (l.get("currency") or "USD") == "USD"]
+        intl_skipped = len(all_listings) - len(usd_listings)
+        listings_with_sku = usd_listings  # 変数名は downstream 互換のため維持
         logger.info(
-            f"Got {len(all_listings)} total active listings from eBay "
-            f"(SKU 空含む、商品管理 silent gap 解消のため filter 解除)"
+            f"Got {len(all_listings)} active listings from eBay; "
+            f"US本体(USD) {len(usd_listings)}件を取込、"
+            f"eBaymag各国版(非USD) {intl_skipped}件をスキップ"
         )
+        stats["intl_skipped"] = intl_skipped
         stats["messages"].append(
-            f"eBay API: {len(all_listings)} active listings (SKU 空含む)"
+            f"eBay API: {len(all_listings)}件中 US本体 {len(usd_listings)}件取込 / "
+            f"eBaymag各国版 {intl_skipped}件除外 (currency≠USD)"
         )
     except Exception as e:
         msg = f"eBay API error: {e}"
@@ -319,6 +332,19 @@ def sync_single_listing(
     out["sku"] = sku
     out["title"] = title
     out["current_price"] = price
+
+    # 2026-06-07: eBaymag 各国版(非USD)は取り込まない (bulk sync と同 policy)。
+    # 単一同期での再混入を塞ぐ (HIGH-3 fix)。US 本体のみ MonoDeck 管理。
+    currency = (listing.get("currency") or "USD")
+    if currency != "USD":
+        out["message"] = (
+            f"eBaymag各国版({currency})のため取込skip (US本体のみ管理)。"
+            f"title='{title[:50]}'"
+        )
+        logger.info(
+            f"sync_single_listing skip non-USD: item_id={ebay_item_id} currency={currency}"
+        )
+        return out
 
     if not sku.strip():
         out["message"] = (
