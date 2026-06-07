@@ -31,6 +31,11 @@ def render_profit_calc_tab(s: dict) -> None:
     with col1:
         st.subheader("商品・コスト情報")
         purchase = st.number_input("仕入れ値（円）", min_value=0, value=52400, step=100)
+        # ポイント実額(¥)。空(0)なら従来の 仕入れ値 × ポイント% で自動算出。
+        point_yen_input = st.number_input(
+            "ポイント額（円・実額／0=ポイント%で自動）",
+            min_value=0, value=0, step=10,
+        )
         item_price = st.number_input("販売価格（USD）", min_value=0.0, value=500.0, step=1.0, format="%.2f")
         category_id = st.number_input("カテゴリーID", min_value=0, value=58248, step=1)
         # W222 (2026-06-05): カテゴリID入力時に落札手数料(FVF)実効レートをライブ表示。
@@ -119,6 +124,7 @@ def render_profit_calc_tab(s: dict) -> None:
             category_id=int(category_id), country_code="US",
             duty_pattern=duty_pattern, shipping_usd_override=shipping_override,
             actual_duty_rate=actual_duty_rate_for_calc,
+            point_yen=(float(point_yen_input) if point_yen_input > 0 else None),
         )
         result = calculate(inp, calc_settings)
 
