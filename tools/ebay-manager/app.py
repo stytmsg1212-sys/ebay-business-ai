@@ -80,6 +80,7 @@ from tabs.tab_research_brain import render_tab as render_research_brain_tab
 from tabs.tab_morning_discovery import render_morning_discovery_tab
 from tabs.tab_purchase_confirm import render_purchase_confirm_tab
 from tabs.tab_keyword_watch import render_keyword_watch_tab  # W148 (2026-05-21)
+from tabs.tab_w228_research import render_w228_research_tab  # W228 (2026-06-07)
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
 # ── W134 Step2: 重い DB ローダの read-cache (体感改善) ──
@@ -236,6 +237,7 @@ _W134_GROUPS = {
         "キーワード新着監視",  # W148 (2026-05-21)
         "最安値チェック",   # W98 (2026-05-05)
         "利益計算",
+        "商品リサーチ(W228)",  # W228 (2026-06-07)
     ],
     "⏺ 出品・関連": [
         "個別出品",
@@ -562,6 +564,13 @@ if _w134_sel == "入荷確認":
 # ========== キーワード新着監視タブ (W148 2026-05-21) ==========
 if _w134_sel == "キーワード新着監視":
     render_keyword_watch_tab()
+
+# ========== 商品リサーチ Wizard タブ (W228 2026-06-07) ==========
+if _w134_sel == "商品リサーチ(W228)":
+    try:
+        render_w228_research_tab(s)
+    except Exception as _e:
+        st.error(f"商品リサーチ(W228)タブ 描画エラー: {_e}")
 
 # ========== 定時実行タブ (2026-04-25 hour ドリフト事故対応) ==========
 if _w134_sel == "定時実行":
