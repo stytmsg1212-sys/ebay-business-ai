@@ -125,3 +125,44 @@ Q3構造化フローで実装（設計→code-reviewer+Codex 2段→Q1検証）�
 5. 過去取引参照＝フリマの売却済み/落札相場で「次に安く出れば仕入れて利益」と判断。
 6. 仕入購入・初回出品公開は人間承認（完全自動購入なし）。
 7. MVP=フェーズB半自動、フェーズA発掘は当面手動（PoC後判断）。
+
+---
+
+## 8. レビュー反映（2026-06-07 code-architect設計レビュー）
+
+初版の「既存資産8割流用」は**楽観だった**。実コードと照合した結果、実装前に潰すべき構造的問題が判明。確信度高い順:
+
+### P0（実装前必須）
+- **P0-1 「8割流用」は過大 → アダプタ層が必要**。既存 `task_supplier_candidate_search` は「eBay listing存在前提」設計で、Terapeak由来の未出品候補は3つの不変条件に衝突:
+  - エントリが `get_ebay_listing_by_item_id` で既存listing必須（未出品候補は引けない）
+  - `add_supplier_candidate` は `ebay_item_id` NOT NULL（W185 v56・SKU崩壊事故防止）→ **NULL禁止**
+  - 利益計算は `current_price`(既存eBay売値)+物理データ(weight)前提 → Terapeak候補は「Terapeak平均」しか無く weight 無し → 計算不能
+  - **対策**: `research_candidates` に**独自PK**（例 `rc:<id>`）を持たせ、既存テーブルの ebay_item_id には sentinel（`rc:<id>`、NULL禁止）を入れ、実出品後に実IDへ昇格。利益計算は既存関数でなく**Terapeak平均+人手/推定の物理データを直接 compute_breakeven に渡す新関数**。
+- **P0-2 ステータス状態機械が未定義** → silent skip温床。`new→gate_passed/rejected/skipped→sourcing→sourced/not_found→awaiting_identity_approval→…→listed/listed_oos_monitored / needs_review` を明示定義。「ゲートskip」は理由+日時を残す(再出現再判定のため)が候補リストには非表示。
+- **P0-3 在庫0×自動監視→購入 が履行不能を増幅** → 在庫0アクティブ**上限件数**設定、handling time最大化、「承認ラグ中にeBayで売れた時の緊急フロー(即取下げ/高速発注)」を必須化。
+
+### P1（MVPの正しさ・コスト）
+- **P1-1 利益計算の物理データ欠落** → Terapeakには weight/HS無し。MVPは**人手で概算重量/サイズ入力**。Section232該当(鋳鉄/トランス/家電)は赤字リスク大 → ゲートでHS推定→該当フラグを人間に提示。weight=0 clip常用は禁止(送料過小→偽黒字→誤仕入)。
+- **P1-2 ⚠️フェーズBのゲートが実はフェーズAのscrapeに依存** → ゲート行2/3/4の判定材料(出品有無・**出品開始年月**・1〜2年sold)はTerapeak ACTIVEタブ/長期SOLD読取=フェーズA相当。現 terapeak_scraper はSOLDタブ集計特化でACTIVE開始日は未対応(=新規開発、W229相当)。**「Bだけ先行」は不成立**。→ **MVPはゲート入力を人手入力**(商品名+90日sold数+出品有無+開始日+1-2年sold数を貼る)。scraper自動取得はW229へ。
+- **P1-3 CDP手動ログイン前提はループ運用に乗らない** → MVPでscraperをループに組まない(人手入力前提)。
+
+### P2/P3（Q0・検証・ビルド順）
+- **P2 「スキップ」を業務判断(死に筋/赤字)と技術失敗(取得エラー/計算不能)で別状態化**。後者は needs_review + DBログ/Discord(silent skip禁止)。
+- **最初のPoC** = 「1商品 手入力 → フリマ探索 + AI同一性提示まで(出品しない)」。DoD=実フリマ3商品でmatch_scoreがresearch_candidatesに着地・利益計算がNoneにならない(orneeds_reviewに正しく落ちる)。
+- **ビルド順(改訂)**: ①research_candidatesテーブル+状態機械(識別子設計) → ②Terapeak候補→フリマ探索アダプタ(=8割流用の真偽を2番目で検証) → ③売れ行きゲート(人手入力前提・純ロジックpytest) → ④利益計算&仕分け → ⑤承認UI(同一性→購入→公開3段) → ⑥出品+監視自動登録(最も金銭直結=最後)。最大リスク(アダプタ)を前倒し。
+- **コスト注記**: 「100候補≈$1.5-3」はW223のコスト削減(再評価skip)がebay_item_idキー前提で効く想定の楽観値。Terapeak候補では効かない場合あり。
+
+### 結論
+ビジネスロジック(ゲート/けいすけ基準/人間承認)は健全。だが**MVPスコープは初版より重い**(アダプタ新規+状態機械+ゲートは当面人手入力)。W228着手時は P0-1/P0-2/P1-2 を設計に反映し、P2-2のPoC(出品せず探索+同一性提示)を最初の検証単位にする。
+
+---
+
+## 9. 関連リサーチ手法（research-brain 提案、2026-06-07・ROADMAP候補）
+
+本パイプラインと別に検討価値が高い手法（優先度順）:
+- **⭐S 自社sold縦深掘り**（ROI極大/コスト小）: 売れたlistingの色違い/上位機/兄弟SKU/後継型番を自動列挙。W122 morning_discovery が既に近いことをするが**実sold実績をFew-shotに入れていない** → sold履歴を注入するだけ。最小コストで最大ROI。
+- **A ライバル新規出品モニター**（user提案・ROI大/コスト中）: eBay Browse APIの `sellers:{id1|id2}` フィルタ(正式サポート)で、**JP優良セラー5-15名**を登録→新規出品を差分検知→claude_evaluatorで一次フィルタ→morning_discovery階層3へ供給。W153(自社listing別競合)/W148(仕入新着)と**重複ゼロ=自社未踏ジャンル発掘の唯一手**。JP判定ゲート必須・人選は人間・学習目的(自動狙い撃ち値下げしない)。80%既存流用。
+- **A Terapeak sold × JP競合ゼロ 自動スクリーニング**（ROI大/コスト中）: フェーズBゲートの機械化。競合ゼロ=価格決定権=利益率6%超えやすい。Terapeak 250件/日制限で夜間直列バッチ必須。
+- **B 仕入先FB学習**（ROI中〜大/要意図確認）: user の buy/skip 判定を教師に claude_evaluator しきい値較正(W223延長)。
+- **C 廃番・限定先回り**（ROI中）: W209ニュースAI基盤に「生産終了/限定」軸追加。
+- **避ける**: Amazon/楽天仕入(false-OOS→Defect)、アニメ/IP(VeRO/Schedule A訴訟→自動採用せず人間承認)。
