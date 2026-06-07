@@ -58,6 +58,7 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "scheduler_health_check", "display": "定時実行ヘルスチェック", "hours": [4, 12, 16, 19, 23], "weekdays": None, "owner": "health"},
     {"key": "market_analysis_refresh", "display": "W7-A 市場戦略 refresh", "hours": [2], "weekdays": [6], "owner": "market_analysis"},
     {"key": "daily_codex_lint", "display": "W125 Codex 文書 lint (毎日 03:00)", "hours": [3], "weekdays": None, "owner": "codex_lint"},
+    {"key": "rival_seller_sweep", "display": "W#3 ライバルセラー新規出品モニター", "hours": [2], "weekdays": None, "owner": "main"},
     # Codex Round 1 fix MEDIUM-4 (2026-05-16): kind=interval で main batch slot 期待から除外.
     # hours=None は本来「全 batch slot で実行」を意味するが、本 task は 30 分毎 cron なので
     # expected slot 模型と齟齬. kind=interval マーカーで get_today_expected_tasks 側で skip.

@@ -3192,6 +3192,86 @@ def init_db():
                     "[init_db v67] 部分適用: 必須列 or index 未生成。次回 init_db で再試行。"
                 )
 
+        # ── v68: ライバルセラー監視 (W#3 rival_seller_monitor) ──────────────
+        # monitored_sellers: 手動登録した日本セラー (5-15名)。
+        # monitored_seller_listings: 差分検知済み新規出品。
+        # listing 識別は ebay_item_id (sku-rules.md 準拠)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 67:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS monitored_sellers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        seller_id TEXT NOT NULL UNIQUE,
+                        seller_label TEXT NOT NULL DEFAULT '',
+                        is_jp_verified INTEGER NOT NULL DEFAULT 0,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_checked_at TIMESTAMP,
+                        is_active INTEGER NOT NULL DEFAULT 1
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_monitored_sellers_active
+                        ON monitored_sellers(is_active, seller_id)
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS monitored_seller_listings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        seller_id TEXT NOT NULL,
+                        ebay_item_id TEXT NOT NULL UNIQUE,
+                        title TEXT,
+                        price_usd REAL,
+                        first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        notified INTEGER NOT NULL DEFAULT 0,
+                        eval_score INTEGER,
+                        eval_reason TEXT
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_msl_seller_id
+                        ON monitored_seller_listings(seller_id, first_seen_at DESC)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_msl_notified
+                        ON monitored_seller_listings(notified, first_seen_at DESC)
+                """)
+                logger.info("[init_db v68] monitored_sellers + monitored_seller_listings created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v68] partial: {e}")
+            # bump 条件: 両テーブルの必須列 + 必須インデックスが揃っていること
+            _v68_ms_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(monitored_sellers)"
+                ).fetchall()
+            }
+            _v68_msl_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(monitored_seller_listings)"
+                ).fetchall()
+            }
+            _v68_idx = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index'"
+                ).fetchall()
+            }
+            _v68_ms_required = {"id", "seller_id", "seller_label", "is_jp_verified",
+                                 "added_at", "last_checked_at", "is_active"}
+            _v68_msl_required = {"id", "seller_id", "ebay_item_id", "title",
+                                  "price_usd", "first_seen_at", "notified",
+                                  "eval_score", "eval_reason"}
+            _v68_idx_required = {
+                "idx_monitored_sellers_active", "idx_msl_seller_id", "idx_msl_notified"
+            }
+            if (_v68_ms_required <= _v68_ms_cols
+                    and _v68_msl_required <= _v68_msl_cols
+                    and _v68_idx_required <= _v68_idx):
+                conn.execute("PRAGMA user_version = 68")
+                logger.info("[init_db v68] schema_ver bumped to 68")
+            else:
+                logger.warning(
+                    "[init_db v68] 部分適用: 必須列 or index 未生成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 

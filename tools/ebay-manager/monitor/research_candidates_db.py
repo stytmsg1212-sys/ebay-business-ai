@@ -37,6 +37,10 @@ STATUS_SOURCING = "sourcing"
 STATUS_SOURCED = "sourced"
 STATUS_NOT_FOUND = "not_found"
 STATUS_NEEDS_REVIEW = "needs_review"
+# 承認系 status (W228 後続 UI 拡張 — DB migration 不要、status 列は自由 TEXT)。
+STATUS_IDENTITY_APPROVED = "identity_approved"   # 同一性 OK (人間承認)
+STATUS_IDENTITY_REJECTED = "identity_rejected"   # 同一性 NG (人間却下)
+STATUS_WATCH_REGISTERED = "watch_registered"     # キーワード新着監視に登録済
 
 _VALID_STATUSES: set[str] = {
     STATUS_NEW,
@@ -44,25 +48,38 @@ _VALID_STATUSES: set[str] = {
     STATUS_SOURCED,
     STATUS_NOT_FOUND,
     STATUS_NEEDS_REVIEW,
+    STATUS_IDENTITY_APPROVED,
+    STATUS_IDENTITY_REJECTED,
+    STATUS_WATCH_REGISTERED,
 }
 
-# 許容遷移グラフ (PoC スコープ)。spec §8 P0-2 「明示的な状態機械」要件。
-#  new       → sourcing / needs_review (人手入力直後の異常終了)
-#  sourcing  → sourced / not_found / needs_review (探索結果 3 分岐 = §2-C 表)
-#  sourced   → needs_review (後段 review で取り下げ)
-#  not_found → sourcing (再探索) / needs_review
-#  needs_review → sourcing (修正後再試行) / sourced (人手で利益確定し承認) / not_found
+# 許容遷移グラフ (PoC + 承認フロー)。spec §8 P0-2 「明示的な状態機械」要件。
+#  new              → sourcing / needs_review (人手入力直後の異常終了)
+#  sourcing         → sourced / not_found / needs_review (探索結果 3 分岐 = §2-C 表)
+#  sourced          → needs_review / identity_approved / identity_rejected
+#  not_found        → sourcing (再探索) / needs_review
+#  needs_review     → sourcing (修正後再試行) / sourced (人手で利益確定し承認)
+#                     / not_found / identity_approved / identity_rejected
+#  identity_approved → watch_registered / needs_review (再検討)
+#  identity_rejected → sourcing (別候補で再探索) / needs_review
+#  watch_registered  → needs_review (監視解除・再検討)
 # 値は frozenset で immutable 化 (test の意図しない mutate を防止)。
 _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     STATUS_NEW: frozenset({STATUS_SOURCING, STATUS_NEEDS_REVIEW}),
     STATUS_SOURCING: frozenset(
         {STATUS_SOURCED, STATUS_NOT_FOUND, STATUS_NEEDS_REVIEW}
     ),
-    STATUS_SOURCED: frozenset({STATUS_NEEDS_REVIEW}),
+    STATUS_SOURCED: frozenset(
+        {STATUS_NEEDS_REVIEW, STATUS_IDENTITY_APPROVED, STATUS_IDENTITY_REJECTED}
+    ),
     STATUS_NOT_FOUND: frozenset({STATUS_SOURCING, STATUS_NEEDS_REVIEW}),
     STATUS_NEEDS_REVIEW: frozenset(
-        {STATUS_SOURCING, STATUS_SOURCED, STATUS_NOT_FOUND}
+        {STATUS_SOURCING, STATUS_SOURCED, STATUS_NOT_FOUND,
+         STATUS_IDENTITY_APPROVED, STATUS_IDENTITY_REJECTED}
     ),
+    STATUS_IDENTITY_APPROVED: frozenset({STATUS_WATCH_REGISTERED, STATUS_NEEDS_REVIEW}),
+    STATUS_IDENTITY_REJECTED: frozenset({STATUS_SOURCING, STATUS_NEEDS_REVIEW}),
+    STATUS_WATCH_REGISTERED: frozenset({STATUS_NEEDS_REVIEW}),
 }
 
 

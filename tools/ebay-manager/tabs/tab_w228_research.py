@@ -14,7 +14,7 @@
   C: research_candidates 一覧 (status フィルタ付き)
 
 K2 (外科的変更): 既存タブ (tab_product_management / tab_research_wizard 等) には一切触れない。
-K1 (シンプル): 出品 / 監視 / 承認フローは作らない (W228 PoC スコープ外)。
+K1 (シンプル): 実eBay出品は作らない。承認 + キーワード監視登録は W228 後続スコープとして追加。
 Q0 (サイレントスキップ禁止): フリマ探索エラーは偽成功を返さず st.error で表示。
 """
 from __future__ import annotations
@@ -36,12 +36,17 @@ from monitor.research_gate import (
     evaluate_sourcing_gate,
 )
 from monitor.research_candidates_db import (
+    STATUS_IDENTITY_APPROVED,
+    STATUS_IDENTITY_REJECTED,
     STATUS_NEEDS_REVIEW,
     STATUS_NEW,
     STATUS_NOT_FOUND,
     STATUS_SOURCED,
     STATUS_SOURCING,
+    STATUS_WATCH_REGISTERED,
+    get_research_candidate,
     list_research_candidates,
+    update_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -353,23 +358,224 @@ def _render_section_b_result(result: dict) -> None:
 
 
 # ============================================================================
-# セクション C: research_candidates 一覧
+# セクション C: research_candidates 一覧 + 承認・watch 登録 UI
 # ============================================================================
 
+# メルカリ / ヤフオク 検索 URL ビルダー
+def _mercari_search_url(keyword: str) -> str:
+    from urllib.parse import quote_plus
+    return "https://jp.mercari.com/search?keyword=" + quote_plus(keyword)
+
+
+def _yahoo_auctions_search_url(keyword: str) -> str:
+    from urllib.parse import quote_plus
+    return "https://auctions.yahoo.co.jp/search/search?p=" + quote_plus(keyword)
+
+
+def _calc_price_max_jpy(
+    found_price_jpy: Optional[int],
+    estimated_profit_usd: Optional[float],
+) -> Optional[int]:
+    """利益が出る上限仕入価格 (JPY) を算出する.
+
+    estimated_profit_usd は「(terapeak 平均 - breakeven) USD」なので、
+    現在の found_price_jpy で breakeven から profit_usd 分の余裕がある。
+    上限 = found_price_jpy (今の価格が限界として最も保守的)。
+
+    estimated_profit_usd が正ならその分だけ仕入価格に余裕がある。
+    USD → JPY は設定レートを使わず UI で編集可能にするため、ここでは
+    found_price_jpy を返すだけ (0 以下なら None)。
+    """
+    if not found_price_jpy or found_price_jpy <= 0:
+        return None
+    # Codex 2段指摘#3: estimated_profit_usd が None/≤0 (= 現在価格で損 or 利益未検証、
+    # needs_review からも承認可能) の候補に found_price をそのまま上限にすると、
+    # 損失価格での通知 → 過大仕入を招く。安全な自動上限を出せないので None を返し、
+    # UI 側で「利益が出る上限価格の手動入力」を必須にする。
+    if estimated_profit_usd is None or estimated_profit_usd <= 0:
+        return None
+    return found_price_jpy
+
+
+def _render_candidate_actions(row: dict) -> None:
+    """1 候補の承認 / 却下 / watch 登録ボタン群 (form 外、W225 作法)."""
+    rc_id = row["rc_id"]
+    status = row.get("status", "")
+    title_ja = row.get("title_ja", f"rc_id={rc_id}")
+    found_price_jpy: Optional[int] = row.get("found_price_jpy")
+    estimated_profit_usd: Optional[float] = row.get("estimated_profit_usd")
+
+    # ── 承認 / 却下ボタン (sourced / needs_review → identity_approved/rejected) ──
+    can_approve = status in {STATUS_SOURCED, STATUS_NEEDS_REVIEW}
+    can_reject = status in {STATUS_SOURCED, STATUS_NEEDS_REVIEW}
+
+    col_approve, col_reject, col_watch = st.columns([1, 1, 2])
+
+    with col_approve:
+        if can_approve:
+            if st.button(
+                "同一性OK",
+                key=f"w228_approve_{rc_id}",
+                help="人間が同一商品と確認した場合に押す。",
+            ):
+                try:
+                    update_status(rc_id, STATUS_IDENTITY_APPROVED)
+                    st.success(f"rc_id={rc_id} を identity_approved に更新しました。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"承認失敗 (rc_id={rc_id}): {e}")
+                    logger.exception("[w228_sec_c] approve 例外 rc_id=%s", rc_id)
+
+    with col_reject:
+        if can_reject:
+            if st.button(
+                "却下",
+                key=f"w228_reject_{rc_id}",
+                help="同一商品でないと判断した場合に押す。",
+            ):
+                try:
+                    update_status(rc_id, STATUS_IDENTITY_REJECTED)
+                    st.info(f"rc_id={rc_id} を identity_rejected に更新しました。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"却下失敗 (rc_id={rc_id}): {e}")
+                    logger.exception("[w228_sec_c] reject 例外 rc_id=%s", rc_id)
+
+    # ── キーワード新着監視登録ボタン (identity_approved のみ表示) ──
+    with col_watch:
+        if status == STATUS_IDENTITY_APPROVED:
+            # 上限仕入価格の初期値 (UI で編集可)
+            default_price_max = _calc_price_max_jpy(found_price_jpy, estimated_profit_usd)
+            # Codex#3: 利益 None/≤0 (損 or 未検証) は安全な自動上限が出せない → 警告 + 手動必須
+            _unprofitable = (estimated_profit_usd is None or estimated_profit_usd <= 0)
+            if _unprofitable:
+                st.warning(
+                    "この候補は現在価格で利益が出ない / 利益未検証です。"
+                    "利益が出る上限仕入価格を手動入力してから登録してください "
+                    "(0 のままの無制限監視は不可)。"
+                )
+            price_max_input = st.number_input(
+                "上限仕入価格 (JPY)",
+                min_value=0,
+                value=default_price_max if default_price_max else 0,
+                step=500,
+                key=f"w228_price_max_{rc_id}",
+                help=(
+                    "この価格以下で出品されたとき Discord 通知します。"
+                    "0 の場合は全件通知 (price_max=None)。"
+                ),
+            )
+            if st.button(
+                "キーワード新着監視に登録",
+                key=f"w228_watch_{rc_id}",
+                help="メルカリ・ヤフオクにキーワード監視を登録します。",
+            ):
+                _pm = (
+                    int(price_max_input)
+                    if price_max_input and price_max_input > 0 else None
+                )
+                # Codex#3: 損/未検証候補を上限なし(全件通知)で監視登録させない
+                if _unprofitable and _pm is None:
+                    st.error(
+                        "利益が出る上限仕入価格 (>0) を入力してください "
+                        "(損失/未検証候補の無制限監視は不可)。"
+                    )
+                else:
+                    _register_keyword_watch(
+                        rc_id=rc_id, title_ja=title_ja, price_max_jpy=_pm,
+                    )
+
+        elif status == STATUS_WATCH_REGISTERED:
+            st.caption("監視登録済")
+
+
+def _register_keyword_watch(
+    rc_id: int,
+    title_ja: str,
+    price_max_jpy: Optional[int],
+) -> None:
+    """メルカリ・ヤフオク の 2 サイトにキーワード監視を登録し status を watch_registered に遷移."""
+    from monitor.keyword_watch_db import add_watch
+    from monitor.research_candidates_db import update_status as _update_status
+
+    keyword = title_ja.strip()
+    sites = [
+        ("mercari", _mercari_search_url(keyword)),
+        ("yahoo_auctions", _yahoo_auctions_search_url(keyword)),
+    ]
+
+    registered_any = False
+    for site, search_url in sites:
+        try:
+            watch_id, is_new = add_watch(
+                site=site,
+                search_url=search_url,
+                keyword=keyword,
+                price_max_jpy=price_max_jpy,
+                memo=f"W228 research rc_id={rc_id}",
+                source="w228_research",
+            )
+            if is_new:
+                logger.info(
+                    "[w228_sec_c] watch 登録: rc_id=%s site=%s watch_id=%s",
+                    rc_id, site, watch_id,
+                )
+                registered_any = True
+            else:
+                # Codex 2段指摘#2: 既存 watch (UNIQUE(site,search_url) 衝突) は add_watch が
+                # 既存行を返すだけで price_max を更新しない。古い/None の上限が残ると
+                # 過大仕入通知になるため、今回の意図値で既存 watch の price_max を更新する。
+                try:
+                    from monitor.keyword_watch_db import update_watch
+                    update_watch(watch_id, price_max_jpy=price_max_jpy)
+                except Exception as _ue:
+                    logger.warning(
+                        "[w228_sec_c] 既存watch price_max更新失敗 wid=%s: %s",
+                        watch_id, _ue,
+                    )
+                logger.info(
+                    "[w228_sec_c] watch 既存(price_max更新): rc_id=%s site=%s watch_id=%s",
+                    rc_id, site, watch_id,
+                )
+        except Exception as e:
+            st.error(f"watch 登録失敗 ({site}): {e}")
+            logger.exception("[w228_sec_c] add_watch 例外 rc_id=%s site=%s", rc_id, site)
+            return  # 登録失敗したら status 遷移しない (Q0 偽装成功禁止)
+
+    # 全サイト登録 (or 既存) 成功 → status を watch_registered に遷移
+    try:
+        _update_status(rc_id, STATUS_WATCH_REGISTERED)
+        if registered_any:
+            st.success(
+                f"rc_id={rc_id} 「{keyword}」をメルカリ・ヤフオクに監視登録しました。"
+                f" 上限価格: {'¥{:,}'.format(price_max_jpy) if price_max_jpy else '制限なし'}"
+            )
+        else:
+            st.info(
+                f"rc_id={rc_id} は既存 watch と同一URL のため新規登録なし (重複防止)。"
+                "status を watch_registered に更新しました。"
+            )
+        st.rerun()
+    except Exception as e:
+        st.error(f"status 更新失敗 (rc_id={rc_id}): {e}")
+        logger.exception("[w228_sec_c] update_status watch_registered 例外 rc_id=%s", rc_id)
+
+
 def _render_section_c() -> None:
-    """research_candidates を st.dataframe で新しい順表示."""
+    """research_candidates を表示 + 行ごとに承認 / 却下 / watch 登録ボタン."""
     st.markdown("### C. リサーチ候補一覧")
 
-    # status フィルタ
-    all_statuses = [None, STATUS_NEW, STATUS_SOURCING, STATUS_SOURCED,
-                    STATUS_NOT_FOUND, STATUS_NEEDS_REVIEW]
-    status_labels = {
+    # status フィルタ (承認系 status も選択可)
+    status_labels: dict[Optional[str], str] = {
         None: "全て",
         STATUS_NEW: "new",
         STATUS_SOURCING: "sourcing",
         STATUS_SOURCED: "sourced",
         STATUS_NOT_FOUND: "not_found",
         STATUS_NEEDS_REVIEW: "needs_review",
+        STATUS_IDENTITY_APPROVED: "identity_approved",
+        STATUS_IDENTITY_REJECTED: "identity_rejected",
+        STATUS_WATCH_REGISTERED: "watch_registered",
     }
     selected_label = st.selectbox(
         "status フィルタ",
@@ -395,20 +601,18 @@ def _render_section_c() -> None:
         st.info("候補がありません。セクション B でフリマ探索を実行すると候補が追加されます。")
         return
 
-    # DataFrame 化 (表示列を絞る)
+    # サマリー DataFrame (全件)
     display_cols = [
         "rc_id", "title_ja", "status", "match_score",
         "estimated_profit_usd", "found_url", "found_price_jpy",
         "needs_review_reason", "created_at",
     ]
     df = pd.DataFrame(rows)
-    # 存在しない列は空文字で補完 (スキーマ変更でも安全)
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
     df = df[display_cols]
 
-    # 列名を日本語ラベルに変換して表示
     col_rename = {
         "rc_id": "ID",
         "title_ja": "商品名",
@@ -437,6 +641,40 @@ def _render_section_c() -> None:
         },
     )
 
+    # ── 行ごとの承認 / 却下 / watch 登録 UI ──────────────────────────────
+    st.markdown("#### 候補アクション")
+    st.caption(
+        "sourced / needs_review 状態の候補に「同一性OK / 却下」ボタンが表示されます。"
+        "identity_approved になった候補はキーワード新着監視に登録できます。"
+    )
+
+    actionable_statuses = {
+        STATUS_SOURCED, STATUS_NEEDS_REVIEW,
+        STATUS_IDENTITY_APPROVED, STATUS_WATCH_REGISTERED,
+    }
+    for row in rows:
+        if row.get("status") not in actionable_statuses:
+            continue
+        with st.container(border=True):
+            rc_id = row["rc_id"]
+            title = row.get("title_ja", f"rc_id={rc_id}")
+            status = row.get("status", "")
+            profit = row.get("estimated_profit_usd")
+            price_jpy = row.get("found_price_jpy")
+            found_url = row.get("found_url")
+
+            # ヘッダ行
+            header_parts = [f"**rc_id={rc_id}** — {title}", f"status: `{status}`"]
+            if profit is not None:
+                header_parts.append(f"利益見込み: ${profit:+.2f}")
+            if price_jpy:
+                header_parts.append(f"仕入価格: ¥{price_jpy:,}")
+            if found_url:
+                header_parts.append(f"[仕入先リンク]({found_url})")
+            st.markdown("  |  ".join(header_parts))
+
+            _render_candidate_actions(row)
+
 
 # ============================================================================
 # Public API
@@ -451,8 +689,9 @@ def render_w228_research_tab(config: dict) -> None:
     """
     st.header("商品リサーチ (W228)")
     st.caption(
-        "フェーズ B MVP PoC — Terapeak で発掘した商品をフリマ探索 → AI 同一性判定 → 利益判定。"
-        "出品 / 購入 / 監視登録は PoC スコープ外 (別ステップ)。"
+        "フェーズ B MVP — Terapeak で発掘した商品をフリマ探索 → AI 同一性判定 → 利益判定 → 人間承認。"
+        "セクション C で承認後、キーワード新着監視に登録できます。"
+        "実eBay出品は別ステップ (最高リスクのため未実装)。"
     )
 
     st.divider()
