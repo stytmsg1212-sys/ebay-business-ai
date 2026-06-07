@@ -3114,6 +3114,84 @@ def init_db():
                     "未追加。次回 init_db で再試行。"
                 )
 
+        # ---- v67 (W228, 2026-06-07): research_candidates (フェーズB MVP PoC) ----
+        # 「商品リサーチ自動化」のフェーズB MVP: Terapeak で発掘した未出品候補を扱う。
+        # 既存 supplier_candidates との分離理由 (設計書 §8 P0-1):
+        #   supplier_candidates は eBay listing 存在前提 (ebay_item_id NOT NULL=W185 修正後)
+        #   かつ「在庫切れ→置換探索」用途。Terapeak 由来は未出品 = ebay_item_id を持たない
+        #   ため UNIQUE 制約に流せない。研究フェーズの状態機械も別物 (人間承認 3 段)。
+        # 独自 PK rc_id (AUTOINCREMENT):
+        #   listing 識別を ebay_item_id に固定する SKU 規約 (.claude/rules/sku-rules.md) は
+        #   既出品 entity 向け。未出品の research_candidate は rc_id を唯一の identity と
+        #   する (出品後に ebay_item_id を別列で発番昇格する形を将来取りうるが PoC では持たない)。
+        # 状態機械 (P0-2): RESEARCH_STATUSES 定数 (monitor/research_candidates_db.py)
+        #   PoC スコープ: new / sourcing / sourced / not_found / needs_review。
+        #   gate_passed / awaiting_identity_approval / listed* は将来拡張 (PoC では未使用
+        #   = 定数のみ宣言、DB CHECK 制約には入れない=後方互換)。
+        # silent skip 防止 (Q0): weight 欠落・取得エラーは needs_review_reason に明示して
+        #   needs_review status に落とす (status='sourced' で profit=NULL のまま流さない)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 66:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS research_candidates (
+                        rc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title_ja TEXT NOT NULL,
+                        manual_weight_g REAL,
+                        length_cm REAL,
+                        width_cm REAL,
+                        height_cm REAL,
+                        terapeak_avg_price_usd REAL,
+                        found_url TEXT,
+                        found_price_jpy INTEGER,
+                        found_condition_ja TEXT,
+                        match_score INTEGER,
+                        match_reason TEXT,
+                        estimated_profit_usd REAL,
+                        needs_review_reason TEXT,
+                        status TEXT NOT NULL DEFAULT 'new',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_research_candidates_status "
+                    "ON research_candidates(status, created_at DESC)"
+                )
+                logger.info("[init_db v67] research_candidates created")
+            except sqlite3.OperationalError as e:
+                # 半成立 (CREATE 成功 INDEX 失敗 等) も次回再試行で完成。
+                logger.warning(f"[init_db v67] partial: {e}")
+            # 列実在確認後にのみ user_version を bump (W227/v66 流儀)。
+            _v67_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(research_candidates)"
+                ).fetchall()
+            }
+            _v67_required = {
+                "rc_id", "title_ja", "manual_weight_g",
+                "terapeak_avg_price_usd", "found_url", "found_price_jpy",
+                "match_score", "match_reason", "estimated_profit_usd",
+                "needs_review_reason", "status",
+            }
+            # Codex 2段指摘#5: CREATE INDEX 失敗を catch しても列さえ揃えば bump
+            # していたため、table 成功・index 失敗の半成立で index 欠落が固定化する。
+            # index 実在も bump 条件に含める (欠落時は version 据置で次回再試行)。
+            _v67_idx = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='research_candidates'"
+                ).fetchall()
+            }
+            if (_v67_required <= _v67_cols
+                    and "idx_research_candidates_status" in _v67_idx):
+                conn.execute("PRAGMA user_version = 67")
+                logger.info("[init_db v67] schema_ver bumped to 67")
+            else:
+                logger.warning(
+                    "[init_db v67] 部分適用: 必須列 or index 未生成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4513,6 +4591,41 @@ def get_top_selling_items(limit: int = 10) -> list:
                ORDER BY sold_count DESC
                LIMIT ?""",
             (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_recent_sold_for_discovery(days: int = 90, limit: int = 30) -> list[dict]:
+    """朝の発掘タスク (W122) 階層1 用: 直近で実際に売れた取引の実績一覧 (READ ONLY).
+
+    sales_history テーブルから title / sold_price_usd / sold_at を取得し、
+    商品ごとに集計して「実際に何がいくらで売れたか」を返す。
+    Opus 4.8 への query に Few-shot として注入し、水平展開の精度向上に使う。
+
+    sold_at は UTC 保存 (CURRENT_TIMESTAMP)。datetime('now', '-N days') で相対比較。
+    (sqlite-timezone.md 準拠)
+
+    戻り値 (list of dict, sold_count DESC 順):
+      - title: str
+      - sold_count: int       — 対象期間内の販売件数
+      - avg_price_usd: float  — 平均販売価格 (USD)
+      - last_sold_at: str     — 最終販売日時 (UTC ISO)
+    """
+    with get_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT title,
+                      COUNT(*) AS sold_count,
+                      ROUND(AVG(sold_price_usd), 2) AS avg_price_usd,
+                      MAX(sold_at) AS last_sold_at
+               FROM sales_history
+               WHERE title IS NOT NULL
+                 AND title != ''
+                 AND sold_at >= datetime('now', ?)
+               GROUP BY title
+               ORDER BY sold_count DESC, avg_price_usd DESC
+               LIMIT ?""",
+            (f"-{int(days)} days", int(limit)),
         ).fetchall()
     return [dict(r) for r in rows]
 

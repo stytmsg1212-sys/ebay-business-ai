@@ -48,6 +48,22 @@ def _fetch_top_sellers(limit: int = 20) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _fetch_recent_sold(days: int = 90, limit: int = 30) -> list[dict]:
+    """直近 N 日で実際に売れた取引実績 (sales_history テーブルから取得).
+
+    Q0: DB 接続失敗時は空リストを返しログに記録する (silent fail 禁止)。
+    query 呼び出し側は空リストでも正常動作すること。
+    """
+    try:
+        from monitor.database import get_recent_sold_for_discovery
+        return get_recent_sold_for_discovery(days=days, limit=limit)
+    except Exception as e:
+        logger.warning(
+            f"_fetch_recent_sold 失敗 (sales_history 取得不可): {type(e).__name__}: {e}"
+        )
+        return []
+
+
 def _fetch_user_decisions(days: int = 14) -> list[dict]:
     """過去 N 日の user 判定履歴 (Few-shot 注入用).
 
@@ -88,6 +104,7 @@ def _build_discovery_query(
     user_decisions: list[dict],
     known_jp_sellers: list[str],
     is_monday: bool,
+    recent_sold: list[dict] | None = None,
 ) -> str:
     """Opus 4.8 への query 構築 (5 階層構造 Phase 1)."""
     sellers_md = "| 商品名 | 価格 | Watch | Sold(30d) | Rank |\n|---|---|---|---|---|\n"
@@ -110,6 +127,21 @@ def _build_discovery_query(
                 f"{d.get('user_decision')} | {comment} | "
                 f"{d.get('star_rating') or '?'} |\n"
             )
+
+    # 実 sold 実績 (sales_history テーブル由来、直近 90 日)
+    # recent_sold が空リストの場合は「実績なし」と明示してフォールバック説明を添える
+    if recent_sold:
+        sold_md = "| 商品名 (実際に売れた) | 販売件数 | 平均価格 | 最終販売日 |\n|---|---|---|---|\n"
+        for r in recent_sold:
+            last_sold = (r.get('last_sold_at') or '')[:10]  # YYYY-MM-DD のみ
+            sold_md += (
+                f"| {(r.get('title') or '')[:60]} | "
+                f"{r.get('sold_count') or 0}件 | "
+                f"${(r.get('avg_price_usd') or 0):.0f} | "
+                f"{last_sold} |\n"
+            )
+    else:
+        sold_md = "(実 sold 実績なし: sales_history 取得失敗 or 対象期間に販売なし。上記の Sold(30d) 推定値を参考にしてください)"
 
     sellers_list = ", ".join(known_jp_sellers)
 
@@ -146,6 +178,14 @@ def _build_discovery_query(
 ## 自社売れ筋 TOP {len(top_sellers)}
 
 {sellers_md}
+
+## 自社実 sold 実績 (直近 90 日、sales_history DB 由来)
+
+**以下は推定ではなく、実際に eBay で成約した取引実績です。**
+階層 1 (horizontal_pattern) では、この実績リストに含まれる商品のカテゴリ・ブランド・
+機能軸を優先的に水平展開してください (兄弟製品・上位機・季節別モデル 等)。
+
+{sold_md}
 
 ## 過去 14 日の user 判定履歴 (Few-shot 学習)
 
@@ -346,7 +386,14 @@ def run_morning_discovery(
     top_sellers = _fetch_top_sellers(limit=20)
     user_decisions = _fetch_user_decisions(days=14)
     known_jp_sellers = _fetch_known_jp_sellers()
+    recent_sold = _fetch_recent_sold(days=90, limit=30)
     is_monday = datetime.now().weekday() == 0
+
+    logger.info(
+        f"morning_discovery: データ取得完了 "
+        f"top_sellers={len(top_sellers)} recent_sold={len(recent_sold)} "
+        f"decisions={len(user_decisions)}"
+    )
 
     if not top_sellers:
         logger.warning("自社売れ筋 0 件 = リサーチ skip")
@@ -357,6 +404,7 @@ def run_morning_discovery(
 
     query = _build_discovery_query(
         top_sellers, user_decisions, known_jp_sellers, is_monday,
+        recent_sold=recent_sold,
     )
 
     if dry_run:
@@ -366,6 +414,7 @@ def run_morning_discovery(
             "query_preview": query[:1500],
             "top_sellers_count": len(top_sellers),
             "user_decisions_count": len(user_decisions),
+            "recent_sold_count": len(recent_sold),
             "is_monday": is_monday,
         }
 

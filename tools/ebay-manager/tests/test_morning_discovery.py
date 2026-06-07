@@ -22,6 +22,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from tasks.task_morning_discovery import (  # noqa: E402
     _parse_response,
+    _build_discovery_query,
+    _fetch_recent_sold,
     update_candidate_feedback,
 )
 from monitor.database import init_db, get_conn  # noqa: E402
@@ -286,6 +288,183 @@ def test_streamlit_profit_zero_shows_unestimable_not_dollar_zero():
     )
     assert "見積不能" in all_src, (
         "tab_morning_discovery に『見積不能』表示文言がない"
+    )
+
+
+# ──────────────────────────────────────────────
+# W122 階層1 sold 実績注入 (#1 自社sold縦深掘り)
+# ──────────────────────────────────────────────
+
+_DUMMY_TOP_SELLERS = [
+    {
+        "title": "Sony WH-1000XM5",
+        "current_price": 280,
+        "watch_count": 12,
+        "sales_count_30d": 5,
+        "rank": "A",
+        "sku": "stock:01",
+    }
+]
+
+_DUMMY_USER_DECISIONS: list[dict] = []
+_DUMMY_JP_SELLERS = ["seller_a", "seller_b"]
+
+
+def test_build_discovery_query_contains_sold_section_with_data():
+    """recent_sold データあり: query に実 sold 実績セクションが含まれる."""
+    recent_sold = [
+        {
+            "title": "Sony WH-1000XM4 Noise Canceling Headphones",
+            "sold_count": 3,
+            "avg_price_usd": 265.0,
+            "last_sold_at": "2026-05-10T14:00:00",
+        },
+        {
+            "title": "Sony LinkBuds S Wireless",
+            "sold_count": 1,
+            "avg_price_usd": 120.0,
+            "last_sold_at": "2026-04-20T09:00:00",
+        },
+    ]
+    query = _build_discovery_query(
+        _DUMMY_TOP_SELLERS,
+        _DUMMY_USER_DECISIONS,
+        _DUMMY_JP_SELLERS,
+        is_monday=False,
+        recent_sold=recent_sold,
+    )
+    # セクションヘッダが存在する
+    assert "自社実 sold 実績" in query
+    assert "sales_history DB 由来" in query
+    # 実 sold 商品タイトルが含まれる
+    assert "Sony WH-1000XM4" in query
+    assert "Sony LinkBuds S" in query
+    # 件数・価格も含まれる
+    assert "3件" in query
+    assert "$265" in query
+    # 階層1 への水平展開指示が含まれる
+    assert "horizontal_pattern" in query
+    assert "推定ではなく" in query
+
+
+def test_build_discovery_query_sold_empty_uses_fallback_message():
+    """recent_sold が空リスト: フォールバックメッセージが含まれ、query が壊れない."""
+    query = _build_discovery_query(
+        _DUMMY_TOP_SELLERS,
+        _DUMMY_USER_DECISIONS,
+        _DUMMY_JP_SELLERS,
+        is_monday=False,
+        recent_sold=[],
+    )
+    assert "自社実 sold 実績" in query
+    # フォールバック文言
+    assert "実 sold 実績なし" in query
+    # query 全体が壊れていない (必須セクションが残る)
+    assert "自社売れ筋 TOP" in query
+    assert "出力フォーマット" in query
+
+
+def test_build_discovery_query_sold_none_uses_fallback_message():
+    """recent_sold=None (デフォルト): フォールバックメッセージが含まれ、query が壊れない."""
+    query = _build_discovery_query(
+        _DUMMY_TOP_SELLERS,
+        _DUMMY_USER_DECISIONS,
+        _DUMMY_JP_SELLERS,
+        is_monday=False,
+        recent_sold=None,
+    )
+    assert "自社実 sold 実績" in query
+    assert "実 sold 実績なし" in query
+    assert "出力フォーマット" in query
+
+
+def test_fetch_recent_sold_returns_list_on_empty_db(monkeypatch):
+    """sales_history が空 (tmp DB) でも例外を投げず空リストを返す (Q0 silent skip 防止)."""
+    import monitor.database as _db
+    import tasks.task_morning_discovery as _tmd
+    monkeypatch.setattr(_tmd, "DB_PATH", _db.DB_PATH)
+    init_db()
+    result = _fetch_recent_sold(days=90, limit=30)
+    assert isinstance(result, list)
+    # テスト用 tmp DB は sales_history が空なので 0 件
+    assert len(result) == 0
+
+
+def test_fetch_recent_sold_returns_sold_rows(monkeypatch):
+    """sales_history にデータがある場合、sold 実績が返る."""
+    import monitor.database as _db
+    import tasks.task_morning_discovery as _tmd
+    monkeypatch.setattr(_tmd, "DB_PATH", _db.DB_PATH)
+    init_db()
+    # テストデータを挿入
+    with get_conn() as c:
+        c.execute(
+            """INSERT INTO sales_history
+               (ebay_item_id, title, sold_price_usd, sold_at)
+               VALUES
+               ('item001', 'Sony WH-1000XM5 Headphones', 285.0, datetime('now', '-10 days')),
+               ('item002', 'Sony WH-1000XM5 Headphones', 290.0, datetime('now', '-5 days')),
+               ('item003', 'Canon PowerShot G7X Mark III', 620.0, datetime('now', '-20 days'))"""
+        )
+    result = _fetch_recent_sold(days=90, limit=30)
+    assert isinstance(result, list)
+    assert len(result) == 2  # title で GROUP BY するので 2 行
+    titles = [r["title"] for r in result]
+    assert "Sony WH-1000XM5 Headphones" in titles
+    assert "Canon PowerShot G7X Mark III" in titles
+    # sold_count が多い順に並んでいる (Sony=2件 > Canon=1件)
+    assert result[0]["title"] == "Sony WH-1000XM5 Headphones"
+    assert result[0]["sold_count"] == 2
+
+
+def test_fetch_recent_sold_excludes_old_records(monkeypatch):
+    """days パラメータより古い sold は除外される."""
+    import monitor.database as _db
+    import tasks.task_morning_discovery as _tmd
+    monkeypatch.setattr(_tmd, "DB_PATH", _db.DB_PATH)
+    init_db()
+    with get_conn() as c:
+        c.execute(
+            """INSERT INTO sales_history
+               (ebay_item_id, title, sold_price_usd, sold_at)
+               VALUES
+               ('item_recent', 'Recent Item', 100.0, datetime('now', '-10 days')),
+               ('item_old', 'Old Item', 100.0, datetime('now', '-200 days'))"""
+        )
+    result = _fetch_recent_sold(days=90, limit=30)
+    titles = [r["title"] for r in result]
+    assert "Recent Item" in titles
+    assert "Old Item" not in titles
+
+
+def test_fetch_recent_sold_db_error_returns_empty_list(monkeypatch):
+    """sales_history 取得が例外になっても空リストが返り、例外が上位に伝播しない (Q0)."""
+    import tasks.task_morning_discovery as _tmd
+
+    def _raise(*args: object, **kwargs: object) -> list:
+        raise RuntimeError("DB 接続エラー (テスト用)")
+
+    monkeypatch.setattr(
+        "monitor.database.get_recent_sold_for_discovery",
+        _raise,
+        raising=False,
+    )
+    result = _fetch_recent_sold(days=90, limit=30)
+    assert result == []
+
+
+def test_get_recent_sold_for_discovery_read_only_no_schema_change():
+    """get_recent_sold_for_discovery は SELECT のみで既存スキーマを変更しない."""
+    init_db()
+    from monitor.database import get_recent_sold_for_discovery, get_conn
+    with get_conn() as c:
+        ver_before = c.execute("PRAGMA user_version").fetchone()[0]
+    get_recent_sold_for_discovery(days=90, limit=30)
+    with get_conn() as c:
+        ver_after = c.execute("PRAGMA user_version").fetchone()[0]
+    assert ver_before == ver_after, (
+        f"get_recent_sold_for_discovery が user_version を変更した: "
+        f"{ver_before} -> {ver_after}"
     )
 
 
