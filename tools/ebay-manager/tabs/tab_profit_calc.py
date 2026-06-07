@@ -166,9 +166,14 @@ def render_profit_calc_tab(s: dict) -> None:
                             st.write(f"**{name}**: ¥{amt:,.0f}")
                         st.write(f"**合計送料**: ¥{sr.total_shipping:,.0f}")
                     with sc2:
+                        # 還付込利益はポイントを合算しない (利益+消費税還付のみ)。
+                        # ポイントは別枠 metric で表示 (user 要望 2026-06-07)。
+                        refund_profit = sr.profit + sr.tax_refund
+                        refund_rate = (refund_profit / result.revenue) if result.revenue > 0 else 0.0
                         st.metric("利益", f"¥{sr.profit:,}", delta=f"{sr.profit_rate*100:.1f}%")
-                        st.metric("還付込利益", f"¥{sr.profit_with_refund:,}", delta=f"{sr.profit_with_refund_rate*100:.1f}%")
+                        st.metric("還付込利益（税還付のみ）", f"¥{refund_profit:,}", delta=f"{refund_rate*100:.1f}%")
                         st.metric("消費税還付", f"¥{sr.tax_refund:,}")
+                        st.metric("ポイント（利益とは別枠）", f"¥{result.point_return:,}")
                         if sr.is_listable:
                             st.success("推奨")
                         else:
