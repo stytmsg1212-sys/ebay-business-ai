@@ -607,32 +607,84 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # 気付かない (= 「採用して終わり」になる)。セクション最上部に prompt
     # を出してから、はい押下で個別出品同様のプレート選択フローを inline
     # 展開する (履歴タブへ移動不要)。
-    _photo_prompts = [
-        (int(k.replace("_sup_photo_prompt_", "")),
-         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_photo_prompt_', '')}") or {})
-        for k in list(st.session_state.keys())
-        if k.startswith("_sup_photo_prompt_") and st.session_state.get(k)
-    ]
-    _photo_opens = [
-        (int(k.replace("_sup_photo_open_inline_", "")),
-         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_photo_open_inline_', '')}") or {})
-        for k in list(st.session_state.keys())
-        if k.startswith("_sup_photo_open_inline_") and st.session_state.get(k)
-    ]
-    if _photo_prompts or _photo_opens:
+    #
+    # 2026-06-11 バグ3/4 修正: 2 つの浮動コンテナを cid 単位の統合ブロックに再構成。
+    # - バグ3: 完了ボタン1つで cid スコープの session_state を全消し → 欄が消える
+    # - バグ4: cid ごとに独立ブロックで sorted → 別商品の干渉がない
+
+    def _close_supplier_followup(cid: int) -> None:
+        """採用後フォローアップ欄を商品単位で完全クローズ (バグ3 root fix).
+
+        実装は tabs._supplier_followup_state.close_supplier_followup_state に委譲。
+        st.session_state を渡す thin wrapper。
+        """
+        from tabs._supplier_followup_state import close_supplier_followup_state
+        close_supplier_followup_state(st.session_state, cid)
+
+    # アクティブな cid を photo / desc 両 namespace から収集
+    _followup_cids: set[int] = set()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("_sup_photo_prompt_") and st.session_state.get(_k):
+            try:
+                _followup_cids.add(int(_k.replace("_sup_photo_prompt_", "")))
+            except ValueError:
+                pass
+        elif _k.startswith("_sup_photo_open_inline_") and st.session_state.get(_k):
+            try:
+                _followup_cids.add(int(_k.replace("_sup_photo_open_inline_", "")))
+            except ValueError:
+                pass
+        elif _k.startswith("_sup_desc_prompt_") and st.session_state.get(_k):
+            try:
+                _followup_cids.add(int(_k.replace("_sup_desc_prompt_", "")))
+            except ValueError:
+                pass
+        elif _k.startswith("_sup_desc_open_inline_") and st.session_state.get(_k):
+            try:
+                _followup_cids.add(int(_k.replace("_sup_desc_open_inline_", "")))
+            except ValueError:
+                pass
+
+    for _fcid in sorted(_followup_cids):
+        _fmeta: dict = st.session_state.get(f"_sup_photo_meta_{_fcid}") or {}
+        # meta が session_state にない場合は DB から補完 (2026-05-25 防御強化を継承)
+        if not _fmeta.get("url"):
+            try:
+                from monitor.database import get_conn
+                with get_conn() as _conn:
+                    _row = _conn.execute(
+                        "SELECT candidate_url, ebay_item_id, candidate_title "
+                        "FROM supplier_candidates WHERE id=?", (_fcid,),
+                    ).fetchone()
+            except Exception:  # noqa: BLE001 — UI 補完経路なので例外で section 壊さない
+                logger.exception("followup meta DB 補完失敗 cid=%s", _fcid)
+                _row = None
+            if _row and _row[0]:
+                _fmeta = {
+                    "url": _row[0],
+                    "eid": _fmeta.get("eid") or (_row[1] or ""),
+                    "title": _fmeta.get("title") or (_row[2] or ""),
+                }
+                st.session_state[f"_sup_photo_meta_{_fcid}"] = _fmeta
+
+        _f_ttl = (_fmeta.get("title") or "")[:60]
+        _f_eid = _fmeta.get("eid") or ""
+        _f_url = _fmeta.get("url") or ""
+
         with st.container(border=True):
             st.markdown(
-                '<div style="font-size:11px;color:rgba(255,180,80,0.85);'
-                'letter-spacing:2px;margin:0 0 8px;">'
-                '写 真 反 映 　 — 　 採 用 直 後 確 認</div>',
+                f'<div style="font-size:11px;color:rgba(255,220,100,0.9);'
+                f'letter-spacing:2px;margin:0 0 8px;">'
+                f'採 用 後 フ ォ ロ ー ア ッ プ &nbsp;—&nbsp; '
+                f'{_f_ttl} (item {_f_eid})</div>',
                 unsafe_allow_html=True,
             )
-            # Step 1: prompt (採用押下直後、まだ「はい/いいえ」未選択)
-            for _pcid, _pmeta in _photo_prompts:
-                _ttl = (_pmeta.get("title") or "")[:60]
-                _eid_p = _pmeta.get("eid") or ""
+
+            # ── 写真サブセクション ──
+            if st.session_state.get(f"_sup_photo_prompt_{_fcid}"):
+                # Step 1: prompt (採用押下直後、まだ「はい/いいえ」未選択)
                 st.warning(
-                    f"📷 採用しました ({_ttl} / item {_eid_p})。"
+                    f"📷 採用しました ({_f_ttl} / item {_f_eid})。"
                     f"仕入先の画像で写真も反映しますか？ "
                     f"(個別出品と同じ Photoroom + Gemini 3 候補プレートから選択)"
                 )
@@ -640,79 +692,46 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 with _pc[0]:
                     if st.button(
                         "📷 はい、写真も選ぶ",
-                        key=f"_sup_photo_yes_{_pcid}", type="primary",
+                        key=f"_sup_photo_yes_{_fcid}", type="primary",
                     ):
-                        st.session_state[f"_sup_photo_open_inline_{_pcid}"] = True
-                        st.session_state[f"_sup_photo_prompt_{_pcid}"] = False
+                        st.session_state[f"_sup_photo_open_inline_{_fcid}"] = True
+                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
                         st.rerun()
                 with _pc[1]:
                     if st.button(
                         "いいえ、後でやる",
-                        key=f"_sup_photo_no_{_pcid}",
+                        key=f"_sup_photo_no_{_fcid}",
                     ):
-                        st.session_state[f"_sup_photo_prompt_{_pcid}"] = False
+                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
                         # meta は履歴タブ「📷 写真反映」ボタン再操作用に残す
                         st.rerun()
-            # Step 2: opened (はい押下後 → photo apply section を inline 展開)
-            for _ocid, _ometa in _photo_opens:
-                _ttl_o = _ometa.get("title") or ""
-                _eid_o = _ometa.get("eid") or ""
-                _url_o = _ometa.get("url") or ""
-                if not _url_o:
+
+            elif st.session_state.get(f"_sup_photo_open_inline_{_fcid}"):
+                # Step 2: opened (はい押下後 → photo apply section を inline 展開)
+                if not _f_url:
                     st.error(
-                        f"cid={_ocid}: URL 情報不足 → 履歴タブの「📷 写真反映」"
+                        f"cid={_fcid}: URL 情報不足 → 履歴タブの「📷 写真反映」"
                         f"から操作してください"
                     )
-                    continue
-                st.markdown(
-                    f"**▼ 写真反映: {_ttl_o[:60]} (item {_eid_o})**"
-                )
-                from tabs._supplier_photo_pipeline import (
-                    render_supplier_photo_apply_section,
-                )
-                render_supplier_photo_apply_section(
-                    candidate_id=_ocid,
-                    candidate_url=_url_o,
-                    ebay_item_id=_eid_o,
-                    candidate_title=_ttl_o,
-                )
-                # 完了/中断時の「✖ 閉じる」ボタン
-                if st.button(
-                    "✖ この写真反映を閉じる",
-                    key=f"_sup_photo_close_{_ocid}",
-                ):
-                    st.session_state[f"_sup_photo_open_inline_{_ocid}"] = False
-                    st.rerun()
-        st.markdown("---")
+                else:
+                    st.markdown(
+                        f"**▼ 写真反映: {_f_ttl} (item {_f_eid})**"
+                    )
+                    from tabs._supplier_photo_pipeline import (
+                        render_supplier_photo_apply_section,
+                    )
+                    render_supplier_photo_apply_section(
+                        candidate_id=_fcid,
+                        candidate_url=_f_url,
+                        ebay_item_id=_f_eid,
+                        candidate_title=_f_ttl,
+                    )
 
-    # ── W148-X (2026-05-20 user 緊急要望): description 反映 prompt + section ──
-    # 個別出品同等の Claude description 生成 pipeline を採用直後の inline で
-    # 走らせる。写真 prompt と独立 (user は両方/片方/どちらでもなしを選べる)。
-    _desc_prompts = [
-        (int(k.replace("_sup_desc_prompt_", "")),
-         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_desc_prompt_', '')}") or {})
-        for k in list(st.session_state.keys())
-        if k.startswith("_sup_desc_prompt_") and st.session_state.get(k)
-    ]
-    _desc_opens = [
-        (int(k.replace("_sup_desc_open_inline_", "")),
-         st.session_state.get(f"_sup_photo_meta_{k.replace('_sup_desc_open_inline_', '')}") or {})
-        for k in list(st.session_state.keys())
-        if k.startswith("_sup_desc_open_inline_") and st.session_state.get(k)
-    ]
-    if _desc_prompts or _desc_opens:
-        with st.container(border=True):
-            st.markdown(
-                '<div style="font-size:11px;color:rgba(180,255,200,0.85);'
-                'letter-spacing:2px;margin:0 0 8px;">'
-                'description 反 映 　 — 　 採 用 直 後 確 認</div>',
-                unsafe_allow_html=True,
-            )
-            for _dpcid, _dpmeta in _desc_prompts:
-                _ttl_d = (_dpmeta.get("title") or "")[:60]
-                _eid_d = _dpmeta.get("eid") or ""
+            # ── description サブセクション ──
+            if st.session_state.get(f"_sup_desc_prompt_{_fcid}"):
+                # Step 1: prompt
                 st.warning(
-                    f"📝 採用しました ({_ttl_d} / item {_eid_d})。"
+                    f"📝 採用しました ({_f_ttl} / item {_f_eid})。"
                     f"仕入先 URL から description (HTML 本文) も生成して反映しますか？ "
                     f"(個別出品と同じ Claude パイプライン、~30-60 秒)"
                 )
@@ -720,70 +739,52 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 with _dpc[0]:
                     if st.button(
                         "📝 はい、description も生成",
-                        key=f"_sup_desc_yes_{_dpcid}", type="primary",
+                        key=f"_sup_desc_yes_{_fcid}", type="primary",
                     ):
-                        st.session_state[f"_sup_desc_open_inline_{_dpcid}"] = True
-                        st.session_state[f"_sup_desc_prompt_{_dpcid}"] = False
+                        st.session_state[f"_sup_desc_open_inline_{_fcid}"] = True
+                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
                         st.rerun()
                 with _dpc[1]:
                     if st.button(
                         "いいえ、後でやる",
-                        key=f"_sup_desc_no_{_dpcid}",
+                        key=f"_sup_desc_no_{_fcid}",
                     ):
-                        st.session_state[f"_sup_desc_prompt_{_dpcid}"] = False
+                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
                         st.rerun()
-            for _docid, _dometa in _desc_opens:
-                _ttl_do = _dometa.get("title") or ""
-                _eid_do = _dometa.get("eid") or ""
-                _url_do = _dometa.get("url") or ""
-                if not _url_do:
-                    # 2026-05-25 防御強化: session_state 消失時に DB から URL 復元.
-                    # 採用フロー側 (L5191 apply_supplier_candidate) で例外発生 +
-                    # session_state["_sup_photo_meta_*"] 設定が skip された場合に、
-                    # status='accepted'/'applied' な候補の description 反映 section
-                    # に到達できない不具合 (357414236596 cid=1121 事案、5/24).
-                    try:
-                        from monitor.database import get_conn
-                        with get_conn() as _conn:
-                            _row = _conn.execute(
-                                "SELECT candidate_url, ebay_item_id, candidate_title "
-                                "FROM supplier_candidates WHERE id=?", (_docid,),
-                            ).fetchone()
-                    except Exception:  # noqa: BLE001 — UI 補完経路なので例外で section 壊さない
-                        _row = None
-                    if _row and _row[0]:
-                        _url_do = _row[0]
-                        _eid_do = _eid_do or (_row[1] or "")
-                        _ttl_do = _ttl_do or (_row[2] or "")
-                        # 次 rerun 以降の写真フロー safe net 用に session_state も補完
-                        st.session_state[f"_sup_photo_meta_{_docid}"] = {
-                            "url": _url_do, "eid": _eid_do, "title": _ttl_do,
-                        }
-                    else:
-                        st.error(
-                            f"cid={_docid}: URL 情報不足 + DB lookup 失敗 → "
-                            f"採用やり直しで再 prompt 発生"
-                        )
-                        continue
-                st.markdown(
-                    f"**▼ description 反映: {_ttl_do[:60]} (item {_eid_do})**"
-                )
-                from tabs._supplier_description_pipeline import (
-                    render_supplier_description_section,
-                )
-                render_supplier_description_section(
-                    candidate_id=_docid,
-                    candidate_url=_url_do,
-                    ebay_item_id=_eid_do,
-                    candidate_title=_ttl_do,
-                    close_flag_key=f"_sup_desc_open_inline_{_docid}",
-                )
-                if st.button(
-                    "✖ この description 反映を閉じる",
-                    key=f"_sup_desc_close_{_docid}",
-                ):
-                    st.session_state[f"_sup_desc_open_inline_{_docid}"] = False
-                    st.rerun()
+
+            elif st.session_state.get(f"_sup_desc_open_inline_{_fcid}"):
+                # Step 2: opened
+                if not _f_url:
+                    st.error(
+                        f"cid={_fcid}: URL 情報不足 + DB lookup 失敗 → "
+                        f"採用やり直しで再 prompt 発生"
+                    )
+                else:
+                    st.markdown(
+                        f"**▼ description 反映: {_f_ttl} (item {_f_eid})**"
+                    )
+                    from tabs._supplier_description_pipeline import (
+                        render_supplier_description_section,
+                    )
+                    render_supplier_description_section(
+                        candidate_id=_fcid,
+                        candidate_url=_f_url,
+                        ebay_item_id=_f_eid,
+                        candidate_title=_f_ttl,
+                        close_flag_key=f"_sup_desc_open_inline_{_fcid}",
+                    )
+
+            # ── フッタ: 完了ボタン (バグ3 fix: このボタン 1 つで cid 全消し) ──
+            st.markdown("---")
+            if st.button(
+                "この商品の対応を完了 (欄を閉じる)",
+                key=f"_sup_followup_done_{_fcid}",
+                type="primary",
+            ):
+                _close_supplier_followup(_fcid)
+                st.rerun()
+
+    if _followup_cids:
         st.markdown("---")
 
     # ── サブタブ 4 分割 (2026-04-24 rev2) ──
