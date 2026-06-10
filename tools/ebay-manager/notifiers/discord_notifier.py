@@ -50,7 +50,8 @@ def inject_webhook_into_config(config: dict) -> dict:
     """
     env_wh = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
     env_kw = (os.environ.get('DISCORD_KEYWORD_WEBHOOK_URL') or '').strip()
-    if not env_wh and not env_kw:
+    env_rv = (os.environ.get('DISCORD_RIVAL_WEBHOOK_URL') or '').strip()
+    if not env_wh and not env_kw and not env_rv:
         return config
     disc = config.setdefault('discord', {})
     if env_wh and not (disc.get('webhook_url') or '').strip():
@@ -58,6 +59,10 @@ def inject_webhook_into_config(config: dict) -> dict:
     # W207: 専用キーワード webhook (env 設定時のみ). 既存値があれば尊重 (idempotent).
     if env_kw and not (disc.get('keyword_webhook_url') or '').strip():
         disc['keyword_webhook_url'] = env_kw
+    # W153 (2026-06-08): 専用ライバル検出 webhook (env 設定時のみ). 未設定なら key を
+    # 作らず caller 側で fallback to DISCORD_WEBHOOK_URL.
+    if env_rv and not (disc.get('rival_webhook_url') or '').strip():
+        disc['rival_webhook_url'] = env_rv
     return config
 
 
@@ -177,30 +182,30 @@ class DiscordNotifier:
         return embed
 
     def _format_task_status(self, results: Dict) -> str:
-        """タスク実行状況をフォーマット"""
+        """タスク実行状況をフォーマット (W244: data-driven 化).
+
+        旧実装はハードコード 11 キー dict のため、廃止済み task
+        ('research'/'news' 等) の幽霊行が毎回「スキップ」表示され、
+        新規 task は永遠にレポートに載らなかった (18 task 中 9 のみ表示)。
+        実際に当該 batch で走った results をそのまま列挙し、表示名は
+        TASK_SCHEDULE_BY_KEY (定時タスクの単一情報源) から引く。
+        skip された task は results に入らない = ここには出ない (skip 可視化は
+        task_execution_log + ヘルスチェック + MonoDeck 定時実行タブが担当)。
+        """
+        if not results:
+            return '(この batch で実行されたタスクなし)'
+
+        try:
+            from monitor.task_execution_log import TASK_SCHEDULE_BY_KEY
+        except ImportError:
+            TASK_SCHEDULE_BY_KEY = {}
 
         status_lines = []
-
-        task_names = {
-            'company_secretary': '🗂️ 秘書ルーティン',
-            'ebay_sync': '🔄 eBay同期',
-            'inventory_check': '📦 在庫チェック',
-            'inventory_alert': '⚠️ 在庫切れ通知',
-            'supplier_select': '🏪 仕入先候補選出',
-            'email': '📧 メール取得',
-            'research': '🔍 新商品リサーチ',
-            'rival_detection': '👥 ライバルセラー検出',
-            'data_sync': '🗄️ データストア統合',
-            'price_optimization': '💰 価格最適化',
-            'news': '📰 AIニュース',
-        }
-
-        for task_key, task_name in task_names.items():
-            result = results.get(task_key)
-            if result is None:
-                status = '⏭️ スキップ'
-            elif isinstance(result, dict) and result.get('success') is False:
-                status = f'❌ エラー'
+        for task_key, result in results.items():
+            sched = TASK_SCHEDULE_BY_KEY.get(task_key)
+            task_name = sched['display'] if sched else task_key
+            if isinstance(result, dict) and result.get('success') is False:
+                status = '❌ エラー'
             elif result:
                 status = '✅ 完了'
             else:
@@ -211,18 +216,37 @@ class DiscordNotifier:
         return '\n'.join(status_lines)
 
     def _next_execution_time(self) -> str:
-        """次回実行時刻を算出"""
+        """次回実行時刻を算出 (W244: 実スケジュール読込化).
+
+        旧実装は [5, 11, 17, 22] ハードコードで、実際の batch 時刻
+        (02:30/11/15/18/22) と乖離した「次回 17:00」等を毎回表示していた。
+        schedule_config.json の execution_schedule (times + minutes) を読む。
+        読めない場合は現行スケジュールの固定値に fallback。
+        """
+        times = [2, 11, 15, 18, 22]
+        minutes = {2: 30}
+        try:
+            from pathlib import Path
+            import json as _json
+            _cfg_path = (Path(__file__).resolve().parent.parent
+                         / 'config' / 'schedule_config.json')
+            with open(_cfg_path, 'r', encoding='utf-8') as f:
+                _sched = _json.load(f).get('execution_schedule', {})
+            if _sched.get('times'):
+                times = sorted(int(t) for t in _sched['times'])
+                minutes = {int(k): int(v)
+                           for k, v in (_sched.get('minutes') or {}).items()}
+        except Exception as e:
+            logger.warning(f"execution_schedule 読込失敗、固定値に fallback: {e}")
 
         now = datetime.now()
-        execution_times = [5, 11, 17, 22]
+        for hour in times:
+            minute = minutes.get(hour, 0)
+            if (now.hour, now.minute) < (hour, minute):
+                return f"今日 {hour:02d}:{minute:02d}"
 
-        # 今日のこれからの実行時刻
-        for hour in execution_times:
-            if now.hour < hour:
-                return f"今日 {hour:02d}:00"
-
-        # 明日の最初の実行時刻
-        return f"明日 05:00"
+        first = times[0]
+        return f"明日 {first:02d}:{minutes.get(first, 0):02d}"
 
     def send_inventory_alert(self, out_of_stock_items: List[Dict],
                             supplier_candidates: List[Dict]) -> bool:

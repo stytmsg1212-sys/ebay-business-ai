@@ -3,7 +3,9 @@
 """W#3 ライバルセラー新規出品モニター — scheduled task entry。
 
 呼出経路:
-  (A) daily_scheduler (毎日 02:00 batch): run_rival_seller_sweep_task(config, scheduled_hour)
+  (A) daily_scheduler (毎朝 02:30 batch / execution_times=[2]): run_rival_seller_sweep_task(config, scheduled_hour)
+      ※ W244 (2026-06-10) で結線。それ以前は本 docstring の記述に反して dispatch が
+        存在せず UI 経路 (B) のみだった (D1 指摘 = 文書と実装の乖離)。
   (B) UI「今すぐチェック」: run_rival_seller_sweep_task(config) 直接呼出
 
 task_key: "rival_seller_sweep"

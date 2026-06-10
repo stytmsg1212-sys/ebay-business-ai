@@ -33,9 +33,10 @@ TASK_REGISTRY = {
     'inventory_check':  ('tasks.task_inventory_check',  'run_inventory_check',  'inventory_check'),
     'inventory_alert':  ('tasks.task_inventory_alert',  'run_inventory_alert',  'inventory_alert'),
     'supplier_select':  ('tasks.task_supplier_select',  'run_supplier_select',  'supplier_select'),
-    'email_pickup':     ('tasks.task_email_pickup',     'run_email_pickup',     'email'),
+    'email_pickup':     ('tasks.task_email_pickup',     'run_email_pickup',     'email_pickup'),  # W244: results キーを task_key と統一
     # 'research' — W21 (2026-04-26) で削除。task_research.py 死蔵化により.
     'rival_detection':  ('tasks.task_rival_detection',  'run_rival_detection',  'rival_detection'),
+    'rival_seller_sweep': ('tasks.task_rival_seller_sweep', 'run_rival_seller_sweep_task', 'rival_seller_sweep'),  # W244 結線
     'data_sync':        ('tasks.task_sync_data_stores', 'run_sync_data_stores', 'data_sync'),
     'price_optimization': ('tasks.task_price_optimization', 'run_price_optimization', 'price_optimization'),
     # W160 (2026-05-24): 'sales_tracking' (task_sales_tracking) 削除. W149 で置換済.
@@ -148,7 +149,7 @@ class HarnessTest:
                     self.warn('config', f'{task_name}: "enabled" フィールドがない（デフォルト有効）')
                 if 'execution_times' in task_conf:
                     times = task_conf['execution_times']
-                    valid_times = config.get('execution_schedule', {}).get('times', [5, 11, 17, 22])
+                    valid_times = config.get('execution_schedule', {}).get('times', [2, 11, 15, 18, 22])  # W244: stale fallback [5,11,17,22] を現行スケジュールに更新
                     for t in times:
                         if t not in valid_times:
                             self.warn('config', f'{task_name}: execution_time {t} がスケジュール外')

@@ -379,7 +379,8 @@ ROUTE_TABLE = {
     'news': route_news_check,
     'supplier_select': route_supplier_select,
     'product_search': route_product_search,
-    'email': route_email,
+    'email_pickup': route_email,  # W244: results キーを 'email' → 'email_pickup' に統一
+    'email': route_email,  # 旧キー互換 (route_all_results は results キーで引くため両対応)
     'price_optimization': route_price_optimization,
     'data_sync': route_data_sync,
     # research と company_secretary は自身で .company に書き込み済み
@@ -476,8 +477,8 @@ def generate_daily_dashboard(results: Dict) -> str:
         else:
             lines.append(f"**ニュース**: {total}件")
 
-    # メール
-    email = results.get('email', {})
+    # メール (W244: results キーを 'email' → 'email_pickup' に統一、旧キーも互換読み)
+    email = results.get('email_pickup') or results.get('email', {})
     if email and email.get('success'):
         lines.append(f"**メール**: {email.get('count', 0)}件")
 

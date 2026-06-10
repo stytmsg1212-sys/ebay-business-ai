@@ -195,10 +195,12 @@ def render_ebay_sync_tab(s: dict) -> None:
                         'check': shipping_check
                     })
 
+                eid = item["ebay_item_id"]
                 df_data.append({
                     "WARN": warning_indicator,
                     "Rank": rank_to_stars(item.get("rank", "C")),
-                    "Item ID": item["ebay_item_id"],
+                    "Item ID": eid,
+                    "eBay": f"https://www.ebay.com/itm/{eid}" if eid else "",
                     "SKU": item["sku"],
                     "Title": item["title"][:50] + "..." if len(item["title"] or "") > 50 else item["title"],
                     "Price": f"${price:.2f}",
@@ -209,7 +211,14 @@ def render_ebay_sync_tab(s: dict) -> None:
                 })
 
             df = pd.DataFrame(df_data)
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(
+                df,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "eBay": st.column_config.LinkColumn("eBay", display_text="開く", width="small"),
+                },
+            )
 
             st.caption(f"合計: {len(ebay_items)}件 | ソース紐付: {len([x for x in ebay_items if x.get('source_status')])}件 | 送料警告: {len(shipping_warnings)}件")
 

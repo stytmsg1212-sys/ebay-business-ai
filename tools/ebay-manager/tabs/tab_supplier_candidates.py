@@ -67,7 +67,9 @@ def render_supplier_candidates_tab(s: dict) -> None:
 
     # ── 閾値調整 (T6: Q5=C 手動ボタン、Q6=B タブ上部配置) ──
     import json as _th_json
-    _th_settings_path = Path(__file__).parent / "settings.json"
+    # W243: タブ分割後の parent.parent 修正 (旧 path は tabs/settings.json を指し、
+    # 保存しても夜間 sweep が読む root settings.json に反映されない罠だった)
+    _th_settings_path = Path(__file__).resolve().parent.parent / "settings.json"
     try:
         with open(_th_settings_path, encoding="utf-8") as _f:
             _th_settings = _th_json.load(_f)
@@ -460,7 +462,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
                         _msgs.append(("error", res_a.get("message") or "採用に失敗しました"))
                     else:
                         # 2) apply (eBay ReviseItem + DB sku 追従 + status='applied')
-                        _cfg_path = Path(__file__).parent / "config" / "schedule_config.json"
+                        _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
                         _cfg = {}
                         _cfg_load_ok = True
                         if _cfg_path.exists():
@@ -774,6 +776,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
                     candidate_url=_url_do,
                     ebay_item_id=_eid_do,
                     candidate_title=_ttl_do,
+                    close_flag_key=f"_sup_desc_open_inline_{_docid}",
                 )
                 if st.button(
                     "✖ この description 反映を閉じる",

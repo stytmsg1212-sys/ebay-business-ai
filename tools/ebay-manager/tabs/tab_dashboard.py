@@ -1545,7 +1545,7 @@ def render_dashboard_tab(s: dict) -> None:
             # 早期 return（旧 file-based 表示はスキップ）
             _news_file = None
         else:
-            _news_file = Path(__file__).parent / "data" / "news" / f"{_date_cls.today().isoformat()}-news.json"
+            _news_file = Path(__file__).resolve().parent.parent / "data" / "news" / f"{_date_cls.today().isoformat()}-news.json"
         if _news_file and _news_file.exists():
             import json as _nj
             _news_items = _nj.loads(_news_file.read_text(encoding="utf-8"))
@@ -1661,7 +1661,7 @@ def render_dashboard_tab(s: dict) -> None:
         # ユーザーはチェック (完了化) / 削除 / 未着手戻し を画面から実行可能。
         from datetime import date as _date_today_cls
         st.markdown('<div class="sec-header" style="margin-top:18px;">ROADMAP</div>', unsafe_allow_html=True)
-        _imp_path = Path(__file__).parent / "data" / "system_improvements.json"
+        _imp_path = Path(__file__).resolve().parent.parent / "data" / "system_improvements.json"  # W243: タブ分割後の parent.parent 修正
 
         # JSON 破損時の全データ損失を防ぐため、読込失敗時は編集操作を無効化する。
         _roadmap_all = []

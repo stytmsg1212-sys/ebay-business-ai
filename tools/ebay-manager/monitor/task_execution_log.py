@@ -58,11 +58,16 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "scheduler_health_check", "display": "定時実行ヘルスチェック", "hours": [4, 12, 16, 19, 23], "weekdays": None, "owner": "health"},
     {"key": "market_analysis_refresh", "display": "W7-A 市場戦略 refresh", "hours": [2], "weekdays": [6], "owner": "market_analysis"},
     {"key": "daily_codex_lint", "display": "W125 Codex 文書 lint (毎日 03:00)", "hours": [3], "weekdays": None, "owner": "codex_lint"},
+    {"key": "research_harvest", "display": "W229 商品リサーチ発掘 (毎日 03:30)", "hours": [3], "weekdays": None, "owner": "research"},
     {"key": "rival_seller_sweep", "display": "W#3 ライバルセラー新規出品モニター", "hours": [2], "weekdays": None, "owner": "main"},
     # Codex Round 1 fix MEDIUM-4 (2026-05-16): kind=interval で main batch slot 期待から除外.
     # hours=None は本来「全 batch slot で実行」を意味するが、本 task は 30 分毎 cron なので
     # expected slot 模型と齟齬. kind=interval マーカーで get_today_expected_tasks 側で skip.
     {"key": "claude_loop_healthcheck", "display": "W131 P5 claude-loop watcher (30分ごと)", "hours": None, "weekdays": None, "owner": "claude_loop_healthcheck", "kind": "interval", "interval_minutes": 30},
+    # W244 (2026-06-10): order_alert_check は 2026-04-27 から 30 分毎 cron で稼働し
+    # task_execution_log に記録されていたのに本レジストリに未登録だった
+    # (MonoDeck 定時実行タブ・日次レポートの表示名解決から漏れる)。
+    {"key": "order_alert_check", "display": "W7-A 注文アラート (30分ごと)", "hours": None, "weekdays": None, "owner": "order_alert", "kind": "interval", "interval_minutes": 30},
     # W148 (2026-05-21): キーワード新着監視. 2h ごと :20 分 subprocess crawl.
     {"key": "keyword_watch_crawl", "display": "W148 キーワード新着監視 (2h ごと :20)", "hours": None, "weekdays": None, "owner": "keyword_watch", "kind": "interval", "interval_minutes": 120},
 ]

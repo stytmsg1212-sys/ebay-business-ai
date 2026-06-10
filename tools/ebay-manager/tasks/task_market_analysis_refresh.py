@@ -215,6 +215,24 @@ def run_market_analysis_refresh(config: Optional[dict] = None,
             day_range=day_range, ttl_hours=ttl,
         )
 
+        # H-3: cache miss (= 実 navigate 発生) 時に api_call_log に記録する。
+        # harvest と同一 provider/operation で合算可能にする。
+        # scrape_via_search_box は最低 1 navigate (search) を行う。
+        if not cache_hit:
+            try:
+                from monitor.api_logger import log_api_call
+                log_api_call(
+                    provider="terapeak",
+                    model="cdp",
+                    operation="terapeak_read",
+                    input_tokens=0,
+                    output_tokens=0,
+                    success=result.success,
+                    error_message=result.error if not result.success else None,
+                )
+            except Exception as _log_err:  # noqa: BLE001
+                logger.warning(f"market_analysis: terapeak_read log 失敗: {_log_err}")
+
         if not result.success:
             failed += 1
             consecutive_failures += 1
@@ -291,6 +309,16 @@ def run_market_analysis_refresh(config: Optional[dict] = None,
 
     severity = "warn" if failed > 0 or aborted_by_block else "info"
     _send_discord(cfg, message, severity=severity)
+
+    # W242 (2026-06-09): 市場分析後に eBaymag 区分を再計算。新規取込/relist された
+    # listing の ebaymag_segment NULL 放置を防ぐ (daily_relist の relist プール枯渇 /
+    # 誤 relist 回避)。失敗しても市場分析本体の結果は妨げない。
+    try:
+        from monitor.ebaymag_segment import recompute_ebaymag_segments
+        seg = recompute_ebaymag_segments()
+        logger.info(f"ebaymag_segment 再計算: {seg}")
+    except Exception as e:  # noqa: BLE001 — 区分再計算失敗は本体を妨げない
+        logger.warning(f"ebaymag_segment 再計算失敗: {e}")
 
     return {
         "success": True,

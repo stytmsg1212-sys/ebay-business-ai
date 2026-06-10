@@ -68,12 +68,14 @@ def render_manual_run_tab(s: dict) -> None:
                     _qm = _il.import_module(_qmod)
                     _qf = getattr(_qm, _qfunc)
 
-                    # config を読み込み
-                    _qconfig_path = Path(__file__).parent / 'config' / 'schedule_config.json'
+                    # config を読み込み (W243: タブ分割後の parent.parent 修正)
+                    _qconfig_path = Path(__file__).resolve().parent.parent / 'config' / 'schedule_config.json'
                     _qconfig = {}
                     if _qconfig_path.exists():
                         with open(_qconfig_path, 'r', encoding='utf-8') as _cf:
                             _qconfig = json.load(_cf)
+                    else:
+                        st.warning(f"schedule_config.json が見つかりません ({_qconfig_path}), 空 config で続行")
 
                     st.write(f"▸ {_qdisplay} を実行中...")
                     _qresult = _qf(_qconfig)
@@ -287,7 +289,7 @@ def render_manual_run_tab(s: dict) -> None:
                             from pathlib import Path as _Path
                             from tasks.task_inventory_check import run_inventory_check
 
-                            _cfg_path = _Path(__file__).parent / "config" / "schedule_config.json"
+                            _cfg_path = _Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
                             try:
                                 with open(_cfg_path, encoding="utf-8") as _f:
                                     _cfg = _json.load(_f)
@@ -377,7 +379,7 @@ def render_manual_run_tab(s: dict) -> None:
             with st.status("検索準備中...", expanded=True) as status:
                 try:
                     # task_product_search をインポート
-                    sys.path.insert(0, str(Path(__file__).parent / "tasks"))
+                    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tasks"))
                     from task_product_search import run_product_search
 
                     st.write("▸ Searching out-of-stock items...")

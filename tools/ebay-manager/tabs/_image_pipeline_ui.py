@@ -217,7 +217,9 @@ def render_image_pipeline_section(
         )
 
     # ── Step E: 反映ボタン 3 種 ──
-    if ebay_item_id:
+    # HIGH-3 fix: callback が全て None の場合は Step E セクションごと非表示。
+    # (例: _supplier_description_pipeline.py から on_apply_* = None で呼ぶ経路)
+    if ebay_item_id and (on_apply_image or on_apply_description or on_apply_both):
         _render_step_e_apply_buttons(
             prefix=prefix,
             ebay_item_id=ebay_item_id,

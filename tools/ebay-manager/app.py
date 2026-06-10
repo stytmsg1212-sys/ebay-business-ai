@@ -748,6 +748,43 @@ if _w134_sel == "設定":
         new_cert_id = st.text_input("Cert ID (Client Secret)", value=s.get("ebay_cert_id", ""), type="password", key="s_cert")
         new_user_token = st.text_area("User Token", value=s.get("ebay_user_token", ""), height=100, key="s_token")
 
+    # --- 商品リサーチ発掘 (W229) -----------------------------------------------
+    # K1: seed_query 文字列編集 + 件数上限の 2 項目のみ。フル CRUD は Phase 2 以降。
+    # schedule_config.json の research_harvest セクションを読み書きする。
+    # 既存「設定を保存」ボタンに乗せるため、事前に current 値を読んでおく。
+    st.divider()
+    with st.expander("商品リサーチ発掘 (W229)", expanded=False):
+        import json as _rh_json
+        _rh_cfg_path = Path(__file__).parent / "config" / "schedule_config.json"
+        _rh_cfg: dict = {}
+        if _rh_cfg_path.exists():
+            try:
+                with open(_rh_cfg_path, "r", encoding="utf-8") as _rh_f:
+                    _rh_full = _rh_json.load(_rh_f)
+                _rh_cfg = _rh_full.get("tasks_enabled", {}).get("research_harvest", {})
+            except (OSError, ValueError):
+                pass
+
+        # シードクエリ (除外語): seed_queries[0].query を編集可能にする
+        _default_seeds = _rh_cfg.get("seed_queries", [{}])
+        _default_query = _default_seeds[0].get("query", "") if _default_seeds else ""
+        new_rh_query = st.text_area(
+            "除外語クエリ (seed_queries[0].query)",
+            value=_default_query,
+            height=68,
+            key="s_rh_query",
+            help="括弧記法の除外語のみ方式。例: (-abcd)  (-Card) (-camera)",
+        )
+        new_rh_max_items = st.number_input(
+            "1回あたり最大収穫件数 (max_items_per_run)",
+            min_value=1,
+            max_value=200,
+            value=int(_rh_cfg.get("max_items_per_run", 50)),
+            step=1,
+            key="s_rh_max_items",
+        )
+    # --- ここまで商品リサーチ発掘 ------------------------------------------------
+
     if st.button("設定を保存", type="primary"):
         with st.status("設定を保存中...", expanded=True) as status:
             st.write("▸ 設定値を更新中...")
@@ -776,5 +813,29 @@ if _w134_sel == "設定":
                 s["fuel_surcharge_last_updated"] = _dt_fuel.now().isoformat(timespec="seconds")
             save_settings(s)
             st.session_state.settings = s
+
+            # --- W229 商品リサーチ発掘設定を schedule_config.json に書き戻す ---
+            # K2: research_harvest セクションの 2 項目のみ更新。他セクションは触らない。
+            import json as _sv_json
+            _sv_cfg_path = Path(__file__).parent / "config" / "schedule_config.json"
+            try:
+                with open(_sv_cfg_path, "r", encoding="utf-8") as _sv_rf:
+                    _sv_full = _sv_json.load(_sv_rf)
+                _sv_rh = _sv_full.setdefault("tasks_enabled", {}).setdefault(
+                    "research_harvest", {}
+                )
+                # seed_queries[0].query のみ更新 (他フィールドは維持)
+                _sv_seeds = _sv_rh.setdefault("seed_queries", [{}])
+                if not _sv_seeds:
+                    _sv_seeds.append({})
+                _sv_seeds[0]["query"] = new_rh_query
+                _sv_rh["max_items_per_run"] = int(new_rh_max_items)
+                with open(_sv_cfg_path, "w", encoding="utf-8") as _sv_wf:
+                    _sv_json.dump(_sv_full, _sv_wf, ensure_ascii=False, indent=2)
+                st.write("▸ research_harvest 設定を schedule_config.json に保存完了")
+            except (OSError, ValueError) as _sv_e:
+                st.warning(f"schedule_config.json 保存失敗 (非致命的): {_sv_e}")
+            # --- ここまで W229 保存 ---
+
             st.write("▸ 保存完了")
             status.update(label="設定を保存しました", state="complete")

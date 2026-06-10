@@ -331,11 +331,11 @@ def run_rival_detection(config: dict) -> dict:
             # 10 件以上 skip なら Discord warn (user が ON 数を絞る判断ができるよう).
             skipped = len(listings) - max_listings
             if skipped >= 10:
-                webhook = (config.get('discord') or {}).get('webhook_url') or ""
+                webhook = _resolve_rival_webhook(config)
                 if webhook:
                     try:
                         from notifiers.discord_notifier import DiscordNotifier
-                        DiscordNotifier(webhook).send_message(
+                        DiscordNotifier(webhook, bypass_env=True).send_message(
                             f"⚠️ **W153 truncation**: 監視 ON listing が "
                             f"{len(listings)} 件あり max_listings_per_run="
                             f"{max_listings} を超えています。今回 {skipped} 件 skip "
@@ -421,9 +421,22 @@ def run_rival_detection(config: dict) -> dict:
     return summary
 
 
+def _resolve_rival_webhook(config: dict) -> str:
+    """W153 (2026-06-08): 専用ライバルチャンネル webhook を優先, 未設定なら既定へ fallback.
+
+    inject_webhook_into_config が DISCORD_RIVAL_WEBHOOK_URL を
+    config['discord']['rival_webhook_url'] に注入済 (entrypoint で実行)。専用未設定
+    環境では既定 webhook_url (DISCORD_WEBHOOK_URL) へ fallback し通知先消失を防ぐ (Q0)。
+    送信側は DiscordNotifier(..., bypass_env=True) で env DISCORD_WEBHOOK_URL の上書きを
+    無効化し、本 URL (専用 or 既定) を確実に使う。
+    """
+    disc = config.get('discord') or {}
+    return (disc.get('rival_webhook_url') or disc.get('webhook_url') or "").strip()
+
+
 def _send_discord_aggregate(config: dict, new_by_listing: dict) -> None:
     """new>0 集約通知 (1 run 1 message). alert fatigue 抑制."""
-    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    webhook = _resolve_rival_webhook(config)
     if not webhook:
         return
     from notifiers.discord_notifier import DiscordNotifier
@@ -438,7 +451,7 @@ def _send_discord_aggregate(config: dict, new_by_listing: dict) -> None:
     if len(lines) > 20:
         content += f"\n... 他 {len(lines) - 20} listings"
     try:
-        DiscordNotifier(webhook).send_message(content)
+        DiscordNotifier(webhook, bypass_env=True).send_message(content)
     except Exception as e:
         logger.warning(f"[W153] discord aggregate notify failed: {e}")
 
@@ -447,7 +460,7 @@ def _send_discord_errors_alert(
     config: dict, summary: dict, per_listing: list[dict],
 ) -> None:
     """H-D: errors>0 専用 alert. listing 名 + reason を 3-5 件抜粋."""
-    webhook = (config.get('discord') or {}).get('webhook_url') or ""
+    webhook = _resolve_rival_webhook(config)
     if not webhook:
         return
     from notifiers.discord_notifier import DiscordNotifier
@@ -465,7 +478,7 @@ def _send_discord_errors_alert(
         + (f"\n... 他 {extra} listings" if extra > 0 else "")
     )
     try:
-        DiscordNotifier(webhook).send_message(content)
+        DiscordNotifier(webhook, bypass_env=True).send_message(content)
     except Exception as e:
         logger.warning(f"[W153] discord errors-alert notify failed: {e}")
 

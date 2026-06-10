@@ -251,7 +251,7 @@ def _render_edit_form(it: dict, config: dict) -> None:
     total = cp + sh
     info_cols = st.columns(4)
     with info_cols[0]:
-        st.markdown(f"**ID**  \n`{ebay_item_id}`")
+        st.markdown(f"**ID**  \n[`{ebay_item_id}`](https://www.ebay.com/itm/{ebay_item_id})")
     with info_cols[1]:
         st.markdown(f"**SKU**  \n`{it.get('sku', '')}`")
     with info_cols[2]:

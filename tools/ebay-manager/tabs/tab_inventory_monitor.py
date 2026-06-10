@@ -217,6 +217,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                     "状態": "● 確認済" if item["ebay_item_id"] in confirmed_ids else "○ 未確認",
                     "確認": item["ebay_item_id"] in confirmed_ids,
                     "Item ID": item["ebay_item_id"],
+                    "eBay": f"https://www.ebay.com/itm/{item['ebay_item_id']}" if item["ebay_item_id"] else "",
                     "SKU": item.get("sku") or "",
                     "価格": f"${item['current_price']:.2f}" if item["current_price"] else "-",
                     "在庫": int(item["quantity_ebay"]),
@@ -240,6 +241,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         "状態": st.column_config.TextColumn("状態", width="small"),
                         "確認": st.column_config.CheckboxColumn("確認", width="small"),
                         "Item ID": st.column_config.TextColumn("Item ID", width="medium"),
+                        "eBay": st.column_config.LinkColumn("eBay", display_text="開く", width="small"),
                         "SKU": st.column_config.TextColumn("SKU", width="medium"),
                         "在庫": st.column_config.NumberColumn("在庫", min_value=0, step=1, width="small"),
                         "仕入先URL": st.column_config.LinkColumn("仕入先URL", display_text="リンク", width="small"),
@@ -249,7 +251,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         "候補URL2": st.column_config.LinkColumn("候補2", display_text="▸2", width="small"),
                         "候補URL3": st.column_config.LinkColumn("候補3", display_text="▸3", width="small"),
                     },
-                    disabled=["状態", "Item ID", "価格", "ランク", "仕入先", "仕入先URL",
+                    disabled=["状態", "Item ID", "eBay", "価格", "ランク", "仕入先", "仕入先URL",
                               "候補", "候補URL1", "候補URL2", "候補URL3", "タイトル"],
                     hide_index=True,
                     width="stretch",
@@ -398,7 +400,9 @@ def render_inventory_monitor_tab(s: dict) -> None:
                 with _h2:
                     st.markdown(
                         f'<div style="font-family:var(--font-mono,monospace);'
-                        f'font-size:12px;color:rgba(180,220,255,0.85);padding-top:6px;">{html.escape(eid)}</div>',
+                        f'font-size:12px;color:rgba(180,220,255,0.85);padding-top:6px;">'
+                        f'<a href="https://www.ebay.com/itm/{html.escape(eid)}" target="_blank" '
+                        f'style="color:rgba(120,200,255,0.9);text-decoration:none;">{html.escape(eid)}</a></div>',
                         unsafe_allow_html=True,
                     )
                 with _h3:
@@ -601,7 +605,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
                     # 候補0件 (置換用) → ただし alt-only 候補があれば「探索済」と区別表示.
                     # 2026-05-05 修正: Baccarat case (探索済 7 件すべて alt のみ) で
                     # 「候補未探索」と誤表示してた事象の修正. user 認識ミスを防ぐ.
-                    _alt_n = alt_only_count_by_sku.get(sku_orig, 0)
+                    # HIGH-1' fix: PNF 経路は eid キー dict、OOS 経路は sku キー dict。
+                    # eid は数字文字列 / sku は stock*/ebay* prefix でキー空間が衝突しない
+                    # ため、eid 優先 lookup + sku fallback で両経路を単一式で吸収する。
+                    _alt_n = alt_only_count_by_sku.get(eid) or alt_only_count_by_sku.get(sku_orig, 0)
                     if _alt_n > 0:
                         st.caption(
                             f"仕入先候補は探索済みです（{_alt_n} 件見つかりましたが、"
@@ -614,6 +621,23 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             "候補未探索（次回02:30 Pattern 2バッチで自動探索、"
                             "または form 下部の「未探索SKUの即時探索」で個別起動）"
                         )
+
+        # [共通] 認証情報と config を OOS / PNF 両セクションより前に準備 (HIGH-1 fix)
+        # oos_items が 0 件でも pnf_items が存在すると PNF ハンドラが参照するため、
+        # どちらの if ブロックにも属さない共通スコープで定義する。
+        _ebay_creds = {
+            'app_id': s.get("ebay_app_id", ""),
+            'dev_id': s.get("ebay_dev_id", ""),
+            'cert_id': s.get("ebay_cert_id", ""),
+            'user_token': s.get("ebay_user_token", ""),
+        }
+        _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+        _cfg = {}
+        if _cfg_path.exists():
+            try:
+                _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as _cfg_err:
+                logger.warning("schedule_config.json 読込失敗 (空 config で続行): %s", _cfg_err)
 
         st.markdown(f"### 仕入先在庫切れ ({len(oos_items)}件)")
         if oos_items:
@@ -654,21 +678,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         _sku_list,
                     ).fetchall():
                         _oos_alt_only_count[_r["sku"]] = _r["alt_n"]
-
-            # [2] 認証情報と config を事前準備
-            _ebay_creds = {
-                'app_id': s.get("ebay_app_id", ""),
-                'dev_id': s.get("ebay_dev_id", ""),
-                'cert_id': s.get("ebay_cert_id", ""),
-                'user_token': s.get("ebay_user_token", ""),
-            }
-            _cfg_path = Path(__file__).parent / "config" / "schedule_config.json"
-            _cfg = {}
-            if _cfg_path.exists():
-                try:
-                    _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    pass
 
             st.caption(
                 "各商品のすぐ下に仕入先候補(上位3件)を表示。候補に「採用」「不採用」をチェック → "
@@ -1140,11 +1149,242 @@ def render_inventory_monitor_tab(s: dict) -> None:
 
         st.divider()
 
-        # --- 確認不可 ---
-        st.markdown(f"### 確認不可 ({len(pnf_items)}件)")
-        st.caption("仕入先ページが削除済み。出品停止または別の仕入先を探す必要があります。")
+        # --- 確認不可 (W252: 「仕入先在庫切れ」と同じ表示に統一) ---
+        # user 指示: 確認不可 = 仕入先在庫切れとして処理してよい。表示レイヤーを統一。
+        # DB の source_status 値 (not_found) は書き換えない (表示マッピングのみ)。
+        st.markdown(f"### 仕入先在庫切れ（確認不可）({len(pnf_items)}件)")
+        st.caption("仕入先ページが削除済みまたは確認不可。「仕入先在庫切れ」と同様に出品停止または仕入先変更を検討してください。")
         if pnf_items:
-            _render_risk_table_with_actions(pnf_items, "pnf")
+            # OOS と同じ表示フロー (_render_oos_block + 一括実行ボタン)
+            # HIGH-4 fix: SKU 規約違反を修正。supplier_candidates は migration v56 で
+            # ebay_item_id NOT NULL + UNIQUE(ebay_item_id, candidate_url) 化済み。
+            # WHERE ebay_item_id IN (...) で取得し、dict キーも ebay_item_id に統一。
+            from monitor.database import get_conn as _pnf_conn
+            _pnf_eid_list = [_it["ebay_item_id"] for _it in pnf_items if _it.get("ebay_item_id")]
+            _pnf_cand_by_eid: dict[str, list[dict]] = {}
+            _pnf_alt_only_count: dict[str, int] = {}
+            if _pnf_eid_list:
+                with _pnf_conn() as _pcc:
+                    _ph = ",".join("?" * len(_pnf_eid_list))
+                    for _r in _pcc.execute(
+                        f"""SELECT id, sku, ebay_item_id, candidate_url, candidate_title,
+                                   candidate_price_jpy, match_score, source_platform,
+                                   status, alt_listing_possible,
+                                   profit_jpy, profitable
+                            FROM supplier_candidates
+                            WHERE ebay_item_id IN ({_ph})
+                              AND status IN ('pending','accepted','applied')
+                              AND COALESCE(alt_listing_possible, 0) = 0
+                            ORDER BY ebay_item_id,
+                                     (profit_jpy IS NULL), profit_jpy DESC,
+                                     match_score DESC""",
+                        _pnf_eid_list,
+                    ).fetchall():
+                        _pnf_cand_by_eid.setdefault(_r["ebay_item_id"], []).append(dict(_r))
+                    # HIGH-1' fix: eid キーのまま格納 (sku 橋渡しは同一 sku 共有 listing で
+                    # 後勝ち上書き → 誤 caption。_render_oos_block 側で eid 優先 lookup)
+                    for _r in _pcc.execute(
+                        f"""SELECT ebay_item_id, COUNT(*) as alt_n
+                            FROM supplier_candidates
+                            WHERE ebay_item_id IN ({_ph})
+                              AND status IN ('pending','accepted')
+                              AND COALESCE(alt_listing_possible, 0) = 1
+                            GROUP BY ebay_item_id""",
+                        _pnf_eid_list,
+                    ).fetchall():
+                        _pnf_alt_only_count[_r["ebay_item_id"]] = _r["alt_n"]
+
+            st.caption(
+                "各商品のすぐ下に仕入先候補(上位3件)を表示。候補に「採用」「不採用」をチェック → "
+                "下部の「一括実行」ボタンで eBay API への反映と DB 更新が同時に走ります。"
+            )
+
+            for _item in pnf_items:
+                _pnf_eid_val = _item.get("ebay_item_id") or ""
+                _cands_for_eid = _pnf_cand_by_eid.get(_pnf_eid_val, [])[:3]
+                _render_oos_block(_item, _cands_for_eid, "pnf", _pnf_alt_only_count)
+
+            st.divider()
+            st.caption(
+                "採用チェック → SKU 欄が仕入先URLベースに自動更新されます。"
+                " 確認後、下のボタンで eBay 反映・DB 更新を一括処理。"
+            )
+
+            _pnf_submitted = st.button(
+                "選択した採用/不採用/編集を一括実行（eBay・DB）",
+                key="pnf_batch_submit",
+                type="primary", width="stretch",
+            )
+
+            if _pnf_submitted:
+                adoptions_pending_pnf: list[int] = []
+                adoptions_accepted_pnf: list[int] = []
+                rejections_pnf: list[int] = []
+                _cid_to_eid_pnf: dict[int, str] = {}
+                _cid_to_score_pnf: dict[int, int] = {}
+                _eid_to_item_pnf: dict[str, dict] = {
+                    _it["ebay_item_id"]: _it for _it in pnf_items
+                }
+                # HIGH-4 fix: mutex dict キーを ebay_item_id に統一
+                _eid_adopt_candidates_pnf: dict[str, list[int]] = {}
+
+                for _it in pnf_items:
+                    _eid_for_cand = _it["ebay_item_id"]
+                    for _c in _pnf_cand_by_eid.get(_eid_for_cand, [])[:3]:
+                        _cid_scan = _c["id"]
+                        # HIGH-4 fix: 候補レコードの ebay_item_id 列から直接引く
+                        _cid_to_eid_pnf[_cid_scan] = _c["ebay_item_id"]
+                        _cid_to_score_pnf[_cid_scan] = _c.get("match_score") or 0
+                        if _c.get("status") == "pending":
+                            if st.session_state.get(f"pnf_adopt_{_cid_scan}", False):
+                                _eid_adopt_candidates_pnf.setdefault(_eid_for_cand, []).append(_cid_scan)
+                            elif st.session_state.get(f"pnf_reject_{_cid_scan}", False):
+                                rejections_pnf.append(_cid_scan)
+                        elif _c.get("status") == "accepted":
+                            if st.session_state.get(f"pnf_applyck_{_cid_scan}", False):
+                                adoptions_accepted_pnf.append(_cid_scan)
+
+                for _eid_m, _cids_m in _eid_adopt_candidates_pnf.items():
+                    if len(_cids_m) == 1:
+                        adoptions_pending_pnf.append(_cids_m[0])
+                    else:
+                        _cids_sorted = sorted(_cids_m, key=lambda x: _cid_to_score_pnf.get(x, 0), reverse=True)
+                        _winner = _cids_sorted[0]
+                        _losers = _cids_sorted[1:]
+                        adoptions_pending_pnf.append(_winner)
+                        rejections_pnf.extend(_losers)
+
+                sync_targets_pnf: list[dict] = []
+                no_change_ids_pnf: list[str] = []
+                for _it in pnf_items:
+                    eid = _it["ebay_item_id"]
+                    is_checked = bool(st.session_state.get(f"pnf_confirm_{eid}", False))
+                    if not is_checked:
+                        continue
+                    cur_sku = st.session_state.get(f"pnf_sku_{eid}", _it.get("sku") or "")
+                    cur_qty = int(st.session_state.get(f"pnf_qty_{eid}", _it["quantity_ebay"]))
+                    orig_sku = _it.get("sku") or ""
+                    orig_qty = int(_it["quantity_ebay"])
+                    new_sku = cur_sku if cur_sku != orig_sku else None
+                    new_qty = cur_qty if cur_qty != orig_qty else None
+                    if new_sku is not None or new_qty is not None:
+                        sync_targets_pnf.append(
+                            {"ebay_item_id": eid, "new_sku": new_sku, "new_qty": new_qty}
+                        )
+                    else:
+                        no_change_ids_pnf.append(eid)
+
+                total_adoptions_pnf = len(adoptions_pending_pnf) + len(adoptions_accepted_pnf)
+                total_actions_pnf = total_adoptions_pnf + len(rejections_pnf) + len(sync_targets_pnf) + len(no_change_ids_pnf)
+                if total_actions_pnf == 0:
+                    st.warning("チェックが入っている未処理商品がありません")
+                else:
+                    st.info(
+                        f"処理中: 採用 {total_adoptions_pnf}件 / 不採用 {len(rejections_pnf)}件 "
+                        f"/ 変更あり {len(sync_targets_pnf)}件 / 現状維持 {len(no_change_ids_pnf)}件"
+                    )
+
+                    for _cid in rejections_pnf:
+                        try:
+                            update_supplier_candidate_status(_cid, "rejected")
+                        except Exception as _e:
+                            logger.error("pnf_batch: 不採用記録失敗 cid=%s: %s", _cid, _e)
+                            st.error(f"不採用 cid={_cid}: {_e}")
+                    if rejections_pnf:
+                        st.success(f"不採用 {len(rejections_pnf)}件 を記録しました")
+
+                    adopt_succeeded_eids_pnf: set[str] = set()
+                    if total_adoptions_pnf > 0:
+                        if not all(_ebay_creds.values()):
+                            st.error("eBay API認証情報が未設定です（設定タブ参照）")
+                        else:
+                            from monitor.ebay_client import revise_inventory_quantity as _rev_qty_pnf
+
+                            def _process_apply_pnf(_cid_p: int, _is_pending: bool) -> None:
+                                _eid_applied = _cid_to_eid_pnf.get(_cid_p, "?")
+                                if _is_pending:
+                                    _res_a = accept_supplier_candidate(_cid_p)
+                                    if not _res_a.get("success"):
+                                        _msg_a = _res_a.get('message') or 'accept失敗'
+                                        logger.error("pnf_batch: 採用失敗 cid=%s eid=%s: %s", _cid_p, _eid_applied, _msg_a)
+                                        st.error(f"採用 cid={_cid_p}: {_msg_a}")
+                                        return
+                                _res_b = apply_supplier_candidate(_cid_p, _cfg)
+                                if not _res_b.get("success"):
+                                    _msg_b = _res_b.get('message') or 'apply エラー'
+                                    logger.error("pnf_batch: eBay 反映失敗 eid=%s cid=%s: %s", _eid_applied, _cid_p, _msg_b)
+                                    st.error(f"{_eid_applied}: eBay 反映失敗: {_msg_b} (cid={_cid_p})")
+                                    return
+                                st.success(f"{_eid_applied}: 採用→SKU設定 成功 ({_res_b.get('message') or 'applied'})")
+                                adopt_succeeded_eids_pnf.add(_eid_applied)
+                                _it_adopted = _eid_to_item_pnf.get(_eid_applied)
+                                if not _it_adopted:
+                                    return
+                                try:
+                                    _cur_qty_a = int(_it_adopted.get("quantity_ebay") or 0)
+                                except (TypeError, ValueError):
+                                    _cur_qty_a = 0
+                                if _cur_qty_a != 0:
+                                    return
+                                try:
+                                    _qres = _rev_qty_pnf(_eid_applied, 1, **_ebay_creds)
+                                except (RuntimeError, ConnectionError, TimeoutError, OSError) as _qe:
+                                    logger.exception("pnf_batch: qty 復元中に例外 eid=%s cid=%s", _eid_applied, _cid_p)
+                                    st.error(f"{_eid_applied}: qty 復元中に例外 ({_qe}). 手動で在庫を 1 に戻してください (cid={_cid_p}).")
+                                    return
+                                if _qres.get("success"):
+                                    update_ebay_listing_quantity(_eid_applied, 1)
+                                    st.success(f"{_eid_applied}: 在庫 0 → 1 自動復元")
+                                else:
+                                    _msg_q = _qres.get('message') or 'error'
+                                    logger.error("pnf_batch: qty 復元失敗 eid=%s cid=%s: %s", _eid_applied, _cid_p, _msg_q)
+                                    st.error(f"{_eid_applied}: qty 復元失敗 ({_msg_q}). 手動で在庫を 1 に戻してください (cid={_cid_p}).")
+
+                            for _cid in adoptions_pending_pnf:
+                                _process_apply_pnf(_cid, _is_pending=True)
+                            for _cid in adoptions_accepted_pnf:
+                                _process_apply_pnf(_cid, _is_pending=False)
+
+                    for eid in no_change_ids_pnf:
+                        set_ebay_listing_risk_confirmed(eid, 1)
+
+                    if sync_targets_pnf:
+                        if not all(_ebay_creds.values()):
+                            st.error("eBay API認証情報が未設定です（設定タブ参照）")
+                        else:
+                            from monitor.ebay_client import (
+                                revise_inventory_quantity, revise_item_sku,
+                            )
+                            progress = st.progress(0)
+                            for i, ch in enumerate(sync_targets_pnf):
+                                eid = ch["ebay_item_id"]
+                                ok = True
+                                if ch["new_qty"] is not None:
+                                    r = revise_inventory_quantity(eid, ch["new_qty"], **_ebay_creds)
+                                    if r["success"]:
+                                        update_ebay_listing_quantity(eid, ch["new_qty"])
+                                        st.success(f"{eid}: 在庫 → {ch['new_qty']}")
+                                    else:
+                                        logger.error("pnf_batch: qty 変更失敗 eid=%s: %s", eid, r['message'])
+                                        st.error(f"{eid}: 在庫 → {r['message']}")
+                                        ok = False
+                                if ch["new_sku"] is not None:
+                                    if eid in adopt_succeeded_eids_pnf:
+                                        st.info(f"{eid}: SKU手動編集は採用反映と競合のためスキップ")
+                                    else:
+                                        r = revise_item_sku(eid, ch["new_sku"], **_ebay_creds)
+                                        if r["success"]:
+                                            update_ebay_listing_sku(eid, ch["new_sku"])
+                                            st.success(f"{eid}: SKU → {ch['new_sku']}")
+                                        else:
+                                            logger.error("pnf_batch: SKU 変更失敗 eid=%s: %s", eid, r['message'])
+                                            st.error(f"{eid}: SKU → {r['message']}")
+                                            ok = False
+                                if ok:
+                                    set_ebay_listing_risk_confirmed(eid, 1)
+                                progress.progress((i + 1) / len(sync_targets_pnf))
+                    bump_db_version()
+                    st.rerun()
         else:
             st.success("確認不可の商品はありません。")
 

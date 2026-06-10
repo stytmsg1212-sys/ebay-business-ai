@@ -32,14 +32,19 @@ def tmp_db(tmp_path, monkeypatch):
 
 
 def _seed_listing(item_id: str, sku: str = "ebay_x", rank: str = "E", watch: int = 0):
-    """relist 対象になり得る active listing を投入 (watch=0 & rank=E & qty>=1 & sku有効)。"""
+    """relist 対象になり得る active listing を投入 (watch=0 & rank=E & qty>=1 & sku有効)。
+
+    W242 (2026-06-09) で選定条件に `ebaymag_segment = '出さない'` が追加されたため
+    seed にも同値を設定 (未設定 NULL だと安全側除外でプール 0 件になり本テストの
+    cooldown 検証が空振りする)。
+    """
     from monitor.database import get_conn
     with get_conn() as c:
         c.execute(
             """INSERT OR REPLACE INTO ebay_listings
                (ebay_item_id, sku, title, rank, watch_count, quantity_ebay,
-                is_ended, time_left_seconds, start_time)
-               VALUES (?, ?, 'T', ?, ?, 1, 0, 100, '2026-01-01')""",
+                is_ended, time_left_seconds, start_time, ebaymag_segment)
+               VALUES (?, ?, 'T', ?, ?, 1, 0, 100, '2026-01-01', '出さない')""",
             (item_id, sku, rank, watch),
         )
 

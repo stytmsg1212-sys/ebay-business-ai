@@ -63,6 +63,31 @@ from monitor.product_resolver import resolve_product_from_url, build_title_only_
 
 logger = logging.getLogger(__name__)
 
+
+def _notify_pls_enroll_failure(
+    settings: dict, *, ebay_item_id: str, errors: list[str],
+) -> None:
+    """Promoted Listings 2% 自動登録の失敗を Discord 通知 (Q0 silent skip 防止).
+
+    2026-06-08 制定: 6/4-6/8 にトークン破損で REST API が Access denied になり
+    2% 登録が UI 表示だけで静かに失敗し続けた事故の再発防止。出品(Add)自体は成功
+    しているため、失敗は致命的でないが「2% が付かない」機会損失なので user に通知する。
+    既定 webhook (DISCORD_WEBHOOK_URL) を使用。通知自体の失敗は握り潰す (出品フロー
+    本体には影響させない)。
+    """
+    try:
+        from notifiers.discord_notifier import DiscordNotifier
+        webhook = (settings.get("discord") or {}).get("webhook_url") or ""
+        DiscordNotifier(webhook).send_message(
+            "⚠️ **Promoted Listings 2%登録 失敗** (出品自体は成功済)\n"
+            f"ItemID: {ebay_item_id}\n"
+            f"理由: {'; '.join(str(e) for e in errors)[:300]}\n"
+            "→ eBay 認証トークン (REST) の確認、または Seller Hub で手動 2% 登録が必要"
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"PLS enroll failure discord notify failed: {e}")
+
+
 # session_state プレフィクス (他タブとの衝突回避)
 _SS = "il_"
 
@@ -2343,12 +2368,26 @@ def _do_add(draft_params: dict, settings: dict) -> None:
                             "Promoted Listings 登録失敗 (Add は成功済): "
                             + "; ".join(pl_result.get("errors") or [])[:200]
                         )
+                        # 2026-06-08: enroll 失敗を Discord 通知 (Q0 silent skip 防止)。
+                        # 6/4-6/8 にトークン破損で 2% 登録が静かに失敗し UI 表示だけで
+                        # 気付けなかった事故 (REST Access denied) の再発防止。
+                        _notify_pls_enroll_failure(
+                            settings,
+                            ebay_item_id=str(result.get("ebay_item_id")),
+                            errors=pl_result.get("errors") or [],
+                        )
                 except Exception as pe:  # noqa: BLE001
                     logger.exception("enroll_new_listing raised")
                     st.session_state[f"{_SS}pl_result"] = {
                         "success": False, "errors": [f"exception: {pe}"],
                         "skipped": False, "message": "enroll 中に例外",
                     }
+                    # enroll 例外も Discord 通知 (Q0: 例外を握り潰して静かに失敗させない)。
+                    _notify_pls_enroll_failure(
+                        settings,
+                        ebay_item_id=str(result.get("ebay_item_id")),
+                        errors=[f"exception: {pe}"],
+                    )
             else:
                 err_msg = "; ".join(result.get("errors") or [])[:500]
                 update_listing_draft_status(

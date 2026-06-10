@@ -62,11 +62,13 @@ class TestMigrationV68:
         assert "monitored_seller_listings" in tables
         conn.close()
 
-    def test_schema_version_68(self, tmp_db):
+    def test_schema_version_at_least_68(self, tmp_db):
+        # v69 追加後: user_version は 69 以上 (v69 migration が正常に実行された証拠)。
+        # 「== 68」から「>= 68」に緩和し、将来の migration 追加でも壊れない。
         db_file, db_mod, _ = tmp_db
         conn = sqlite3.connect(str(db_file))
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert ver == 68
+        assert ver >= 68
         conn.close()
 
     def test_idempotent_init_db(self, tmp_db):

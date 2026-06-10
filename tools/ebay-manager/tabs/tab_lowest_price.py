@@ -61,7 +61,7 @@ def render_lowest_price_tab(s: dict) -> None:
 
     # config 読み込み (Browse API credentials 用)
     _lp_cfg: dict = {}
-    _lp_cfg_path = Path(__file__).parent / 'config' / 'schedule_config.json'
+    _lp_cfg_path = Path(__file__).resolve().parent.parent / 'config' / 'schedule_config.json'
     if _lp_cfg_path.exists():
         try:
             with open(_lp_cfg_path, 'r', encoding='utf-8') as _cf:

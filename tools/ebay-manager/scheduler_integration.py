@@ -98,7 +98,7 @@ def get_execution_summary() -> Dict[str, Any]:
 
 def get_execution_by_time(hour: int) -> Dict[str, Any]:
     """
-    Get execution details for a specific time (05, 11, 17, 22).
+    Get execution details for a specific time (02, 11, 15, 18, 22).
     """
     logs = get_latest_execution_logs(limit=500)
     today = datetime.now().date()

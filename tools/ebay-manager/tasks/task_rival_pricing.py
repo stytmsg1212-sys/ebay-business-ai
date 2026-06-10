@@ -642,6 +642,89 @@ def _evaluate_and_apply_one(
 
 
 # ────────────────────────────────────────
+# W245: Discord 通知 (値下げ結果 + 失敗 alert)
+# ────────────────────────────────────────
+
+def _resolve_pricing_webhook(config: Dict) -> str:
+    """ライバル専用 webhook 優先, 未設定なら既定へ fallback (W153 と同方針).
+
+    inject_webhook_into_config が entrypoint (daily_scheduler load_config) で
+    DISCORD_RIVAL_WEBHOOK_URL / DISCORD_WEBHOOK_URL を config['discord'] に注入済。
+    """
+    disc = config.get('discord') or {}
+    return (disc.get('rival_webhook_url') or disc.get('webhook_url') or "").strip()
+
+
+def _get_listing_title(ebay_item_id: str) -> str:
+    """通知の商品呼称 (SKU 禁止 / title で呼ぶ規約)。不在時は item_id を返す."""
+    from monitor.database import get_conn
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT title FROM ebay_listings WHERE ebay_item_id=?",
+            (ebay_item_id,)
+        ).fetchone()
+    return (row[0] if row and row[0] else str(ebay_item_id))
+
+
+def _send_discord_reduced(config: Dict, reduced_items: list) -> None:
+    """値下げ実行があった run の結果通知 (1 run 1 message)。
+
+    W245 (2026-06-10): money-direct な自動値下げが「いつ・何を・いくらに」
+    変えたかを user が Discord で受動的に知れるようにする (従来は
+    price_change_log を能動的に見ない限り不可視だった)。
+    """
+    webhook = _resolve_pricing_webhook(config)
+    if not webhook:
+        logger.warning("W245: Discord webhook 未設定 — 値下げ結果通知をスキップ (痕跡)")
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    lines = []
+    for it in reduced_items[:15]:
+        eid = str(it['ebay_item_id'])
+        title = _get_listing_title(eid)
+        comp = it.get('competitor_total')
+        comp_s = f" (ライバル ${comp:.2f})" if comp is not None else ""
+        lines.append(
+            f"- **{title}** ({eid[-4:]}): "
+            f"${it['old_price']:.2f} → ${it['new_price']:.2f}{comp_s}"
+        )
+    content = (
+        f"💲 **W183 自動値下げ実行** ({len(reduced_items)} 件)\n" + "\n".join(lines)
+    )
+    if len(reduced_items) > 15:
+        content += f"\n... 他 {len(reduced_items) - 15} 件"
+    try:
+        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+    except Exception as e:
+        logger.warning(f"W245: discord reduced notify failed: {e}")
+
+
+def _send_discord_failure_alert(
+    config: Dict, reason: str, summary: str, api_failures: list,
+) -> None:
+    """run 失敗 (failed_api / fetch 全滅 / eval 例外) の専用 alert."""
+    webhook = _resolve_pricing_webhook(config)
+    if not webhook:
+        logger.warning("W245: Discord webhook 未設定 — 失敗 alert をスキップ (痕跡)")
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    excerpt = []
+    for f in api_failures[:5]:
+        eid = str(f['ebay_item_id'])
+        excerpt.append(f"- {_get_listing_title(eid)} ({eid[-4:]}): {f['message'][:100]}")
+    content = (
+        f"⚠️ **W183 ライバル価格 refresh 失敗** — {reason}\n"
+        f"{summary}"
+        + ("\n" + "\n".join(excerpt) if excerpt else "")
+        + (f"\n... 他 {len(api_failures) - 5} 件" if len(api_failures) > 5 else "")
+    )
+    try:
+        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+    except Exception as e:
+        logger.warning(f"W245: discord failure alert failed: {e}")
+
+
+# ────────────────────────────────────────
 # entry point
 # ────────────────────────────────────────
 
@@ -651,7 +734,7 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
 
     Returns:
         {
-            'success': bool,
+            'success': bool,   # W245: failed_api>0 / fetch 全滅 / eval 例外 で False
             'listings_processed': int,
             'fetched_total': int,
             'failed_total': int,
@@ -697,6 +780,10 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
         'skipped_other': 0,
         'failed_api': 0,
     }
+    # W245: 通知 / 失敗判定用の詳細収集
+    reduced_items: list[dict] = []
+    api_failures: list[dict] = []
+    eval_errors = 0
 
     for our_item_id in listing_ids:
         # Phase 1: ライバル価格 refresh
@@ -716,11 +803,18 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
         except Exception as e:
             logger.warning(f"_evaluate_and_apply_one 失敗 ({our_item_id}): {e}")
             counts['skipped_other'] += 1
+            eval_errors += 1
             continue
 
         action = decision.get('action', 'skipped_other')
         if action == 'reduced':
             counts['reduced'] += 1
+            reduced_items.append({
+                'ebay_item_id': our_item_id,
+                'old_price': decision.get('old_price'),
+                'new_price': decision.get('new_price'),
+                'competitor_total': decision.get('competitor_total'),
+            })
         elif action == 'skip_already_cheapest':
             counts['skipped_already_cheapest'] += 1
         elif action == 'skip_below_floor':
@@ -733,6 +827,10 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
             counts['skipped_daily_cap'] += 1
         elif action == 'failed_api':
             counts['failed_api'] += 1
+            api_failures.append({
+                'ebay_item_id': our_item_id,
+                'message': decision.get('message', ''),
+            })
         else:
             counts['skipped_other'] += 1
 
@@ -744,9 +842,33 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
         f"lock={counts['skipped_lock']} cap={counts['skipped_daily_cap']} "
         f"api_fail={counts['failed_api']} other={counts['skipped_other']}"
     )
+
+    # W245 (2026-06-10): 偽装成功の根絶。従来は全 API 失敗 / Browse fetch 全滅でも
+    # 無条件 success: True を返し、6/4-6/8 の OAuth トークン破損時に money-direct
+    # タスクが 5 日間 silent に死んでいた (F12)。失敗条件:
+    #   - failed_api > 0          : ReviseFixedPriceItem 失敗 (eBay 書込失敗)
+    #   - fetch 全滅              : fetched=0 かつ failed>0 (= Browse API 系の systemic 障害)
+    #   - eval_errors > 0         : 値下げ判定で例外 (コードバグ / DB 異常)
+    failure_reasons = []
+    if counts['failed_api'] > 0:
+        failure_reasons.append(f"eBay 値下げ API 失敗 {counts['failed_api']} 件")
+    if fetched_total == 0 and failed_total > 0:
+        failure_reasons.append(f"ライバル価格取得 全滅 (failed={failed_total})")
+    if eval_errors > 0:
+        failure_reasons.append(f"値下げ判定 例外 {eval_errors} 件")
+    run_success = not failure_reasons
+
+    if not run_success:
+        summary += f" | FAILED: {'; '.join(failure_reasons)}"
+        _send_discord_failure_alert(
+            config, '; '.join(failure_reasons), summary, api_failures,
+        )
+    if reduced_items:
+        _send_discord_reduced(config, reduced_items)
+
     logger.info(f"W183 完了: {summary}")
     return {
-        'success': True,
+        'success': run_success,
         'listings_processed': len(listing_ids),
         'fetched_total': fetched_total,
         'failed_total': failed_total,

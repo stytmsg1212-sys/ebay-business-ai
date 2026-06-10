@@ -605,7 +605,9 @@ def execute_daily_tasks(config, scheduled_hour=None):
         if _pruned:
             logger.info(f"古い確認済みメールを {_pruned} 件 prune")
         from tasks.task_email_pickup import run_email_pickup
-        results['email'] = run_task(
+        # W244: results キーを task_key と統一 ('email' → 'email_pickup')。
+        # 日次レポート data-driven 化で results キー = TASK_SCHEDULE キーが前提に。
+        results['email_pickup'] = run_task(
             'メール取得',
             lambda: run_email_pickup(config),
             task_key='email_pickup')
@@ -627,6 +629,24 @@ def execute_daily_tasks(config, scheduled_hour=None):
             'ライバルセラー検出',
             lambda: run_rival_detection(config),
             task_key='rival_detection')
+
+    # ──────────────────────────────────────
+    # Step 7.5: W#3 ライバルセラー新規出品モニター (W244 / 2026-06-10 結線)
+    # TASK_SCHEDULE には登録済 (hours=[2]) なのに dispatch が存在せず、
+    # 稼働実績 0 件のままヘルスチェック false-positive を出し続けていた
+    # 幽霊タスクを設計意図 (task docstring 経路 A) 通り朝 batch に結線。
+    # 注意: run_rival_seller_sweep_task は内部で log_task_start/finish を
+    # 自己記録するため task_key を渡さない (渡すと task_execution_log 二重記録)。
+    # monitored_sellers 0 件時は即 return (痕跡は log に残る、Q0 準拠)。
+    # ──────────────────────────────────────
+    if should_task_run('rival_seller_sweep', config):
+        from tasks.task_rival_seller_sweep import run_rival_seller_sweep_task
+        _rss_hour = _batch_ctx.get("hour")
+        results['rival_seller_sweep'] = run_task(
+            'ライバルセラー新規出品モニター (W#3)',
+            lambda: run_rival_seller_sweep_task(
+                config,
+                scheduled_hour=int(_rss_hour) if _rss_hour is not None else 2))
 
     # ──────────────────────────────────────
     # Step 8: データストア統合（eBay同期 + 在庫チェック後に実行）
@@ -987,6 +1007,24 @@ def setup_scheduler():
     )
     logger.info("W125 daily_codex_lint 発火: 毎日 03:00 JST")
 
+    # ── W229 商品リサーチ発掘 (2026-06-10 追加) ──
+    # 毎日 03:30 JST に Terapeak 2 パターン収穫 + 自動ゲート判定.
+    # 02:30 batch 終了後. CDP Chrome 専有. market_analysis (日 02:00) とはクォータ DB で調停.
+    # daily_codex_lint (03:00) と 30 分ずらして CDP 占有競合を回避.
+    # enabled は config (tasks_enabled.research_harvest.enabled) で制御.
+    # 2026-06-10 Q1 実機 PASS 後に user 承認で enabled=true 化.
+    scheduler.add_job(
+        _run_research_harvest,
+        trigger=CronTrigger(hour=3, minute=30, second=0),
+        args=[config, 3],
+        id='research_harvest_03_30',
+        name='W229 商品リサーチ発掘 (03:30)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _rh_enabled = config.get('tasks_enabled', {}).get('research_harvest', {}).get('enabled', False)
+    logger.info(f"W229 商品リサーチ発掘 発火: 毎日 03:30 JST (enabled={_rh_enabled})")
+
     # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
     # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
     # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
@@ -1139,6 +1177,18 @@ def _run_daily_codex_lint(config: dict, scheduled_hour: int = 3):
         return
     _run_isolated_task('daily_codex_lint', 'W125 Codex 文書 lint',
                        lambda: run_daily_codex_lint(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_research_harvest(config: dict, scheduled_hour: int = 3):
+    """W229 商品リサーチ発掘 — 毎日 03:30 JST に Terapeak ハーベスト + 自動ゲート判定."""
+    try:
+        from tasks.task_research_harvest import run_research_harvest
+    except ImportError as e:
+        logger.error(f"task_research_harvest import 失敗: {e}")
+        return
+    _run_isolated_task('research_harvest', 'W229 商品リサーチ発掘',
+                       lambda: run_research_harvest(config),
                        scheduled_hour=scheduled_hour)
 
 

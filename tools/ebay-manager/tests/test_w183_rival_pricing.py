@@ -810,3 +810,130 @@ class TestH4InflightCrashSafety:
         statuses = {(r['success']) for r in rows}
         # final(success=1) + api_inflight(success=0) = 2 行、pending は除外
         assert len(rows) == 2
+
+
+# ────────────────────────────────────────
+# W245: 偽装成功の根絶 (run-level success 判定 + Discord 通知)
+# ────────────────────────────────────────
+
+class TestW245RunLevelSuccess:
+    """run_rival_pricing_refresh が失敗を success: True で隠さないこと (F12 根治)."""
+
+    @staticmethod
+    def _mock_creds(monkeypatch):
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+
+    @staticmethod
+    def _capture_discord(monkeypatch):
+        """DiscordNotifier を capture mock に差し替え、送信内容リストを返す."""
+        sent = []
+
+        class _FakeNotifier:
+            def __init__(self, webhook, bypass_env=False):
+                self.webhook = webhook
+
+            def send_message(self, content):
+                sent.append(content)
+                return True
+
+        monkeypatch.setattr(
+            'notifiers.discord_notifier.DiscordNotifier', _FakeNotifier
+        )
+        return sent
+
+    _CFG = {'ebay': {}, 'discord': {'webhook_url': 'https://discord.test/hook'}}
+
+    def test_failed_api_marks_run_failed_and_alerts(self, tmp_db, monkeypatch):
+        """eBay ReviseItem 失敗 → success=False + Discord 失敗 alert (旧: 無条件 True)."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+
+        _seed_listing('TEST_W245_F1', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W245_F1', 'C1', price_usd=80.0, shipping_usd=10.0)
+        self._mock_creds(monkeypatch)
+        sent = self._capture_discord(monkeypatch)
+        monkeypatch.setattr(
+            'tasks.task_rival_pricing.refresh_competitor_pricing',
+            lambda iid, cfg: {'fetched': 1, 'failed': 0}
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': False, 'message': 'API down (test)'}
+        )
+
+        r = run_rival_pricing_refresh(self._CFG)
+        assert r['success'] is False, "偽装成功: failed_api>0 なのに success=True"
+        assert r['failed_api'] == 1
+        assert 'FAILED' in r['message']
+        assert any('失敗' in m for m in sent), "失敗 alert が Discord に飛んでいない"
+
+    def test_fetch_outage_marks_run_failed(self, tmp_db, monkeypatch):
+        """Browse fetch 全滅 (fetched=0, failed>0) → success=False (6/4-6/8 OAuth 事故型)."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+
+        _seed_listing('TEST_W245_F2', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W245_F2', 'C1', price_usd=80.0, shipping_usd=10.0)
+        sent = self._capture_discord(monkeypatch)
+
+        def _raise(iid, cfg):
+            raise RuntimeError('Browse API 403 (test)')
+
+        monkeypatch.setattr(
+            'tasks.task_rival_pricing.refresh_competitor_pricing', _raise
+        )
+
+        r = run_rival_pricing_refresh(self._CFG)
+        assert r['success'] is False, "偽装成功: fetch 全滅なのに success=True"
+        assert r['fetched_total'] == 0 and r['failed_total'] >= 1
+        assert any('失敗' in m for m in sent)
+
+    def test_reduced_sends_discord_report(self, tmp_db, monkeypatch):
+        """値下げ成功 → success=True + 値下げ結果が Discord に通知される."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+
+        _seed_listing('TEST_W245_R1', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W245_R1', 'C1', price_usd=80.0, shipping_usd=10.0)
+        self._mock_creds(monkeypatch)
+        sent = self._capture_discord(monkeypatch)
+        monkeypatch.setattr(
+            'tasks.task_rival_pricing.refresh_competitor_pricing',
+            lambda iid, cfg: {'fetched': 1, 'failed': 0}
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+
+        r = run_rival_pricing_refresh(self._CFG)
+        assert r['success'] is True
+        assert r['reduced'] == 1
+        assert any('自動値下げ' in m for m in sent), "値下げ結果通知が飛んでいない"
+        # 通知に old→new 価格が含まれる (money-direct 可視化)
+        assert any('$120.00' in m and '$79.99' in m for m in sent)
+
+    def test_healthy_skip_run_is_success_and_silent(self, tmp_db, monkeypatch):
+        """全件 skip (already cheapest) の健全 run → success=True + Discord 無音."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+
+        _seed_listing('TEST_W245_S1', current_price=80.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W245_S1', 'C1', price_usd=200.0, shipping_usd=10.0)
+        sent = self._capture_discord(monkeypatch)
+        monkeypatch.setattr(
+            'tasks.task_rival_pricing.refresh_competitor_pricing',
+            lambda iid, cfg: {'fetched': 1, 'failed': 0}
+        )
+
+        r = run_rival_pricing_refresh(self._CFG)
+        assert r['success'] is True
+        assert r['skipped_already_cheapest'] == 1
+        assert sent == [], "健全 skip なのに通知が飛んだ (alert fatigue)"

@@ -269,6 +269,11 @@ _BRANDING_URL_PATTERNS = (
     # yimg.jp 配下の UI パーツ (商品画像は auctions.c.yimg.jp だが
     # s.yimg.jp / i.yimg.jp / img01.auctions... はUIパーツのことが多い)
     's.yimg.jp/', 'i.yimg.jp/', '/common/',
+    # 2026-06-08: PayPayフリマ等 Next.js サイトのビルド資産 (banner_down /
+    # image_phone_pc / icon_* 等は /_next/static/media/ 配下)。これらは商品画像
+    # ではないので除外。商品画像は auctions.c.yimg.jp/images... 配下で別経路。
+    # 出典: z606464462 で banner_down を商品画像と誤取得した不具合。
+    '/_next/',
 )
 
 

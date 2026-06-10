@@ -492,6 +492,7 @@ def render_supplier_description_section(
     candidate_url: str,
     ebay_item_id: str,
     candidate_title: str,
+    close_flag_key: Optional[str] = None,
 ) -> None:
     """採用直後 prompt 経由で開かれる description 生成+反映 UI section.
 
@@ -499,6 +500,13 @@ def render_supplier_description_section(
         1. 「📝 生成」ボタン → spinner (scrape→rank→Claude) → preview
         2. preview 表示 → 「✅ eBay に反映」 → ReviseItem → success/error
         3. 「🔄 再生成」 / 「✖ 閉じる」 で session_state クリア
+
+    Args:
+        close_flag_key: セクション末尾の「閉じる」ボタンが False にする
+            session_state キー名 (例: "_sup_desc_open_inline_{cid}")。
+            None の場合は「閉じる」ボタンを表示しない。
+            cache / prefetch を pop せず open フラグのみ切り替えるため、
+            再表示時に auto-prefetch の再発火が起きない。
 
     K1: 単一テンプレ (default) 自動選択。手動選択が要れば個別出品タブで生成
     してから手動コピペ運用 (本 quick path の主旨は「採用直後に最小操作で
@@ -750,7 +758,13 @@ def render_supplier_description_section(
                         del st.session_state[k]
                 st.rerun()
 
-        # ── W158 (2026-05-23): 画像加工 + 3 反映 button (個別出品同等) ──
+        # ── W158 (2026-05-23): 画像加工 pipeline (Step A-D のみ) ──
+        # W252: Step E の一括反映 3 ボタン (画像だけ/説明文だけ/両方) は
+        # user 指示により削除 (「押せなくなってる」「使用しない」)。
+        # 個別の「✅ eBay に反映」ボタン (description, 上部) は残す。
+        # on_apply_* を None にすることで render_image_pipeline_section が
+        # Step E セクションごと非表示にする
+        # (_image_pipeline_ui.py の `if ebay_item_id and (on_apply_image or ...)` 条件)。
         st.markdown("---")
         from tabs._image_pipeline_ui import (
             render_image_pipeline_section, clear_pipeline_keys,
@@ -767,24 +781,27 @@ def render_supplier_description_section(
         product = prefetch.get('product')
         source_urls = list(getattr(product, 'image_urls', None) or [])
 
-        def _on_apply_image_sup(urls: list[str]) -> dict:
-            return apply_listing_update_to_ebay(ebay_item_id, picture_urls=urls)
-
-        def _on_apply_desc_sup(d: str) -> dict:
-            return apply_listing_update_to_ebay(ebay_item_id, description_html=d)
-
-        def _on_apply_both_sup(d: str, urls: list[str]) -> dict:
-            return apply_listing_update_to_ebay(
-                ebay_item_id, description_html=d, picture_urls=urls,
-            )
-
         render_image_pipeline_section(
             prefix=w158_prefix,
             source_urls=source_urls,
             sku_hint=f"cand_{candidate_id}",
             ebay_item_id=ebay_item_id,
             description_html=desc,
-            on_apply_image=_on_apply_image_sup,
-            on_apply_description=_on_apply_desc_sup,
-            on_apply_both=_on_apply_both_sup,
+            on_apply_image=None,       # W252: Step E 一括反映 3 ボタン削除
+            on_apply_description=None, # W252: 個別「✅ eBay に反映」は上部で提供
+            on_apply_both=None,        # W252: dead code 除去
         )
+
+        # ── 閉じるボタン (HIGH-2 fix) ──
+        # close_flag_key が指定された場合のみ表示。
+        # open フラグを False にして rerun するだけ (cache/prefetch は触らない)。
+        # ※ cache を pop すると次の rerun で auto-prefetch が再発火して課金が起きるため禁止。
+        if close_flag_key:
+            st.markdown("---")
+            if st.button(
+                "✖ 閉じる",
+                key=f"{_SS}btn_close_{candidate_id}",
+                help="この description 反映セクションを閉じます",
+            ):
+                st.session_state[close_flag_key] = False
+                st.rerun()

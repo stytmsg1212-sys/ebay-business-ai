@@ -4414,11 +4414,13 @@ def _build_list_dataframe(products: list[dict]) -> pd.DataFrame:
         profit = _estimate_profit_usd(p)
         cmin = p.get("competitor_min_price")
         title = p.get("title") or ""
+        _eid = str(p.get("ebay_item_id") or "")
         rows.append({
             "在庫": _status_emoji(p.get("source_status")),
             "📎": "📎" if p.get("has_note") else "",
             "Title": (title[:50] + "…") if len(title) > 50 else title,
-            "Item ID": str(p.get("ebay_item_id") or ""),
+            "Item ID": _eid,
+            "eBay": f"https://www.ebay.com/itm/{_eid}" if _eid else "",
             "SKU": p.get("sku") or "",
             "区分": p.get("primary_market") or "-",
             # W222: 実カテゴリ (利益計算 FVF の根拠)。未設定は "-"。
@@ -4918,6 +4920,7 @@ def render_product_management(config: dict) -> None:
             "在庫": st.column_config.TextColumn("在庫", width="small"),
             "📎": st.column_config.TextColumn("📎", width="small"),
             "Title": st.column_config.TextColumn("Title", width="large"),
+            "eBay": st.column_config.LinkColumn("eBay", display_text="開く", width="small"),
             "粗利": st.column_config.TextColumn(
                 "粗利", help="現在価格 − 損益分岐 (USD)。未入力は —"),
             "競合最安": st.column_config.TextColumn(
