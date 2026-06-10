@@ -1,0 +1,24 @@
+[
+  {
+    "label": "excl_cat0_7d",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=-abcd%20-Card%20-camera%20-Vuitton%20-Hermes%20-GUCCI%20-Mint%20-COACH&dayRange=7&endDate=1781081119929&startDate=1780476319929&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=100",
+    "row_count": 0,
+    "rows": [],
+    "results_header": "",
+    "final_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=-abcd+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=7&endDate=1781081119929&startDate=1780476319929&categoryId=0&minPrice=100&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD",
+    "excluded_word_hits": [],
+    "html_path": "C:\\Users\\gucch\\projects\\claude\\tools\\ebay-manager\\scripts\\..\\data\\terapeak_probe\\probe_excl_cat0_7d_0rows.html",
+    "error": null
+  },
+  {
+    "label": "excl_cat0_30d",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=-abcd%20-Card%20-camera%20-Vuitton%20-Hermes%20-GUCCI%20-Mint%20-COACH&dayRange=30&endDate=1781081158329&startDate=1778489158329&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=100",
+    "row_count": 0,
+    "rows": [],
+    "results_header": "",
+    "final_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=-abcd+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781081158329&startDate=1778489158329&categoryId=0&minPrice=100&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD",
+    "excluded_word_hits": [],
+    "html_path": "C:\\Users\\gucch\\projects\\claude\\tools\\ebay-manager\\scripts\\..\\data\\terapeak_probe\\probe_excl_cat0_30d_0rows.html",
+    "error": null
+  }
+]

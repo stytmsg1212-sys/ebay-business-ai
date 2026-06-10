@@ -1492,6 +1492,10 @@ def init_db():
             ("us_buyer_ratio", "REAL"),           # 0.0-1.0
             ("market_analysis_at", "TIMESTAMP"),
             ("market_sample_size", "INTEGER"),    # 90日 sold 件数 (β=5 判定基準)
+            # W242 (2026-06-09): eBaymag 出品国プラン区分。'全国'/'優先国'/'出さない'/NULL。
+            # daily_relist は eBaymag 対象 (全国/優先国) を relist すると各国版リンクが
+            # 壊れるため、'出さない' のみ relist 対象にする (本列で判定)。
+            ("ebaymag_segment", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE ebay_listings ADD COLUMN {col} {typ}")
@@ -3270,6 +3274,102 @@ def init_db():
             else:
                 logger.warning(
                     "[init_db v68] 部分適用: 必須列 or index 未生成。次回 init_db で再試行。"
+                )
+
+        # ---- v69 (W228/W229, 2026-06-10): research_candidates 拡張 ----
+        # FIX-1: ゲート判定永続化 (gate_decision/gate_reason/gate_inputs_json/gated_at)
+        # FIX-2: 利益真値 + けいすけ基準
+        #   (profit_jpy_true/profit_usd_true/keisuke_pass/keisuke_detail_json)
+        # FIX-4: found_condition_ja は v67 で列済み → コード側で書くのみ (DB 変更不要)
+        # W229 ハーベスト受け皿:
+        #   source/harvest_keyword/ebay_avg_sold_price_usd/ebay_total_sold/harvested_at
+        # AI 重量推定出所: weight_source/weight_confidence
+        # Section232 フラグ: section232_flag/section232_reason
+        # Phase 4 連携: listing_draft_id/watch_ids_json/result_ebay_item_id
+        # 冪等: 各 ALTER は try/except sqlite3.OperationalError (v66/v67 流儀)。
+        # DROP/DELETE は書かない (quality-gate hook が物理 BLOCK する)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 68:
+            _V69_COLS: dict[str, str] = {
+                # FIX-1: ゲート判定永続化
+                "gate_decision": "TEXT",
+                "gate_reason": "TEXT",
+                "gate_inputs_json": "TEXT",
+                "gated_at": "TIMESTAMP",
+                # W229 ハーベスト由来
+                "source": "TEXT DEFAULT 'manual'",
+                "harvest_keyword": "TEXT",
+                "ebay_avg_sold_price_usd": "REAL",
+                "ebay_total_sold": "INTEGER",
+                "harvested_at": "TIMESTAMP",
+                # FIX-2: 利益真値 + けいすけ基準
+                "profit_jpy_true": "INTEGER",
+                "profit_usd_true": "REAL",
+                "keisuke_pass": "INTEGER",
+                "keisuke_detail_json": "TEXT",
+                "section232_flag": "INTEGER DEFAULT 0",
+                "section232_reason": "TEXT",
+                # AI 重量推定出所明示
+                "weight_source": "TEXT",
+                "weight_confidence": "TEXT",
+                # Phase 4 連携 (承認後 / 下書き / watch)
+                "listing_draft_id": "INTEGER",
+                "watch_ids_json": "TEXT",
+                "result_ebay_item_id": "TEXT",
+            }
+            for _col, _typ in _V69_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE research_candidates ADD COLUMN {_col} {_typ}"
+                    )
+                    logger.info(f"[init_db v69] research_candidates.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 列既存 (重複適用) = OK、冪等
+
+            # 全列実在を確認後にのみ bump (部分適用で bump しない / v67 流儀)
+            _v69_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(research_candidates)"
+                ).fetchall()
+            }
+            _v69_required = set(_V69_COLS.keys())
+            if _v69_required <= _v69_cols:
+                conn.execute("PRAGMA user_version = 69")
+                logger.info("[init_db v69] schema_ver bumped to 69")
+            else:
+                _missing = _v69_required - _v69_cols
+                logger.warning(
+                    f"[init_db v69] 部分適用: 列未追加 {_missing}。次回 init_db で再試行。"
+                )
+
+        # ---- v70 (W229, 2026-06-10): research_candidates.harvest_pattern 列追加 ----
+        # 設計書 §3-2 / §5-0 Q10: 収穫 2 パターン (fresh_24h / two_year_echo) の由来を
+        # research_candidates 行に永続化する。承認キュー UI と Discord 通知で由来を表示。
+        # 値: 'fresh_24h' / 'two_year_echo' / NULL (手動 = 'manual' 由来)
+        # 冪等: ALTER TABLE は try/except sqlite3.OperationalError でラップ (v67/v69 流儀)。
+        # DROP/DELETE は書かない (quality-gate hook が物理 BLOCK する)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 69:
+            try:
+                conn.execute(
+                    "ALTER TABLE research_candidates ADD COLUMN harvest_pattern TEXT"
+                )
+                logger.info("[init_db v70] research_candidates.harvest_pattern added")
+            except sqlite3.OperationalError:
+                pass  # 列既存 (重複適用) = OK、冪等
+
+            # 列実在を確認後にのみ bump (部分適用で bump しない / v67/v69 流儀)
+            _v70_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(research_candidates)"
+                ).fetchall()
+            }
+            if "harvest_pattern" in _v70_cols:
+                conn.execute("PRAGMA user_version = 70")
+                logger.info("[init_db v70] schema_ver bumped to 70")
+            else:
+                logger.warning(
+                    "[init_db v70] 部分適用: harvest_pattern 未追加。次回 init_db で再試行。"
                 )
 
 

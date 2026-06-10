@@ -1,0 +1,591 @@
+{
+  "probeA_base": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "loaded": false,
+    "info": {
+      "header_text": "Jun 10, 2025 – Jun 10, 2026",
+      "header_selector": ".results-header__left",
+      "column_headers": [
+        {
+          "text": "Listing",
+          "class": "research-table-header__item research-table-header__listing-title-image",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "research-table-header__item research-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Avg sold price",
+          "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Avg shipping",
+          "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Total sold",
+          "class": "research-table-header__item research-table-header__total-sold-count sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Item sales",
+          "class": "research-table-header__item research-table-header__total-sales-value sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Bids",
+          "class": "research-table-header__item research-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Date last sold",
+          "class": "research-table-header__item research-table-header__date-last-sold sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "ListingListing details may not be available for listings older than 90 days.",
+          "class": "active-listing-table-header__item active-listing-table-header__listing-title-ima",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "active-listing-table-header__item active-listing-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__listingPrice",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Bids",
+          "class": "active-listing-table-header__item active-listing-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__watchers",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__promotedListing",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__startedDate",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        }
+      ],
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+      "title": "Product Research - eBay Seller Hub",
+      "body_text_len": 12023
+    }
+  },
+  "probeB_sort": {
+    "skipped": "no rows"
+  },
+  "probeC_7d": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=7&endDate=1781080040503&startDate=1780475240503&categoryId=15052&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "header_text": "Jun 3, 2026 – Jun 10, 2026",
+      "header_selector": ".results-header__left",
+      "column_headers": [
+        {
+          "text": "Listing",
+          "class": "research-table-header__item research-table-header__listing-title-image",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "research-table-header__item research-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Avg sold price",
+          "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Avg shipping",
+          "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Total sold",
+          "class": "research-table-header__item research-table-header__total-sold-count sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Item sales",
+          "class": "research-table-header__item research-table-header__total-sales-value sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Bids",
+          "class": "research-table-header__item research-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Date last sold",
+          "class": "research-table-header__item research-table-header__date-last-sold sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "ListingListing details may not be available for listings older than 90 days.",
+          "class": "active-listing-table-header__item active-listing-table-header__listing-title-ima",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "active-listing-table-header__item active-listing-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__listingPrice",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Bids",
+          "class": "active-listing-table-header__item active-listing-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__watchers",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__promotedListing",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__startedDate",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        }
+      ],
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=7&endDate=1781080040503&startDate=1780475240503&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+      "title": "Product Research - eBay Seller Hub",
+      "body_text_len": 11664
+    }
+  },
+  "probeD_730d": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=730&endDate=1781080040503&startDate=1718008040503&categoryId=15052&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "header_text": "Jun 10, 2024 – Jun 10, 2026",
+      "header_selector": ".results-header__left",
+      "column_headers": [
+        {
+          "text": "Listing",
+          "class": "research-table-header__item research-table-header__listing-title-image",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "research-table-header__item research-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Avg sold price",
+          "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Avg shipping",
+          "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Total sold",
+          "class": "research-table-header__item research-table-header__total-sold-count sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Item sales",
+          "class": "research-table-header__item research-table-header__total-sales-value sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Bids",
+          "class": "research-table-header__item research-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Date last sold",
+          "class": "research-table-header__item research-table-header__date-last-sold sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "ListingListing details may not be available for listings older than 90 days.",
+          "class": "active-listing-table-header__item active-listing-table-header__listing-title-ima",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "active-listing-table-header__item active-listing-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__listingPrice",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Bids",
+          "class": "active-listing-table-header__item active-listing-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__watchers",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__promotedListing",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__startedDate",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        }
+      ],
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=730&endDate=1781080040503&startDate=1718008040503&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+      "title": "Product Research - eBay Seller Hub",
+      "body_text_len": 12041
+    }
+  },
+  "probeE_minprice": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&minPrice=100",
+    "info": {
+      "header_text": "Jun 10, 2025 – Jun 10, 2026",
+      "header_selector": ".results-header__left",
+      "column_headers": [
+        {
+          "text": "Listing",
+          "class": "research-table-header__item research-table-header__listing-title-image",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "research-table-header__item research-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Avg sold price",
+          "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Avg shipping",
+          "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Total sold",
+          "class": "research-table-header__item research-table-header__total-sold-count sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Item sales",
+          "class": "research-table-header__item research-table-header__total-sales-value sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Bids",
+          "class": "research-table-header__item research-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Date last sold",
+          "class": "research-table-header__item research-table-header__date-last-sold sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "ListingListing details may not be available for listings older than 90 days.",
+          "class": "active-listing-table-header__item active-listing-table-header__listing-title-ima",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "active-listing-table-header__item active-listing-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__listingPrice",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Bids",
+          "class": "active-listing-table-header__item active-listing-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__watchers",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__promotedListing",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__startedDate",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        }
+      ],
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&minPrice=100&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+      "title": "Product Research - eBay Seller Hub",
+      "body_text_len": 12111
+    }
+  },
+  "probeF_offset50": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&offset=50&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "header_text": "Jun 10, 2025 – Jun 10, 2026",
+      "header_selector": ".results-header__left",
+      "column_headers": [
+        {
+          "text": "Listing",
+          "class": "research-table-header__item research-table-header__listing-title-image",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "research-table-header__item research-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Avg sold price",
+          "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Avg shipping",
+          "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Total sold",
+          "class": "research-table-header__item research-table-header__total-sold-count sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Item sales",
+          "class": "research-table-header__item research-table-header__total-sales-value sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Bids",
+          "class": "research-table-header__item research-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "Date last sold",
+          "class": "research-table-header__item research-table-header__date-last-sold sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "ListingListing details may not be available for listings older than 90 days.",
+          "class": "active-listing-table-header__item active-listing-table-header__listing-title-ima",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Actions",
+          "class": "active-listing-table-header__item active-listing-table-header__actions",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__listingPrice",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "Bids",
+          "class": "active-listing-table-header__item active-listing-table-header__bids sortable",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "pointer"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__watchers",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__promotedListing",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        },
+        {
+          "text": "",
+          "class": "active-listing-table-header__item active-listing-table-header__startedDate",
+          "aria_sort": "",
+          "data_sort": "",
+          "cursor": "auto"
+        }
+      ],
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080040503&startDate=1749544040503&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=50&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+      "title": "Product Research - eBay Seller Hub",
+      "body_text_len": 12008
+    }
+  }
+}

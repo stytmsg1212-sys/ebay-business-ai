@@ -1,0 +1,73 @@
+{
+  "g2_rows": 50,
+  "g2_headers": [
+    {
+      "class": "research-table-header__item research-table-header__listing-title-image",
+      "text": "Listing",
+      "sortable": false,
+      "cursor": "auto"
+    },
+    {
+      "class": "research-table-header__item research-table-header__actions",
+      "text": "Actions",
+      "sortable": false,
+      "cursor": "auto"
+    },
+    {
+      "class": "research-table-header__item research-table-header__avg-sold-price sortable",
+      "text": "Avg sold price",
+      "sortable": true,
+      "cursor": "pointer"
+    },
+    {
+      "class": "research-table-header__item research-table-header__avg-shipping-cost sortable",
+      "text": "Avg shipping",
+      "sortable": true,
+      "cursor": "pointer"
+    },
+    {
+      "class": "research-table-header__item research-table-header__total-sold-count sortable",
+      "text": "Total sold",
+      "sortable": true,
+      "cursor": "pointer"
+    },
+    {
+      "class": "research-table-header__item research-table-header__total-sales-value sortable",
+      "text": "Item sales",
+      "sortable": true,
+      "cursor": "pointer"
+    },
+    {
+      "class": "research-table-header__item research-table-header__bids sortable",
+      "text": "Bids",
+      "sortable": true,
+      "cursor": "pointer"
+    },
+    {
+      "class": "research-table-header__item research-table-header__date-last-sold sortable",
+      "text": "Date last sold",
+      "sortable": true,
+      "cursor": "pointer"
+    }
+  ],
+  "g2_first_row": {
+    "item": "Jun 5, 2026"
+  },
+  "h2_sort": {
+    "url_before": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080476052&startDate=1749544476052&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&tabName=SOLD&tz=Asia%2FTokyo",
+    "url_after_1st": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080476052&startDate=1749544476052&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+    "url_changed_1st": true,
+    "th_class_1st": "research-table-header__item research-table-header__date-last-sold selected sortable",
+    "first_date_1st": "Jun 9, 2026",
+    "url_after_2nd": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=sony+headphones&dayRange=365&endDate=1781080476052&startDate=1749544476052&categoryId=15052&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+    "url_changed_2nd": true,
+    "th_class_2nd": "research-table-header__item research-table-header__date-last-sold selected sortable",
+    "first_date_2nd": "Jun 10, 2025"
+  },
+  "i2_url_replay": {
+    "rows": 50,
+    "first_date": "Jun 9, 2026",
+    "th_class": "research-table-header__item research-table-header__date-last-sold selected sortable",
+    "sort_preserved": true
+  }
+}

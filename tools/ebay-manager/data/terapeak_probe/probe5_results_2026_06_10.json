@@ -1,0 +1,24 @@
+[
+  {
+    "label": "wildcard_excl",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=%2A+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082856948&startDate=1778490856948&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=10",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=*+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082856948&startDate=1778490856948&categoryId=0&minPrice=10&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+      "row_count": 0
+    }
+  },
+  {
+    "label": "paren_excl",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=%28-Card%29+%28-camera%29+%28-Vuitton%29+%28-Hermes%29+%28-GUCCI%29+%28-Mint%29+%28-COACH%29&dayRange=30&endDate=1781082856948&startDate=1778490856948&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=10",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=%28-Card%29+%28-camera%29+%28-Vuitton%29+%28-Hermes%29+%28-GUCCI%29+%28-Mint%29+%28-COACH%29&dayRange=30&endDate=1781082856948&startDate=1778490856948&categoryId=0&minPrice=10&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+      "row_count": 50,
+      "header_text": "May 11, 2026 – Jun 10, 2026",
+      "first_row": ", preview full size image | New MITSUBISHI BD-R XL Blu-ray Disc 100GB 4x 10pcs VBR520YP10D1 from Japan | \t | Edit | \t | $66.35 | Fixed price | \t | $12.00 | 0% Free shipping | \t | 1 | \t | $66.35 | \t | "
+    }
+  },
+  {
+    "label": "error",
+    "error": "'ElementHandle' object has no attribute 'triple_click'"
+  }
+]

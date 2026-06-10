@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""W228 商品リサーチ Wizard タブ — フェーズ B MVP PoC.
+"""W228 商品リサーチ Wizard タブ — フェーズ B (Phase 1 FIX-1〜4 実装済).
 
 仕様書: .company/engineering/docs/2026-06-07-product-research-automation-spec.md
+設計書: .company/engineering/docs/2026-06-10-w229-w228-full-automation-design.md
 ロック済み決定 (§7 / §8):
-  - PoC = 「出品しない」。eBay 出品 / 購入 / 監視登録ボタンは置かない。
   - ゲートは当面手入力 (§8 P1-2)。
   - 同一商品 + 同状態の最終一致判定は人間 (§2-B)。AI は候補提示のみ。
+  - 完全自動購入 / 最終 eBay 公開ボタン自動押下はしない。
+
+Phase 1 FIX (2026-06-10):
+  FIX-1: ゲート判定結果を session_state だけでなく research_candidates DB に永続化。
+          再起動後も判定履歴が引ける。候補行 (source='manual') を FIX-1 で先行作成。
+  FIX-3: needs_review (技術失敗) 候補に「再探索」ボタンを追加。
 
 3 セクション構成:
-  A: 売れ行きゲート (手入力 → 5 分岐判定)
+  A: 売れ行きゲート (手入力 → 5 分岐判定、FIX-1 で DB 永続化)
   B: フリマ探索 + AI 同一性 + 利益判定 (ゲート target_* 時のみ表示)
-  C: research_candidates 一覧 (status フィルタ付き)
+  C: research_candidates 一覧 (status フィルタ付き、FIX-3 再探索ボタン)
 
 K2 (外科的変更): 既存タブ (tab_product_management / tab_research_wizard 等) には一切触れない。
-K1 (シンプル): 実eBay出品は作らない。承認 + キーワード監視登録は W228 後続スコープとして追加。
 Q0 (サイレントスキップ禁止): フリマ探索エラーは偽成功を返さず st.error で表示。
 """
 from __future__ import annotations
@@ -36,6 +41,11 @@ from monitor.research_gate import (
     evaluate_sourcing_gate,
 )
 from monitor.research_candidates_db import (
+    STATUS_APPROVED,
+    STATUS_AWAITING_APPROVAL,
+    STATUS_GATE_PASSED,
+    STATUS_GATE_REJECTED,
+    STATUS_HARVESTED,
     STATUS_IDENTITY_APPROVED,
     STATUS_IDENTITY_REJECTED,
     STATUS_NEEDS_REVIEW,
@@ -45,7 +55,9 @@ from monitor.research_candidates_db import (
     STATUS_SOURCING,
     STATUS_WATCH_REGISTERED,
     get_research_candidate,
+    insert_research_candidate,
     list_research_candidates,
+    save_gate_decision,
     update_status,
 )
 
@@ -65,6 +77,7 @@ _EVAL_PROCESS_LOCK = threading.Lock()
 # セクション A の session_state key (前回の判定結果を引き継ぎ)
 _GATE_DECISION_KEY = "_w228_gate_decision"
 _GATE_TITLE_KEY = "_w228_gate_title"
+_GATE_RC_ID_KEY = "_w228_gate_rc_id"  # FIX-1: ゲート判定時に作成した rc_id
 
 # セクション C のデフォルト件数上限
 _CANDIDATE_LIST_LIMIT = 100
@@ -156,6 +169,39 @@ def _render_section_a() -> None:
     # 判定結果を session_state に保存 (セクション B 引き継ぎ用)
     st.session_state[_GATE_DECISION_KEY] = {"decision": decision, "reason": reason}
     st.session_state[_GATE_TITLE_KEY] = title_ja.strip()
+
+    # FIX-1: ゲート判定を DB に永続化 (session_state だけでは再起動で消える)。
+    # 候補行 (source='manual') を先行 INSERT → gate_decision を保存。
+    # 同一商品名で既判定の rc_id がある場合も常に新行を作る
+    # (同じ商品名を再調査するケースは別候補として管理するのが正しい)。
+    try:
+        inputs_snap = {
+            "sold_90d": int(sold_90d),
+            "has_active_listing": bool(has_active_listing),
+            "listing_start_date": listing_start_date.strip() if listing_start_date else None,
+            "sold_1_2yr": int(sold_1_2yr),
+        }
+        rc_id_for_gate = insert_research_candidate(title_ja=title_ja.strip())
+        save_gate_decision(
+            rc_id=rc_id_for_gate,
+            decision=decision,
+            reason=reason,
+            inputs_dict=inputs_snap,
+            move_status=True,
+        )
+        # session_state に rc_id も保存しておく (セクション B で引き継ぎ用)
+        st.session_state[_GATE_RC_ID_KEY] = rc_id_for_gate
+        logger.info(
+            "[w228_sec_a] FIX-1 gate persisted: rc_id=%s decision=%s",
+            rc_id_for_gate, decision,
+        )
+    except Exception as _e:
+        # HIGH-1 (4巡目): DB 永続化失敗時に旧商品の rc_id が残ると、次回の探索が
+        # 別商品の DB 行に着地する。即 pop して stale rc_id を破棄する。
+        st.session_state.pop(_GATE_RC_ID_KEY, None)
+        # DB 永続化失敗はエラー表示するが判定結果は表示継続 (UI 失敗防止)
+        st.warning(f"ゲート判定の DB 保存に失敗しました (UI は継続): {_e}")
+        logger.exception("[w228_sec_a] FIX-1 gate persistence failed")
 
     _show_gate_result(decision, reason)
 
@@ -265,6 +311,27 @@ def _render_section_b(config: dict) -> None:
         )
         return
 
+    # ── FIX-A: ゲート経由の rc_id を引き継ぐ ────────────────────────────────
+    # _GATE_RC_ID_KEY が存在し、かつ入力中の title_ja がゲート時と一致する場合のみ
+    # rc_id を渡す (商品名を書き換えた場合は別商品 → 新規行)。
+    # pop しない (2026-06-10 Q1 実機 rc_id=6 で発覚): 1 回目が入力不備等で
+    # needs_review に落ちた後のリトライでも同じ gate 行を更新する。pop-once だと
+    # リトライが gate 連携なしの新行に分裂し、Phase 4 承認キューの前提
+    # (gate 判定と利益データの同一行同居) が崩れる。誤着地は title 一致ガード
+    # (本 if) + evaluate_product 側の DB title 照合 (HIGH-1) の 2 層で防御済み。
+    gate_rc_id: Optional[int] = None
+    gate_title = st.session_state.get(_GATE_TITLE_KEY, "")
+    if (
+        _GATE_RC_ID_KEY in st.session_state
+        and gate_title
+        and title_ja.strip() == gate_title.strip()
+    ):
+        gate_rc_id = st.session_state[_GATE_RC_ID_KEY]
+        logger.info(
+            "[w228_sec_b] FIX-A: gate rc_id=%s を引き継ぎ (title=%r)",
+            gate_rc_id, title_ja.strip(),
+        )
+
     # ── 同一セッション内 連打防止 (UI 即時 disable) ──────────────────────
     st.session_state[_SECTION_B_INFLIGHT_KEY] = True
     try:
@@ -272,6 +339,7 @@ def _render_section_b(config: dict) -> None:
             from monitor.research_poc import evaluate_product
             result = evaluate_product(
                 title_ja.strip(),
+                rc_id=gate_rc_id,  # FIX-A: gate 経由なら既存行を再利用
                 manual_weight_g=float(manual_weight_g) if manual_weight_g and manual_weight_g > 0 else None,
                 terapeak_avg_price_usd=float(terapeak_avg_usd) if terapeak_avg_usd and terapeak_avg_usd > 0 else None,
                 settings=None,  # calculator.load_settings() に委ねる
@@ -295,6 +363,9 @@ def _render_section_b_result(result: dict) -> None:
     match_score = result.get("match_score")
     match_reason = result.get("match_reason")
     profit_usd = result.get("estimated_profit_usd")
+    # FIX-D: 真値利益 + けいすけ基準を取得
+    profit_jpy_true: Optional[int] = result.get("profit_jpy_true")
+    keisuke_detail: Optional[dict] = result.get("keisuke_detail")
     needs_review_reason = result.get("needs_review_reason")
     found_url = result.get("found_url")
     found_price_jpy = result.get("found_price_jpy")
@@ -336,7 +407,16 @@ def _render_section_b_result(result: dict) -> None:
                 if match_reason:
                     st.caption(f"AI 根拠: {match_reason}")
             with col2:
-                if profit_usd is not None:
+                # FIX-D: 利益真値 (円) を優先表示
+                if profit_jpy_true is not None:
+                    profit_color = "green" if profit_jpy_true >= 0 else "red"
+                    st.markdown(
+                        f"利益真値: "
+                        f"<span style='color:{profit_color};font-weight:bold'>"
+                        f"¥{profit_jpy_true:,}</span>",
+                        unsafe_allow_html=True,
+                    )
+                elif profit_usd is not None:
                     profit_color = "green" if profit_usd >= 0 else "red"
                     st.markdown(
                         f"利益見込み: "
@@ -346,6 +426,36 @@ def _render_section_b_result(result: dict) -> None:
                     )
                 elif needs_review_reason:
                     st.caption(f"利益計算不能: {needs_review_reason}")
+
+                # FIX-D: けいすけ基準の表示 (自動ブロックなし、表示のみ)
+                if keisuke_detail is not None:
+                    keisuke_pass = keisuke_detail.get("pass")
+                    profit_rate = keisuke_detail.get("profit_rate")
+                    revenue_jpy = keisuke_detail.get("revenue_jpy")
+                    if keisuke_pass is True:
+                        keisuke_label = "合格"
+                        keisuke_color = "green"
+                    elif keisuke_pass is False:
+                        keisuke_label = "不合格"
+                        keisuke_color = "red"
+                    else:
+                        keisuke_label = "未判定"
+                        keisuke_color = "gray"
+                    rate_str = (
+                        f"{profit_rate * 100:.1f}%" if profit_rate is not None else "—"
+                    )
+                    revenue_str = (
+                        f"¥{revenue_jpy:,.0f}" if revenue_jpy is not None else "—"
+                    )
+                    st.markdown(
+                        f"けいすけ基準: "
+                        f"<span style='color:{keisuke_color};font-weight:bold'>"
+                        f"{keisuke_label}</span>"
+                        f" (利益率: {rate_str} / 売上: {revenue_str})",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("けいすけ基準: 未判定 (利益計算不能)")
 
             if needs_review_reason and status != STATUS_NEEDS_REVIEW:
                 st.caption(f"要確認: {needs_review_reason}")
@@ -441,7 +551,39 @@ def _render_candidate_actions(row: dict) -> None:
                     st.error(f"却下失敗 (rc_id={rc_id}): {e}")
                     logger.exception("[w228_sec_c] reject 例外 rc_id=%s", rc_id)
 
-    # ── キーワード新着監視登録ボタン (identity_approved のみ表示) ──
+    # ── FIX-3: 再探索ボタン (needs_review のみ表示) ──────────────────────────
+    # needs_review = 技術失敗 (仕入先 fetch エラー等)。
+    # 連打防止は _EVAL_PROCESS_LOCK (プロセス全体共有の threading.Lock)。
+    with col_watch:
+        if status == STATUS_NEEDS_REVIEW:
+            if st.button(
+                "再探索",
+                key=f"w228_retry_{rc_id}",
+                help=(
+                    "技術的エラーで探索できなかった候補を needs_review → sourcing に戻し、"
+                    "次回の自動探索サイクルで再試行します。"
+                ),
+                disabled=_EVAL_PROCESS_LOCK.locked(),
+            ):
+                from monitor.research_poc import retry_sourcing  # lazy import (circular 回避)
+                try:
+                    ok = retry_sourcing(rc_id)
+                    if ok:
+                        st.success(
+                            f"rc_id={rc_id} を sourcing に戻しました。"
+                            "次回の自動探索で再試行されます。"
+                        )
+                        st.rerun()
+                    else:
+                        st.warning(
+                            f"rc_id={rc_id} の再探索リセットに失敗しました "
+                            "(既に状態が変わったか、該当 ID が存在しません)。"
+                        )
+                except Exception as _re:
+                    st.error(f"再探索失敗 (rc_id={rc_id}): {_re}")
+                    logger.exception("[w228_sec_c] retry_sourcing 例外 rc_id=%s", rc_id)
+
+    # ── キーワード新着監視登録ボタン (identity_approved のみ表示) ──────────
     with col_watch:
         if status == STATUS_IDENTITY_APPROVED:
             # 上限仕入価格の初期値 (UI で編集可)
@@ -566,15 +708,21 @@ def _render_section_c() -> None:
     st.markdown("### C. リサーチ候補一覧")
 
     # status フィルタ (承認系 status も選択可)
+    # FIX-D: 新 status 5 つを追加 (W229 ハーベスト + 承認キュー経路)
     status_labels: dict[Optional[str], str] = {
         None: "全て",
         STATUS_NEW: "new",
+        STATUS_HARVESTED: "発掘済 (判定待ち)",         # FIX-D
+        STATUS_GATE_PASSED: "ゲート通過 (探索待ち)",   # FIX-D
+        STATUS_GATE_REJECTED: "ゲート除外",             # FIX-D
         STATUS_SOURCING: "sourcing",
         STATUS_SOURCED: "sourced",
         STATUS_NOT_FOUND: "not_found",
         STATUS_NEEDS_REVIEW: "needs_review",
         STATUS_IDENTITY_APPROVED: "identity_approved",
         STATUS_IDENTITY_REJECTED: "identity_rejected",
+        STATUS_AWAITING_APPROVAL: "承認待ち",           # FIX-D
+        STATUS_APPROVED: "承認済",                       # FIX-D
         STATUS_WATCH_REGISTERED: "watch_registered",
     }
     selected_label = st.selectbox(

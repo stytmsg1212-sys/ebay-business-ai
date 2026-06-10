@@ -183,6 +183,8 @@ def _detect_actual_dayrange(html: str) -> Optional[int]:
             continue
         days = (d2 - d1).days
         for canonical in (7, 30, 90, 180, 365, 730, 1095):
+            # MEDIUM-B 相互参照: ±2 tolerance は build_harvest_url の 1 日 buffer (L1542 参照)
+            # を吸収するための値. buffer を 3 日以上にするとここで検出が外れ恒常 failed 化する.
             if abs(days - canonical) <= 2:
                 detected_canonicals.append(canonical)
                 break
@@ -1440,3 +1442,1294 @@ def propose_market_change_for_listing(
 
 # 旧 propose_market_change (sku PK 前提) は W7-A Phase 3 で削除済.
 # 全 caller が propose_market_change_for_listings に移行 (2026-04-29 grep 確認).
+
+
+# ---------------------------------------------------------------------------
+# W229 ハーベスト機能 (Phase 2 / 2026-06-10)
+# 既存関数は一切変更しない (K2). 以下は全て新規追加.
+# ---------------------------------------------------------------------------
+
+import datetime as _dt
+import html as _html_mod
+import time as _time
+
+# JST 固定 offset (Windows tzdata 不在リスク回避 / DST 無し)
+_JST = _dt.timezone(_dt.timedelta(hours=9), name="JST")
+# Pacific 固定 offset (UTC-7). probe6_tz_calib 実測で Terapeak 日付軸 = US Pacific 確定.
+# HIGH-A 修正 (2026-06-10): UTC-8 から UTC-7 へ変更.
+# 理由:
+#   UTC-8 (PST) を使うと target 日 00:00 UTC-8 = 夏期 PDT では target 日 01:00 PDT となり、
+#   target 日 00:00-01:00 PDT の売上が窓から漏れる (方向が逆だった).
+#   UTC-7 固定にすることで:
+#     - 夏期 PDT (UTC-7): target 日ちょうど 00:00 PDT 開始 = 漏れなし
+#     - 冬期 PST (UTC-8): target 日 00:00 UTC-7 = 前日 23:00 PST 開始 = 余分包含だが
+#       filter_harvest_window の target 一致採用と all_before_target continue が吸収する.
+# 実測: startDate=2024-06-10 00:00 PDT(UTC-7) → ヘッダ "Jun 10, 2024" 確認 (2026-06-10).
+_PST = _dt.timezone(_dt.timedelta(hours=-7), name="PACIFIC-7")
+
+
+def _two_year_target(today: _dt.date) -> _dt.date:
+    """today から 2 年前のカレンダー日付を返す (2/29 は 2/28 に丸め).
+
+    build_harvest_url と filter_harvest_window の両方から呼ぶ共通 helper.
+    二重実装による再乖離を防止する (HIGH-1 対応).
+    """
+    try:
+        return today.replace(year=today.year - 2)
+    except ValueError:
+        # 2/29 → 前年は 2/28
+        return today.replace(year=today.year - 2, day=28)
+
+
+@dataclass
+class HarvestedProduct:
+    """Terapeak Product Research 結果リストの 1 行."""
+    title: str
+    avg_sold_price_usd: Optional[float]
+    total_sold_count: Optional[int]
+    date_last_sold: Optional[_dt.date]
+    research_url: str
+    image_url: Optional[str]
+    avg_shipping_cost_usd: Optional[float]
+
+
+@dataclass
+class HarvestResult:
+    """harvest_product_list の戻り値."""
+    products: list[HarvestedProduct]
+    pages_loaded: int
+    error: Optional[str]
+    success: bool
+
+
+_HARVEST_PATTERNS = frozenset({"fresh_24h", "two_year_echo"})
+
+
+def build_harvest_url(
+    keyword: str,
+    pattern: str,
+    *,
+    category_id: Optional[int] = None,
+    min_price: int = 100,
+    offset: int = 0,
+    now_ms: Optional[int] = None,
+) -> str:
+    """Terapeak Product Research 結果リストの URL を構築 (W229 ハーベスト用).
+
+    Args:
+        keyword: 検索キーワード (必須、空文字は ValueError)
+        pattern: 'fresh_24h' または 'two_year_echo'
+        category_id: カテゴリ ID (None → 0)
+        min_price: 価格下限 USD (デフォルト 100)
+        offset: ページオフセット (50 刻み)
+        now_ms: テスト用エポックミリ秒注入 (None なら time.time() 利用)
+
+    Returns:
+        Terapeak Research SOLD タブ URL
+
+    Raises:
+        ValueError: pattern が不正または keyword が空
+    """
+    if not keyword.strip():
+        raise ValueError(f"keyword must not be empty: {keyword!r}")
+    if pattern not in _HARVEST_PATTERNS:
+        raise ValueError(
+            f"pattern must be one of {sorted(_HARVEST_PATTERNS)}, got {pattern!r}"
+        )
+
+    if now_ms is None:
+        now_ms = int(_time.time() * 1000)
+
+    if pattern == "fresh_24h":
+        day_range = 7
+        sorting = "-datelastsold"
+        start_ms = now_ms - day_range * 24 * 3600 * 1000
+    else:  # two_year_echo
+        day_range = 730
+        sorting = "datelastsold"
+        # probe6_tz_calib (2026-06-10) 実測: Terapeak 日付軸 = US Pacific.
+        # startDate = target 日 00:00 UTC-7 (PACIFIC-7) に設定する.
+        # HIGH-A 修正 (2026-06-10): UTC-8 → UTC-7 へ変更.
+        # 理由: UTC-7 固定 (夏期 PDT に一致) で target 日 00:00 から開始し漏れを防ぐ.
+        #   冬期 PST 時は前日 23:00 PST 開始だが余分包含で問題なし (filter が吸収).
+        #   旧実装の「JST 00:00 − 1 日 buffer」は page 1 が buffer 日 (target-1) の
+        #   行 50 件で埋まり、filtered=0 で即 break → 毎晩 0 件の空振りになっていた.
+        # _detect_actual_dayrange ±2 tolerance との整合:
+        #   target 00:00 UTC-7 → now の span ≈ 730 日, ±2 内に収まる (問題なし).
+        # 2/29 丸め: _two_year_target が維持する (既存動作と同一).
+        today_jst = _dt.datetime.fromtimestamp(now_ms / 1000, tz=_JST).date()
+        target = _two_year_target(today_jst)
+        # target 日 00:00 PACIFIC-7 = UTC-7 で epoch ms を計算
+        target_midnight_pst = _dt.datetime.combine(target, _dt.time(0), tzinfo=_PST)
+        start_ms = int(target_midnight_pst.timestamp() * 1000)
+    cat_id = category_id if category_id is not None else 0
+
+    return (
+        f"https://www.ebay.com/sh/research?marketplace=EBAY-US"
+        f"&keywords={quote(keyword)}"
+        f"&dayRange={day_range}"
+        f"&endDate={now_ms}&startDate={start_ms}"
+        f"&categoryId={cat_id}"
+        f"&offset={offset}&limit=50"
+        f"&tabName=SOLD"
+        f"&sellerCountry={quote('SellerLocation:::JP')}"
+        f"&sorting={sorting}"
+        f"&minPrice={min_price}"
+    )
+
+
+def parse_harvest_rows(html: str) -> list[HarvestedProduct]:
+    """HTML から research-table-row を走査して HarvestedProduct リストを返す.
+
+    probe 確定の実 DOM 構造に基づく regex パース (K1: 新規 BS4 依存は追加しない).
+
+    - パース不能行は skip + logger.warning (Q0 silent drop 禁止)
+    - 価格 "$333.51 Fixed price" → float 333.51 (カンマ除去対応)
+    - "-" や空は None
+    """
+    # tr.research-table-row を全件抽出
+    row_pattern = re.compile(
+        r'<tr class="research-table-row">(.*?)</tr>',
+        re.DOTALL,
+    )
+
+    # 各 td class suffix の内容を抽出するパターン
+    # td 全体 (</td> まで) を取得してから内部を解析する.
+    # 理由: avgSoldPrice 等は <div class="item-with-subtitle"><div>$385.00</div>...
+    # という 2 段ネスト構造のため、><div[^>]*> パターンだと外側 div を消費して
+    # "$385.00" → "85.00" を返す誤りが生じる. td 全体を取得して最初の <div>text</div>
+    # を探す方式に統一する (probe 確定構造).
+    _TD = lambda suffix: re.compile(  # noqa: E731
+        r'class="research-table-row__item research-table-row__'
+        + re.escape(suffix)
+        + r'">(.*?)</td>',
+        re.DOTALL,
+    )
+    _pat_price = _TD("avgSoldPrice")
+    _pat_count = _TD("totalSoldCount")
+    _pat_date = _TD("dateLastSold")
+    _pat_ship = _TD("avgShippingCost")
+
+    # product-info から title / url / image を抽出
+    _pat_title = re.compile(r'<span data-item-id="\d+">(.*?)</span>', re.DOTALL)
+    _pat_url = re.compile(r'href="(https://www\.ebay\.com/itm/[^"]+)"')
+    _pat_img = re.compile(r'<img class="small" src="([^"]+)"')
+
+    products: list[HarvestedProduct] = []
+    skip_count = 0
+
+    for row_m in row_pattern.finditer(html):
+        row_html = row_m.group(1)
+
+        # --- title ---
+        t_m = _pat_title.search(row_html)
+        if not t_m:
+            skip_count += 1
+            logger.warning("parse_harvest_rows: title 未取得のため行をスキップ")
+            continue
+        title = _html_mod.unescape(t_m.group(1).strip())
+
+        # --- research_url ---
+        url_m = _pat_url.search(row_html)
+        research_url = (
+            _html_mod.unescape(url_m.group(1)) if url_m else ""
+        )
+
+        # --- image_url ---
+        img_m = _pat_img.search(row_html)
+        raw_img = img_m.group(1) if img_m else None
+        if raw_img and raw_img.startswith("//"):
+            raw_img = "https:" + raw_img
+        image_url: Optional[str] = raw_img or None
+
+        # --- avg_sold_price_usd ---
+        p_m = _pat_price.search(row_html)
+        avg_sold_price_usd: Optional[float] = None
+        if p_m:
+            # 最初の <div> 内テキスト: "$385.00" or "$48,358.97" or "-"
+            inner = re.search(r'<div>([^<]+)</div>', p_m.group(1))
+            if inner:
+                raw_price = inner.group(1).strip()
+                price_num = re.search(r'\$([\d,.]+)', raw_price)
+                if price_num:
+                    try:
+                        avg_sold_price_usd = float(
+                            price_num.group(1).replace(",", "")
+                        )
+                    except ValueError:
+                        pass
+
+        # --- total_sold_count ---
+        # MEDIUM-1: カンマ付き "1,234" も取得できるよう ([\d,]+) + replace(",", "") に変更.
+        # 価格側は対応済みだったが count 側が非対称だった.
+        c_m = _pat_count.search(row_html)
+        total_sold_count: Optional[int] = None
+        if c_m:
+            inner = re.search(r'<div>([\d,]+)</div>', c_m.group(1))
+            if inner:
+                try:
+                    total_sold_count = int(inner.group(1).replace(",", ""))
+                except ValueError:
+                    pass
+
+        # --- date_last_sold ---
+        d_m = _pat_date.search(row_html)
+        date_last_sold: Optional[_dt.date] = None
+        if d_m:
+            inner = re.search(r'<div>([^<]+)</div>', d_m.group(1))
+            if inner:
+                raw_date = inner.group(1).strip()
+                parsed_dt = _parse_terapeak_date(raw_date)
+                if parsed_dt is not None:
+                    date_last_sold = parsed_dt.date()
+
+        # --- avg_shipping_cost_usd ---
+        s_m = _pat_ship.search(row_html)
+        avg_shipping_cost_usd: Optional[float] = None
+        if s_m:
+            inner = re.search(r'<div>([^<]+)</div>', s_m.group(1))
+            if inner:
+                raw_ship = inner.group(1).strip()
+                ship_num = re.search(r'\$([\d,.]+)', raw_ship)
+                if ship_num:
+                    try:
+                        avg_shipping_cost_usd = float(
+                            ship_num.group(1).replace(",", "")
+                        )
+                    except ValueError:
+                        pass
+
+        products.append(HarvestedProduct(
+            title=title,
+            avg_sold_price_usd=avg_sold_price_usd,
+            total_sold_count=total_sold_count,
+            date_last_sold=date_last_sold,
+            research_url=research_url,
+            image_url=image_url,
+            avg_shipping_cost_usd=avg_shipping_cost_usd,
+        ))
+
+    if skip_count:
+        logger.warning(
+            f"parse_harvest_rows: {skip_count} 行をスキップ (title 未取得)"
+        )
+
+    return products
+
+
+def filter_harvest_window(
+    products: list[HarvestedProduct],
+    pattern: str,
+    *,
+    today_jst: Optional[_dt.date] = None,
+) -> list[HarvestedProduct]:
+    """date_last_sold に基づいて採取窓フィルタを適用する.
+
+    Args:
+        products: parse_harvest_rows の出力
+        pattern: 'fresh_24h' または 'two_year_echo'
+        today_jst: テスト注入用 (None なら JST 現在日付)
+
+    Returns:
+        窓内の HarvestedProduct リスト
+
+    Raises:
+        ValueError: pattern が不正
+    """
+    if pattern not in _HARVEST_PATTERNS:
+        raise ValueError(
+            f"pattern must be one of {sorted(_HARVEST_PATTERNS)}, got {pattern!r}"
+        )
+
+    if today_jst is None:
+        # MEDIUM-2: ZoneInfo("Asia/Tokyo") → 固定 offset に置換 (Windows tzdata 不在リスク)
+        today_jst = _dt.datetime.now(tz=_JST).date()
+
+    none_count = 0
+    results: list[HarvestedProduct] = []
+
+    for p in products:
+        if p.date_last_sold is None:
+            none_count += 1
+            continue
+
+        if pattern == "fresh_24h":
+            # JST 今日 or 昨日 (日付粒度のみのため 2 日マッチ近似)
+            yesterday = today_jst - _dt.timedelta(days=1)
+            if p.date_last_sold in (today_jst, yesterday):
+                results.append(p)
+
+        else:  # two_year_echo
+            # HIGH-1: 共通 helper で target を計算 (build_harvest_url と一致保証)
+            target = _two_year_target(today_jst)
+            if p.date_last_sold == target:
+                results.append(p)
+
+    if none_count:
+        logger.warning(
+            f"filter_harvest_window: date_last_sold=None の行 {none_count} 件を除外"
+        )
+
+    return results
+
+
+def _poll_harvest_rows(page: object, timeout_s: float = 30.0) -> bool:
+    """tr.research-table-row が DOM に出現するまでポーリング.
+
+    networkidle 禁止 (SPA 常時通信) のため domcontentloaded + ポーリングで代替.
+
+    Args:
+        page: Playwright page オブジェクト
+        timeout_s: タイムアウト秒
+
+    Returns:
+        True なら出現、False はタイムアウト
+    """
+    deadline = _time.monotonic() + timeout_s
+    while _time.monotonic() < deadline:
+        try:
+            count = page.evaluate(
+                "() => document.querySelectorAll('tr.research-table-row').length"
+            )
+            if count and count > 0:
+                return True
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"_poll_harvest_rows: evaluate 失敗 ({e})")
+        _time.sleep(1.0)
+    return False
+
+
+def harvest_product_list(
+    keyword: str,
+    pattern: str,
+    *,
+    category_id: Optional[int] = None,
+    min_price: int = 100,
+    max_pages: int = 2,
+    cdp_endpoint: str = CDP_ENDPOINT,
+    sleep_seconds: float = 3.0,
+) -> HarvestResult:
+    """Terapeak Product Research 結果リストを取得し窓フィルタを適用する.
+
+    既存 extract_from_current_page と同じ thread wrapper パターン (_runner + queue).
+    新規タブを開いて navigate し、完了後にタブを閉じる.
+
+    Args:
+        keyword: 検索キーワード
+        pattern: 'fresh_24h' または 'two_year_echo'
+        category_id: カテゴリ ID (None → 0)
+        min_price: 価格下限 USD
+        max_pages: 最大ページ数 (50件/ページ)
+        cdp_endpoint: CDP エンドポイント
+        sleep_seconds: ページ間 sleep 秒 (jitter 0.7-1.5 倍)
+
+    Returns:
+        HarvestResult
+    """
+    # MEDIUM-C: max_pages ガード (0/負値で join(0) 即時 return → 偽装成功を防ぐ)
+    if max_pages < 1:
+        raise ValueError(f"max_pages must be >= 1, got {max_pages}")
+
+    result_holder: list[HarvestResult] = [HarvestResult(
+        products=[], pages_loaded=0, error="thread not started", success=False
+    )]
+    error_holder: list[Optional[Exception]] = [None]
+
+    def _runner() -> None:
+        try:
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            result_holder[0] = _harvest_product_list_impl(
+                keyword=keyword,
+                pattern=pattern,
+                category_id=category_id,
+                min_price=min_price,
+                max_pages=max_pages,
+                cdp_endpoint=cdp_endpoint,
+                sleep_seconds=sleep_seconds,
+            )
+        except Exception as e:  # noqa: BLE001
+            error_holder[0] = e
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    # MEDIUM-3: timeout を max_pages 連動 (90s × max_pages) に変更.
+    # 固定 180s は max_pages=2 前提だったが、より大きな max_pages で不十分になる.
+    thread_timeout = 90 * max_pages
+    t.join(timeout=thread_timeout)
+    if t.is_alive():
+        return HarvestResult(
+            products=[], pages_loaded=0,
+            error=f"harvest thread timeout (>{thread_timeout}s)", success=False,
+        )
+    if error_holder[0] is not None:
+        return HarvestResult(
+            products=[], pages_loaded=0,
+            error=f"harvest exception: {error_holder[0]}", success=False,
+        )
+    return result_holder[0]
+
+
+def _harvest_product_list_impl(
+    keyword: str,
+    pattern: str,
+    *,
+    category_id: Optional[int],
+    min_price: int,
+    max_pages: int,
+    cdp_endpoint: str,
+    sleep_seconds: float,
+) -> HarvestResult:
+    """harvest_product_list の実処理. 別 thread から呼ばれる."""
+    import random as _random
+
+    if sync_playwright is None:
+        return HarvestResult(
+            products=[], pages_loaded=0,
+            error="playwright not installed", success=False,
+        )
+
+    # today_jst を事前に取得 (全ページで共通)
+    # MEDIUM-2: ZoneInfo("Asia/Tokyo") → 固定 offset に置換 (Windows tzdata 不在リスク)
+    today_jst = _dt.datetime.now(tz=_JST).date()
+
+    all_products: list[HarvestedProduct] = []
+    pages_loaded = 0
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.connect_over_cdp(cdp_endpoint)
+        except Exception as e:
+            return HarvestResult(
+                products=[], pages_loaded=0,
+                error=f"CDP connect failed: {e}", success=False,
+            )
+
+        if not browser.contexts:
+            try:
+                browser.close()
+            except Exception as e:
+                logger.debug(f"browser close ignored: {e}")
+            return HarvestResult(
+                products=[], pages_loaded=0,
+                error="no browser context", success=False,
+            )
+
+        ctx = browser.contexts[0]
+        new_tab = None
+
+        try:
+            new_tab = ctx.new_page()
+
+            # HIGH-C: two_year_echo で target 日に到達したかどうかを追跡.
+            # fresh_24h は全ページが有効範囲なので常に reached=True 扱い.
+            # two_year_echo では all_before_target continue が続いてループ自然終了した場合、
+            # 「正常 0 件」と「ページ予算切れ」を区別するために使う.
+            target_date = _two_year_target(today_jst) if pattern == "two_year_echo" else None
+            reached_target = (pattern != "two_year_echo")
+            # MEDIUM-1: break 理由を保持して文言出し分けに使う。
+            stop_reason = "max_pages"  # デフォルト (ループ自然終了)
+
+            for page_idx in range(max_pages):
+                # HIGH-B 修正 (2026-06-10): sleep をループ先頭に移動.
+                # 旧実装はループ末尾 sleep だったため all_before_target / 日付なし の
+                # continue 2 箇所が sleep をスキップし、anti-bot バイパスになっていた.
+                if page_idx > 0:
+                    jitter = _random.uniform(0.7, 1.5)
+                    _time.sleep(sleep_seconds * jitter)
+
+                offset = page_idx * 50
+                now_ms = int(_time.time() * 1000)
+                url = build_harvest_url(
+                    keyword, pattern,
+                    category_id=category_id,
+                    min_price=min_price,
+                    offset=offset,
+                    now_ms=now_ms,
+                )
+
+                logger.info(
+                    f"harvest navigate: page={page_idx+1}/{max_pages} "
+                    f"offset={offset} url={url[:120]}"
+                )
+
+                try:
+                    new_tab.goto(url, wait_until="domcontentloaded", timeout=30000)
+                except (PWTimeout, Exception) as e:
+                    logger.warning(f"harvest goto timeout/error: {e}")
+                    return HarvestResult(
+                        products=all_products, pages_loaded=pages_loaded,
+                        error=f"goto failed: {e}", success=False,
+                    )
+
+                # error redirect 検知 (anti-bot / rate limit)
+                current_url = ""
+                try:
+                    current_url = new_tab.url
+                except (PWTimeout, AttributeError) as e:
+                    logger.debug(f"page.url 取得失敗 ({e})")
+                if _is_ebay_error_redirect(current_url):
+                    logger.error(
+                        f"harvest: eBay error redirect 検知 ({current_url}). 即停止."
+                    )
+                    return HarvestResult(
+                        products=all_products, pages_loaded=pages_loaded,
+                        error=f"eBay error redirect: {current_url}", success=False,
+                    )
+
+                # tr.research-table-row 出現ポーリング
+                appeared = _poll_harvest_rows(new_tab, timeout_s=30.0)
+                if not appeared:
+                    logger.warning(
+                        f"harvest: page {page_idx+1} で行未出現 (timeout)"
+                    )
+                    # HIGH-2: page 1 から 0 行 = anti-bot / セッション切れ / DOM 変更の疑い.
+                    # 「正常 0 件収穫」と区別するため success=False で返す (Q0 偽装成功防止).
+                    if pages_loaded == 0:
+                        return HarvestResult(
+                            products=all_products, pages_loaded=0,
+                            error="no rows appeared on page 1 (timeout)", success=False,
+                        )
+                    # page 2 以降は到達済データで終了 (success=True 可)
+                    stop_reason = "poll_timeout"
+                    break
+
+                # live DOM 取得 (probe 確定: page.content() は SSR でテーブル無し)
+                try:
+                    html = new_tab.evaluate(
+                        "() => document.documentElement.outerHTML"
+                    )
+                except (PWTimeout, Exception) as e:
+                    logger.warning(f"harvest: outerHTML 取得失敗 ({e})")
+                    return HarvestResult(
+                        products=all_products, pages_loaded=pages_loaded,
+                        error=f"outerHTML failed: {e}", success=False,
+                    )
+
+                # 実 dayRange 検証 (Q0 / _detect_actual_dayrange 流用)
+                expected_dr = 7 if pattern == "fresh_24h" else 730
+                actual_dr = _detect_actual_dayrange(html)
+                if actual_dr is not None and actual_dr != expected_dr:
+                    logger.error(
+                        f"harvest: dayRange 不一致 actual={actual_dr} expected={expected_dr}"
+                    )
+                    return HarvestResult(
+                        products=all_products, pages_loaded=pages_loaded,
+                        error=(
+                            f"dayRange mismatch: actual={actual_dr} "
+                            f"expected={expected_dr}"
+                        ),
+                        success=False,
+                    )
+
+                rows = parse_harvest_rows(html)
+                pages_loaded += 1
+
+                if not rows:
+                    # MEDIUM-D: page 1 で poll が行存在を確認済みなのに parse=0 の場合、
+                    # selector drift (eBay が class 属性を追加した等) を疑い success=False.
+                    # poll は querySelectorAll('tr.research-table-row') (class 含有判定)、
+                    # parse は class="research-table-row" 完全一致 regex のため乖離しうる.
+                    # page 2 以降は到達済データで break (従来どおり).
+                    if pages_loaded == 1:
+                        logger.error(
+                            "harvest: page 1 で poll=True だが parse=0 行 "
+                            "(selector drift の可能性)"
+                        )
+                        return HarvestResult(
+                            products=all_products, pages_loaded=0,
+                            error="rows present in DOM but parse yielded 0 (selector drift?)",
+                            success=False,
+                        )
+                    logger.info(
+                        f"harvest: page {page_idx+1} で 0 行 → ページ取得終了"
+                    )
+                    stop_reason = "no_rows"
+                    break
+
+                # 窓フィルタを適用
+                filtered = filter_harvest_window(
+                    rows, pattern, today_jst=today_jst
+                )
+                all_products.extend(filtered)
+
+                # 打ち切り判定 (pattern によって方向が逆)
+                #
+                # fresh_24h (新着順 = 新しい→古い):
+                #   filtered=0 → target 日より古いページに入った → 以降も古い → 打ち切り
+                #
+                # two_year_echo (古い順 = 古い→新しい):
+                #   filtered=0 だけでは判断不十分. page 1 が buffer 日の行で埋まって
+                #   いる場合は filtered=0 でも target 日はまだ先にある.
+                #   行日付は Terapeak 表示軸 (US Pacific). target は JST 今日-2年の
+                #   日付ラベル (同一カレンダー日付で比較するため整合 OK).
+                #   判定ロジック:
+                #     - ページ内の全行 date < target   → target はまだ先 → 続行 (スキップ)
+                #     - ページ内に date > target の行  → target を過ぎた → filtered を回収して打ち切り
+                #     - それ以外 (target 行あり)       → filtered を回収して続行 (max_pages 上限まで)
+                if pattern == "fresh_24h":
+                    if not filtered:
+                        logger.info(
+                            f"harvest: pattern=fresh_24h page {page_idx+1} "
+                            f"で窓内 0 件 → 以降ページ打ち切り"
+                        )
+                        stop_reason = "window_empty"
+                        break
+                else:  # two_year_echo
+                    # target_date はループ外で計算済み (HIGH-C / LOW 同時解消)
+                    dated_rows = [r for r in rows if r.date_last_sold is not None]
+                    if not dated_rows:
+                        # 日付なし行のみ → target 不明、安全のため続行
+                        logger.info(
+                            f"harvest: two_year_echo page {page_idx+1} "
+                            f"日付あり行なし → 続行"
+                        )
+                        continue  # noqa: PLC0116 — continue in for loop intentional
+                    all_before_target = all(
+                        r.date_last_sold < target_date for r in dated_rows
+                    )
+                    any_after_target = any(
+                        r.date_last_sold > target_date for r in dated_rows
+                    )
+                    if all_before_target:
+                        # target 日にまだ到達していない → スキップして次ページへ
+                        skipped_dates = sorted(
+                            {r.date_last_sold for r in dated_rows}
+                        )
+                        logger.info(
+                            f"harvest: two_year_echo page {page_idx+1} "
+                            f"全行 target({target_date}) 未満 "
+                            f"(先頭={skipped_dates[0]}, 末尾={skipped_dates[-1]}) "
+                            f"→ 次ページへ続行 (スキップ {len(dated_rows)} 行)"
+                        )
+                        # filtered=0 でも break しない (ここが旧バグの根源)
+                        continue  # noqa: PLC0116
+                    elif any_after_target:
+                        # MEDIUM-2 修正 (2026-06-10): target 超過行が存在する場合、
+                        # 回収後に即 break (旧実装は filtered=0 の時だけ break し、
+                        # filtered>0 の時は余分な次ページを fetch していた).
+                        # 昇順ソートでは target 超過行以降に target 行は出現しないため.
+                        reached_target = True
+                        stop_reason = "reached_target"
+                        logger.info(
+                            f"harvest: two_year_echo page {page_idx+1} "
+                            f"target({target_date}) 超過行あり → 回収して即打ち切り"
+                        )
+                        break
+                    else:
+                        # target 行が存在する (all_before=False, any_after=False → ==target)
+                        # MEDIUM-1 修正 (2026-06-10): 旧実装の第 3 分岐
+                        # (target 行混在するが filtered=0 → break) は論理的に到達不能.
+                        # target 行 (date == target_date) があれば filter_harvest_window が
+                        # 必ず filtered に追加する。到達するとすれば date_last_sold=None 行が
+                        # target 判定されるケースだが、dated_rows 計算で除外済みのため不可能.
+                        # 防御的に: filtered=0 なら logger.error + success=False で返す
+                        # (偽装成功防止 Q0). filtered>0 なら通常継続.
+                        reached_target = True
+                        if not filtered:
+                            logger.error(
+                                f"harvest: two_year_echo page {page_idx+1} "
+                                f"target 行あり (all_before=False, any_after=False) "
+                                f"だが filtered=0 — 内部矛盾 (None 除去漏れ?)"
+                            )
+                            return HarvestResult(
+                                products=all_products, pages_loaded=pages_loaded,
+                                error=(
+                                    f"two_year_echo internal inconsistency: "
+                                    f"target rows present but filtered=0 on page {page_idx+1}"
+                                ),
+                                success=False,
+                            )
+
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"harvest: 予期しない例外: {e}", exc_info=True)
+            _close_tab_safe(new_tab)
+            try:
+                browser.close()
+            except Exception as e2:
+                logger.debug(f"browser close ignored: {e2}")
+            return HarvestResult(
+                products=all_products, pages_loaded=pages_loaded,
+                error=f"unexpected error: {e}", success=False,
+            )
+
+        _close_tab_safe(new_tab)
+        try:
+            browser.close()
+        except Exception as e:
+            logger.debug(f"browser close ignored: {e}")
+
+    # HIGH-C 修正 (2026-06-10): two_year_echo で max_pages 消費しても target 未到達の場合、
+    # 「正常 0 件収穫の夜」と「ページ予算切れ」を区別するため success=False で返す (Q0).
+    # MEDIUM-1: stop_reason 別に文言を出し分ける (判定ロジック・戻り値構造は不変)。
+    if not reached_target and pages_loaded > 0:
+        logger.warning(
+            f"harvest: two_year_echo max_pages={max_pages} を消費したが "
+            f"target {target_date} に到達せず (pages_loaded={pages_loaded}, "
+            f"stop_reason={stop_reason})"
+        )
+        if stop_reason == "poll_timeout":
+            err_msg = (
+                f"poll timeout: 窓内 0 件が続き target {target_date} 未到達 "
+                f"(pages_loaded={pages_loaded})"
+            )
+        elif stop_reason == "no_rows":
+            err_msg = (
+                f"no_rows: 行なしページに達し target {target_date} 未到達 "
+                f"(pages_loaded={pages_loaded})"
+            )
+        else:
+            err_msg = (
+                f"max_pages={max_pages} exhausted before reaching target {target_date}"
+            )
+        return HarvestResult(
+            products=all_products,
+            pages_loaded=pages_loaded,
+            error=err_msg,
+            success=False,
+        )
+
+    return HarvestResult(
+        products=all_products,
+        pages_loaded=pages_loaded,
+        error=None,
+        success=True,
+    )
+
+
+def _close_tab_safe(page: object) -> None:
+    """新規タブを安全に閉じる."""
+    if page is None:
+        return
+    try:
+        page.close()  # type: ignore[union-attr]
+    except Exception as e:
+        logger.debug(f"tab close ignored: {e}")
+
+
+# ---------------------------------------------------------------------------
+# W229 商品詳細取得 (Phase 2 / scrape_product_detail)
+# 既存関数は一切変更しない (K2). 以下は全て新規追加.
+# ---------------------------------------------------------------------------
+
+import dataclasses as _dc
+
+
+@_dc.dataclass
+class ProductGateData:
+    """scrape_product_detail の戻り値.
+
+    evaluate_sourcing_gate に渡す全入力値 + 補助情報を格納する.
+    """
+    keyword: str
+    sold_90d: int = 0
+    has_active_listing: bool = False
+    listing_start_date: "str | None" = None   # "YYYY-MM" 形式 (_parse_listing_start_date 互換)
+    sold_1_2yr: int = 0
+    avg_sold_price_usd: "float | None" = None
+    success: bool = False
+    error: "str | None" = None
+    # H-2: 実際に消費した navigate 回数 (クォータ合算に使用).
+    # Q6 skip 時 = 1, フル経路 = 3, 途中失敗 = その時点まで.
+    navigates_used: int = 0
+
+
+def _extract_sold_count(html: str, day_range: int) -> int:  # noqa: ARG001
+    """SOLD タブ HTML から research-table-row の行数を返す (sold 件数の proxy).
+
+    業務根拠 (設計書 §5-1):
+      ゲート閾値は sold_90d >= 2 (2 件以上) という粗い基準のため、
+      「行数 = sold 件数の proxy」で十分。Total sold メトリクスの
+      厳密抽出に固執しない (K1)。
+
+    Args:
+        html: SOLD タブの live DOM HTML
+        day_range: 期間 (90 or 730)。現実装では行数カウントのみで未使用だが、
+                   シグネチャを統一して caller で day_range を引き渡す (K0 透明性)。
+
+    Returns:
+        int: tr.research-table-row の行数 (0 以上)
+    """
+    rows = re.findall(r'<tr[^>]*class="research-table-row"', html)
+    return len(rows)
+
+
+def _extract_avg_sold_price(html: str) -> "float | None":
+    """SOLD タブ HTML から最初の avgSoldPrice を抽出する補助関数.
+
+    probe7_sold90.html で確認したセレクタ:
+      td class="...research-table-row__avgSoldPrice"
+      > div.research-table-row__item-with-subtitle > div > "$102.89"
+
+    Args:
+        html: SOLD タブの live DOM HTML
+
+    Returns:
+        float or None: 最初の行の平均売却価格 (USD)。抽出不可なら None。
+    """
+    pat = re.compile(
+        r'class="research-table-row__item research-table-row__avgSoldPrice">(.*?)</td>',
+        re.DOTALL,
+    )
+    m = pat.search(html)
+    if not m:
+        return None
+    inner = re.search(r'<div>([^<]+)</div>', m.group(1))
+    if not inner:
+        return None
+    raw = inner.group(1).strip()
+    price_m = re.search(r'\$([\d,.]+)', raw)
+    if not price_m:
+        return None
+    try:
+        return float(price_m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _extract_active_listing_start_dates(html: str) -> "list[_dt.date]":
+    """ACTIVE タブ HTML から出品開始日を抽出する純関数.
+
+    probe7_active.html で確認したセレクタ:
+      td class="active-listing-row__item active-listing-row__startedDate"
+      > div.active-listing-row__inner-item > div > "Feb 17, 2024"
+
+    Args:
+        html: ACTIVE タブの live DOM HTML
+
+    Returns:
+        list[date]: 有効な日付のリスト (パース不能はスキップ)。空の場合あり。
+    """
+    pat = re.compile(
+        r'class="active-listing-row__item active-listing-row__startedDate">(.*?)</td>',
+        re.DOTALL,
+    )
+    dates: list[_dt.date] = []
+    for m in pat.finditer(html):
+        inner = re.search(r'<div>([^<]+)</div>', m.group(1))
+        if not inner:
+            continue
+        text = inner.group(1).strip()
+        dt = _parse_terapeak_date(text)
+        if dt is not None:
+            dates.append(dt.date())
+    return dates
+
+
+def _poll_active_rows(page: object, timeout_s: float = 30.0) -> bool:
+    """ACTIVE タブの active-listing-row が DOM に出現するまでポーリング.
+
+    SOLD タブは tr.research-table-row を待つが、ACTIVE タブは
+    tr.active-listing-row (probe7_active.html 確認) を待つ。
+
+    Args:
+        page: Playwright page オブジェクト
+        timeout_s: タイムアウト秒
+
+    Returns:
+        True なら出現、False はタイムアウト
+    """
+    deadline = _time.monotonic() + timeout_s
+    while _time.monotonic() < deadline:
+        try:
+            count = page.evaluate(
+                "() => document.querySelectorAll('tr.active-listing-row').length"
+            )
+            if count and count > 0:
+                return True
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"_poll_active_rows: evaluate 失敗 ({e})")
+        _time.sleep(1.0)
+    return False
+
+
+def scrape_product_detail(
+    keyword: str,
+    *,
+    cdp_endpoint: str = CDP_ENDPOINT,
+    sleep_seconds: float = 3.0,
+) -> ProductGateData:
+    """1 商品の詳細データを Terapeak から取得し ProductGateData を返す.
+
+    処理フロー (設計書 §5-1):
+      1. SOLD dayRange=90 ページを load → sold_90d を行数で計算 + avg_sold_price_usd 取得
+      2. Q6 最適化: sold_90d >= 2 なら gate は target_instock 確定 → 即 return (1 navigate のみ)
+      3. sold_90d < 2 の場合のみ:
+         a. ACTIVE タブ load → has_active_listing, listing_start_date (最古)
+         b. SOLD dayRange=730 load → c730 行数カウント
+         → sold_1_2yr = max(0, c730 - sold_90d) [proxy 方式: 設計書で設計判断済み]
+
+    proxy 方式の注記:
+      1〜2年厳密窓は CUSTOM 過去窓未検証のため count(730d) − count(90d) で代替する。
+      730d 期間全体の sold 数から 90d 分を引いた残りを「1〜2年分」の proxy とする。
+      厳密には「91〜730日前」を指すが、ゲート判定 (sold_1_2yr >= 2) の粗い閾値に対して
+      proxy の誤差は許容範囲 (K1 Simplicity)。
+
+    Args:
+        keyword: 商品キーワード (_build_terapeak_search_url に渡す)
+        cdp_endpoint: CDP エンドポイント (デフォルト localhost:9222)
+        sleep_seconds: navigate 間 sleep 秒 (jitter 0.7-1.5 倍を適用)
+
+    Returns:
+        ProductGateData: success=True なら取得成功、False なら error に理由を格納
+    """
+    result_holder: "list[ProductGateData | None]" = [None]
+    error_holder: "list[Exception | None]" = [None]
+
+    def _runner() -> None:
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        try:
+            result_holder[0] = _scrape_product_detail_impl(
+                keyword,
+                cdp_endpoint=cdp_endpoint,
+                sleep_seconds=sleep_seconds,
+            )
+        except Exception as e:  # noqa: BLE001
+            error_holder[0] = e
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    # LOW: thread join に timeout=120s を設定。CDP hang で 03:30 バッチが無期限待ちになるのを防ぐ。
+    t.join(timeout=120)
+    if t.is_alive():
+        logger.error("scrape_product_detail: thread join timeout (120s)")
+        return ProductGateData(
+            keyword=keyword,
+            success=False,
+            error="thread join timeout (120s)",
+        )
+
+    if error_holder[0] is not None:
+        logger.error(f"scrape_product_detail: 例外 ({error_holder[0]})", exc_info=error_holder[0])
+        return ProductGateData(
+            keyword=keyword,
+            success=False,
+            error=f"thread exception: {error_holder[0]}",
+        )
+    if result_holder[0] is None:
+        return ProductGateData(
+            keyword=keyword,
+            success=False,
+            error="no result (thread returned None)",
+        )
+    return result_holder[0]
+
+
+def _scrape_product_detail_impl(
+    keyword: str,
+    *,
+    cdp_endpoint: str,
+    sleep_seconds: float,
+) -> ProductGateData:
+    """scrape_product_detail の実処理. 別 thread から呼ばれる."""
+    import random as _random
+
+    if sync_playwright is None:
+        return ProductGateData(
+            keyword=keyword,
+            success=False,
+            error="playwright not installed",
+        )
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.connect_over_cdp(cdp_endpoint)
+        except Exception as e:
+            return ProductGateData(
+                keyword=keyword,
+                success=False,
+                error=f"CDP connect failed: {e}",
+            )
+
+        if not browser.contexts:
+            try:
+                browser.close()
+            except Exception as e:
+                logger.debug(f"browser close ignored: {e}")
+            return ProductGateData(
+                keyword=keyword,
+                success=False,
+                error="no browser context",
+            )
+
+        ctx = browser.contexts[0]
+        new_tab = None
+        _navs_used = 0  # try/except 両方から参照できるよう try 外で初期化
+
+        try:
+            new_tab = ctx.new_page()
+            now_ms = int(_time.time() * 1000)
+            # H-2: 実 navigate 回数をカウントして戻り値に乗せる。
+
+            # ---- Step 1: SOLD dayRange=90 ----
+            url_90 = _build_terapeak_search_url(keyword, 90, now_ms=now_ms)
+            logger.info(f"scrape_product_detail: navigate SOLD 90d url={url_90[:120]}")
+
+            try:
+                new_tab.goto(url_90, wait_until="domcontentloaded", timeout=30000)
+            except (PWTimeout, Exception) as e:
+                return ProductGateData(
+                    keyword=keyword,
+                    success=False,
+                    error=f"goto SOLD 90d failed: {e}",
+                    navigates_used=_navs_used,
+                )
+            _navs_used += 1
+
+            # error redirect 検知
+            try:
+                current_url = new_tab.url
+            except (PWTimeout, AttributeError):
+                current_url = ""
+            if _is_ebay_error_redirect(current_url):
+                logger.error(f"scrape_product_detail: eBay error redirect ({current_url})")
+                return ProductGateData(
+                    keyword=keyword,
+                    success=False,
+                    error=f"eBay error redirect on SOLD 90d: {current_url}",
+                    navigates_used=_navs_used,
+                )
+
+            # tr.research-table-row 出現ポーリング (timeout は正常 0 件と区別)
+            appeared = _poll_harvest_rows(new_tab, timeout_s=30.0)
+            if not appeared:
+                # 0 行の場合: ポーリング timeout = 行未出現
+                # ただし「正常 0 件 (売れていない)」と「DOM 未出現 (timeout)」を区別するため、
+                # 短時間追加待ちの後 outerHTML を確認し research-table-row が 1 件もなければ
+                # 「0 件正常」として扱う (anti-bot による page load 失敗と区別できないが、
+                # 短 sleep 後に DOM を取れた = SPA が render 済 → 0 件が確定)
+                _time.sleep(2.0)
+                try:
+                    html_90 = new_tab.evaluate(
+                        "() => document.documentElement.outerHTML"
+                    )
+                except (PWTimeout, Exception) as e:
+                    return ProductGateData(
+                        keyword=keyword,
+                        success=False,
+                        error=f"outerHTML failed on SOLD 90d (poll timeout): {e}",
+                        navigates_used=_navs_used,
+                    )
+                sold_90d = _extract_sold_count(html_90, 90)
+                # sold_90d が 0 なら timeout でなく正常 0 件と判定
+                if sold_90d > 0:
+                    # poll が False なのに行がある = poll selector ずれの可能性
+                    logger.warning(
+                        f"scrape_product_detail: poll=False だが parse={sold_90d} 行 "
+                        f"(selector drift 可能性, 続行)"
+                    )
+            else:
+                try:
+                    html_90 = new_tab.evaluate(
+                        "() => document.documentElement.outerHTML"
+                    )
+                except (PWTimeout, Exception) as e:
+                    return ProductGateData(
+                        keyword=keyword,
+                        success=False,
+                        error=f"outerHTML failed on SOLD 90d: {e}",
+                        navigates_used=_navs_used,
+                    )
+                sold_90d = _extract_sold_count(html_90, 90)
+
+            avg_price = _extract_avg_sold_price(html_90)
+            logger.info(
+                f"scrape_product_detail: SOLD 90d sold_90d={sold_90d} "
+                f"avg_price={avg_price}"
+            )
+
+            # ---- Q6 最適化: sold_90d >= 2 で gate 確定 → 即 return ----
+            if sold_90d >= 2:
+                logger.info(
+                    f"scrape_product_detail: sold_90d={sold_90d} >= 2 → "
+                    f"target_instock 確定、ACTIVE/730d navigate スキップ"
+                )
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    has_active_listing=False,      # gate は sold_90d で確定のため不問
+                    listing_start_date=None,
+                    sold_1_2yr=0,
+                    avg_sold_price_usd=avg_price,
+                    success=True,
+                    error=None,
+                    navigates_used=_navs_used,
+                )
+
+            # ---- Step 3a: ACTIVE タブ ----
+            jitter = _random.uniform(0.7, 1.5)
+            _time.sleep(sleep_seconds * jitter)
+
+            url_active = url_90.replace("tabName=SOLD", "tabName=ACTIVE")
+            logger.info(
+                f"scrape_product_detail: navigate ACTIVE url={url_active[:120]}"
+            )
+
+            try:
+                new_tab.goto(url_active, wait_until="domcontentloaded", timeout=30000)
+            except (PWTimeout, Exception) as e:
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"goto ACTIVE failed: {e}",
+                    navigates_used=_navs_used,
+                )
+            _navs_used += 1
+
+            try:
+                current_url = new_tab.url
+            except (PWTimeout, AttributeError):
+                current_url = ""
+            if _is_ebay_error_redirect(current_url):
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"eBay error redirect on ACTIVE: {current_url}",
+                    navigates_used=_navs_used,
+                )
+
+            appeared_active = _poll_active_rows(new_tab, timeout_s=30.0)
+            if not appeared_active:
+                _time.sleep(2.0)
+
+            try:
+                html_active = new_tab.evaluate(
+                    "() => document.documentElement.outerHTML"
+                )
+            except (PWTimeout, Exception) as e:
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"outerHTML failed on ACTIVE: {e}",
+                    navigates_used=_navs_used,
+                )
+
+            active_dates = _extract_active_listing_start_dates(html_active)
+            # H-4: 行の存在と parse 結果を分離する。
+            # _poll_active_rows=True (行あり) でも _extract_active_listing_start_dates=[]
+            # (全パース失敗) の場合は has_active_listing=True, listing_start_date=None で返す。
+            # gate は branch 3 の skip_too_new に保守的に落ちる。
+            if appeared_active and not active_dates:
+                logger.warning(
+                    "scrape_product_detail: ACTIVE 行は存在するが全パース失敗 "
+                    "(has_active_listing=True, listing_start_date=None で保守的に扱う)"
+                )
+                has_active_listing = True
+                listing_start_date: "str | None" = None
+            else:
+                has_active_listing = len(active_dates) > 0
+                listing_start_date = None
+                if active_dates:
+                    oldest = min(active_dates)
+                    listing_start_date = f"{oldest.year:04d}-{oldest.month:02d}"
+
+            logger.info(
+                f"scrape_product_detail: ACTIVE has_active={has_active_listing} "
+                f"dates_count={len(active_dates)} oldest={listing_start_date}"
+            )
+
+            # ---- Step 3b: SOLD dayRange=730 ----
+            jitter = _random.uniform(0.7, 1.5)
+            _time.sleep(sleep_seconds * jitter)
+
+            now_ms2 = int(_time.time() * 1000)
+            url_730 = _build_terapeak_search_url(keyword, 730, now_ms=now_ms2)
+            logger.info(
+                f"scrape_product_detail: navigate SOLD 730d url={url_730[:120]}"
+            )
+
+            try:
+                new_tab.goto(url_730, wait_until="domcontentloaded", timeout=30000)
+            except (PWTimeout, Exception) as e:
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    has_active_listing=has_active_listing,
+                    listing_start_date=listing_start_date,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"goto SOLD 730d failed: {e}",
+                    navigates_used=_navs_used,
+                )
+            _navs_used += 1
+
+            try:
+                current_url = new_tab.url
+            except (PWTimeout, AttributeError):
+                current_url = ""
+            if _is_ebay_error_redirect(current_url):
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    has_active_listing=has_active_listing,
+                    listing_start_date=listing_start_date,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"eBay error redirect on SOLD 730d: {current_url}",
+                    navigates_used=_navs_used,
+                )
+
+            appeared_730 = _poll_harvest_rows(new_tab, timeout_s=30.0)
+            if not appeared_730:
+                _time.sleep(2.0)
+
+            try:
+                html_730 = new_tab.evaluate(
+                    "() => document.documentElement.outerHTML"
+                )
+            except (PWTimeout, Exception) as e:
+                return ProductGateData(
+                    keyword=keyword,
+                    sold_90d=sold_90d,
+                    has_active_listing=has_active_listing,
+                    listing_start_date=listing_start_date,
+                    avg_sold_price_usd=avg_price,
+                    success=False,
+                    error=f"outerHTML failed on SOLD 730d: {e}",
+                    navigates_used=_navs_used,
+                )
+
+            c730 = _extract_sold_count(html_730, 730)
+            # proxy 方式: sold_1_2yr = count(730d) - count(90d)
+            # 負にならないよう max(0, ...) でクランプ
+            sold_1_2yr = max(0, c730 - sold_90d)
+            logger.info(
+                f"scrape_product_detail: SOLD 730d c730={c730} "
+                f"sold_1_2yr={sold_1_2yr}"
+            )
+
+            return ProductGateData(
+                keyword=keyword,
+                sold_90d=sold_90d,
+                has_active_listing=has_active_listing,
+                listing_start_date=listing_start_date,
+                sold_1_2yr=sold_1_2yr,
+                avg_sold_price_usd=avg_price,
+                success=True,
+                error=None,
+                navigates_used=_navs_used,
+            )
+
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                f"scrape_product_detail: 予期しない例外: {e}", exc_info=True
+            )
+            return ProductGateData(
+                keyword=keyword,
+                success=False,
+                error=f"unexpected error: {e}",
+                navigates_used=_navs_used,
+            )
+        finally:
+            _close_tab_safe(new_tab)
+            try:
+                browser.close()
+            except Exception as e:
+                logger.debug(f"browser close ignored: {e}")

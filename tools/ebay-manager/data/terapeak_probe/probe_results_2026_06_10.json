@@ -1,0 +1,39 @@
+{
+  "probe1_category_only": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=&dayRange=365&endDate=1781079625316&startDate=1749543625316&categoryId=293&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "loaded": false,
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    },
+    "current_url_after_nav": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+  },
+  "probe2_column_headers": [],
+  "probe3_dayrange7": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=&dayRange=7&endDate=1781079625316&startDate=1780474825316&categoryId=293&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    },
+    "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+  },
+  "probe4_dayrange730": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=&dayRange=730&endDate=1781079625316&startDate=1718007625316&categoryId=293&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    },
+    "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+  },
+  "probe5_minprice": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=&dayRange=365&endDate=1781079625316&startDate=1749543625316&categoryId=293&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&minPrice=100",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    },
+    "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+  },
+  "probe6_paging": {
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=&dayRange=365&endDate=1781079625316&startDate=1749543625316&categoryId=293&offset=50&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    },
+    "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+  }
+}

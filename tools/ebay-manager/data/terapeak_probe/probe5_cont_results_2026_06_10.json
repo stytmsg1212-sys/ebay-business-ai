@@ -1,0 +1,34 @@
+[
+  {
+    "label": "ui_empty_kw",
+    "info": {
+      "current_url": "https://www.ebay.com/n/all-categories?_nkw=&_sacat=0&_from=R40&_trksid=m570.l1313",
+      "row_count": 0,
+      "kw_found": true,
+      "btn_found": true,
+      "before_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=SOLD"
+    }
+  },
+  {
+    "label": "single_a_excl",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=a+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082970090&startDate=1778490970090&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=10",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=a+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082970090&startDate=1778490970090&categoryId=0&minPrice=10&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+      "row_count": 50,
+      "header_text": "May 11, 2026 – Jun 10, 2026",
+      "first_row": ", preview full size image | Demon Slayer Xross link Figure Tokito Shinazugawa Iguro set New Japan PSL | \t | Edit | \t | $90.00 | Fixed price | \t | $5.21 | 0% Free shipping | \t | 4 | \t | $360.00 | \t | -",
+      "pagination_at_start": true
+    }
+  },
+  {
+    "label": "single_e_excl",
+    "url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=e+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082970090&startDate=1778490970090&categoryId=0&offset=0&limit=50&tabName=SOLD&sellerCountry=SellerLocation%3A%3A%3AJP&sorting=-datelastsold&minPrice=10",
+    "info": {
+      "current_url": "https://www.ebay.com/sh/research?marketplace=EBAY-US&keywords=e+-Card+-camera+-Vuitton+-Hermes+-GUCCI+-Mint+-COACH&dayRange=30&endDate=1781082970090&startDate=1778490970090&categoryId=0&minPrice=10&sellerCountry=SellerLocation%3A%3A%3AJP&offset=0&limit=50&sorting=-datelastsold&tabName=SOLD&tz=Asia%2FTokyo",
+      "row_count": 50,
+      "header_text": "May 11, 2026 – Jun 10, 2026",
+      "first_row": ", preview full size image | Egret II Mini Arcade Collection Part 1 10 Title Dr. Kicks Boogie Mania NEW | \t | Edit | \t | $46.01 | Fixed price | \t | $0.00 | 100% Free shipping | \t | 3 | \t | $138.02 | \t ",
+      "pagination_at_start": true
+    }
+  }
+]
