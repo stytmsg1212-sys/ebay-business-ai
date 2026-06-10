@@ -149,6 +149,13 @@
       "max_requests_per_run": 150,
       "note": "W153 (2026-05-22 改訂): 商品毎 (rival_watch_enabled=1) の検索ワードで Browse API を巡回し listing_rival_discoveries に新規 rival を蓄積. ebay_sync 後に実行 = is_ended 判定が最新. グローバル known set モデルは廃止、user 承認分のみ competitor_products に流入し W183 値下げ対象に昇格. 対象 0 件の時は task_execution_log に痕跡 + 週 1 Discord reminder (claim_alert_dedupe key='w153_unused_weekly')."
     },
+    "rival_seller_sweep": {
+      "enabled": true,
+      "description": "W#3 ライバルセラー新規出品モニター (monitored_sellers 巡回→新規出品差分→AI評価→Discord)",
+      "priority": 7,
+      "execution_times": [2],
+      "note": "W244 (2026-06-10) で結線: TASK_SCHEDULE 登録済なのに dispatch 不在の幽霊タスクだった (稼働実績 0 件、ヘルスチェック false-positive 発生源)。monitored_sellers 0 件時は即スキップ (痕跡は task_execution_log に残る)。セラー登録は MonoDeck ライバルセラータブから。"
+    },
     "news_check": {
       "enabled": true,
       "description": "W154 (2026-05-22 PM): AI ニュース取得 (Tier 0 公式 RSS 4 + Tier 1 編集メディア RSS 4 + Reddit 6 + HN 4 query)",
@@ -185,8 +192,8 @@
       "_re_enabled": "2026-04-26 W19 (permanent_failed 自動判別) + W22 Phase A 完了後に再 enable. W28 で max_items 5→8 に増量"
     },
     "daily_relist": {
-      "enabled": true,
-      "_kill_switch_history": "2026-06-07 緊急停止→同日再開: eBaymag各国版約500件がDB流入しdaily_relist選定条件に合致(各国listングをend/relistでeBaymag管理破壊のリスク)→ 根治(ebay_sync currency≠USD除外+既存637行cleanup)完了で再開。currency判別で各国版は今後DBに入らない。",
+      "enabled": false,
+      "_kill_switch_history": "2026-06-07 緊急停止→同日再開: eBaymag各国版約500件がDB流入しdaily_relist選定条件に合致→根治(currency≠USD除外+cleanup)で再開。 / 2026-06-08 再度緊急停止(user承認): eBay月間販売上限$1M到達でrelist全失敗→旧listingがend済のまま復活せず毎晩~7件喪失(6/8朝6件喪失)。$2M増枠申請をeBayに提出済、承認確認まで停止。承認後 enabled=true + scheduler再起動で再開。",
       "description": "End→Relist SEO ブースト: watch=0 かつ rank=E の listing を毎日最大7件、手動で終了→再出品して検索順位を底上げ",
       "priority": 13,
       "execution_times": [
@@ -222,6 +229,24 @@
     },
     "_x_news_check_removed": {
       "_note": "W154 (2026-05-22 PM) で W13 x_news_check は news_check に統合, 削除済. X (Grok) のリストラ + RSS 8 source 化. monitor/x_news_*.py + monitor/xai_wrapper.py + tasks/task_x_news_check.py + tests/test_x_news.py 物理削除."
+    },
+    "research_harvest": {
+      "enabled": true,
+      "description": "W229 商品リサーチ発掘: Terapeak 2パターン収穫 + 自動ゲート判定 (毎日03:30)",
+      "priority": 14,
+      "cron_hour": 3,
+      "cron_minute": 30,
+      "seed_queries": [
+        {
+          "label": "全カテゴリ除外語",
+          "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
+          "category_id": 0,
+          "min_price": 100
+        }
+      ],
+      "max_items_per_run": 50,
+      "max_pages": 2,
+      "note": "2026-06-10 Q1 実機 PASS で enabled=true 化。CDP Chrome (port 9222) + eBay ログイン事前起動が必要。seed_queries の query は括弧記法の除外語のみ方式 (probe5-B 実証済)。50件/日は fresh_24h + two_year_echo 合算上限、fresh_24h 優先。"
     },
     "customs_check": {
       "enabled": true,

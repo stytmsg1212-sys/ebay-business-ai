@@ -26,6 +26,21 @@ eBay Manager の scheduler / health check / 注文アラート / 予算アラー
 | fallback | env / config 未設定なら `DISCORD_WEBHOOK_URL` (既定 webhook) に自動フォールバック (Q0: 通知先消失を防ぐ) |
 | 他通知 | ヘルスチェック / 予算アラート / 在庫切れ等は引き続き `DISCORD_WEBHOOK_URL` (既定 webhook) のまま |
 
+### W153 専用ライバル検出チャンネル (2026-06-08〜)
+
+商品別ライバル検出 (W153 task_rival_detection) の通知を分離する用に、**専用 webhook** が `.env` に追加されている。背景: 既定 #bot通知 チャンネルに埋もれて user が新規ライバル検出に気付けなかった (user 報告 2026-06-08)。
+
+| 項目 | 値 |
+|---|---|
+| env 変数名 | `DISCORD_RIVAL_WEBHOOK_URL` |
+| Discord channel 名 | `eBay Rival` (既定と同一 guild=`1492273038782238881`) |
+| 用途 | W153 の **新規ライバル集約通知 / errors alert / truncation 警告** (`task_rival_detection.py` の3送信箇所) |
+| 注入先 | `config['discord']['rival_webhook_url']` (`inject_webhook_into_config` で自動注入) |
+| 解決 helper | `task_rival_detection._resolve_rival_webhook(config)` = `rival_webhook_url or webhook_url` (専用優先 / 既定 fallback) |
+| 送信 | `DiscordNotifier(webhook, bypass_env=True)` で env 既定上書きを回避 (W207 と同一) |
+| fallback | env / config 未設定なら `DISCORD_WEBHOOK_URL` (既定 webhook) に自動フォールバック (Q0: 通知先消失防止) |
+| ⚠️ 既知の穴 | UI「今すぐ検索」(`run_rival_per_listing_detection_one` 直呼び) は通知を送らない設計 (操作中は画面に inline 表示)。自動通知は 02:30 batch (`run_rival_detection`) のみ |
+
 ## user 視認確認の前提 (R-11 / 2026-05-14 事故から)
 
 - **webhook 登録 server に参加しているアカウントで Discord login する** ことが必須

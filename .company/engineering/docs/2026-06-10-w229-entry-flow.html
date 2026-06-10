@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>W229 入り口フロー詳細 — Terapeak 絞り込み → 商品選定</title>
+<style>
+  :root {
+    --blue: #1a6fb5; --blue-bg: #eaf3fb;
+    --green: #2e8b57; --green-bg: #eaf6ef;
+    --red: #c0392b; --red-bg: #fbeeec;
+    --amber: #b8860b; --amber-bg: #fdf6e3;
+    --purple: #6a4fa3; --purple-bg: #f2eefa;
+    --gray: #555; --line: #d0d7de;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Yu Gothic UI","Meiryo",sans-serif; margin: 0; background: #f6f8fa; color: #24292f; line-height: 1.65; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 1.45rem; border-bottom: 3px solid var(--blue); padding-bottom: 10px; }
+  h1 small { display:block; font-size: .8rem; color: var(--gray); font-weight: normal; margin-top: 6px; }
+  h2 { font-size: 1.15rem; margin-top: 44px; padding-left: 10px; border-left: 5px solid var(--blue); }
+  h3 { font-size: 1rem; margin-top: 26px; }
+  .note { background: var(--amber-bg); border: 1px solid #e6d9a8; border-radius: 8px; padding: 12px 16px; font-size: .9rem; }
+  .ok { background: var(--green-bg); border: 1px solid #bfe3cd; border-radius: 8px; padding: 12px 16px; font-size: .9rem; }
+
+  /* フロー図 */
+  .flow { margin: 24px 0; }
+  .step {
+    background: #fff; border: 2px solid var(--line); border-radius: 10px;
+    padding: 14px 18px; margin: 0 auto; max-width: 760px; position: relative;
+  }
+  .step .num {
+    position: absolute; left: -16px; top: 14px; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--blue); color: #fff; font-weight: bold; display: flex; align-items: center; justify-content: center;
+  }
+  .step h4 { margin: 0 0 6px 22px; font-size: 1rem; color: var(--blue); }
+  .step p, .step ul { margin: 4px 0 0 22px; font-size: .88rem; }
+  .step ul { padding-left: 18px; }
+  .step.guard { border-color: var(--red); }
+  .step.guard h4 { color: var(--red); }
+  .step.guard .num { background: var(--red); }
+  .step.save { border-color: var(--green); }
+  .step.save h4 { color: var(--green); }
+  .step.save .num { background: var(--green); }
+  .arrow { text-align: center; font-size: 1.4rem; color: var(--gray); margin: 2px 0; }
+  .arrow span { font-size: .78rem; display: block; color: var(--gray); }
+
+  /* 分岐図 */
+  .branches { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px; }
+  .branch { flex: 1 1 170px; max-width: 220px; border-radius: 8px; padding: 10px 12px; font-size: .82rem; border: 1.5px solid; }
+  .branch b { display: block; margin-bottom: 4px; font-size: .85rem; }
+  .b-pass  { background: var(--green-bg); border-color: var(--green); }
+  .b-watch { background: var(--blue-bg);  border-color: var(--blue); }
+  .b-skip  { background: var(--amber-bg); border-color: var(--amber); }
+  .b-rej   { background: var(--red-bg);   border-color: var(--red); }
+
+  table { border-collapse: collapse; width: 100%; font-size: .86rem; background: #fff; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 4px; font-size: .85em; }
+  .tag { display: inline-block; border-radius: 4px; padding: 1px 8px; font-size: .75rem; font-weight: bold; color: #fff; }
+  .t-done { background: var(--green); }
+  .t-todo { background: var(--amber); }
+  .t-risk { background: var(--red); }
+
+  .filterbox { background: var(--purple-bg); border: 1.5px solid var(--purple); border-radius: 10px; padding: 14px 18px; max-width: 760px; margin: 0 auto; }
+  .filterbox h4 { color: var(--purple); margin: 0 0 8px; }
+  .filterbox table { font-size: .84rem; }
+  .legend { display:flex; gap:14px; flex-wrap: wrap; font-size:.8rem; margin-top: 8px; }
+  .legend span { display:flex; align-items:center; gap:5px; }
+  .dot { width: 13px; height: 13px; border-radius: 3px; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>W229 入り口フロー詳細<small>Terapeak での絞り込み → 商品選定 (毎日 03:30 夜間バッチ / task_research_harvest)<br>設計書: 2026-06-10-w229-w228-full-automation-design.md §5/§9 ・ 仕様書 2026-06-07 §0 Phase A</small></h1>
+
+<div class="note">
+<b>このページの範囲</b>: 「Terapeak から商品候補を拾い、売れ行きゲートで選別し、DB に積むまで」= W229 の入り口。
+この先 (フリマ仕入探索→利益計算→承認キュー) は Phase 3/4 で別バッチ (04:30) が引き継ぎます。
+</div>
+
+<h2>0. 前提 (1 回だけの人間作業)</h2>
+<div class="flow">
+  <div class="step">
+    <span class="num">人</span>
+    <h4>CDP Chrome を起動して eBay にログインしておく</h4>
+    <p>port 9222 の専用 Chrome (現在も稼働中のもの)。Terapeak はログイン必須のため、ここだけは人間。一度ログインすれば毎晩のバッチが使い回します。ログイン切れの場合バッチは<b>静かに失敗せず Discord 通知</b>します。</p>
+  </div>
+</div>
+
+<h2>1. 絞り込み条件 (ハーベストフィルタ)</h2>
+<p>あなたが以前共有してくれた手動リサーチ手順 (仕様書 §0 Phase A) をそのまま機械化します。設定画面から変更可能です。</p>
+
+<div class="filterbox">
+<h4>Terapeak Product Research に投げる条件</h4>
+<table>
+<tr><th style="width:30%">条件</th><th>値 (初期設定)</th><th style="width:18%">実装状態</th></tr>
+<tr><td>セラー所在国</td><td>Japan のみ (日本セラーが売った実績 = 自分も売れる)</td><td><span class="tag t-done">実証済</span> 既存コードに同じ URL パラメータあり</td></tr>
+<tr><td>カテゴリ</td><td>Business &amp; Industrial / Consumer Electronics / Computers, Tablets &amp; Networking</td><td><span class="tag t-done">実証済</span> categoryId パラメータ使用中</td></tr>
+<tr><td>価格</td><td>$100 以上 (薄利商品を最初から見ない)</td><td><span class="tag t-todo">要実機確認</span></td></tr>
+<tr>
+  <td>並び順 (2 パターン / 毎晩交互)</td>
+  <td>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="background:var(--green-bg);border:1.5px solid var(--green);border-radius:6px;padding:7px 10px;">
+        <b>① fresh_24h (鮮度型)</b><br>
+        期間: Last 7 days / 並び: Date last sold <b>新しい順</b><br>
+        採取: 直近 24 時間以内に売れた行のみ。「いま売れた」需要を拾う
+      </div>
+      <div style="background:var(--purple-bg);border:1.5px solid var(--purple);border-radius:6px;padding:7px 10px;">
+        <b>② two_year_echo (2年前型)</b><br>
+        期間: Last 2 years / 並び: Date last sold <b>古い順</b><br>
+        採取: 「今日−2年」の 24 時間窓 (≈730日前) に売れた行のみ。当時売れたが今は出品が薄い商品の再発掘 + 年周期需要
+      </div>
+      <div style="font-size:.82rem;color:var(--gray);">
+        50件/日 cap は両パターン合算。①優先で詰め、残枠を②へ。<br>
+        同一商品が両パターンに出たら先着優先 (重複排除は harvest_keyword 共通)。<br>
+        ②は該当 0 件の夜もあり得る → 0 件で正常終了 (Discord に「②0件」と痕跡)
+      </div>
+    </div>
+  </td>
+  <td>
+    <span class="tag t-todo">要実機確認</span><br>
+    <span style="font-size:.78rem;color:var(--gray);">Last 2 years 期間指定 URL param (dayRange=730 or CUSTOM 日付範囲) / ソート昇順・降順の切替方法</span>
+  </td>
+</tr>
+<tr><td>除外キーワード</td><td>VeRO ブランド辞書 (<code>vero_brands.json</code>) + アニメ/IP 系ワード (権利リスク品を入口で排除)</td><td><span class="tag t-done">辞書は既存資産</span></td></tr>
+<tr><td>1 日の取得上限</td><td>50 商品 (アカウント保護のため控えめスタート)</td><td>設定で変更可</td></tr>
+</table>
+<p style="font-size:.8rem; margin-top:8px;">「要実機確認」の 2 つは、URL パラメータで指定できなければ Playwright の画面クリックで設定する代替手段あり (Terapeak は通常の画面構造なので eBaymag のような自動化不能リスクは低い)。Phase 2 着手時の最初の作業 = 実機 1 ページ probe でここを確定します。</p>
+</div>
+
+<h2>2. 毎晩 03:30 の処理フロー</h2>
+<div class="flow">
+
+  <div class="step guard">
+    <span class="num">1</span>
+    <h4>クォータ残量チェック (門番)</h4>
+    <ul>
+      <li>Terapeak の読み取りは <b>1 日 ~250 回が実運用上の限界</b> (未実証・アカウントリスクあり) で、日曜 02:00 の市場分析と共有</li>
+      <li>当日の消費実績を DB (api_call_log) で集計し、<b>残りが足りなければ今日は中止</b> → Discord で「クォータ不足で skip」通知 (黙って消えない)</li>
+    </ul>
+  </div>
+  <div class="arrow">↓<span>残量 OK</span></div>
+
+  <div class="step">
+    <span class="num">2</span>
+    <h4>結果リストの収穫 (harvest_product_list) — 2 パターン × 各カテゴリ</h4>
+    <ul>
+      <li>各カテゴリに対して <b>① fresh_24h</b> と <b>② two_year_echo</b> の 2 パターンを実行し、結果を合算</li>
+      <li><b>①</b> Last 7 days / Date last sold 新しい順 → 直近 24 時間以内の行だけ採取 (「いま売れた」鮮度型)</li>
+      <li><b>②</b> Last 2 years / Date last sold 古い順 → 「今日−2年」の 24 時間窓 (≈730日前) の行だけ採取 (年周期・再発掘型)</li>
+      <li>合算で <b>最大 50 商品/日</b>。①優先で詰めた後、残枠を②へ。②が 0 件の夜も正常 (Discord に痕跡)</li>
+      <li>取るもの: 商品名 / Avg sold price (平均売値 $) / 90日 sold 件数 / <b>Date last sold</b> / 詳細リンク / 画像</li>
+      <li>除外キーワード一致はこの時点で捨てる (件数はログに記録)</li>
+    </ul>
+  </div>
+  <div class="arrow">↓<span>商品リスト (〜50 件)</span></div>
+
+  <div class="step">
+    <span class="num">3</span>
+    <h4>重複排除 (既に判定済みの商品は飛ばす)</h4>
+    <ul>
+      <li>新着順なので<b>同じ商品が毎晩再登場</b>する → 商品名を正規化したキーで過去判定を照合</li>
+      <li>判定済み → skip (件数を記録)。<b>例外: 「出品されたばかりで様子見」だった商品だけは再判定</b> (時間が経てば死に筋か売れ筋か分かるため)</li>
+    </ul>
+  </div>
+  <div class="arrow">↓<span>未判定の商品のみ</span></div>
+
+  <div class="step">
+    <span class="num">4</span>
+    <h4>商品ごとの詳細取得 (scrape_product_detail)</h4>
+    <ul>
+      <li><b>90 日の sold 件数</b>を取得 → <b>2 件以上ならこれだけで「対象」確定</b>。残りの取得はスキップ (クォータ約 3 割節約)</li>
+      <li>2 件未満のときだけ追加で: <b>現在の出品 (ACTIVE) の有無と最古の出品開始日</b> + <b>1〜2 年前の sold 件数</b> を取得</li>
+      <li>1 商品ごとにランダム待機 (人間らしい間隔)。<b>並行アクセスはしない</b></li>
+    </ul>
+  </div>
+  <div class="arrow">↓<span>売れ行きデータ 3 点セット</span></div>
+
+  <div class="step">
+    <span class="num">5</span>
+    <h4>売れ行きゲート 5 分岐 (自動判定・純関数)</h4>
+    <p>けいすけ流の選別基準をそのままコード化した既存関数 (W228 で実装・テスト済) に流し込む:</p>
+    <div class="branches">
+      <div class="branch b-pass"><b>① 対象 (在庫あり想定)</b>直近 90 日に 2 個以上売れた → フリマ探索へ</div>
+      <div class="branch b-watch"><b>④ 対象 (在庫 0 + 監視)</b>今は出品ゼロだが 1〜2 年前に 2 個以上売れた → 仕入先が出たら狙う</div>
+      <div class="branch b-skip"><b>③ 今回skip (様子見)</b>出品はあるが開始から 90 日未満で実績不明 → 再出現時に再判定</div>
+      <div class="branch b-rej"><b>② 死に筋 除外</b>90 日以上出品されているのに売れていない</div>
+      <div class="branch b-rej"><b>⑤ 需要なし 除外</b>過去 1〜2 年でも 2 個未満</div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--green-bg);border:1.5px solid var(--green)"></span>次工程へ進む</span>
+      <span><span class="dot" style="background:var(--blue-bg);border:1.5px solid var(--blue)"></span>次工程へ進む (在庫0ルート)</span>
+      <span><span class="dot" style="background:var(--amber-bg);border:1.5px solid var(--amber)"></span>保留 (後日再判定)</span>
+      <span><span class="dot" style="background:var(--red-bg);border:1.5px solid var(--red)"></span>除外 (理由つきで保存)</span>
+    </div>
+  </div>
+  <div class="arrow">↓<span>判定結果</span></div>
+
+  <div class="step save">
+    <span class="num">6</span>
+    <h4>DB へ永続保存 (Phase 1 で整備した受け皿)</h4>
+    <ul>
+      <li>全商品を research_candidates へ保存: 判定結果 / 判定根拠 / 判定に使った数字のスナップショット / 日時</li>
+      <li><b>除外した商品も理由つきで残す</b> (翌晩の重複排除キーになる + 後から「なぜ落としたか」追える)</li>
+      <li>通過商品 (①④) は status = <code>gate_passed</code> → 04:30 のフリマ探索バッチが拾う</li>
+    </ul>
+  </div>
+  <div class="arrow">↓</div>
+
+  <div class="step save">
+    <span class="num">7</span>
+    <h4>Discord 通知 (実行サマリ)</h4>
+    <p>「発掘 N 件 / ゲート通過 M 件 / 除外 K 件 / 既判定スキップ J 件」を毎朝通知。MonoDeck 定時実行タブにも表示。</p>
+  </div>
+
+</div>
+
+<h2>3. 異常時の動き (アカウント保護が最優先)</h2>
+<table>
+<tr><th style="width:32%">事象</th><th>動き</th></tr>
+<tr><td>eBay がエラーページへ飛ばす (anti-bot の兆候)</td><td><b>即座に全停止</b> + Discord 通知。残りは翌晩に持ち越し (粘らない)</td></tr>
+<tr><td>取得が連続 5 回失敗</td><td>同上 (既存の市場分析と同じ防御を流用)</td></tr>
+<tr><td>画面の集計期間が指定とずれている (90日指定なのに30日表示等)</td><td>抽出せずエラー記録 (誤った数字でゲート判定しない / 既存防御の流用)</td></tr>
+<tr><td>クォータ不足 / CDP Chrome 未起動・ログイン切れ</td><td>当日 skip + Discord 通知 (silent skip 禁止)</td></tr>
+</table>
+
+<h2>4. 実装状態の整理</h2>
+<table>
+<tr><th style="width:38%">部品</th><th style="width:20%">状態</th><th>備考</th></tr>
+<tr><td>売れ行きゲート 5 分岐 (判定ロジック)</td><td><span class="tag t-done">実装・テスト済</span></td><td>W228 で完成。W229 はバッチから呼ぶだけ</td></tr>
+<tr><td>判定結果の DB 受け皿 (永続化)</td><td><span class="tag t-done">Phase 1 実装済</span></td><td>本日実装 → いまレビュー指摘修正中</td></tr>
+<tr><td>JP セラー / カテゴリ / 期間指定の URL 操作</td><td><span class="tag t-done">実証済</span></td><td>市場分析で毎週実運用中の同じ画面・同じ方式</td></tr>
+<tr><td>anti-bot 防御 (即停止 / 待機 / 画面照合)</td><td><span class="tag t-done">実証済</span></td><td>既存コード流用</td></tr>
+<tr><td>価格 $100+ の指定方法</td><td><span class="tag t-todo">実機 probe で確定</span></td><td>Phase 2 の最初の作業。URL 不可なら画面クリックで代替</td></tr>
+<tr><td>Last 2 years 期間指定の URL param<br><small>(two_year_echo パターンで必要)</small></td><td><span class="tag t-todo">実機 probe で確定</span></td><td><code>dayRange=730</code> か CUSTOM 日付範囲 (startDate/endDate) か — どちらが使えるか実機で確認</td></tr>
+<tr><td>Date last sold の昇順/降順ソート切替<br><small>(① 新しい順 ↔ ② 古い順)</small></td><td><span class="tag t-todo">実機 probe で確定</span></td><td>URL param か画面クリックか — ①②で逆方向が必要なため要確認</td></tr>
+<tr><td>結果リストの行単位抽出 (商品名/価格/sold数)</td><td><span class="tag t-todo">実機 probe で確定</span></td><td>同上。新規開拓だが通常の表構造</td></tr>
+<tr><td>クォータ 250/日 の実態</td><td><span class="tag t-risk">未実証 (最大リスク)</span></td><td>だから 50 件/日 + 即停止で控えめ運用から開始</td></tr>
+</table>
+
+<div class="ok" style="margin-top:24px;">
+<b>まとめ</b>: 入り口の流れは「①2 パターン × 各カテゴリでフィルタをかけて候補を拾う → ②重複を飛ばす → ③商品ごとに売れ行き 3 点を取る → ④5 分岐ゲートで自動選別 → ⑤全件理由つきで DB 保存 → ⑥朝 Discord 報告」。
+毎晩 fresh_24h (いま売れた) と two_year_echo (2年前に売れた) の 2 本立てで合算 50 件を取る設計です。
+判定ロジックと受け皿と防御は完成済みで、残る作業は Terapeak 画面の読み取り部分 (実機 probe → セレクタ確定 / 期間・ソート param 確定 → バッチ化) です。
+</div>
+
+</div>
+</body>
+</html>

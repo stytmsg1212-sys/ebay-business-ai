@@ -47,7 +47,7 @@
 |----------|------|
 | 本 CLAUDE.md (project root) | プロジェクト構造・絶対ルール・規約 |
 | `~/.claude/rules/*.md` (user global) | 全プロジェクト共通 coding / security |
-| `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** |
+| `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** / **progress-touchpoint** (2026-06-10 無応答事故 2 件で昇格) |
 | `.claude/rule-snippets/*.md` (on-demand snippet、2026-05-21 hybrid 化) | **wiki-frontmatter** / **contradiction-annotation** / **discord-notification** / **supplier-matching-rules** / **llm-wiki-compilation** (Q7) — UserPromptSubmit router で keyword 一致時 JIT 注入、または assistant が Read on-demand |
 | `tools/ebay-manager/CLAUDE.md` (subdir) | eBay 規制 4 セクション (出品 / 通関 / DDP / ランク) |
 | `USER_MANUAL.md` (project root) | **user (人間) が手で実行する手順** 集約 (scheduler 操作 / Phase 7 監視・緊急停止 / kill switch / メンテ / トラブル対処 / slash command 早見表) |

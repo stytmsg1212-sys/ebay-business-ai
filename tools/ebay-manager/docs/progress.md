@@ -1,11 +1,177 @@
 ---
 title: eBay Manager 実装進捗レポート
-version: 4.0
+version: 4.1
 created: 2026-04-07
-last_updated: 2026-04-07
+last_updated: 2026-06-10
 ---
 
 # eBay Manager 実装進捗レポート
+
+---
+
+## W229 Phase 2 収穫エンジン実装（2026-06-10）
+
+### ゴール
+Terapeak Product Research 結果リストを 2 パターン（fresh_24h / two_year_echo）で取得する
+スクレイパー層を実装する。scheduler 結線・DB migration・設定 UI は scope 外（後続）。
+
+### 実装内容
+実装完了
+
+- [x] `HarvestedProduct` dataclass — 設計書 §5-1 + probe 確定 date_last_sold フィールド追加
+- [x] `HarvestResult` dataclass — products / pages_loaded / error / success
+- [x] `build_harvest_url()` — fresh_24h(7d/新着順) と two_year_echo(730d/古い順) の 2 パターン URL 生成。既存 `_build_terapeak_search_url` と同構造（startDate/endDate ms 必須・sellerCountry=JP・tabName=SOLD・limit=50）。不正 pattern は ValueError。
+- [x] `parse_harvest_rows()` — tr.research-table-row を走査し td class suffix で各値を抽出。probe 確定の 2 段ネスト DOM (item-with-subtitle) に対応（td 全体取得→最初の `<div>text</div>` パターンで正確抽出）。スキップ行は logger.warning で記録（Q0）。
+- [x] `filter_harvest_window()` — fresh_24h は JST 今日/昨日マッチ、two_year_echo は今日-2年マッチ（うるう日 2/29 → 2/28 丸め）。date_last_sold=None は除外 + logger.warning（Q0）。
+- [x] `_poll_harvest_rows()` — domcontentloaded + ポーリング（networkidle 禁止・probe 確定）。
+- [x] `harvest_product_list()` — 既存 thread wrapper パターン（_runner + list holder）で CDP attach。新規タブで navigate → live outerHTML → _detect_actual_dayrange 検証 → parse → filter → 窓内 0 件で打ち切り。ページ間 sleep + jitter 流用。error redirect 検知。
+- [x] `tests/test_terapeak_harvest.py` — 48 テスト、既存テストとの合計 72 PASS
+
+### 技術的判断（設計書からのずれ）
+
+1. `_TD` lambda を `><div[^>]*>(.*?)</div>` 形式から `>(.*?)</td>` 形式に変更。
+   理由: 実 DOM は `<div class="item-with-subtitle"><div>$385.00</div>` の 2 段ネストであり、
+   前者だと外側 div を消費して `$385.00` → `85.00` を返す誤りが生じた（実機 fixture で発見）。
+   td 全体を取得後に最初の `<div>text</div>` を探す方式が probe 確定構造と整合する。
+
+2. `HarvestResult.pages_loaded` フィールドを追加。設計書では navigate 回数を戻り値に含める
+   指示があり、クォータ計上（後続 Phase）に必要なため実装に含めた（scope 内）。
+
+### スコア自己評価
+- **完成度**: 4.8/5（実機 CDP 接続テストは scope 外。実機検証は user が別途実施）
+- **テスト実施**: pytest 48 PASS（新規）+ 24 PASS（既存 terapeak test）= 72 PASS
+- **仕様準拠**: 設計書 §5-1 の関数仕様・probe 確定セレクタ・打ち切りロジック全て実装
+- **既存コード**: K2 準拠。既存関数・既存テストは一切変更なし
+
+### 未実装（後続 Phase へ）
+- scheduler 結線（daily_scheduler.py への add_job）
+- DB migration v70（harvest_pattern 列）および重複排除ロジック
+- クォータ計上（api_call_log への navigate 記録）
+- 設定 UI（ハーベストフィルタ設定）
+- scrape_product_detail / _extract_active_listing_start_dates / _extract_sold_count（設計書 §5-1 の残関数、Phase 2 後半〜Phase 3 で実装）
+
+**Status**: 完了・後続 Phase 結線待ち
+
+---
+
+## W229 Phase 2 — scrape_product_detail 実装（2026-06-10）
+
+### ゴール
+1 商品の Terapeak 詳細（sold_90d / has_active_listing+開始日 / sold_1_2yr）を取得し、
+`evaluate_sourcing_gate` に渡せる `ProductGateData` を返す関数を実装する。
+
+### 実装内容
+
+- [x] `ProductGateData` dataclass — 設計書 §5-1 の仕様に準拠。`sold_90d` / `has_active_listing` / `listing_start_date` / `sold_1_2yr` / `avg_sold_price_usd` / `success` / `error`。Python 3.10 未満互換のため `str | None` は文字列リテラルで記述。
+- [x] `_extract_sold_count(html, day_range)` — tr.research-table-row の行数を返す純関数（sold 件数 proxy）。
+- [x] `_extract_avg_sold_price(html)` — avgSoldPrice td の最初の `$N.NN` を抽出する純関数。
+- [x] `_extract_active_listing_start_dates(html)` — ACTIVE タブの `active-listing-row__startedDate` td から出品開始日を全件抽出する純関数。probe7_active.html で確認したセレクタを採用。
+- [x] `_poll_active_rows(page, timeout_s)` — ACTIVE タブ用ポーリング（tr.active-listing-row 待ち。SOLD タブは tr.research-table-row）。
+- [x] `scrape_product_detail(keyword)` — 既存 thread wrapper パターンで CDP attach。Q6 最適化（sold_90d >= 2 で 1 navigate のみ）、全 navigate エラー時は success=False + error 設定（Q0 silent skip 禁止）。
+- [x] `_scrape_product_detail_impl(keyword)` — 実処理。3 navigate 経路（SOLD 90d → ACTIVE → SOLD 730d）と Q6 skip 経路（SOLD 90d のみ）を実装。sold_1_2yr = max(0, c730 - c90) proxy 方式。
+- [x] `tests/test_terapeak_product_detail.py` — 30 テスト（純関数 + monkeypatch による本体テスト）。
+
+### セレクタの根拠（probe7 HTML より）
+
+| セレクタ | 対象 | 確認ファイル |
+|---|---|---|
+| `tr.research-table-row` | SOLD タブ行（6 行確認） | probe7_sold90.html |
+| `td.research-table-row__avgSoldPrice` | 平均売却価格 "$102.89" | probe7_sold90.html |
+| `tr.active-listing-row` | ACTIVE タブ行（50 行確認） | probe7_active.html |
+| `td.active-listing-row__startedDate` | 出品開始日 "Feb 17, 2024" | probe7_active.html |
+
+ACTIVE タブは `research-table-row` を使わず `active-listing-row` クラスを採用することを
+probe HTML 実測で確認（重要な発見。class prefix が異なるため既存 `_poll_harvest_rows` を
+ACTIVE タブに流用不可 → 専用の `_poll_active_rows` を新設）。
+
+### proxy 方式の設計判断
+
+sold_1_2yr = max(0, count(730d) - count(90d)) は「91〜730日前」の近似であり、
+1〜2年厳密窓ではない。CUSTOM 日付範囲 URL が実機未検証のため、この proxy で代替。
+docstring に明記済み。
+
+### 技術的判断（設計書からのずれ）
+
+1. `dataclasses` モジュールを `_dc` alias でインポート（ファイル末尾への追加のため、
+   既存 `from dataclasses import dataclass` との名前衝突を回避しつつ K2 準拠）。
+2. ACTIVE タブのポーリングに `_poll_active_rows` を新設。既存 `_poll_harvest_rows` は
+   `tr.research-table-row` 専用であり ACTIVE タブには使用不可（probe 確認）。
+3. poll=False でも outerHTML 取得を試みて sold_90d=0 の正常ケースと timeout を分離。
+
+### スコア自己評価
+
+- **完成度**: 4.8/5（実機 CDP テストは scope 外。実機検証は後続 Phase で）
+- **テスト実施**: pytest 95 PASS（新規 30 + 既存 65 = 全 PASS）
+- **仕様準拠**: 設計書 §5-1 のシグネチャ・Q6 最適化・proxy 方式・Q0 全て実装
+- **既存コード**: K2 準拠。既存関数・harvest 部は一切変更なし
+
+### 未実装（後続 Phase へ）
+
+- `harvest_product_list` との結線（task_research_harvest.py）
+- DB 着地（research_candidates への gate_decision 保存）
+- クォータ計上
+
+**Status**: 完了・Agent C 結線済み
+
+---
+
+## W229 Phase 2 — Agent C: 03:30 収穫バッチ結線（2026-06-10）
+
+### ゴール
+`task_research_harvest.py` (03:30 JST 夜間バッチ本体) を実装し、
+`daily_scheduler.py` と `task_execution_log.py` へ結線する。
+
+### 実装内容
+
+- [x] `tasks/task_research_harvest.py` — **新規作成** (約 600 行)
+  - `run_research_harvest(config)` — バッチ本体。enabled チェック / CDP 疎通 / クォータ管理 / harvest × 2 パターン / dedup / gate 判定 / DB 着地 / Discord 通知
+  - `_check_cdp_available()` — port 9222 TCP 疎通確認
+  - `_get_today_terapeak_quota_used()` — JST 当日の api_call_log.terapeak_read 集計（sqlite-timezone.md 遵守）
+  - `_record_navigate(success, error_message)` — api_call_log への navigate 1 回記録
+  - `_send_discord(config, message, severity)` — Discord 通知ヘルパ
+  - `_normalize_keyword(title)` — dedup 用正規化（小文字 + 連続空白）
+  - `_get_existing_gate_decisions(normalized_keywords)` — DB 既存 gate_decision 済候補照合
+  - `_get_harvest_pattern(prod, fresh_products)` — fresh_24h / two_year_echo 判別
+  - `_update_harvest_meta(rc_id, nk, prod)` — harvest メタ列 UPDATE
+  - Q0 対応: enabled=false / quota 不足 / anti-bot / consecutive failure 全経路で Discord + log 痕跡
+
+- [x] `daily_scheduler.py` — `_run_research_harvest` 関数追加 + `add_job(hour=3, minute=30)` 追加
+  - CronTrigger(hour=3, minute=30, second=0), id='research_harvest_03_30', max_instances=1
+
+- [x] `monitor/task_execution_log.py` — TASK_SCHEDULE に research_harvest エントリ追加
+  - `{"key": "research_harvest", "display": "W229 商品リサーチ発掘 (毎日 03:30)", "hours": [3], ...}`
+
+- [x] `tests/test_task_research_harvest.py` — **新規作成** (19 テスト全 PASS)
+  - TestEnabledFalseSkip (3) / TestCdpUnavailable (1) / TestQuotaInsufficient (2)
+  - TestNormalFlow (3) / TestDedup (3) / TestHarvestFailure (3)
+  - TestNormalizeKeyword (3) / TestRecordNavigate (1)
+
+### MEDIUM-1 修正の状況
+
+Agent A が `terapeak_scraper.py` L2115-2136 に実装済み (コメント "MEDIUM-1 修正 (2026-06-10)" で確認)。
+Agent C による追加対応なし（既適用）。
+
+### 設計書 §4/§6 との差分
+
+**差分なし**。設計通り実装。
+
+注記:
+- モジュールレベルインポート (`from monitor.terapeak_scraper import harvest_product_list, ...`) を採用。
+  設計書はローカルインポートを想定していたが、unittest.mock.patch の動作要件（パッチパスは
+  「バインドされた場所」）により変更。機能・インターフェースは設計書準拠。
+- skip_too_new 再判定経路: `update_status(rc_id, STATUS_HARVESTED)` → `save_gate_decision`
+  (`_ALLOWED_TRANSITIONS[gate_rejected] = {harvested}` 経由)。設計書 §4 の状態遷移図に準拠。
+
+### スコア自己評価
+
+- **完成度**: 5/5（設計書 §6 の全実装項目を実装・テスト PASS）
+- **テスト実施**: pytest 19 PASS (新規) + 95 PASS (既存 terapeak) + 回帰 189 PASS
+- **仕様準拠**: 設計書 §4 状態機械 / §6 バッチ仕様 / §9 データフロー / §10 DoD 全て準拠
+- **既存コード**: K2 準拠。daily_scheduler.py と task_execution_log.py への最小追加のみ
+
+**Status**: 完了 (enabled=false のまま本番 scheduler に組み込み済み)
+
+---
 
 ## 概要
 
@@ -197,3 +363,120 @@ monitor/database.py
 **作成者**: eBay Manager 開発チーム
 **最終更新**: 2026-04-07
 **現在の状態**: 本番運用中（Sprint 1-5 完了）
+
+---
+
+## W228 後続: 承認UI + キーワード新着監視登録 (2026-06-07)
+
+### ゴール
+research_candidates 一覧 (セクションC) を拡張し、人間が候補を承認してキーワード新着監視に登録できるようにする。
+
+### 実装内容
+完了
+
+- [x] research_candidates_db.py に承認系 status 定数追加 (DB migration なし)
+  - STATUS_IDENTITY_APPROVED / STATUS_IDENTITY_REJECTED / STATUS_WATCH_REGISTERED
+  - _VALID_STATUSES / _ALLOWED_TRANSITIONS 拡張 (sourced/needs_review → identity_approved/identity_rejected / identity_approved → watch_registered)
+- [x] tab_w228_research.py セクションC拡張
+  - status フィルタに承認系 status を追加 (9 種)
+  - sourced / needs_review 行に「同一性OK / 却下」ボタン表示
+  - identity_approved 行に「上限仕入価格 (編集可) + キーワード新着監視に登録」ボタン表示
+  - watch 登録: メルカリ + ヤフオク の 2 サイト / source=w228_research / price_max=found_price_jpy (保守値)
+  - 登録成功後 status=watch_registered に遷移
+  - 登録失敗時は status 遷移しない (Q0 偽装成功禁止)
+  - 重複登録防止: add_watch inserted_new=False でも status は遷移 (既存 watch として扱う)
+- [x] tests/test_w228_approval_watch_2026_06_07.py 追加 (12 テスト、全 PASS)
+  - 承認 status 定数存在確認
+  - sourced → identity_approved → watch_registered 正常遷移
+  - 不正遷移拒否 (identity_approved → sourced / watch_registered → sourced)
+  - needs_review → identity_approved 許容
+  - identity_rejected → sourcing 許容 (再探索)
+  - watch_registered → needs_review 許容
+  - add_watch が正しい引数で呼ばれることを mock 確認
+  - 重複登録防止 + status 遷移の確認
+  - watch 登録失敗時の status 非遷移確認
+  - _calc_price_max_jpy / URL ビルダーのロジック確認
+
+### price_max 算出ロジック
+found_price_jpy を保守的上限として使用 (estimated_profit_usd は USD で為替依存のため JPY 換算せず)。
+UIで number_input として編集可能 (step=500 JPY)。
+
+### スコア自己評価
+- **完成度**: 5/5
+- **テスト実施**: 新規 12 pass / 既存 W228 テスト 15 pass / 全体 tests/ は回帰なし
+- **仕様準拠**: 実eBay出品は未実装 (制約通り)、承認+watch登録のみ
+
+### 残課題 (別ステップ)
+- 実 eBay 出品 (AddItem/ReviseItem) は未実装 (最高リスクのため別ステップ)
+- watch 登録後のキーワード監視クローラーは既存 W148/W206/W207 がカバー
+
+**Status**: 完了・コミット待ち
+
+---
+
+## W229 / W228 Phase 1 FIX-1〜4 実装進捗 (2026-06-10)
+
+### ゴール
+研究候補 (research_candidates) のゲート判定永続化 + 利益真値計算 + needs_review 再探索 + found_condition_ja 保存
+
+### 設計書
+`.company/engineering/docs/2026-06-10-w229-w228-full-automation-design.md`
+
+### 実装内容
+全 FIX 完了
+
+- [x] **migration v69** (`monitor/database.py`)
+  - 19 列追加: gate_decision / gate_reason / gate_inputs_json / gated_at / source / harvest_keyword
+    / ebay_avg_sold_price_usd / ebay_total_sold / harvested_at / profit_jpy_true / profit_usd_true
+    / keisuke_pass / keisuke_detail_json / section232_flag / section232_reason
+    / weight_source / weight_confidence / listing_draft_id / watch_ids_json / result_ebay_item_id
+  - 全 ALTER TABLE に try/except sqlite3.OperationalError (冪等性 Q2)
+  - PRAGMA user_version = 69 は必須列確認後のみ設定
+  - 既存 test_rival_seller_monitor.py の `ver == 68` 断言を `>= 68` に更新
+
+- [x] **research_candidates_db.py 拡張**
+  - 新規 7 status 定数: harvested / gate_passed / gate_rejected / awaiting_approval / approved / draft_generated / listed
+  - _VALID_STATUSES (15件), _ALLOWED_TRANSITIONS 拡張 (new → gate_passed/gate_rejected も追加)
+  - `save_gate_decision()`: gate_* 列書込 + move_status=True で status 遷移 (CAS経由)
+  - `save_profit_true()`: profit_jpy_true / profit_usd_true / keisuke_pass / keisuke_detail_json 書込
+
+- [x] **FIX-2** (`monitor/research_poc.py`)
+  - `keisuke_check(profit_jpy, revenue_jpy)` 純関数: ¥600 OR 6% either-or / borderline ±20%
+  - `compute_profit_true_for_research()`: calculator.calculate 真値利益 (profit フィールド = 還付抜き)
+  - weight=None/0 → (None, None, reason) 返却 (0 clip 禁止 P1-1)
+
+- [x] **FIX-3** (`monitor/research_poc.py`)
+  - `retry_sourcing(rc_id)`: needs_review → sourcing CAS 遷移 (ValueError は False 返却)
+
+- [x] **FIX-4** (`monitor/research_poc.py`)
+  - `evaluate_product` に `found_condition_ja` 取得・保存 (DB 列は v67 既存)
+
+- [x] **FIX-1** (`tabs/tab_w228_research.py`)
+  - `_GATE_RC_ID_KEY` 定数追加
+  - `_render_section_a()` でゲート判定後に `insert_research_candidate` + `save_gate_decision` DB永続化
+  - エラー時は `st.warning` で UI 継続 (Q0 silent skip 防止)
+
+- [x] **FIX-3 UI** (`tabs/tab_w228_research.py`)
+  - `_render_candidate_actions` に「再探索」ボタン追加 (needs_review のみ表示)
+  - 連打防止: `_EVAL_PROCESS_LOCK.locked()` で disabled
+  - lazy import で circular import 回避
+
+- [x] **新規テスト** (`tests/test_research_gate_persistence.py`, `tests/test_research_profit_true.py`)
+  - 36 テスト: v69 冪等性 / gate_decision 永続化 / save_profit_true NULL 保存 / keisuke_check 境界値
+
+### 設計書との差分 (コードが真実)
+- `_ALLOWED_TRANSITIONS` の `STATUS_NEW` に `STATUS_GATE_PASSED / STATUS_GATE_REJECTED` を追加
+  (設計書は harvested → gate 経路のみ記載だが、手動 Wizard の FIX-1 fast-path は new → gate が必要)
+- `test_rival_seller_monitor.py` の `ver == 68` を `>= 68` に緩和 (将来 migration 追加に対して堅牢化)
+
+### スコア自己評価
+- **完成度**: 4.8/5
+- **テスト実施**: 新規 36 pass / research 系 86 pass / 全体 925 pass (1 failure は v69 追加前の ver==68 断言で修正済)
+- **仕様準拠**: FIX-1〜4 全受け入れ基準を満たす。設計書差分は上記 2 件で文書化済み
+
+### 残課題 (Phase 2 以降)
+- harvest_keyword / ebay_avg_sold_price_usd 等 W229 ハーベスト列は定数登録のみ (実装は Phase 2)
+- section232_flag 列は追加済みだが、自動判定ロジックは未実装
+- `result_ebay_item_id` / `listing_draft_id` は Phase 4 用
+
+**Status**: 完了・エバリュエーター待ち

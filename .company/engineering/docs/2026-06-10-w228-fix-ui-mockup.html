@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W228 商品リサーチ Wizard — 修正後 使用イメージ (2026-06-10)</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --border: #e3e6ea;
+    --text: #20262e; --sub: #6b7480;
+    --accent: #1a73e8; --accent-bg: #e8f0fe;
+    --ok: #1e8e3e; --ok-bg: #e6f4ea;
+    --warn: #b06000; --warn-bg: #fef7e0;
+    --ng: #c5221f; --ng-bg: #fce8e6;
+    --new: #5f6368; --new-bg: #f1f3f4;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Yu Gothic UI", "Meiryo", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; line-height: 1.6; }
+  .page { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .pagecap { color: var(--sub); font-size: 12.5px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .cap { color: var(--sub); font-size: 12.5px; margin-bottom: 14px; }
+  .fixtag { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; background: #7b1fa2; border-radius: 4px; padding: 1px 8px; margin-left: 8px; vertical-align: middle; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 200px; }
+  .field label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; }
+  .field .inp { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13.5px; }
+  .btn { display: inline-block; background: var(--accent); color: #fff; border-radius: 6px; padding: 8px 18px; font-size: 13.5px; font-weight: 600; cursor: default; }
+  .btn.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  .btn.small { padding: 4px 12px; font-size: 12px; }
+  .btn.ghost-ok { background: var(--ok); }
+  .btn.ghost-ng { background: #fff; color: var(--ng); border: 1px solid var(--ng); }
+  .banner { border-radius: 8px; padding: 12px 16px; font-size: 13.5px; margin: 14px 0; }
+  .banner.ok { background: var(--ok-bg); border: 1px solid #b7dfc2; }
+  .banner.warn { background: var(--warn-bg); border: 1px solid #f3e0a8; }
+  .banner.ng { background: var(--ng-bg); border: 1px solid #f0c4c2; }
+  .banner.info { background: var(--accent-bg); border: 1px solid #c3d7f7; }
+  .banner b.head { display: block; margin-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th { text-align: left; color: var(--sub); font-weight: 600; border-bottom: 2px solid var(--border); padding: 6px 8px; white-space: nowrap; }
+  td { border-bottom: 1px solid var(--border); padding: 7px 8px; vertical-align: top; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 9px; white-space: nowrap; }
+  .pill.ok   { color: var(--ok); background: var(--ok-bg); }
+  .pill.warn { color: var(--warn); background: var(--warn-bg); }
+  .pill.ng   { color: var(--ng); background: var(--ng-bg); }
+  .pill.new  { color: var(--new); background: var(--new-bg); }
+  .pill.acc  { color: var(--accent); background: var(--accent-bg); }
+  .money-old { color: var(--sub); text-decoration: line-through; font-size: 11.5px; }
+  .money-new { font-weight: 700; color: var(--ok); }
+  .note { font-size: 11.5px; color: var(--sub); }
+  .legend { font-size: 12px; color: var(--sub); border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 10px; }
+  .flowarrow { text-align: center; color: var(--sub); font-size: 18px; margin: -8px 0 12px; }
+  .kbadge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+  .kbadge.pass { color: var(--ok); background: var(--ok-bg); border: 1px solid #b7dfc2; }
+  .kbadge.fail { color: var(--ng); background: var(--ng-bg); border: 1px solid #f0c4c2; }
+  .fixmap td:first-child { white-space: nowrap; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>W228 商品リサーチ Wizard — 修正後の全体使用イメージ</h1>
+  <div class="pagecap">
+    2026-06-10 深掘り調査 (指摘 1〜9) を反映した場合の画面イメージ。
+    <span class="fixtag" style="background:#7b1fa2;">FIX-n</span> が付いた箇所が今回の修正点。それ以外は現行のまま。
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="card">
+    <h2>A. 売れ行きゲート</h2>
+    <div class="cap">Terapeak の数値を手入力 → 5 分岐自動判定 (現行どおり)。将来 W229 がこの入力を自動化。</div>
+
+    <div class="row">
+      <div class="field" style="flex:2;">
+        <label>商品名 (日本語・型番等)</label>
+        <div class="inp">HIOKI 3280-10F クランプメーター</div>
+      </div>
+      <div class="field"><label>直近 90 日 sold 数</label><div class="inp">7</div></div>
+      <div class="field"><label>現在 active 出品</label><div class="inp">あり</div></div>
+    </div>
+    <div style="margin-top:14px;"><span class="btn">ゲート判定</span></div>
+
+    <!-- FIX-1: 判定が DB に保存される -->
+    <div class="banner ok">
+      <b class="head">判定: target_instock (在庫あり出品ターゲット) — 90日 sold 7 件 + active 出品あり</b>
+      ✅ 判定を保存しました (rc_id #41 / 2026-06-10 12:58 JST)
+      <span class="fixtag">FIX-1 ゲート判定の永続化</span>
+    </div>
+
+    <!-- FIX-1: 再出現アラート -->
+    <div class="banner warn">
+      <b class="head">⚠ この商品は過去に判定済みです</b>
+      「HIOKI 3280-10F」は <b>2026-05-28 に reject_no_demand (90日 sold 0 / 1-2年前 sold 0)</b> で見送り済み。
+      当時と数値が変わっていれば再判定してください。
+      <span class="fixtag">FIX-1 再出現の重複排除</span>
+    </div>
+
+    <!-- FIX-1: ゲート判定履歴 -->
+    <details open>
+      <summary style="font-size:13px; font-weight:700; cursor:pointer;">ゲート判定履歴 (skip / reject 含む全件) <span class="fixtag">FIX-1 新設</span></summary>
+      <table>
+        <tr><th>判定日時 (JST)</th><th>商品名</th><th>判定</th><th>理由</th><th>90d sold</th></tr>
+        <tr><td>2026-06-10 12:58</td><td>HIOKI 3280-10F クランプメーター</td><td><span class="pill ok">target_instock</span></td><td>90日 sold 7 + active あり</td><td>7</td></tr>
+        <tr><td>2026-06-10 11:02</td><td>KEYENCE LR-ZB250CN</td><td><span class="pill warn">target_oos_watch</span></td><td>90日 sold 4 / active なし → 在庫0+監視</td><td>4</td></tr>
+        <tr><td>2026-06-09 18:40</td><td>Pioneer PD-70AE</td><td><span class="pill new">skip_too_new</span></td><td>出品開始から 12 日 (90 日未満) → 様子見</td><td>1</td></tr>
+        <tr><td>2026-05-28 09:15</td><td>HIOKI 3280-10F クランプメーター</td><td><span class="pill ng">reject_no_demand</span></td><td>90日 sold 0 / 1-2年前 sold 0</td><td>0</td></tr>
+      </table>
+      <div class="note">※ 設計書 §8 P0-2「skip は理由+日時を残す (再出現再判定のため)」の実装。W229 自動化時はこのテーブルが重複排除の記憶になる。</div>
+    </details>
+  </div>
+
+  <div class="flowarrow">▼ target_instock / target_oos_watch のときだけセクション B が出る (現行どおり)</div>
+
+  <!-- ============================================================ -->
+  <div class="card">
+    <h2>B. フリマ探索 + AI 同一性 + 利益判定</h2>
+    <div class="cap">メルカリ / ヤフオク・フリマ / PayPayフリマ を横断検索 → AI が同一商品候補を提示 → 利益試算。</div>
+
+    <div class="row">
+      <div class="field"><label>重量 (g)</label><div class="inp">320</div></div>
+      <div class="field"><label>サイズ (cm)</label><div class="inp">20 × 8 × 5</div></div>
+      <div class="field"><label>Terapeak 平均売値 (USD)</label><div class="inp">80.00</div></div>
+    </div>
+    <div style="margin-top:14px;"><span class="btn">フリマ横断検索を実行</span></div>
+
+    <div class="banner info" style="margin-top:18px;">
+      <b class="head">検索完了 — 最有力候補 (メルカリ ¥6,200 / 美品)</b>
+      AI 同一性スコア 88: 「型番 3280-10F 一致、付属品構成一致。<b>状態=美品 (出品側基準: A 相当)</b>」
+      <span class="fixtag">FIX-4 状態 (found_condition_ja) を記録・表示</span>
+    </div>
+
+    <!-- FIX-2: 利益表示の補正 -->
+    <table>
+      <tr><th>項目</th><th>修正前の表示</th><th>修正後の表示</th></tr>
+      <tr>
+        <td>損益分岐価格</td>
+        <td>$74.37</td>
+        <td>$74.37 (変更なし)</td>
+      </tr>
+      <tr>
+        <td>利益見込み</td>
+        <td><span class="money-old">$5.63 (平均価格 − 分岐点)</span></td>
+        <td>
+          <span class="money-new">¥710 ($4.52)</span> — calculator 真値 (手数料控除済)
+          <span class="fixtag">FIX-2 約1.24倍の過大表示を解消</span>
+        </td>
+      </tr>
+      <tr>
+        <td>keisuke 基準</td>
+        <td>(表示なし)</td>
+        <td>
+          <span class="kbadge pass">¥600 基準 合格 (¥710 ≥ ¥600)</span>&nbsp;
+          <span class="kbadge fail">利益率 6% 不合格 (5.7%)</span>
+          → <b>OR 条件で採用可</b>
+          <span class="fixtag">FIX-2 基準判定を明示</span>
+        </td>
+      </tr>
+    </table>
+    <div class="note" style="margin-top:6px;">※ 符号 (黒字/赤字) は修正前後で変わらない。境界付近の「合格に見えて実は不合格」だけが解消される。</div>
+  </div>
+
+  <div class="flowarrow">▼</div>
+
+  <!-- ============================================================ -->
+  <div class="card">
+    <h2>C. リサーチ候補一覧</h2>
+    <div class="cap">status フィルタ + 人間の最終判断 (承認 / 見送り / 監視登録)。</div>
+
+    <table>
+      <tr>
+        <th>登録日時 (JST)</th><th>商品名</th><th>status</th><th>仕入候補</th><th>状態</th><th>利益見込み</th><th>操作</th>
+      </tr>
+      <tr>
+        <td>06-10 12:59 <span class="fixtag">FIX-7 JST表示</span></td>
+        <td>HIOKI 3280-10F クランプメーター</td>
+        <td><span class="pill ok">sourced</span></td>
+        <td>メルカリ ¥6,200<br><span class="note">スコア 88</span></td>
+        <td>美品 (A) <span class="fixtag">FIX-4</span></td>
+        <td><b>¥710</b> ($4.52)</td>
+        <td>
+          <span class="btn small ghost-ok">承認</span>
+          <span class="btn small ghost-ng">見送り</span>
+        </td>
+      </tr>
+      <tr>
+        <td>06-10 11:05</td>
+        <td>KEYENCE LR-ZB250CN</td>
+        <td><span class="pill warn">not_found</span></td>
+        <td>該当なし (3 サイト 0 件)</td>
+        <td>—</td>
+        <td>—</td>
+        <td>
+          <span class="btn small secondary">キーワード監視登録</span>
+          <div class="note">価格上限 ¥9,800 (必須)</div>
+        </td>
+      </tr>
+      <tr style="background:#fffdf5;">
+        <td>06-09 18:50</td>
+        <td>Pioneer PD-70AE</td>
+        <td><span class="pill ng">sourcing (スタック)</span></td>
+        <td colspan="2" class="note">検索中のまま 18 時間経過 — プロセス中断の可能性</td>
+        <td>—</td>
+        <td>
+          <span class="btn small secondary">検索を再実行</span>
+          <span class="fixtag">FIX-3 スタック回復</span>
+        </td>
+      </tr>
+      <tr>
+        <td>06-08 21:12</td>
+        <td>Audio-Technica AT-LP120XBT</td>
+        <td><span class="pill acc">needs_review</span></td>
+        <td>ヤフオク ¥14,000<br><span class="note">価格なしヒット混在</span></td>
+        <td>並品 (B)</td>
+        <td class="note">重量未入力のため未算出</td>
+        <td><span class="btn small secondary">詳細を開く</span></td>
+      </tr>
+      <tr>
+        <td>06-08 09:30</td>
+        <td>Leica DISTO D2</td>
+        <td><span class="pill ok">watch_registered</span></td>
+        <td>監視中 (上限 ¥12,000)</td>
+        <td>—</td>
+        <td>—</td>
+        <td><span class="note">キーワード監視タブで管理</span></td>
+      </tr>
+    </table>
+
+    <div class="legend">
+      status の流れ: new → sourcing → <b>sourced</b> (候補あり) / not_found (0件) / needs_review (要人間確認)
+      → identity_approved / identity_rejected / watch_registered
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="card" style="border: 2px dashed #7b1fa2;">
+    <h2>W229 適用後: Terapeak 自動収穫 <span class="fixtag" style="background:#5f6368;">構想 (コード未着手)</span></h2>
+    <div class="cap">
+      W229 = セクション A の手入力を自動化する機能 (ROADMAP id300)。eBay Seller Hub の Terapeak Product Research から
+      sold 数等を自動取得し、ゲート判定まで無人で流す。<b>anti-bot / eBay 規約の PoC 実証が着手の前提条件</b> (仕様書 §8 P1-2)。
+    </div>
+
+    <!-- W229-1: 収穫バッチ設定 -->
+    <div style="font-size:13px; font-weight:700; margin-bottom:6px;">① 収穫バッチの設定 (新設画面)</div>
+    <div class="row">
+      <div class="field" style="flex:2;">
+        <label>収穫対象</label>
+        <div class="inp">ライバルセラー sold 一覧 (例: 監視セラー 3 名の直近 sold) / カテゴリ「Test Equipment」上位</div>
+      </div>
+      <div class="field"><label>1 回の上限</label><div class="inp">50 商品</div></div>
+      <div class="field"><label>実行</label><div class="inp">日次 02:30 バッチ (既存 scheduler に追加)</div></div>
+    </div>
+
+    <!-- W229-2: 収穫実行結果 -->
+    <div style="font-size:13px; font-weight:700; margin:16px 0 6px;">② 収穫実行ログ (Discord 通知 + 画面)</div>
+    <div class="banner info">
+      <b class="head">2026-06-11 02:35 Terapeak 収穫: 50 商品 → ゲート自動判定 完了</b>
+      <span class="pill ok">target 8 件</span>&nbsp;
+      <span class="pill ng">reject 24 件</span>&nbsp;
+      <span class="pill new">skip_too_new 6 件</span>&nbsp;
+      <span class="pill warn">既判定スキップ 12 件 (FIX-1 の履歴で重複排除)</span>
+      <div class="note" style="margin-top:4px;">※ FIX-1 (ゲート判定の永続化) が W229 の前提インフラ。これが無いと毎回 50 件全部を再判定してしまう。</div>
+    </div>
+
+    <!-- W229-3: セクションAの変化 -->
+    <div style="font-size:13px; font-weight:700; margin:16px 0 6px;">③ セクション A の変化: 手入力 → 自動取得値の確認画面</div>
+    <table>
+      <tr><th>項目</th><th>W228 現行 (手入力)</th><th>W229 適用後</th></tr>
+      <tr>
+        <td>90日 sold / active / 出品開始日 / 1-2年前 sold</td>
+        <td>user が Terapeak を開いて手で転記</td>
+        <td>自動入力済み + <span class="pill acc">Terapeak 取得 06-11 02:35</span> バッジ。<b>手動上書きも可</b> (取得ミス対策)</td>
+      </tr>
+      <tr>
+        <td>ゲート判定</td>
+        <td>1 商品ずつボタン押下</td>
+        <td>収穫バッチが無人で判定 → target のみ「候補一覧 (C)」に status=new で積まれる</td>
+      </tr>
+      <tr>
+        <td>人間の作業</td>
+        <td>A の転記 + B の検索 + C の承認 (全部)</td>
+        <td><b>B の重量入力 + 検索実行、C の最終承認だけ</b>に集約 (同一性の最終判断は人間 = 仕様書 §2-B は不変)</td>
+      </tr>
+    </table>
+
+    <div class="banner warn" style="margin-top:14px;">
+      <b class="head">着手前に必要な実証 (これが終わるまで W229 は凍結)</b>
+      ① Terapeak ページの自動読取が eBay 利用規約に抵触しないか (Seller Hub は自アカウントのデータだが要確認)
+      ② anti-bot 耐性 (Terapeak は過去 W7-A backfill で anti-bot 発動の前例あり)
+      ③ 取得値の正確性検証 (手入力値と突合する試運転期間)
+    </div>
+    <div class="note">
+      接続設計は W228 側で準備済み: ゲート関数 (research_gate.py) は純関数で入力源を問わない =
+      手入力フォームの値を自動取得値に差し替えるだけで動く。FIX-1 のゲート履歴テーブルが書き込み先になる。
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="card">
+    <h2>修正対応表 (調査指摘 → 画面上の変化)</h2>
+    <table class="fixmap">
+      <tr><th>FIX</th><th>指摘</th><th>画面上の変化</th><th>重要度</th></tr>
+      <tr><td>FIX-1</td><td>ゲート判定が保存されない (設計書 §8 P0-2 違反)</td><td>判定保存バナー + 再出現アラート + ゲート判定履歴テーブル (A)</td><td><span class="pill ng">HIGH</span></td></tr>
+      <tr><td>FIX-2</td><td>利益見込みが約 1.24 倍過大 (money-direct)</td><td>calculator 真値 ¥710($4.52) 表示 + keisuke 基準バッジ (B / C)</td><td><span class="pill warn">MEDIUM</span></td></tr>
+      <tr><td>FIX-3</td><td>sourcing スタック行の回復経路なし</td><td>「検索を再実行」ボタン (C)</td><td><span class="pill warn">MEDIUM</span></td></tr>
+      <tr><td>FIX-4</td><td>found_condition_ja が常に空 (同状態は Defect 防止の核心)</td><td>「状態」列の表示 + AI 判定理由に状態比較を明記 (B / C)</td><td><span class="pill warn">MEDIUM</span></td></tr>
+      <tr><td>FIX-5〜9</td><td>docstring/ROADMAP stale・UTC 表示・未来日メッセージ等</td><td>JST 表示 (C) ほか文言修正 (画面変化は軽微)</td><td><span class="pill new">LOW</span></td></tr>
+    </table>
+    <div class="note" style="margin-top:8px;">
+      W229 (Terapeak 自動化) との関係: FIX-1 のゲート履歴テーブルが W229 の書き込み先・重複排除の記憶になる。
+      セクション A の手入力フォームが将来そのまま自動入力に置き換わる (関数シグネチャは W229-ready 済)。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

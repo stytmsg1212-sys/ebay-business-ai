@@ -21,6 +21,7 @@
 - **Q5** 完了報告: 「使用したモデル」明示、未実施フェーズ明記、Phase 0 発見併記
 - **Q6** モデル選定: Opus 4.8 (業務判断・Research 1日30) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk・デフォルト)
 - **Q7** 知識利用順序 (LLM Wiki): compiled wiki を read-first、ゼロ再導出禁止 → `.claude/rule-snippets/llm-wiki-compilation.md`
+- **進捗 touchpoint**: マイルストーン完了=即報告 / 長時間待ちは事前宣言 / 無言区間上限 ~15 分 → `progress-touchpoint.md` (2026-06-10 制定、無応答事故 2 件で昇格)
 
 ## 金銭直結 rule (常時 always-load、違反 = 品質事故)
 
