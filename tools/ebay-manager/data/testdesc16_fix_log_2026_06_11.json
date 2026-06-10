@@ -1,0 +1,147 @@
+{
+ "358158853598": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10671
+ },
+ "358027482174": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10643
+ },
+ "358042514439": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10600
+ },
+ "358046641356": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10594
+ },
+ "358062291688": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10609
+ },
+ "358120580440": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10592
+ },
+ "358120654421": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10693
+ },
+ "358147979341": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10645
+ },
+ "358166322333": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10643
+ },
+ "358207286305": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10692
+ },
+ "358223832012": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10648
+ },
+ "358244264123": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10574
+ },
+ "358274785765": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf.",
+   "Your selected return policy had deprecated information. A new or different policy free 60 days money back (397009178023) was mapped in its place."
+  ],
+  "desc_len": 10730
+ },
+ "358334960391": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10644
+ },
+ "358335153622": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10574
+ },
+ "358403831980": {
+  "ok": true,
+  "ack": "Warning",
+  "message": null,
+  "warnings": [
+   "Seller has opted into business policies. Please use policy IDs rather than legacy fields for Shipping, Payments or Returns or new policies may be automatically created seller's behalf."
+  ],
+  "desc_len": 10672
+ }
+}
