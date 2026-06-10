@@ -772,6 +772,16 @@ def _scrape_yahoo_auctions(url: str, timeout_sec: int) -> ScrapedProduct:
 # メルカリ
 # =========================================================================
 
+def _strip_mercari_title_suffix(raw: str) -> str:
+    """og:title / document.title に付くメルカリ suffix を除去して商品名だけ返す。
+
+    対応する 2 形式:
+      - "商品名 by メルカリ"
+      - "商品名 - メルカリ" (ハイフン前後にスペース / em dash 変種も含む)
+    """
+    return re.sub(r'\s*(?:by\s+メルカリ|[-–—]\s*メルカリ.*)$', '', raw).strip()
+
+
 _MERCARI_TITLE_SELECTORS = (
     # 2026-04-22 E2E 検証で発見: main article スコープに絞らないと
     # 「この商品を見ている人におすすめ」枠の別商品を拾ってしまう。
@@ -888,6 +898,20 @@ def _scrape_mercari(url: str, timeout_sec: int) -> ScrapedProduct:
                             break
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"mercari title extract failed: {e}")
+
+            # 2026-06-11 fix: headless では SPA が hydrate せず h1 が取れないことがある。
+            # server-rendered の og:title / document.title から fallback 抽出。
+            if not product.title_ja:
+                try:
+                    og = page.locator('meta[property="og:title"]').first
+                    raw = (og.get_attribute('content', timeout=1000) or '') if og.count() > 0 else ''
+                    if not raw:
+                        raw = page.title() or ''
+                    raw = _strip_mercari_title_suffix(raw)
+                    if raw:
+                        product.title_ja = raw[:300]
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"mercari og:title fallback failed: {e}")
 
             # 価格
             try:

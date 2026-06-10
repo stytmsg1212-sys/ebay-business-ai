@@ -23,6 +23,7 @@ from monitor.supplier_scraper import (  # noqa: E402
     _extract_weight_hint,
     _normalize_image_url,
     _parse_price,
+    _strip_mercari_title_suffix,
     scrape_supplier_url,
 )
 
@@ -563,3 +564,24 @@ class TestScrapeSupplierUrlUnknown:
         result = scrape_supplier_url('')
         assert result.platform == 'unknown'
         assert result.scrape_error == 'unsupported_platform'
+
+
+# =========================================================================
+# _strip_mercari_title_suffix (2026-06-11 M-2 og:title fallback 用)
+# =========================================================================
+
+class TestStripMercariTitleSuffix:
+    def test_by_mercari_suffix(self):
+        """「by メルカリ」suffix を除去する."""
+        raw = 'TRIFIELD METER 100XE 電磁波測定器 ケース付 動作確認済 by メルカリ'
+        assert _strip_mercari_title_suffix(raw) == 'TRIFIELD METER 100XE 電磁波測定器 ケース付 動作確認済'
+
+    def test_hyphen_mercari_suffix(self):
+        """「- メルカリ」suffix を除去する."""
+        raw = 'TRIFIELD METER 100XE 電磁波測定器 ケース付 動作確認済 - メルカリ'
+        assert _strip_mercari_title_suffix(raw) == 'TRIFIELD METER 100XE 電磁波測定器 ケース付 動作確認済'
+
+    def test_no_suffix(self):
+        """suffix がない場合はそのまま返す."""
+        raw = 'TRIFIELD METER 100XE 電磁波測定器 ケース付 動作確認済'
+        assert _strip_mercari_title_suffix(raw) == raw
