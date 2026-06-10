@@ -106,6 +106,23 @@ def _detect_orientalmotor_status(url: str, html: str) -> Optional[str]:
     return "unavailable"
 
 
+def _status_for_404(content: str, in_stock_texts: list[str], sold_out_texts: list[str], no_page_texts: list[str]) -> str:
+    """404 レスポンスの本文をキーワード判定し not_found / unavailable を返す。
+
+    ヤフオク終了ページのように HTTP 404 を返しつつ本文に「このオークションは終了」
+    等の sold_out / no_page シグナルを含む場合を正しく分類する。
+
+    規則:
+      - 判定結果が unavailable または not_found → そのまま採用
+      - 判定結果が available または None → not_found を返す
+        (404 ページの汎用テンプレに in_stock 文字列が残っても available と誤判定しない安全弁)
+    """
+    result = _detect_status_single(content, in_stock_texts, sold_out_texts, no_page_texts, strict=False)
+    if result in ("unavailable", "not_found"):
+        return result
+    return "not_found"
+
+
 def _check_with_httpx(
     url: str,
     in_stock_texts: list[str],
@@ -122,7 +139,17 @@ def _check_with_httpx(
     try:
         resp = httpx.get(url, headers=headers, timeout=15, follow_redirects=True)
         if resp.status_code == 404:
-            return "not_found"
+            # 404 でも本文キーワードを先に判定 (ヤフオク終了ページ等)。
+            # 明示シグナル (sold_out / no_page) があればそのまま採用。
+            # キーワード無し (available/None) は not_found 確定にせず None を返し
+            # Playwright fallback に逃がす — JS 描画後にのみ「このオークションは終了」
+            # が出る 404 ページを在庫無と正しく拾うため (2026-06-11 実機検証で発見)。
+            status_404 = _detect_status_single(
+                resp.text, in_stock_texts, sold_out_texts, no_page_texts, strict=False
+            )
+            if status_404 in ("unavailable", "not_found"):
+                return status_404
+            return None
         if resp.status_code != 200:
             logger.debug(f"httpx HTTP {resp.status_code}: {url}")
             return None
@@ -268,9 +295,7 @@ async def _check_urls_batch_async(
                 url = item["url"]
                 try:
                     response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    if response and response.status == 404:
-                        results[item_id] = "not_found"
-                        continue
+                    is_404 = response and response.status == 404
 
                     # SPA対策: networkidle + コンテンツ待機
                     try:
@@ -289,11 +314,18 @@ async def _check_urls_batch_async(
 
                     content = await page.content()
 
-                    status = _detect_status(
-                        content, rendered_text,
-                        item["in_stock"], item["sold_out"], item["no_page"],
-                    )
-                    results[item_id] = status
+                    if is_404:
+                        # 404 でも本文を取得済み: キーワード判定して unavailable/not_found のみ採用
+                        results[item_id] = _status_for_404(
+                            content + "\n" + rendered_text,
+                            item["in_stock"], item["sold_out"], item["no_page"],
+                        )
+                    else:
+                        status = _detect_status(
+                            content, rendered_text,
+                            item["in_stock"], item["sold_out"], item["no_page"],
+                        )
+                        results[item_id] = status
 
                 except PlaywrightTimeout:
                     logger.warning(f"Playwright timeout: {url}")

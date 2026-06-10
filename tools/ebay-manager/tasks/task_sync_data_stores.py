@@ -13,7 +13,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -186,13 +186,17 @@ def sync_inventory_status_to_db() -> Dict:
         )
 
         # 在庫切れ開始日は、ebay_sync が未処理 (source_out_of_stock_since IS NULL) かつ
-        # ここで新規に仕入先OOS になる場合のみ、フォールバックで checked_at をセット。
+        # ここで新規に仕入先OOS になる場合のみ、フォールバックで UTC タイムスタンプをセット。
         # 2026-06-05: 「ページなし」も「在庫無」と同じ OOS 扱い (long-term OOS 追跡)。
+        # 2026-06-11 BUG-2: checked_at は Python datetime.now().isoformat() = JST naive で
+        # 消費側 (task_supplier_sweep / task_inventory_check) の datetime('now') UTC 比較と
+        # 9h ズレる。UTC に統一して常に UTC "%Y-%m-%d %H:%M:%S" 形式で保存する。
         if status in ('在庫無', 'ページなし') and prev_status not in ('在庫無', 'ページなし'):
+            oos_since_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             conn.execute(
                 """UPDATE ebay_listings SET source_out_of_stock_since=?
                    WHERE ebay_item_id=? AND source_out_of_stock_since IS NULL""",
-                (checked_at, ebay_item_id),
+                (oos_since_utc, ebay_item_id),
             )
         elif status == '在庫有':
             # 在庫復活 → 開始日クリア

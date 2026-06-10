@@ -107,7 +107,12 @@ def test_url_based_lookup_updates_listing(patched_module):
                        ("EID_001",)).fetchone()
     assert row[0] == "在庫無"
     # 在庫有 → 在庫無 遷移で source_out_of_stock_since が set される
-    assert row[1] == "2026-05-01T12:00:00"
+    # 2026-06-11 BUG-2a 修正: checked_at (JST naive, 'T' 区切り) ではなく
+    # UTC 現在時刻 "%Y-%m-%d %H:%M:%S" 形式で書き込まれる。
+    assert row[1] is not None, "source_out_of_stock_since が NULL のまま"
+    assert "T" not in row[1], f"UTC 形式でない (T 区切り含む): {row[1]!r}"
+    from datetime import datetime
+    datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")  # parse 可能であること
 
 
 def test_ebay_id_priority_over_url(patched_module):

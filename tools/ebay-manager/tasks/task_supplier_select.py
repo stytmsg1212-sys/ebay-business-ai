@@ -15,7 +15,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 
 # pythonw.exe では sys.stdout が None のため安全ガード
@@ -85,7 +85,10 @@ def detect_long_term_out_of_stock(
     _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
     from monitor.database import get_conn
 
-    now = datetime.now()
+    # 2026-06-11 BUG-2c: source_out_of_stock_since が UTC に統一されたため、
+    # Python 側の now も UTC naive (tzinfo=None) で揃える。
+    # fromisoformat は 'T' 形式 / space 形式どちらも読める (Python 3.7+)。
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     long_term_out = []
 
     with get_conn() as conn:
