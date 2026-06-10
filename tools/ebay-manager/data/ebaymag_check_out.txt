@@ -1,0 +1,70 @@
+(node:77592) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+=== /products 通常表示 | 現 URL: https://ebaymag.com/stock?archived=true
+    (全 0 行、先頭 60 行)
+screenshot: data/ebaymag_products_now.png
+
+=== /stock?archived=true アーカイブ表示 | 現 URL: https://ebaymag.com/stock?archived=true&name=Leica%20DISTO
+    (全 119 行、先頭 60 行)
+  アイテム
+  サイト
+  ポリシー
+  注文
+  2
+  JA
+  English
+  Deutsch
+  Français
+  Italiano
+  Español
+  简体中文
+  日本語
+  한국어
+  Português
+  Русский
+  ヘルプセンター
+  よくある質問
+  オンボーディングのヒント
+  お問い合わせ
+  mono_honpo_japan
+  設定
+  ログアウト
+  680 アイテム
+  eBayからeBaymagへ
+  アイテムを追加
+  フィルター (1)
+  タイトル
+  商品のSKU
+  数量
+  配送ポリシー
+  一括編集するアイテムを選択
+  KEYENCE FD-H32 Sensor Complete Set OP-88076 Cable Included NEW from Japan
+  stock
+  1
+  D
+  Pioneer GEX-8 Lonesome Cowboy AM/FM Tuner Tested Working Fair Condition Japan
+  eba…010
+  1
+  D
+  Mitsubishi MDS-C1-CV-110 CNC Power Supply Unit Servo Drive Tested from Japan
+  eba…712
+  1
+  D
+  KEYENCE IV3-G500CA VISION SENSOR HEAD IV3G500CA IN STORAGE form Japan NEW
+  sto…:01
+  1
+  D
+  RKC CB100 D501 Digital Temperature Controller Indicator Unused Japan
+  eba…731
+  1
+  D
+  PHOENIX CONTACT QUINT-PS-100-240AC/24DC/20A Power Supply Unit Tested Used
+  eba…799
+  5
+  D
+  YOKOGAWA 7651-01 Programmable DC Voltage Current Source ±32V 120mA GPIB Tested
+  eba…429
+  1
+  D
+screenshot: data/ebaymag_archived_now.png
+EXITCODE=0 

@@ -1,0 +1,146 @@
+{
+ "generated": "2026-06-11T00:53:59",
+ "results": [
+  {
+   "item_id": "358626622317",
+   "label": "HIOKI DT4261",
+   "sites": "AU,CA",
+   "productId": "714154004",
+   "status": "apply_failed_rc2",
+   "out_tail": "&archived=true&name=91512-1\n[2] panel タイトル: HIOKI DT4261 Digital Multimeter Tester Measuring Instrument Made in Japan NEW\n[3] toggle ebay.com.au: ROW_NOT_FOUND\n[3] ABORT: ebay.com.au のトグル失敗 → 保存せず終了\n(node:90000) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357414236596",
+   "label": "Leica Disto X310",
+   "sites": "AU,FR",
+   "productId": "718746698",
+   "status": "apply_failed_rc2",
+   "out_tail": "698&archived=true&name=91512-1\n[2] panel タイトル: Leica DISTO X310 Laser Distance Meter 0.05–120m Range Tested Working Used\n[3] toggle ebay.com.au: ROW_NOT_FOUND\n[3] ABORT: ebay.com.au のトグル失敗 → 保存せず終了\n(node:102424) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358352049570",
+   "label": "Keithley 237 SMU",
+   "sites": "FR",
+   "productId": "644831699",
+   "status": "ok",
+   "out_tail": "f (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        ON  (リストされている)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:43088) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358207319749",
+   "label": "AOR AR-3000A",
+   "sites": "AU,IT",
+   "productId": "592103124",
+   "status": "apply_failed_rc2",
+   "out_tail": "4&archived=true&name=91512-1\n[2] panel タイトル: AOR AR-3000A Wideband All-Mode Receiver 0.1–2036MHz WFM AM USB LSB CW Tested\n[3] toggle ebay.com.au: ROW_NOT_FOUND\n[3] ABORT: ebay.com.au のトグル失敗 → 保存せず終了\n(node:13376) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357418890043",
+   "label": "Leica DISTO D2",
+   "sites": "IT,UK",
+   "status": "discover_failed",
+   "out_tail": "URL: https://ebaymag.com/stock?archived=true&name=91512-1\nempty: True\n(node:24132) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357839289258",
+   "label": "SHARP PC-G850VS",
+   "sites": "DE,IT",
+   "productId": "718746702",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        ON  (リストされている)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:83744) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357374753803",
+   "label": "Brother PJ-723",
+   "sites": "DE,IT",
+   "productId": "718746638",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        ON  (リストされている)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:76232) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358333799417",
+   "label": "Marantz PM8006",
+   "sites": "CA",
+   "productId": "640119315",
+   "status": "ok",
+   "out_tail": "  (リストされている)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:70936) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357387217824",
+   "label": "Ajazz AKP846",
+   "sites": "CA",
+   "productId": "718746640",
+   "status": "ok",
+   "out_tail": "  (リストされている)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:36000) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357200863085",
+   "label": "Pioneer KP-707G",
+   "sites": "IT",
+   "productId": "718746535",
+   "status": "apply_failed_rc3",
+   "out_tail": "      off (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\n[5] NG: 未定着 = {'ebay.it'}\nRESULT: NG\n(node:24116) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358377470398",
+   "label": "Fluke DSP-FTA440",
+   "sites": "IT",
+   "productId": "652417022",
+   "status": "ok",
+   "out_tail": "f (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        ON  (リストされている)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:49444) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357944436089",
+   "label": "Pioneer KP-717G",
+   "sites": "DE,UK",
+   "productId": "718746737",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     ON  (リストされている)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:28120) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357065276999",
+   "label": "CRYPTON LUKA V4X",
+   "sites": "DE,UK",
+   "productId": "718746569",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     ON  (リストされている)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:43188) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357418184869",
+   "label": "Alice Madness Art Book",
+   "sites": "DE,ES",
+   "productId": "584218610",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        ON  (リストされている)\nRESULT: OK\n(node:64672) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358228793891",
+   "label": "Kikkoman LuciPac",
+   "sites": "DE,ES",
+   "productId": "718746878",
+   "status": "ok",
+   "out_tail": "ff (掲載されていません)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        ON  (リストされている)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        off (掲載されていません)\n[5] ebay.es        ON  (リストされている)\nRESULT: OK\n(node:56756) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "357190920884",
+   "label": "Wallhack SP-004",
+   "sites": "CA,FR",
+   "productId": "718746908",
+   "status": "ok",
+   "out_tail": "N  (リストされている)\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.fr        ON  (リストされている)\n[5] ebay.es        off (掲載されていません)\nRESULT: OK\n(node:48596) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358377346781",
+   "label": "BMW MINI Car Eye 3.0",
+   "sites": "CA,FR",
+   "productId": "718746695",
+   "status": "apply_failed_rc3",
+   "out_tail": ":2 変動 を保存\n[5] ebay.co.uk     off (掲載されていません)\n[5] ebay.de        off (掲載されていません)\n[5] ebay.it        off (掲載されていません)\n[5] ebay.es        off (掲載されていません)\n[5] NG: 未定着 = {'ebay.fr', 'ebay.ca'}\nRESULT: NG\n(node:102652) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+   "item_id": "358046729862",
+   "label": "DENSO DST-010 Cable",
+   "sites": "CA,FR",
+   "status": "skipped_ca_quota"
+  }
+ ]
+}

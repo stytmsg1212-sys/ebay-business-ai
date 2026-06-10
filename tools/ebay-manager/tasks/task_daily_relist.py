@@ -79,6 +79,11 @@ def _select_relist_targets(limit: int = 7, cooldown_days: int = 30) -> list[dict
                  AND watch_count = 0
                  AND rank = 'E'
                  AND sku IS NOT NULL AND sku != ''
+                 -- W242 (2026-06-09): eBaymag 対象 (全国/優先国) は relist (end→sell
+                 -- similar で新 ItemID 化) すると eBaymag 各国版とのリンクが壊れるため
+                 -- 除外。'出さない' (eBaymag 非対象=US本体のみ) のみ relist する。
+                 -- NULL (未分類) も安全側で除外 (eBaymag 上か不明な listing は触らない)。
+                 AND ebaymag_segment = '出さない'
                  AND ebay_item_id NOT IN (
                      SELECT old_item_id FROM relist_history
                      WHERE created_at >= datetime('now', ?)
@@ -131,6 +136,8 @@ def inherit_listing_on_relist(
       W98 最安値設定:  lp_min_price / lp_breakeven_usd
       W110 市場分析:   primary_market / us_buyer_ratio / market_analysis_at /
                        market_sample_size
+      W242 eBaymag:    ebaymag_segment (継承しないと新 ItemID が NULL になり
+                       relist プールから永久離脱 → daily_relist 無言枯渇)
 
     継承しない (ライフサイクルでリセット):
       watch_count / view_count / sales_count_30d / rank / metrics_score
@@ -169,7 +176,7 @@ def inherit_listing_on_relist(
                       search_keyword, search_keyword_source, search_keyword_generated_at,
                       lp_min_price, lp_breakeven_usd,
                       primary_market, us_buyer_ratio, market_analysis_at,
-                      market_sample_size
+                      market_sample_size, ebaymag_segment
                FROM ebay_listings WHERE ebay_item_id=?""",
             (old_item_id,),
         ).fetchone()
@@ -186,10 +193,10 @@ def inherit_listing_on_relist(
                 search_keyword, search_keyword_source, search_keyword_generated_at,
                 lp_min_price, lp_breakeven_usd,
                 primary_market, us_buyer_ratio, market_analysis_at,
-                market_sample_size,
+                market_sample_size, ebaymag_segment,
                 last_synced_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       CURRENT_TIMESTAMP)""",
             (
                 new_item_id, sku or "", title or "",
@@ -217,6 +224,7 @@ def inherit_listing_on_relist(
                 old_data.get("us_buyer_ratio"),
                 old_data.get("market_analysis_at"),
                 old_data.get("market_sample_size"),
+                old_data.get("ebaymag_segment"),
             ),
         )
         if cur.rowcount == 0:
@@ -462,6 +470,25 @@ def run_daily_relist(config: dict) -> dict:
         f"End→Relist 対象: {len(targets)}件 "
         f"(dry_run={dry_run}, max={max_per_run}, cooldown={cooldown_days}日)"
     )
+
+    # W242 (2026-06-09): ebaymag_segment=NULL (未分類) の relist 候補が滞留していると
+    # relist プールから漏れ続ける (silent skip)。market_analysis_refresh の segment
+    # 再計算が止まっている時に user が気付けるよう件数を可視化 (Q0 痕跡)。
+    try:
+        with get_conn() as _c:
+            _null_pool = _c.execute(
+                "SELECT COUNT(*) FROM ebay_listings WHERE (is_ended IS NULL OR is_ended=0) "
+                "AND quantity_ebay>=1 AND watch_count=0 AND rank='E' "
+                "AND sku IS NOT NULL AND sku!='' AND ebaymag_segment IS NULL"
+            ).fetchone()[0]
+        if _null_pool:
+            logger.warning(
+                f"⚠ relist 候補のうち ebaymag_segment=NULL が {_null_pool}件滞留 "
+                f"(未分類で relist 対象外)。market_analysis_refresh の区分再計算が"
+                f"動いているか確認を。"
+            )
+    except Exception as e:  # noqa: BLE001 — 可視化失敗は relist 本体を妨げない
+        logger.debug(f"null-segment 可視化 skip: {e}")
 
     if not targets:
         return {"success": True, "message": "対象listingなし", "processed": 0, "results": []}
