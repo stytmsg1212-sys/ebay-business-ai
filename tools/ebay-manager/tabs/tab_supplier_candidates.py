@@ -340,6 +340,13 @@ def render_supplier_candidates_tab(s: dict) -> None:
         _parent_ss = _sup_parent_status.get(row.get("ebay_item_id") or "", "")
 
         from tabs._supplier_card_html import render_supplier_card_html
+        # W258/Phase-B (2026-06-11): eBay 画像 + 仕入先画像を比較カードに渡す。
+        # ebay_image_url: get_ebay_listing_by_item_id で取得した listing dict から。
+        # candidate_image_url: supplier_candidates 行の列 (v71 migration 後) から。
+        _ebay_img_url: Optional[str] = (
+            _ebay_listing.get("ebay_image_url") if _ebay_listing else None
+        )
+        _cand_img_url: Optional[str] = row.get("candidate_image_url")
         st.markdown(
             render_supplier_card_html(
                 row=row,
@@ -347,6 +354,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 ebay_price_jpy=_ebay_price_jpy,
                 profit_jpy=row.get("profit_jpy"),
                 parent_status=_parent_ss,
+                ebay_image_url=_ebay_img_url,
+                candidate_image_url=_cand_img_url,
             ),
             unsafe_allow_html=True,
         )

@@ -1,11 +1,41 @@
 ---
 title: eBay Manager 実装進捗レポート
-version: 4.1
+version: 4.2
 created: 2026-04-07
-last_updated: 2026-06-10
+last_updated: 2026-06-11
 ---
 
 # eBay Manager 実装進捗レポート
+
+---
+
+## W258 Phase B 画像比較カード実装（2026-06-11）
+
+### ゴール
+仕入先候補レビューで eBay 出品 1 枚目画像と仕入先候補 1 枚目画像を左右並びで表示し、
+「同じ商品か」を 2-3 秒で判断できるようにする。
+
+### 実装内容
+完了
+
+- [x] **B-1** `monitor/database.py`: migration v71 追加 (supplier_candidates に `candidate_image_url` + `candidate_image_fetched_at` 2 列。v69 流儀の冪等パターン適用。user_version=71 bump)
+- [x] **B-2** `monitor/database.py`: `add_supplier_candidate()` に `candidate_image_url` keyword 引数追加。値がある場合に `candidate_image_fetched_at` を UTC now で自動セット。`tasks/task_supplier_sweep.py` + `tasks/task_supplier_candidate_search.py` に `hit.image_url` の結線追加
+- [x] **B-3** `scripts/backfill_candidate_images_2026_06_11.py`: 既存 pending 候補の og:image httpx 取得 backfill。dry-run 既定 / --apply / ドメイン毎 2s sleep / snapshot / 失敗 WARN 継続
+- [x] **B-4** `scripts/backfill_ebay_images_2026_06_11.py`: active listing の ebay_image_url backfill。`get_ebay_image_url` 再利用 / resume state JSON / 100 件/batch / dry-run 既定
+- [x] **B-5** `tabs/_supplier_card_html.py`: `sc-imgpair` CSS + `render_supplier_card_html()` に `ebay_image_url` / `candidate_image_url` 引数追加。両方 None はブロック非表示、片方 None はプレースホルダ。URL は html.escape 済 (XSS 対策)
+- [x] **B-6** `tabs/tab_supplier_candidates.py`: render 呼出に ebay_image_url (listing dict から) + candidate_image_url (DB row から) を渡す結線追加。`tabs/tab_inventory_monitor.py`: _render_oos_block の候補ループ内に imgpair HTML を追加
+- [x] **B-7** `tests/test_w258_image_pair_2026_06_11.py`: 10 テスト全 PASS (migration 冪等 3 / imgpair HTML 5 / backfill dry-run 2)
+
+### スコア自己評価
+- **完成度**: 5/5
+- **テスト実施**: pytest 10/10 PASS。py_compile 全変更ファイル PASS
+- **仕様準拠**: 設計書 §3.4 受け入れ基準全て満たす (money-direct path 不変確認済)
+
+### 既知の制限
+- backfill 2 本は作成のみ (実行は main agent が Q2 6-step で実施)
+- 本番 DB の ebay_image_url / candidate_image_url は backfill 完了まで「画像未取得」プレースホルダ表示
+
+**Status**: 完了・エバリュエーター待ち
 
 ---
 

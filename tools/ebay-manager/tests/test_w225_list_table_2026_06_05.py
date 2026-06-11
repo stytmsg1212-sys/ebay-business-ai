@@ -57,8 +57,13 @@ def _sample_products():
 def test_build_list_dataframe_columns_and_ids():
     df = pm._build_list_dataframe(_sample_products())
     assert list(df.columns) == [
-        "在庫", "📎", "Title", "Item ID", "SKU", "区分", "カテゴリ", "状態",
-        "価格", "送料", "総額", "粗利", "競合最安", "sold", "watch",
+        "在庫", "📎", "Title", "Item ID", "eBay", "SKU", "区分", "カテゴリ",
+        "状態", "価格", "送料", "総額", "粗利", "競合最安", "sold", "watch",
+    ]
+    # W258: eBay 列は itm 直リンク (LinkColumn 用 URL 文字列)
+    assert list(df["eBay"]) == [
+        "https://www.ebay.com/itm/358343669478",
+        "https://www.ebay.com/itm/357000000001",
     ]
     # 行順 = 入力順 / Item ID 列に ebay_item_id (sku-rules: ebay_item_id 識別)
     assert list(df["Item ID"]) == ["358343669478", "357000000001"]

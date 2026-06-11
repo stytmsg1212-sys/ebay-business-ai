@@ -2353,5 +2353,27 @@
     "created": "2026-06-11",
     "completed": null,
     "category": "bug"
+  },
+  {
+    "id": 329,
+    "tag": "W258",
+    "title": "MonoDeck 全タブ UI 全面刷新 (直感操作/コンパクト一覧/スマホ対応/画像比較カード)",
+    "description": "user 要求 (2026-06-10): ボタンや画面の遷移がイケていない、誰でも直感操作できる UI に全面刷新。要件: (1)シンプル直感 (2)毎日の作業がサクサク (3)一覧コンパクト=空白減・情報量最大 (4)ボタン内文字列重複 (ieck/heck) の根治=Material Symbols 無効化 CSS が新版 testid stIconMaterial 未カバー、tab_product_management の局所 fix を全タブ共通レイヤー化 (5)スマホ対応 (6)仕入先候補/在庫監視で eBay 1枚目画像と仕入先1枚目画像を並列比較できるコンパクトカード=短時間で採用/不採用判断。設計=Fable5 直接、実装=Sonnet subagent (user 指示)。Q3 構造化設計フロー必須。",
+    "status": "pending",
+    "priority": "高",
+    "created": "2026-06-11",
+    "completed": null,
+    "category": "feature"
+  },
+  {
+    "id": 330,
+    "tag": "W259",
+    "title": "pytest 全体実行で test_session_start_hook_slug 5件が flaky fail (テスト間干渉)",
+    "description": "2026-06-11 発見: tests/ 全体実行 (2446件/21分) でのみ test_session_start_hook_slug.py 全5件が fail。単独実行・W258変更テストとの組合せ実行では PASS = テスト間の状態汚染 or bash subprocess spawn の負荷/環境依存。output 切詰めで traceback 未取得。再現時は -q --tb=long で汚染源テストを bisect 特定し、fixture の env/cwd 独立化 or bash 呼出の retry 化で根治する。",
+    "status": "pending",
+    "priority": "低",
+    "created": "2026-06-11",
+    "completed": null,
+    "category": "bug"
   }
 ]

@@ -521,6 +521,8 @@ def run_supplier_sweep_batch(config: dict) -> dict:
                 availability_status=_w182_avail.get('status'),
                 availability_checked_at=_w182_avail.get('checked_at'),
                 availability_signal=_w182_avail.get('signal'),
+                # W258/Phase-B (2026-06-11): 仕入先画像 URL を保存 (存在すれば)
+                candidate_image_url=hit.image_url or None,
             )
             if row_id:
                 total_persisted += 1

@@ -120,6 +120,48 @@ _CARD_CSS = """
   font-size:11px;
   color:rgba(255,220,120,0.95);
 }
+.sc-imgpair{
+  display:flex;
+  gap:8px;
+  margin-top:8px;
+  align-items:flex-start;
+}
+.sc-imgpair-cell{
+  flex:1 1 0;
+  max-width:48%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+}
+.sc-imgpair-cell img{
+  max-height:150px;
+  max-width:100%;
+  object-fit:contain;
+  border-radius:4px;
+  background:rgba(255,255,255,0.04);
+}
+.sc-imgpair-placeholder{
+  height:150px;
+  width:100%;
+  background:rgba(100,120,150,0.12);
+  border:1px dashed rgba(120,160,200,0.25);
+  border-radius:4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:11px;
+  color:rgba(180,200,220,0.50);
+}
+.sc-imgpair-caption{
+  font-size:11px;
+  color:rgba(200,210,230,0.65);
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
+}
 </style>
 """
 
@@ -171,6 +213,8 @@ def render_supplier_card_html(
     ebay_price_jpy: Optional[int],
     profit_jpy: Optional[float],
     parent_status: str,
+    ebay_image_url: Optional[str] = None,
+    candidate_image_url: Optional[str] = None,
 ) -> str:
     """1 候補カードの HTML 文字列を返す (Streamlit ``st.markdown`` 用).
 
@@ -186,6 +230,10 @@ def render_supplier_card_html(
         profit_jpy: ``row['profit_jpy']`` をそのまま渡す (DB 値). None 可.
         parent_status: 親 listing の ``source_status`` (``"在庫有"`` で復活警告
             出す). caller の ``_sup_parent_status`` dict から渡す.
+        ebay_image_url: W258/Phase-B (2026-06-11) eBay 出品の 1 枚目画像 URL.
+            None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
+        candidate_image_url: W258/Phase-B (2026-06-11) 仕入先候補の 1 枚目画像 URL.
+            None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
 
     Returns:
         ``str``: ``<style>`` + ``<div class="sc-card">...</div>`` を含む HTML.
@@ -298,6 +346,54 @@ def render_supplier_card_html(
         f'</div>'
     )
 
+    # ── 画像比較カード (W258/Phase-B): eBay 1枚目 × 仕入先 1枚目 ──
+    # 両方 None の場合はブロック自体を出さない (空白を増やさない)。
+    # 片方 None の場合はプレースホルダ div (高さ 150px 維持、左右ズレ防止)。
+    imgpair_html = ""
+    _ebay_img = (ebay_image_url or "").strip()
+    _cand_img = (candidate_image_url or "").strip()
+    if _ebay_img or _cand_img:
+        # eBay 側セル
+        if _ebay_img:
+            _ebay_cap = f"eBay ${ebay_price_usd:.2f}" if ebay_price_usd else "eBay"
+            _ebay_cell = (
+                f'<div class="sc-imgpair-cell">'
+                f'<a href="{_esc(_ebay_img)}" target="_blank" rel="noopener">'
+                f'<img src="{_esc(_ebay_img)}" alt="eBay" loading="lazy">'
+                f'</a>'
+                f'<div class="sc-imgpair-caption">{_esc(_ebay_cap)}</div>'
+                f'</div>'
+            )
+        else:
+            _ebay_cell = (
+                '<div class="sc-imgpair-cell">'
+                '<div class="sc-imgpair-placeholder">画像未取得</div>'
+                '<div class="sc-imgpair-caption">eBay</div>'
+                '</div>'
+            )
+        # 仕入先側セル
+        _cand_price = row.get("candidate_price_jpy")
+        _cand_cap = f"¥{_cand_price:,}" if _cand_price else "仕入先"
+        if _cand_img:
+            _cand_cell = (
+                f'<div class="sc-imgpair-cell">'
+                f'<a href="{_esc(_cand_img)}" target="_blank" rel="noopener">'
+                f'<img src="{_esc(_cand_img)}" alt="仕入先" loading="lazy">'
+                f'</a>'
+                f'<div class="sc-imgpair-caption">{_esc(_cand_cap)}</div>'
+                f'</div>'
+            )
+        else:
+            _cand_cell = (
+                '<div class="sc-imgpair-cell">'
+                '<div class="sc-imgpair-placeholder">画像未取得</div>'
+                f'<div class="sc-imgpair-caption">{_esc(_cand_cap)}</div>'
+                '</div>'
+            )
+        imgpair_html = (
+            f'<div class="sc-imgpair">{_ebay_cell}{_cand_cell}</div>'
+        )
+
     # ── Note (判定理由 / 別出品提案 / ジャンク警告 / 仕入先復活警告) ──
     reasoning_html = (
         f'<div class="sc-note">判定: {_esc(reasoning)}</div>'
@@ -325,7 +421,7 @@ def render_supplier_card_html(
 
     card_html = (
         f'<div class="sc-card">'
-        f'{row1_html}{title_html}{money_html}'
+        f'{row1_html}{imgpair_html}{title_html}{money_html}'
         f'{reasoning_html}{alt_html}{junk_html}{recovered_html}'
         f'</div>'
     )

@@ -529,6 +529,44 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
+                            # W258/Phase-B (2026-06-11): eBay × 仕入先 画像比較カード。
+                            # money-direct path (checkbox/button) は不変、画像表示のみ追加。
+                            _oos_ebay_img = item.get("ebay_image_url") or ""
+                            _oos_cand_img = _c.get("candidate_image_url") or ""
+                            if _oos_ebay_img or _oos_cand_img:
+                                from tabs._supplier_card_html import _CARD_CSS
+                                from html import escape as _hesc
+                                _oos_price = item.get("current_price")
+
+                                def _imgcell(img_url: str, caption: str) -> str:
+                                    if img_url:
+                                        return (
+                                            f'<div class="sc-imgpair-cell">'
+                                            f'<a href="{_hesc(img_url)}" target="_blank" rel="noopener">'
+                                            f'<img src="{_hesc(img_url)}" alt="{_hesc(caption)}" loading="lazy">'
+                                            f'</a>'
+                                            f'<div class="sc-imgpair-caption">{_hesc(caption)}</div>'
+                                            f'</div>'
+                                        )
+                                    return (
+                                        f'<div class="sc-imgpair-cell">'
+                                        f'<div class="sc-imgpair-placeholder">画像未取得</div>'
+                                        f'<div class="sc-imgpair-caption">{_hesc(caption)}</div>'
+                                        f'</div>'
+                                    )
+
+                                _ebay_cap = f"eBay ${_oos_price:.2f}" if _oos_price else "eBay"
+                                _cand_cap = f"¥{_price_jpy:,}" if _price_jpy else "仕入先"
+                                _oos_imgpair = (
+                                    f'<div class="sc-imgpair">'
+                                    f'{_imgcell(_oos_ebay_img, _ebay_cap)}'
+                                    f'{_imgcell(_oos_cand_img, _cand_cap)}'
+                                    f'</div>'
+                                )
+                                st.markdown(
+                                    _CARD_CSS + _oos_imgpair,
+                                    unsafe_allow_html=True,
+                                )
                         with _link_col:
                             if _url:
                                 st.markdown(
@@ -656,7 +694,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         f"""SELECT id, sku, ebay_item_id, candidate_url, candidate_title,
                                    candidate_price_jpy, match_score, source_platform,
                                    status, alt_listing_possible,
-                                   profit_jpy, profitable
+                                   profit_jpy, profitable,
+                                   candidate_image_url
                             FROM supplier_candidates
                             WHERE sku IN ({_ph})
                               AND status IN ('pending','accepted','applied')
@@ -1170,7 +1209,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         f"""SELECT id, sku, ebay_item_id, candidate_url, candidate_title,
                                    candidate_price_jpy, match_score, source_platform,
                                    status, alt_listing_possible,
-                                   profit_jpy, profitable
+                                   profit_jpy, profitable,
+                                   candidate_image_url
                             FROM supplier_candidates
                             WHERE ebay_item_id IN ({_ph})
                               AND status IN ('pending','accepted','applied')

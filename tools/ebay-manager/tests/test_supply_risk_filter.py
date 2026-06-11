@@ -36,17 +36,18 @@ def fresh_db(tmp_path, monkeypatch):
             source_url TEXT,
             source_last_checked TEXT,
             risk_confirmed INTEGER,
-            is_ended INTEGER DEFAULT 0
+            is_ended INTEGER DEFAULT 0,
+            ebay_image_url TEXT
         )
     """)
     conn.execute("""
         INSERT INTO ebay_listings VALUES
-        ('357933117584', 'stock:01', 'Google Pixel Tablet (有在庫)', 3, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0),
-        ('356420645893', 'ebayme_30279698157', 'Baccarat 2022 Tumbler (無在庫)', 1, '在庫無', 'メルカリ', 200, 'B', NULL, '2026-05-05', 0, 0),
-        ('999999999999', 'ebayyh_test_pnf', 'Test page-not-found', 1, 'ページなし', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 0, 0),
-        ('888888888888', 'ebayyh_test_active', 'Test 在庫有 (除外されるべき)', 1, '在庫有', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 0, 0),
-        ('777777777777', 'stock:02', 'stock:02 在庫無 (有在庫、除外されるべき)', 2, '在庫無', NULL, 80, 'C', NULL, '2026-05-05', 0, 0),
-        ('666666666666', 'ebayyh_test_confirmed', 'user 確認済 (除外されるべき)', 1, '在庫無', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 1, 0)
+        ('357933117584', 'stock:01', 'Google Pixel Tablet (有在庫)', 3, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0, NULL),
+        ('356420645893', 'ebayme_30279698157', 'Baccarat 2022 Tumbler (無在庫)', 1, '在庫無', 'メルカリ', 200, 'B', NULL, '2026-05-05', 0, 0, NULL),
+        ('999999999999', 'ebayyh_test_pnf', 'Test page-not-found', 1, 'ページなし', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 0, 0, NULL),
+        ('888888888888', 'ebayyh_test_active', 'Test 在庫有 (除外されるべき)', 1, '在庫有', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 0, 0, NULL),
+        ('777777777777', 'stock:02', 'stock:02 在庫無 (有在庫、除外されるべき)', 2, '在庫無', NULL, 80, 'C', NULL, '2026-05-05', 0, 0, NULL),
+        ('666666666666', 'ebayyh_test_confirmed', 'user 確認済 (除外されるべき)', 1, '在庫無', 'ヤフオク', 50, 'C', NULL, '2026-05-05', 1, 0, NULL)
     """)
     conn.commit()
     conn.close()
@@ -127,14 +128,14 @@ def test_supply_risk_case_sensitive_per_sku_rules(tmp_path, monkeypatch):
             quantity_ebay INTEGER, source_status TEXT, source TEXT,
             current_price REAL, rank TEXT, source_url TEXT,
             source_last_checked TEXT, risk_confirmed INTEGER,
-            is_ended INTEGER DEFAULT 0
+            is_ended INTEGER DEFAULT 0, ebay_image_url TEXT
         )
     """)
     conn.execute("""
         INSERT INTO ebay_listings VALUES
-        ('lower_ebay', 'ebayme_test_lower', '正規 無在庫 (含めるべき)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0),
-        ('upper_ebay', 'EBAYme_test_upper', '大文字 EBAY (仕様外、除外)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0),
-        ('mixed_ebay', 'eBaYme_test_mixed', '大小混在 eBaY (仕様外、除外)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0)
+        ('lower_ebay', 'ebayme_test_lower', '正規 無在庫 (含めるべき)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0, NULL),
+        ('upper_ebay', 'EBAYme_test_upper', '大文字 EBAY (仕様外、除外)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0, NULL),
+        ('mixed_ebay', 'eBaYme_test_mixed', '大小混在 eBaY (仕様外、除外)', 1, '在庫無', NULL, 100, 'A', NULL, '2026-05-05', 0, 0, NULL)
     """)
     conn.commit()
     conn.close()

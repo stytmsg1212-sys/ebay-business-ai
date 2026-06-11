@@ -3372,6 +3372,44 @@ def init_db():
                     "[init_db v70] 部分適用: harvest_pattern 未追加。次回 init_db で再試行。"
                 )
 
+        # ---- v71 (W258/Phase-B, 2026-06-11): supplier_candidates 画像列追加 ----
+        # 設計書 §3.4: eBay 1枚目画像 × 仕入先 1枚目画像の比較カード実装に必要な列。
+        #   candidate_image_url        : 仕入先候補ページの 1 枚目画像 URL (TEXT)
+        #   candidate_image_fetched_at : 画像 URL 取得時刻 (UTC, TEXT '%Y-%m-%d %H:%M:%S')
+        # 冪等: 各 ADD COLUMN を try/except sqlite3.OperationalError で個別ラップ (v69 流儀)。
+        # PRAGMA table_info で全列存在確認後にのみ user_version=71 bump。
+        # DROP/DELETE は書かない (quality-gate hook が物理 BLOCK する)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 70:
+            _V71_COLS: dict[str, str] = {
+                "candidate_image_url": "TEXT",
+                "candidate_image_fetched_at": "TEXT",  # UTC '%Y-%m-%d %H:%M:%S'
+            }
+            for _col, _typ in _V71_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE supplier_candidates ADD COLUMN {_col} {_typ}"
+                    )
+                    logger.info(f"[init_db v71] supplier_candidates.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 列既存 (重複適用) = OK、冪等
+
+            # 全列実在を確認後にのみ bump (部分適用で bump しない / v69 流儀)
+            _v71_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(supplier_candidates)"
+                ).fetchall()
+            }
+            _v71_required = set(_V71_COLS.keys())
+            if _v71_required <= _v71_cols:
+                conn.execute("PRAGMA user_version = 71")
+                logger.info("[init_db v71] schema_ver bumped to 71")
+            else:
+                _v71_missing = _v71_required - _v71_cols
+                logger.warning(
+                    f"[init_db v71] 部分適用: 列未追加 {_v71_missing}。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4213,7 +4251,8 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
         rows = conn.execute("""
             SELECT ebay_item_id, sku, title, quantity_ebay, source_status,
                    source, current_price, rank, source_url, source_last_checked,
-                   COALESCE(risk_confirmed, 0) as risk_confirmed
+                   COALESCE(risk_confirmed, 0) as risk_confirmed,
+                   ebay_image_url
             FROM ebay_listings
             WHERE quantity_ebay >= 1
               AND COALESCE(is_ended, 0) = 0
@@ -5154,12 +5193,15 @@ def add_supplier_candidate(
     availability_status: Optional[str] = None,
     availability_checked_at: Optional[str] = None,
     availability_signal: Optional[str] = None,
+    candidate_image_url: Optional[str] = None,
 ) -> Optional[int]:
     """
     仕入先候補を登録（同一 ebay_item_id + candidate_url の重複は無視）。
     eval_model: AI 評価に使った model (claude-opus-4-7 / claude-haiku-4-5 等).
     availability_*: W182 (2026-05-28) 在庫 gate を通過した時点の判定結果.
         - status='available' 以外は呼び出し側で reject 済の想定 (二重防御として記録).
+    candidate_image_url: W258/Phase-B (2026-06-11) 仕入先候補ページの 1 枚目画像 URL.
+        値がある場合は candidate_image_fetched_at に UTC now を自動セット。
     Returns: 挿入された行のid、重複なら None
 
     W185 (2026-05-29): dedup キーが ebay_item_id ベースになったため (sku-rules.md)、
@@ -5171,6 +5213,10 @@ def add_supplier_candidate(
             "add_supplier_candidate: ebay_item_id は必須です (W185 dedup キー)。"
             f"sku={sku!r} candidate_url={candidate_url!r}"
         )
+    from datetime import datetime, timezone as _tz
+    _img_fetched_at: Optional[str] = None
+    if candidate_image_url:
+        _img_fetched_at = datetime.now(_tz.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT OR IGNORE INTO supplier_candidates
@@ -5179,14 +5225,14 @@ def add_supplier_candidate(
                 match_reasoning, profit_jpy, profitable, discovered_via,
                 junk_likely_untested, alt_listing_possible, alt_listing_note,
                 eval_model, availability_status, availability_checked_at,
-                availability_signal)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                availability_signal, candidate_image_url, candidate_image_fetched_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (sku, ebay_item_id, source_platform, candidate_url,
              candidate_price_jpy, candidate_title, match_score,
              match_reasoning, profit_jpy, profitable, discovered_via,
              junk_likely_untested, alt_listing_possible, alt_listing_note,
              eval_model, availability_status, availability_checked_at,
-             availability_signal),
+             availability_signal, candidate_image_url, _img_fetched_at),
         )
         return cur.lastrowid if cur.rowcount else None
 
