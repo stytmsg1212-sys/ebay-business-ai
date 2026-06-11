@@ -230,6 +230,16 @@
     "_x_news_check_removed": {
       "_note": "W154 (2026-05-22 PM) で W13 x_news_check は news_check に統合, 削除済. X (Grok) のリストラ + RSS 8 source 化. monitor/x_news_*.py + monitor/xai_wrapper.py + tasks/task_x_news_check.py + tests/test_x_news.py 物理削除."
     },
+    "research_sourcing": {
+      "enabled": true,
+      "description": "W228 リサーチ探索: gate_passed 候補の AI重量推定→フリマ探索→利益計算→承認キュー積み (毎日04:30)",
+      "priority": 15,
+      "cron_hour": 4,
+      "cron_minute": 30,
+      "daily_cost_cap_usd": 3.0,
+      "max_items_per_run": 20,
+      "note": "04:30 (harvest 03:30 の 1h 後)。コスト cap $3.0/日 (fail-CLOSED)。重量 AI 推定は Haiku 4.5、コスト context='research_sourcing'。borderline ±20% は needs_review に回す (設計書 §14-Q2)。"
+    },
     "research_harvest": {
       "enabled": true,
       "description": "W229 商品リサーチ発掘: Terapeak 2パターン収穫 + 自動ゲート判定 (毎日03:30)",

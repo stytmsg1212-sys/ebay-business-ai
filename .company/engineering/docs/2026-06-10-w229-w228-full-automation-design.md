@@ -427,6 +427,10 @@ Phase 4: 承認キューUI (セクションD) → 承認後下書き(W226流用)
       │ 5. 利益真値: calculator.calculate → profit_jpy_true (FIX-2)         │
       │      けいすけ基準 (§14-Q1: 還付抜き profit で 率6% OR ¥600)          │
       │ 6. Section232 推定 (ルールベース) → section232_flag                 │
+      │ 6.5 match_score < 60 → not_found 降格 + 利益値クリア                │
+      │      (supplier-matching-rules。evaluate_product は手動UI前提で      │
+      │       score不問 sourced のため task 側で適用。2026-06-11 Q1 実機で   │
+      │       15/15 件誤マッチ利益が承認待ちに積まれて発覚 → 追補)            │
       │ 7. 境界判定 (§14-Q2) → needs_review / それ以外 → awaiting_approval  │
       │ 8. Discord: 探索成功K / 承認待ち追加J / コスト$X                    │
       └────────────────────────────────────────────────────────────────┘
@@ -461,9 +465,10 @@ Phase 4: 承認キューUI (セクションD) → 承認後下書き(W226流用)
 - TASK_SCHEDULE: MonoDeck 定時実行タブに research_harvest が出る
 
 ### Phase 3 DoD
-- pytest: sourcing バッチ / コスト cap 超過で中断 / 利益真値 / 境界判定で needs_review
+- pytest: sourcing バッチ / コスト cap 超過で中断 / 利益真値 / 境界判定で needs_review / match_score<60 降格+利益クリア (2026-06-11 追補)
 - 実機: gate_passed 数件で sourcing 実行 → match_score + profit_jpy_true が DB 着地、api_call_log にコスト記録
 - Q0: 取得エラー = needs_review、0件 = not_found に分離されることを DB で確認
+- verify_numbers: 承認待ちに match_score<60 の利益値が残っていないことを DB SELECT で確認 (2026-06-11 初回実機で 15/15 件が誤マッチ利益のまま積まれた事故の再発防止)
 
 ### Phase 4 DoD
 - pytest: 承認 → status 遷移 / 下書き生成 / 在庫0上限ガード / watch 登録 + watch_ids_json

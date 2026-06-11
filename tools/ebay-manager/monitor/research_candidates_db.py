@@ -109,7 +109,11 @@ _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     ),
     STATUS_SOURCED: frozenset(
         {STATUS_NEEDS_REVIEW, STATUS_IDENTITY_APPROVED, STATUS_IDENTITY_REJECTED,
-         STATUS_AWAITING_APPROVAL}  # 自動経路: sourced → awaiting_approval (Phase 3)
+         STATUS_AWAITING_APPROVAL,  # 自動経路: sourced → awaiting_approval (Phase 3)
+         STATUS_NOT_FOUND}  # 自動経路: match_score < floor = 別商品判定 → 仕入先未発見に降格
+        # (2026-06-11 Phase 3 Q1 実機で発覚: evaluate_product は手動 UI 前提
+        #  「保存のみ、最終確定は人間」§2-B のため score=0 でも sourced を返す。
+        #  自動経路は supplier-matching-rules <60 除外を task 側で適用する)
     ),
     STATUS_NOT_FOUND: frozenset(
         {STATUS_SOURCING, STATUS_NEEDS_REVIEW,
@@ -531,5 +535,32 @@ def save_profit_true(
                 keisuke_detail_json,
                 rc_id,
             ),
+        )
+    return True
+
+
+def clear_profit_fields(rc_id: int) -> bool:
+    """利益関連カラムを NULL に戻す (match_score < floor の別商品判定時).
+
+    誤マッチ商品の価格で計算された利益真値は虚偽数値 (verify_numbers 違反源)
+    のため、not_found 降格時に必ず無効化する。found_url / match_score /
+    match_reason は「この候補を評価して棄却した」監査痕跡として残す。
+
+    Returns:
+        True = 書込成功。False = rc_id 不在。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT rc_id FROM research_candidates WHERE rc_id=?", (rc_id,)
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "UPDATE research_candidates "
+            "SET profit_jpy_true=NULL, profit_usd_true=NULL, keisuke_pass=0, "
+            "    keisuke_detail_json='{}', estimated_profit_usd=NULL, "
+            "    updated_at=CURRENT_TIMESTAMP "
+            "WHERE rc_id=?",
+            (rc_id,),
         )
     return True

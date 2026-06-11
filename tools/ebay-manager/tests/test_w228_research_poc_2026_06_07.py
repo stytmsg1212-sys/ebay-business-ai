@@ -151,9 +151,13 @@ def test_status_transitions_allowed_and_forbidden():
     # 許容: sourcing → sourced
     assert rc_db.update_status(rc_id, rc_db.STATUS_SOURCED) is True
 
-    # 禁止: sourced → not_found (一度 sourced したら needs_review 経由のみ)
+    # 許容: sourced → not_found (2026-06-11 Phase 3 追加エッジ:
+    # match_score < 60 の別商品判定で task 側が降格する。旧仕様では禁止だった)
+    assert rc_db.update_status(rc_id, rc_db.STATUS_NOT_FOUND) is True
+
+    # 禁止: not_found → sourced (逆流は不可、再探索は gate_passed からのみ)
     with pytest.raises(ValueError, match="transition not allowed"):
-        rc_db.update_status(rc_id, rc_db.STATUS_NOT_FOUND)
+        rc_db.update_status(rc_id, rc_db.STATUS_SOURCED)
 
     # 不正 status 値そのもの
     with pytest.raises(ValueError, match="invalid new_status"):

@@ -9,6 +9,39 @@ last_updated: 2026-06-11
 
 ---
 
+## W228 Phase 3 リサーチ探索 B 工程自動化（2026-06-11）
+
+### ゴール
+gate_passed 候補を毎日 04:30 に自動処理: AI 重量推定 → フリマ探索 → 利益計算 → awaiting_approval 積み → Discord 通知。
+
+### 実装内容
+完了
+
+- [x] **新規** `tasks/task_research_sourcing.py`: B 工程本体 (run_research_sourcing)。fail-CLOSED コスト cap / AI 重量推定 (Haiku 4.5) / evaluate_product 呼出 / Section232 付記 / 状態遷移 / Discord 通知
+- [x] **新規** `monitor/research_section232.py`: Section 232 keyword 辞書 (Annex I-A / I-B / III)、純関数 estimate_section232()
+- [x] **新規** `tests/test_research_sourcing.py`: 14 テスト全 PASS (6 クラス: 正常フロー / コスト cap 途中 / fail-CLOSED / borderline / P2 状態分離 / 重量推定失敗 / disabled skip / Section232)
+- [x] **配線** `daily_scheduler.py`: _run_research_sourcing 関数追加 + CronTrigger(hour=4, minute=30) add_job
+- [x] **配線** `monitor/task_execution_log.py`: TASK_SCHEDULE に research_sourcing エントリ追加
+- [x] **配線** `config/schedule_config.json`: research_sourcing セクション追加 (enabled=true, daily_cost_cap_usd=3.0, max_items_per_run=20)
+
+### バグ修正（テスト実行中に発見）
+
+- monkeypatch パス誤り × 2 (evaluate_product / estimate_section232 は source module に patch する): tasks.task_research_sourcing.* → monitor.research_poc.evaluate_product / monitor.research_section232.estimate_section232
+- test_cap_reached_midway が `cost_aborted==0` で失敗: root cause は `result.update(counters)` による上書き。`result["cost_aborted"]` 直接書込から `counters["cost_aborted"]` 書込に修正して解決
+
+### スコア自己評価
+- **完成度**: 5/5
+- **テスト実施**: pytest 14/14 PASS。既存回帰 127 件 PASS (pre-existing 1 件除く)
+- **仕様準拠**: 設計書 §10 DoD 6 クラス全て満たす。Q0 (silent skip 防止 / fail-CLOSED) / Q2 (DB 冪等、今回 ALTER なし) / K1 (最小実装) / K2 (既存コード外科的変更のみ) 準拠
+
+### 既知の制限
+- evaluate_product / keisuke_check の実装は research_poc.py 側に依存 (Phase 3 は呼び出し側のみ実装)
+- Section232 は keyword 辞書ベース (LLM 推定なし、設計書 §14-Q4 の rule-based 方針通り)
+
+**Status**: 完了・エバリュエーター待ち
+
+---
+
 ## W258 Phase B 画像比較カード実装（2026-06-11）
 
 ### ゴール

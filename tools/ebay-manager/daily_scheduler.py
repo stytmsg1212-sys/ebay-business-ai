@@ -1025,6 +1025,22 @@ def setup_scheduler():
     _rh_enabled = config.get('tasks_enabled', {}).get('research_harvest', {}).get('enabled', False)
     logger.info(f"W229 商品リサーチ発掘 発火: 毎日 03:30 JST (enabled={_rh_enabled})")
 
+    # ── W228 Phase 3 リサーチ探索 (2026-06-11 追加) ──
+    # 毎日 04:30 JST に gate_passed 候補のフリマ探索→AI重量推定→利益計算→承認キュー積み.
+    # harvest (03:30) 完了 1h 後. Claude Haiku 4.5 + evaluate_product (subprocess Playwright).
+    # コスト上限 $3/日 (fail-CLOSED). enabled は config (tasks_enabled.research_sourcing.enabled) で制御.
+    scheduler.add_job(
+        _run_research_sourcing,
+        trigger=CronTrigger(hour=4, minute=30, second=0),
+        args=[config, 4],
+        id='research_sourcing_04_30',
+        name='W228 リサーチ探索 (04:30)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _rs_enabled = config.get('tasks_enabled', {}).get('research_sourcing', {}).get('enabled', False)
+    logger.info(f"W228 リサーチ探索 発火: 毎日 04:30 JST (enabled={_rs_enabled})")
+
     # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
     # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
     # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
@@ -1189,6 +1205,18 @@ def _run_research_harvest(config: dict, scheduled_hour: int = 3):
         return
     _run_isolated_task('research_harvest', 'W229 商品リサーチ発掘',
                        lambda: run_research_harvest(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_research_sourcing(config: dict, scheduled_hour: int = 4):
+    """W228 リサーチ探索 — 毎日 04:30 JST に gate_passed 候補のフリマ探索→利益→キュー積み."""
+    try:
+        from tasks.task_research_sourcing import run_research_sourcing
+    except ImportError as e:
+        logger.error(f"task_research_sourcing import 失敗: {e}")
+        return
+    _run_isolated_task('research_sourcing', 'W228 リサーチ探索',
+                       lambda: run_research_sourcing(config),
                        scheduled_hour=scheduled_hour)
 
 
