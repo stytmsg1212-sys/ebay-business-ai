@@ -2072,23 +2072,40 @@ def _render_rival_dataframe(p: dict, config: dict) -> None:
     # W217 (2026-06-03): 価格再取得 + CLI 一括候補を共通 expander に格納 (普段非表示).
     # 「🔄 価格再取得 (Browse API)」と「🆕 CLI 一括候補」は普段見ない情報
     # (再取得は cron 自動、CLI 候補は初期登録専用) のためまとめて折りたたみ。
+    # 2026-06-11 user 指示 (保存フロー一体化): ボタン 1 押下で「編集グリッドの
+    # 内容を DB 保存 → 価格再取得」を連続実行する。従来は 直打ち→💾DB保存→
+    # 反映確認→再取得 の 3 ステップで、保存を忘れると旧ライバルを再取得する
+    # 罠があった。ボタン名も「保存される」ことが伝わる名前に変更。
+    # 保存内容 = pm_comp_list (編集グリッドの現在値、空欄=削除・全置換)。
+    # グリッド expander body は折りたたみ時も毎 rerun 実行されるため、
+    # ここでの読出しは常に最新 (上の W217 コメント参照)。
     with st.expander(
-        "🔄 価格再取得 (Browse API) / 🆕 CLI 一括候補 (初期登録用)",
+        "💾 ライバル保存 + 価格再取得 (Browse API) / 🆕 CLI 一括候補 (初期登録用)",
         expanded=False,
     ):
-        if pricing_rows and st.button(
-            "🔄 ライバル価格 再取得 (Browse API)",
+        comp_list = st.session_state.get(f"pm_comp_list_{eid}", [])
+        if (pricing_rows or comp_list) and st.button(
+            "💾 ライバル保存 + 価格再取得 (Browse API)",
             key=f"pm_refresh_comp_{eid}", use_container_width=True,
+            help="編集グリッドの item id を DB 保存してから Browse API で価格を再取得します (空欄=削除・全置換)",
         ):
-            with st.spinner("Browse API で価格再取得中..."):
+            with st.spinner("ライバル保存 + Browse API で価格再取得中..."):
                 try:
+                    upsert_listing_competitors(
+                        our_item_id=eid,
+                        competitor_item_ids=comp_list,
+                    )
+                    bump_db_version()  # W134 Step2: 競合更新後 read-cache 無効化
                     result = refresh_competitor_pricing(eid, config or {})
                     f, fl = result.get("fetched", 0), result.get("failed", 0)
-                    if f == 0 and fl == 0:
-                        st.info("登録ライバルなし")
+                    if not comp_list:
+                        st.warning("ライバル 0 件を保存 (全削除) しました")
                     else:
-                        st.success(f"取得成功 {f} / 失敗 {fl}")
-                        st.rerun()
+                        st.success(
+                            f"ライバル {len(comp_list)} 件保存 / "
+                            f"価格取得 成功 {f} / 失敗 {fl}"
+                        )
+                    st.rerun()
                 except (sqlite3.OperationalError, ValueError, TypeError, KeyError) as e:
                     st.error(f"エラー: {e}")
 
