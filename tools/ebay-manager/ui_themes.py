@@ -472,11 +472,504 @@ def apply_dark_paper_theme():
     """, unsafe_allow_html=True)
 
 
+def apply_neumorph_cream_theme():
+    """W261 Neumorphic Cream theme (2026-06-11) — design system 画像準拠
+
+    配色: クリーム地 #ede7da / 深緑ティール #0e4f4b / JetBrains Mono 数値フォント
+    ニューモーフィズム: raised / inset 二値の box-shadow で奥行き表現
+    """
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        /* W261 Neumorphic Cream (2026-06-11) — design system 画像準拠 */
+        --nm-bg: #ede7da;          /* base layer (クリーム地) */
+        --nm-bg-deep: #e4dcca;     /* inset/沈み面 */
+        --nm-surface: #f2ecdf;     /* raised card */
+        --nm-surface-hi: #f9f5eb;  /* hover/最上面 */
+        --nm-shadow-d: rgba(166,150,121,0.50);  /* 右下の暗影 */
+        --nm-shadow-l: rgba(255,255,255,0.90);  /* 左上の光 */
+        --nm-teal: #0e4f4b;        /* primary accent (深緑ティール) */
+        --nm-teal-hi: #156a63;     /* hover */
+        --nm-teal-deep: #0a3d3a;
+        --nm-teal-soft: rgba(14,79,75,0.10);
+        --nm-text: #2a2e2a;
+        --nm-text-2: #5f6557;
+        --nm-text-3: #8d927f;
+        --nm-ok: #2e7d5b;
+        --nm-warn: #b8860b;
+        --nm-err: #a8341b;
+        --nm-radius-sm: 8px;
+        --nm-radius: 12px;
+        --nm-radius-lg: 16px;
+        --nm-shadow-raised: 5px 5px 12px var(--nm-shadow-d), -5px -5px 12px var(--nm-shadow-l);
+        --nm-shadow-raised-sm: 3px 3px 7px var(--nm-shadow-d), -3px -3px 7px var(--nm-shadow-l);
+        --nm-shadow-inset: inset 3px 3px 7px var(--nm-shadow-d), inset -3px -3px 7px var(--nm-shadow-l);
+        --f-body: 'Inter', 'Segoe UI', sans-serif;
+        --f-mono: 'JetBrains Mono', 'Consolas', monospace;
+        --f-num: 'JetBrains Mono', 'Consolas', monospace;
+    }
+
+    /* ────── Base ────── */
+    [data-testid="stAppViewContainer"] {
+        background: var(--nm-bg) !important;
+    }
+    .main { background: transparent !important; }
+
+    [data-testid="stSidebar"] {
+        background: var(--nm-surface) !important;
+        border-right: 1px solid rgba(166,150,121,0.25) !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+
+    /* ────── Page fade-in ────── */
+    @keyframes nmFade {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: none; }
+    }
+    .main .block-container {
+        animation: nmFade .35s ease-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+
+    /* ────── Typography ────── */
+    html, body, [data-testid="stAppViewContainer"] {
+        color: var(--nm-text) !important;
+        font-family: var(--f-body) !important;
+        font-size: 14px !important;
+        line-height: 1.55 !important;
+    }
+
+    h1, h2, h3, h5, h6 {
+        font-family: var(--f-body) !important;
+        color: var(--nm-text) !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+    }
+    h1 { font-size: 26px !important; font-weight: 700 !important; }
+    h2 { font-size: 20px !important; font-weight: 600 !important; border: none !important; padding: 0 !important; }
+    h3 { font-size: 16px !important; font-weight: 600 !important; }
+    h4 {
+        font-family: var(--f-body) !important;
+        font-size: 11px !important; font-weight: 700 !important;
+        color: var(--nm-text) !important;
+        letter-spacing: 2px !important; text-transform: uppercase !important;
+    }
+
+    p, span, li, label, .stMarkdown, div {
+        font-family: var(--f-body) !important;
+        color: var(--nm-text-2) !important;
+    }
+    strong, b { color: var(--nm-text) !important; font-weight: 600 !important; }
+
+    /* ボタン内テキストは button 要素の color (primary=白) を継承させる。
+       上の全 div/p/span 文字色ルールがティール塗りボタンの白文字を
+       --nm-text-2 で潰すのを防ぐ (W261 実機検証で発覚)。 */
+    button p, button span, button div {
+        color: inherit !important;
+    }
+
+    /* Numbers use JetBrains Mono for tabular legibility */
+    .stMetric [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"],
+    .stNumberInput input,
+    .stTextInput input[type="number"] {
+        font-family: var(--f-num) !important;
+        font-variant-numeric: tabular-nums !important;
+        letter-spacing: 0 !important;
+    }
+
+    /* ────── Tabs ────── */
+    .stTabs [data-baseweb="tab-list"] {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(166,150,121,0.30) !important;
+        gap: 0 !important; padding: 0 !important;
+    }
+    .stTabs [data-baseweb="tab-list"] button {
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        color: var(--nm-text-3) !important;
+        font-family: var(--f-body) !important;
+        font-weight: 500 !important; font-size: 13px !important;
+        letter-spacing: 0.3px !important; text-transform: none !important;
+        padding: 12px 20px !important; margin: 0 !important;
+        box-shadow: none !important;
+        transition: box-shadow .18s ease, transform .18s ease, color .18s, background .18s !important;
+    }
+    .stTabs [data-baseweb="tab-list"] button:hover {
+        color: var(--nm-teal) !important;
+        background: rgba(14,79,75,0.05) !important;
+        transform: none !important;
+    }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        color: var(--nm-teal) !important;
+        background: transparent !important;
+        position: relative !important;
+    }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"]::after {
+        content: '';
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        height: 2px;
+        background: var(--nm-teal);
+    }
+
+    /* ────── Buttons ────── */
+    .stButton button, .stFormSubmitButton button {
+        font-family: var(--f-body) !important;
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        color: var(--nm-text-2) !important;
+        padding: 7px 14px !important;
+        border-radius: var(--nm-radius-sm) !important;
+        font-weight: 600 !important;
+        font-size: 12px !important;
+        letter-spacing: 0 !important;
+        text-transform: none !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+        animation: none !important;
+        transition: box-shadow .18s ease, transform .18s ease, color .18s, background .18s !important;
+    }
+    .stButton button:hover, .stFormSubmitButton button:hover {
+        background: var(--nm-surface-hi) !important;
+        color: var(--nm-teal) !important;
+        border-color: rgba(166,150,121,0.25) !important;
+        box-shadow: var(--nm-shadow-raised) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton button:active, .stFormSubmitButton button:active {
+        box-shadow: var(--nm-shadow-inset) !important;
+        transform: translateY(0) !important;
+    }
+    .stButton button[kind="primary"],
+    .stButton button[type="primary"],
+    .stFormSubmitButton button[kind="primary"] {
+        background: var(--nm-teal) !important;
+        border: 1px solid var(--nm-teal) !important;
+        color: #fff !important;
+        border-radius: 999px !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+    .stButton button[kind="primary"]:hover,
+    .stFormSubmitButton button[kind="primary"]:hover {
+        background: var(--nm-teal-hi) !important;
+        border-color: var(--nm-teal-hi) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton button[kind="primary"]:active,
+    .stFormSubmitButton button[kind="primary"]:active {
+        box-shadow: var(--nm-shadow-inset) !important;
+        transform: translateY(0) !important;
+    }
+
+    /* ────── Inputs ────── */
+    .stTextInput input, .stNumberInput input,
+    .stSelectbox select, .stTextArea textarea,
+    .stDateInput input, .stTimeInput input {
+        font-family: var(--f-body) !important;
+        background: var(--nm-bg-deep) !important;
+        border: none !important;
+        color: var(--nm-text) !important;
+        border-radius: 10px !important;
+        font-size: 13px !important;
+        box-shadow: var(--nm-shadow-inset) !important;
+    }
+    .stTextInput input:focus, .stNumberInput input:focus,
+    .stSelectbox select:focus, .stTextArea textarea:focus {
+        box-shadow: var(--nm-shadow-inset), 0 0 0 2px var(--nm-teal-soft) !important;
+        outline: 1px solid var(--nm-teal) !important;
+    }
+    /* Selectbox dropdown */
+    [data-baseweb="select"] > div {
+        background: var(--nm-bg-deep) !important;
+        border: none !important;
+        border-radius: 10px !important;
+        color: var(--nm-text) !important;
+        box-shadow: var(--nm-shadow-inset) !important;
+    }
+    [data-baseweb="popover"] {
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius) !important;
+        box-shadow: var(--nm-shadow-raised) !important;
+    }
+    [data-baseweb="menu"] li {
+        background: var(--nm-surface) !important;
+        color: var(--nm-text-2) !important;
+        font-family: var(--f-body) !important;
+    }
+    [data-baseweb="menu"] li:hover {
+        background: var(--nm-surface-hi) !important;
+        color: var(--nm-teal) !important;
+    }
+
+    /* ────── Metrics ────── */
+    [data-testid="metric-container"],
+    [data-testid="stMetric"] {
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius-lg) !important;
+        padding: 18px 16px 14px !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+        animation: none !important;
+        position: relative !important;
+    }
+    [data-testid="metric-container"]::before,
+    [data-testid="stMetric"]::before {
+        content: '';
+        position: absolute;
+        top: 14px; left: 16px;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--nm-teal);
+    }
+    [data-testid="metric-container"] label,
+    [data-testid="stMetric"] label {
+        font-family: var(--f-body) !important;
+        color: var(--nm-text-3) !important;
+        font-size: 10px !important;
+        font-weight: 600 !important;
+        letter-spacing: 1.5px !important;
+        text-transform: uppercase !important;
+        padding-left: 14px !important;
+    }
+    [data-testid="metric-container"] [data-testid="stMetricValue"],
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-family: var(--f-num) !important;
+        color: var(--nm-text) !important;
+        font-size: 28px !important;
+        font-weight: 600 !important;
+        font-variant-numeric: tabular-nums !important;
+        line-height: 1.1 !important;
+        text-shadow: none !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-family: var(--f-mono) !important;
+        font-size: 10px !important;
+        letter-spacing: 1px !important;
+    }
+
+    /* ────── Containers / Expander ────── */
+    [data-testid="stExpander"] {
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius-lg) !important;
+        background: var(--nm-surface) !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+    [data-testid="stExpander"] summary {
+        font-family: var(--f-body) !important;
+        color: var(--nm-text-2) !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        letter-spacing: 0.3px !important;
+        text-transform: none !important;
+        padding: 12px 16px !important;
+    }
+    [data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius-lg) !important;
+        background: var(--nm-surface) !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+
+    /* Hide Material Icons text fallback */
+    @font-face {
+        font-family: 'Material Symbols Rounded';
+        src: local('__disabled__');
+    }
+    .material-symbols-rounded {
+        display: none !important;
+    }
+
+    /* W258 (2026-06-11): Material icon 生テキスト露出の根治。
+       [data-testid="stIconMaterial"] 要素ごと非表示 + expander caret は
+       ::before の unicode 三角で代替。 */
+    [data-testid="stIconMaterial"] {
+        display: none !important;
+    }
+    [data-testid="stExpander"] details summary::before {
+        content: '▶';
+        display: inline-block;
+        margin-right: 0.6em;
+        font-size: 0.85em;
+        font-weight: 700;
+        transition: transform 0.15s;
+    }
+    [data-testid="stExpander"] details[open] summary::before {
+        content: '▼';
+    }
+
+    /* ────── Alerts ────── */
+    .stSuccess {
+        border: 1px solid var(--nm-ok) !important;
+        background: rgba(46,125,91,0.12) !important;
+        border-radius: var(--nm-radius) !important;
+        color: var(--nm-text) !important;
+    }
+    .stError {
+        border: 1px solid var(--nm-err) !important;
+        background: rgba(168,52,27,0.12) !important;
+        border-radius: var(--nm-radius) !important;
+        color: var(--nm-text) !important;
+    }
+    .stWarning {
+        border: 1px solid var(--nm-warn) !important;
+        background: rgba(184,134,11,0.12) !important;
+        border-radius: var(--nm-radius) !important;
+        color: var(--nm-text) !important;
+    }
+    .stInfo {
+        border: 1px solid var(--nm-teal) !important;
+        background: rgba(14,79,75,0.10) !important;
+        border-radius: var(--nm-radius) !important;
+        color: var(--nm-text) !important;
+    }
+
+    /* ────── Dividers ────── */
+    hr {
+        border: 0 !important;
+        height: 1px !important;
+        background: rgba(166,150,121,0.35) !important;
+        margin: 20px 0 !important;
+        box-shadow: none !important;
+    }
+
+    /* ────── Scrollbar ────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--nm-bg-deep); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb { background: rgba(166,150,121,0.6); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(166,150,121,0.85); }
+
+    /* ────── Links / Code ────── */
+    a {
+        color: var(--nm-teal) !important;
+        text-decoration: none !important;
+        border-bottom: 1px solid transparent !important;
+    }
+    a:hover {
+        color: var(--nm-teal-hi) !important;
+        border-bottom-color: var(--nm-teal-hi) !important;
+    }
+    code {
+        font-family: var(--f-mono) !important;
+        background: var(--nm-bg-deep) !important;
+        border: 1px solid rgba(166,150,121,0.30) !important;
+        color: var(--nm-text-2) !important;
+        padding: 1px 6px !important;
+        border-radius: var(--nm-radius-sm) !important;
+        font-size: 12px !important;
+    }
+
+    /* ────── Checkbox / Radio ────── */
+    .stCheckbox label span,
+    .stRadio label span {
+        font-family: var(--f-body) !important;
+        font-weight: 400 !important;
+        font-size: 13px !important;
+        color: var(--nm-text-2) !important;
+    }
+    .stCheckbox input:checked + div,
+    .stRadio input:checked + div {
+        background: var(--nm-teal) !important;
+        border-color: var(--nm-teal) !important;
+    }
+
+    /* ────── Data tables ────── */
+    [data-testid="stDataFrame"] {
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius) !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+    [data-testid="stDataFrame"] table {
+        font-family: var(--f-body) !important;
+        color: var(--nm-text-2) !important;
+    }
+    [data-testid="stDataFrame"] table thead th {
+        font-family: var(--f-mono) !important;
+        font-size: 9px !important;
+        letter-spacing: 1.5px !important;
+        text-transform: uppercase !important;
+        color: var(--nm-text-3) !important;
+        background: var(--nm-bg-deep) !important;
+        border-bottom: 1px solid rgba(166,150,121,0.25) !important;
+    }
+    [data-testid="stDataFrame"] table tbody td {
+        font-family: var(--f-body) !important;
+        font-size: 12px !important;
+        color: var(--nm-text-2) !important;
+        border-bottom: 1px solid rgba(166,150,121,0.15) !important;
+    }
+    /* numeric cells inherit tabular mono */
+    [data-testid="stDataFrame"] table tbody td[class*="num"],
+    [data-testid="stDataFrame"] .col_heading {
+        font-variant-numeric: tabular-nums !important;
+    }
+
+    /* ────── Caption / small text ────── */
+    [data-testid="stCaption"], .caption {
+        font-family: var(--f-mono) !important;
+        font-size: 10px !important;
+        color: var(--nm-text-3) !important;
+        letter-spacing: 1.5px !important;
+    }
+
+    /* ────── Status box (st.status) ────── */
+    [data-testid="stStatusWidget"] {
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: var(--nm-radius) !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+    }
+
+    /* ────── Tag / Pill emulation via markdown ────── */
+    code.pill-shu { background: var(--nm-err) !important; color: #fff !important; border: 0 !important; }
+    code.pill-ok { background: transparent !important; color: var(--nm-ok) !important; border: 1px solid var(--nm-ok) !important; }
+    code.pill-sage { background: var(--nm-teal) !important; color: #fff !important; border: 0 !important; }
+    code.pill-brass { background: var(--nm-warn) !important; color: #fff !important; border: 0 !important; }
+
+    /* ────── W258 Mobile layer ────── */
+    @media (max-width: 640px) {
+        /* タッチターゲット 44px (iOS HIG)。デスクトップ密度 CSS (app.py 34px) を上書くため
+           詳細度を body 前置で 1 段上げる。 */
+        body [data-testid="stButton"] > button,
+        body [data-testid="stDownloadButton"] > button,
+        body [data-testid="stFormSubmitButton"] > button {
+            min-height: 44px !important;
+            font-size: 14px !important;
+            padding: 8px 14px !important;
+        }
+        body [data-testid="stTextInput"] input,
+        body [data-testid="stNumberInput"] input,
+        body [data-testid="stSelectbox"] div[role="combobox"] {
+            min-height: 44px !important;
+            font-size: 15px !important;
+        }
+        body .main .block-container {
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+        }
+        body [data-testid="stDataFrame"] {
+            overflow-x: auto !important;
+        }
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+
 # 後方互換: 以前 apply_jarvis_theme / apply_custom_styling を呼んでいる箇所があれば
 # 新テーマに置き換える。これで app.py の既存 import を変更せず切替可能。
 def apply_jarvis_theme():
-    apply_dark_paper_theme()
+    apply_neumorph_cream_theme()
 
 
 def apply_custom_styling():
-    apply_dark_paper_theme()
+    apply_neumorph_cream_theme()

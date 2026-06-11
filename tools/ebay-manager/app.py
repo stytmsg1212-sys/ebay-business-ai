@@ -99,7 +99,7 @@ from ui_cache import (  # noqa: E402
 )
 
 
-st.set_page_config(page_title="MONO Deck", page_icon="◯", layout="wide")
+st.set_page_config(page_title="MonoDeck", page_icon="🟩", layout="wide")
 apply_custom_styling()
 
 # ── W217-C (2026-06-04 mockup): グローバル密度 CSS ──
@@ -291,11 +291,11 @@ st.markdown(
         position: sticky;
         top: 0;
         z-index: 100;
-        background: rgba(20, 22, 26, 0.95);
-        backdrop-filter: blur(6px);
+        background: rgba(237,231,218,0.92);
+        backdrop-filter: blur(8px);
         margin: -8px -16px 8px -16px;
         padding: 6px 16px 8px 16px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(166,150,121,0.35);
     }
     /* Streamlit 新レイアウトは各要素を stLayoutWrapper で個別ラップする。
        その wrapper は nav の高さしかなく sticky の移動余地が無いため、
@@ -304,16 +304,38 @@ st.markdown(
     [data-testid="stLayoutWrapper"]:has(> .st-key-_w217a_navbar) {
         display: contents;
     }
-    /* nav ブランド名 */
+    /* nav ブランド名 (W261 Neumorphic Cream) */
     .w217a-topnav-brand {
-        font-family: var(--f-mono, monospace);
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 3px;
-        color: #e6e9ee;
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #0e4f4b;
         margin: 0 12px 4px 0;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         vertical-align: middle;
+    }
+    .nm-logo-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        background: #0e4f4b;
+        color: #fff;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 14px;
+        box-shadow: 2px 2px 5px rgba(166,150,121,0.5), -2px -2px 5px rgba(255,255,255,0.9);
+        margin-right: 8px;
+    }
+    .nm-logo-name {
+        font-family: 'Inter', sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #0e4f4b;
     }
     /* segmented_control 自身は Streamlit の default style を流用 (上段カテゴリ)。
        W217-B v2 (2026-06-04): mockup .seg button (padding:6px 13px / font 12.5px)
@@ -332,24 +354,26 @@ st.markdown(
         line-height: 1.25 !important;
         min-height: 38px !important;
         margin: 0 !important;
-        border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        background: #1d222b !important;
-        color: #c8ced8 !important;
+        border-radius: 10px !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        background: #f2ecdf !important;
+        color: #5f6557 !important;
         font-weight: 500 !important;
-        transition: background 0.12s, border-color 0.12s, color 0.12s !important;
+        box-shadow: 3px 3px 7px rgba(166,150,121,0.5), -3px -3px 7px rgba(255,255,255,0.9) !important;
+        transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.18s, transform 0.18s !important;
     }
     [class*="st-key-_w134_navbtn_"] button:hover {
-        background: #252b36 !important;
-        border-color: #3a4352 !important;
-        color: #fff !important;
+        background: #f9f5eb !important;
+        border-color: rgba(166,150,121,0.25) !important;
+        color: #0e4f4b !important;
+        transform: translateY(-1px) !important;
     }
-    /* 選択中 (type="primary") = 青 accent 左ライン強調 */
+    /* 選択中 (type="primary") = ティール塗り潰し */
     [class*="st-key-_w134_navbtn_"] button[kind="primary"] {
-        background: rgba(110, 168, 254, 0.14) !important;
+        background: #0e4f4b !important;
         color: #fff !important;
-        border-color: rgba(110, 168, 254, 0.65) !important;
-        box-shadow: inset 3px 0 0 #6ea8fe !important;
+        border-color: #0e4f4b !important;
+        box-shadow: 3px 3px 7px rgba(166,150,121,0.5) !important;
     }
     /* nav 内の columns 間隔をつめる */
     [data-testid="stHorizontalBlock"]:has([class*="st-key-_w134_navbtn_"]) {
@@ -422,7 +446,7 @@ if st.session_state._w134_sel not in _W134_GROUPS.get(
 
 _navbar = st.container(key="_w217a_navbar")
 _navbar.markdown(
-    '<div class="w217a-topnav-brand">◯ &nbsp; MONO &nbsp; DECK</div>',
+    '<div class="w217a-topnav-brand"><span class="nm-logo-mark">M</span><span class="nm-logo-name">MonoDeck</span></div>',
     unsafe_allow_html=True,
 )
 

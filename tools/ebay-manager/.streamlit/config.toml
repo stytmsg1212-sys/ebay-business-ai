@@ -1,9 +1,10 @@
 [theme]
-# MonoHonpo brand-v3 "Dark Paper" manager theme (2026-04-23)
-primaryColor = "#a8341b"
-backgroundColor = "#1a1817"
-secondaryBackgroundColor = "#24201c"
-textColor = "#fbf9f3"
+# W261 Neumorphic Cream theme (2026-06-11)
+# 旧 Dark Paper: primaryColor="#a8341b" backgroundColor="#1a1817" secondaryBackgroundColor="#24201c" textColor="#fbf9f3"
+primaryColor = "#0e4f4b"
+backgroundColor = "#ede7da"
+secondaryBackgroundColor = "#f2ecdf"
+textColor = "#2a2e2a"
 font = "sans serif"
 
 [client]

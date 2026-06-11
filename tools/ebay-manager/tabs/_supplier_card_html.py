@@ -28,11 +28,16 @@ from typing import Optional
 _CARD_CSS = """
 <style>
 .sc-card{
-  border:1px solid rgba(120,180,255,0.30);
-  border-radius:6px;
+  border:1px solid rgba(166,150,121,0.25);
+  border-radius:14px;
   padding:10px 14px;
   margin:6px 0;
-  background:rgba(20,30,50,0.40);
+  background:#f2ecdf;
+  box-shadow:3px 3px 7px rgba(166,150,121,0.5),-3px -3px 7px rgba(255,255,255,0.9);
+  transition:box-shadow .18s ease;
+}
+.sc-card:hover{
+  box-shadow:5px 5px 12px rgba(166,150,121,0.5),-5px -5px 12px rgba(255,255,255,0.9);
 }
 .sc-row1{
   display:flex;
@@ -46,6 +51,7 @@ _CARD_CSS = """
   font-weight:700;
   min-width:42px;
   text-align:center;
+  color:#2a2e2a;
 }
 .sc-badge{
   font-size:11px;
@@ -55,26 +61,26 @@ _CARD_CSS = """
   white-space:nowrap;
 }
 .sc-badge-mute{
-  color:rgba(200,200,200,0.65);
-  background:rgba(255,255,255,0.04);
+  color:#8d927f;
+  background:rgba(166,150,121,0.12);
 }
 .sc-badge-info{
-  color:rgba(180,220,255,0.85);
-  background:rgba(120,180,255,0.10);
+  color:#0e4f4b;
+  background:rgba(14,79,75,0.10);
 }
 .sc-badge-good{
-  color:rgba(118,255,3,0.95);
-  background:rgba(118,255,3,0.10);
+  color:#ffffff;
+  background:#0e4f4b;
 }
 .sc-badge-warn{
-  color:rgba(255,180,80,0.95);
-  background:rgba(255,180,80,0.10);
+  color:#7a5800;
+  background:rgba(184,134,11,0.15);
 }
 .sc-iid code{
-  background:rgba(120,200,255,0.12);
+  background:rgba(14,79,75,0.10);
   padding:1px 6px;
   border-radius:3px;
-  color:rgba(200,230,255,0.95);
+  color:#0e4f4b;
   user-select:all;
   cursor:text;
   font-size:11px;
@@ -82,7 +88,7 @@ _CARD_CSS = """
 .sc-title{
   margin-top:6px;
   font-size:13px;
-  color:rgba(255,255,255,0.92);
+  color:#2a2e2a;
   line-height:1.35;
 }
 .sc-money{
@@ -93,32 +99,32 @@ _CARD_CSS = """
   flex-wrap:wrap;
   font-family:Share Tech Mono,monospace;
   font-size:13px;
-  color:#d8cdb5;
+  color:#5f6557;
 }
-.sc-money .sc-ebay{color:#76ff03;font-weight:600;}
-.sc-money .sc-cost{color:#d8cdb5;}
-.sc-money .sc-profit-pos{color:#76ff03;font-weight:700;font-size:14px;}
-.sc-money .sc-profit-neg{color:#ff6b6b;font-weight:700;font-size:14px;}
-.sc-money .sc-profit-na{color:rgba(200,200,200,0.55);font-size:11px;}
-.sc-money .sc-link{margin-left:auto;color:rgba(120,200,255,0.92);}
-.sc-money .sc-muted{color:rgba(200,200,200,0.55);font-size:11px;}
+.sc-money .sc-ebay{color:#0e4f4b;font-weight:600;}
+.sc-money .sc-cost{color:#5f6557;}
+.sc-money .sc-profit-pos{color:#2e7d5b;font-weight:700;font-size:14px;}
+.sc-money .sc-profit-neg{color:#a8341b;font-weight:700;font-size:14px;}
+.sc-money .sc-profit-na{color:#8d927f;font-size:11px;}
+.sc-money .sc-link{margin-left:auto;color:#0e4f4b;}
+.sc-money .sc-muted{color:#8d927f;font-size:11px;}
 .sc-note{
   margin-top:8px;
   padding-top:6px;
-  border-top:1px dashed rgba(120,180,255,0.20);
+  border-top:1px dashed rgba(166,150,121,0.35);
   font-size:11px;
-  color:rgba(200,220,255,0.70);
+  color:#5f6557;
   line-height:1.45;
 }
-.sc-note-alt{color:rgba(180,255,200,0.78);border-top-color:rgba(180,255,200,0.20);}
-.sc-note-junk{color:rgba(255,200,120,0.88);border-top-color:rgba(255,200,120,0.20);}
+.sc-note-alt{color:#2e7d5b;border-top-color:rgba(46,125,91,0.25);}
+.sc-note-junk{color:#7a5800;border-top-color:rgba(184,134,11,0.25);}
 .sc-recovered{
   margin-top:8px;
   padding:6px 10px;
-  background:rgba(240,180,48,0.10);
-  border-left:3px solid rgba(240,180,48,0.85);
+  background:rgba(184,134,11,0.08);
+  border-left:3px solid rgba(184,134,11,0.65);
   font-size:11px;
-  color:rgba(255,220,120,0.95);
+  color:#7a5800;
 }
 .sc-imgpair{
   display:flex;
@@ -139,23 +145,23 @@ _CARD_CSS = """
   width:100%;
   object-fit:contain;
   border-radius:4px;
-  background:rgba(255,255,255,0.04);
+  background:rgba(166,150,121,0.12);
 }
 .sc-imgpair-placeholder{
   height:150px;
   width:100%;
-  background:rgba(100,120,150,0.12);
-  border:1px dashed rgba(120,160,200,0.25);
+  background:rgba(166,150,121,0.10);
+  border:1px dashed rgba(166,150,121,0.35);
   border-radius:4px;
   display:flex;
   align-items:center;
   justify-content:center;
   font-size:11px;
-  color:rgba(180,200,220,0.50);
+  color:#8d927f;
 }
 .sc-imgpair-caption{
   font-size:11px;
-  color:rgba(200,210,230,0.65);
+  color:#8d927f;
   text-align:center;
   white-space:nowrap;
   overflow:hidden;
@@ -184,21 +190,21 @@ _STATUS_JA_LOCAL = {
 
 def _score_color(score: int) -> str:
     if score >= 80:
-        return "rgba(118,255,3,0.95)"
+        return "#0e4f4b"
     if score >= 60:
-        return "rgba(240,200,48,0.95)"
-    return "rgba(255,128,128,0.95)"
+        return "#b8860b"
+    return "#a8341b"
 
 
 def _model_badge(eval_model: str) -> str:
     """評価モデル名から inline badge HTML を返す (該当なしは空文字)."""
     m = (eval_model or "").lower()
     if "opus" in m:
-        label, color, bg = "Opus 4.7", "rgba(196,128,255,0.95)", "rgba(140,80,200,0.18)"
+        label, color, bg = "Opus 4.7", "#2a2e2a", "rgba(14,79,75,0.18)"
     elif "sonnet" in m:
-        label, color, bg = "Sonnet 4.6", "rgba(120,200,255,0.95)", "rgba(80,140,200,0.15)"
+        label, color, bg = "Sonnet 4.6", "#2a2e2a", "rgba(14,79,75,0.10)"
     elif "haiku" in m:
-        label, color, bg = "Haiku 4.5", "rgba(180,220,200,0.85)", "rgba(100,140,120,0.15)"
+        label, color, bg = "Haiku 4.5", "#5f6557", "rgba(46,125,91,0.12)"
     else:
         return ""
     return (

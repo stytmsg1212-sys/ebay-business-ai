@@ -70,12 +70,12 @@ def test_render_returns_string_with_card_and_css():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("score, expected_color", [
-    (95, "rgba(118,255,3,0.95)"),   # >=80: 緑
-    (80, "rgba(118,255,3,0.95)"),
-    (75, "rgba(240,200,48,0.95)"),  # 60-79: 黄
-    (60, "rgba(240,200,48,0.95)"),
-    (59, "rgba(255,128,128,0.95)"), # <60: 赤
-    (0,  "rgba(255,128,128,0.95)"),
+    (95, "#0e4f4b"),   # >=80: ティール (W261 light theme)
+    (80, "#0e4f4b"),
+    (75, "#b8860b"),   # 60-79: 琥珀 (W261 light theme)
+    (60, "#b8860b"),
+    (59, "#a8341b"),   # <60: 赤 (W261 light theme)
+    (0,  "#a8341b"),
 ])
 def test_score_color_threshold(score, expected_color):
     assert _score_color(score) == expected_color

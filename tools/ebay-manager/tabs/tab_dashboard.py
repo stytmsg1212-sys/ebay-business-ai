@@ -425,570 +425,313 @@ def render_dashboard_tab(s: dict) -> None:
 
     _components.html(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
     *{{margin:0;padding:0;box-sizing:border-box;}}
-    body{{background:transparent;overflow:hidden;}}
+    html,body{{background:#ede7da;overflow:hidden;}}
 
     :root {{
-        /* Interstellar poster palette: pure void black + Gargantua accretion disk */
-        --void: #030204;
-        --space: #06050a;
-        --hull: #0c0a0e;
-        --panel: #12100d;
-        --panel-2: #1a1612;
-        --trim: #2a2420;
-        --trim-hi: #3a332c;
-        --steel: #5a5248;
-        --steel-hi: #7a6e5f;
-        --placard: #a89d8a;
-        --instrument: #e8ddc9;
-        --readout: #fbf9f3;
-        /* Gargantua accretion disk (actual movie colors) */
-        --disk-core: #fff4d6;
-        --disk-hot: #ffa84a;
-        --disk-mid: #e08a2c;
-        --disk-cool: #a85020;
-        --disk-dim: #5a2810;
-        --void-hole: #050403;
-        /* Alerts */
-        --alert: #d84c38;
-        --nominal: #6b7a5c;
-        --caution: #c89b2a;
-        /* Fonts */
-        --f-term: 'JetBrains Mono', 'Consolas', monospace;
-        --f-slab: 'Space Mono', 'JetBrains Mono', monospace;
-        --f-movie: 'Inter', sans-serif;
+        --bg:        #ede7da;
+        --surface:   #f2ecdf;
+        --well:      #e4dcca;
+        --text-main: #2a2e2a;
+        --text-sub:  #5f6557;
+        --text-muted:#8d927f;
+        --teal:      #0e4f4b;
+        --teal-h:    #156a63;
+        --nominal:   #2e7d5b;
+        --caution:   #b8860b;
+        --alert:     #a8341b;
+        --sh-out:    6px 6px 14px rgba(166,150,121,0.5),-6px -6px 14px rgba(255,255,255,0.9);
+        --sh-in:     inset 3px 3px 7px rgba(166,150,121,0.5),inset -3px -3px 7px rgba(255,255,255,0.9);
+        --f-ui:      'Inter', sans-serif;
+        --f-mono:    'JetBrains Mono', 'Consolas', monospace;
     }}
 
-    .cockpit {{
-        background: var(--void);
-        position: relative;
-        overflow: hidden;
-        border: 0;
+    .console {{
+        background: var(--surface);
+        border-radius: 16px;
+        box-shadow: var(--sh-out);
+        padding: 20px 24px 18px;
+        display: flex;
+        gap: 28px;
+        align-items: stretch;
+        animation: nmFadeIn 0.4s ease both;
+    }}
+    @keyframes nmFadeIn {{
+        from {{ opacity:0; transform:translateY(4px); }}
+        to   {{ opacity:1; transform:translateY(0); }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+        .console {{ animation:none; }}
+        .dot {{ animation:none !important; }}
+    }}
+    @media (max-width: 640px) {{
+        .console {{ flex-direction:column; }}
     }}
 
-    /* ── Deep space star-field (CSS box-shadow stars) ── */
-    .stars, .stars-2, .stars-3 {{
-        position: absolute; inset: 0;
-        pointer-events: none;
+    .zone-left {{
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 168px;
+        justify-content: center;
     }}
-    .stars {{
-        background-image:
-            radial-gradient(1px 1px at 20px 30px, rgba(255,255,255,0.6), transparent),
-            radial-gradient(1px 1px at 60px 70px, rgba(255,255,255,0.4), transparent),
-            radial-gradient(1px 1px at 110px 20px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 150px 110px, rgba(255,255,255,0.5), transparent),
-            radial-gradient(1px 1px at 200px 50px, rgba(255,255,255,0.8), transparent),
-            radial-gradient(1.5px 1.5px at 260px 90px, rgba(255,255,255,0.9), transparent),
-            radial-gradient(1px 1px at 320px 30px, rgba(255,240,220,0.6), transparent),
-            radial-gradient(1px 1px at 380px 130px, rgba(255,255,255,0.4), transparent),
-            radial-gradient(1px 1px at 450px 70px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 530px 20px, rgba(255,255,255,0.5), transparent),
-            radial-gradient(1px 1px at 600px 110px, rgba(255,255,255,0.6), transparent),
-            radial-gradient(1.2px 1.2px at 680px 60px, rgba(255,255,255,0.8), transparent),
-            radial-gradient(1px 1px at 760px 130px, rgba(255,240,220,0.5), transparent),
-            radial-gradient(1px 1px at 850px 40px, rgba(255,255,255,0.6), transparent),
-            radial-gradient(1px 1px at 920px 90px, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 1000px 30px, rgba(255,255,255,0.5), transparent),
-            radial-gradient(1.3px 1.3px at 1080px 120px, rgba(255,255,255,0.9), transparent),
-            radial-gradient(1px 1px at 1150px 70px, rgba(255,240,220,0.6), transparent);
-        background-size: 1200px 160px;
-        background-repeat: repeat;
-        opacity: 0.9;
-    }}
-    .stars-2 {{
-        background-image:
-            radial-gradient(0.8px 0.8px at 40px 50px, rgba(255,255,255,0.3), transparent),
-            radial-gradient(0.8px 0.8px at 130px 15px, rgba(255,255,255,0.4), transparent),
-            radial-gradient(0.8px 0.8px at 230px 80px, rgba(255,255,255,0.3), transparent),
-            radial-gradient(0.8px 0.8px at 310px 120px, rgba(255,255,255,0.5), transparent),
-            radial-gradient(0.8px 0.8px at 420px 40px, rgba(255,255,255,0.3), transparent),
-            radial-gradient(0.8px 0.8px at 510px 100px, rgba(255,255,255,0.4), transparent),
-            radial-gradient(0.8px 0.8px at 620px 30px, rgba(255,255,255,0.3), transparent),
-            radial-gradient(0.8px 0.8px at 710px 85px, rgba(255,255,255,0.5), transparent),
-            radial-gradient(0.8px 0.8px at 800px 25px, rgba(255,255,255,0.3), transparent),
-            radial-gradient(0.8px 0.8px at 880px 115px, rgba(255,255,255,0.4), transparent);
-        background-size: 1000px 140px;
-        background-repeat: repeat;
-        animation: twinkle 6s ease-in-out infinite;
-    }}
-    .stars-3 {{
-        background-image:
-            radial-gradient(2px 2px at 180px 60px, rgba(255,240,210,0.9), transparent),
-            radial-gradient(2.2px 2.2px at 480px 25px, rgba(210,225,255,0.85), transparent),
-            radial-gradient(1.8px 1.8px at 820px 95px, rgba(255,245,220,0.9), transparent),
-            radial-gradient(2px 2px at 1050px 50px, rgba(255,230,200,0.8), transparent);
-        background-size: 1200px 160px;
-        background-repeat: repeat;
-        filter: blur(0.3px);
-    }}
-    @keyframes twinkle {{
-        0%, 100% {{ opacity: 0.4; }}
-        50% {{ opacity: 0.85; }}
-    }}
-
-    /* ── HERO: Gargantua + title (movie poster vibe) ── */
-    .hero {{
-        position: relative;
-        padding: 20px 24px 14px;
+    .brand {{
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 44px;
-        min-height: 180px;
-        background: radial-gradient(ellipse 900px 260px at 50% 50%, rgba(224,138,44,0.06), transparent);
+        gap: 10px;
     }}
-
-    /* Gargantua — SVG black hole + accretion disk */
-    .gargantua {{
-        width: 280px; height: 156px;
+    .logo-sq {{
+        width: 36px; height: 36px;
+        background: var(--teal);
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
         flex-shrink: 0;
-        filter: drop-shadow(0 0 40px rgba(224,138,44,0.25));
-        animation: drift 40s ease-in-out infinite;
+        box-shadow: 3px 3px 8px rgba(166,150,121,0.45),-2px -2px 6px rgba(255,255,255,0.8);
     }}
-    @keyframes drift {{
-        0%, 100% {{ transform: translateY(0) scale(1); }}
-        50% {{ transform: translateY(-2px) scale(1.01); }}
-    }}
-
-    /* Title stack next to Gargantua */
-    .title-stack {{
-        display: flex; flex-direction: column; gap: 8px;
-        position: relative; z-index: 2;
-    }}
-    .title {{
-        font-family: var(--f-movie);
-        font-size: 34px; font-weight: 200;
-        letter-spacing: 14px;
-        color: var(--instrument);
-        text-shadow: 0 0 24px rgba(232,221,201,0.18), 0 2px 0 rgba(0,0,0,0.6);
+    .logo-sq span {{
+        font-family: var(--f-ui);
+        font-size: 18px; font-weight: 700;
+        color: #fff;
         line-height: 1;
-    }}
-    .subtitle {{
-        font-family: var(--f-term);
-        font-size: 10px; font-weight: 400;
-        letter-spacing: 5px;
-        color: var(--placard);
-        text-transform: uppercase;
-        padding-left: 2px;
-    }}
-    .tagline {{
-        font-family: var(--f-movie);
-        font-size: 11px; font-weight: 300;
-        font-style: italic;
-        letter-spacing: 2px;
-        color: var(--steel-hi);
-        margin-top: 6px;
-    }}
-
-    /* ── STATUS BAR (mission clock + local time) ── */
-    .statusbar {{
-        position: relative;
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 20px;
-        align-items: center;
-        padding: 10px 24px;
-        background: linear-gradient(180deg, transparent, rgba(3,2,4,0.7));
-        border-top: 1px solid rgba(58,51,44,0.5);
-        border-bottom: 1px solid rgba(58,51,44,0.5);
-    }}
-    .status-left {{
-        display: flex; align-items: center; gap: 10px;
-        font-family: var(--f-term);
-        font-size: 10px; letter-spacing: 2.5px;
-        color: var(--placard);
-        text-transform: uppercase;
-    }}
-    .status-left .live {{
-        color: var(--disk-hot);
-        font-size: 9px;
-    }}
-    .status-left .live::before {{
-        content: '●';
-        margin-right: 5px;
-        animation: blink 2s ease-in-out infinite;
-    }}
-    @keyframes blink {{
-        0%, 100% {{ opacity: 1; }}
-        50% {{ opacity: 0.4; }}
-    }}
-    .mission-clock {{
-        text-align: center;
-        font-family: var(--f-slab);
-        font-size: 13px; font-weight: 500;
-        letter-spacing: 4px;
-        color: var(--disk-hot);
-        font-variant-numeric: tabular-nums;
-    }}
-    .mission-clock .lbl {{
-        display: block;
-        font-family: var(--f-term);
-        font-size: 8px; font-weight: 400;
-        letter-spacing: 3px;
-        color: var(--steel);
-        text-transform: uppercase;
-        margin-bottom: 2px;
-    }}
-    .local-clock {{
-        text-align: right;
-        font-family: var(--f-slab);
-        font-size: 13px; font-weight: 400;
-        letter-spacing: 2px;
-        color: var(--instrument);
-        font-variant-numeric: tabular-nums;
-    }}
-    .local-clock .lbl {{
-        display: block;
-        font-family: var(--f-term);
-        font-size: 8px;
-        letter-spacing: 3px;
-        color: var(--steel);
-        text-transform: uppercase;
-        margin-bottom: 2px;
-    }}
-
-    /* ── TELEMETRY STRIP (TARS-style gauges + Cooper cockpit readouts) ── */
-    .tele {{
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 0;
-        background: var(--void);
-        position: relative;
-    }}
-    .gauge {{
-        position: relative;
-        padding: 16px 20px 14px;
-        background: rgba(18,16,13,0.85);
-        border-right: 1px solid var(--trim-hi);
-        border-top: 1px solid var(--trim-hi);
-    }}
-    .gauge:last-child {{ border-right: 0; }}
-    /* vertical accent strip (TARS slab indicator) */
-    .gauge::before {{
-        content: '';
-        position: absolute;
-        top: 14px; bottom: 14px; left: 0;
-        width: 3px;
-        background: var(--nominal);
-        box-shadow: 0 0 6px currentColor;
-        color: var(--nominal);
-    }}
-    .gauge.alert::before {{ background: var(--alert); color: var(--alert); }}
-    .gauge.caution::before {{ background: var(--caution); color: var(--caution); }}
-    .gauge.nominal::before {{ background: var(--nominal); color: var(--nominal); }}
-
-    .gauge-head {{
-        display: flex; justify-content: space-between; align-items: baseline;
-        margin-bottom: 10px;
-    }}
-    .gauge-label {{
-        font-family: var(--f-term);
-        font-size: 8px; font-weight: 500;
-        letter-spacing: 2.5px;
-        color: var(--placard);
-        text-transform: uppercase;
-    }}
-    .gauge-unit {{
-        font-family: var(--f-term);
-        font-size: 8px; font-weight: 400;
-        letter-spacing: 1.5px;
-        color: var(--steel);
-        text-transform: uppercase;
-    }}
-
-    .readout {{
-        display: flex; align-items: baseline; gap: 6px;
-        margin-bottom: 8px;
-    }}
-    .readout .big {{
-        font-family: var(--f-slab);
-        font-size: 32px; font-weight: 700;
-        color: var(--readout);
-        line-height: 1;
-        font-variant-numeric: tabular-nums;
         letter-spacing: -1px;
     }}
-    .gauge.alert .readout .big {{ color: var(--alert); }}
-    .gauge.caution .readout .big {{ color: var(--caution); }}
-    .gauge.nominal .readout .big {{ color: var(--instrument); }}
-    .readout .pct {{
-        font-family: var(--f-slab);
-        font-size: 14px; font-weight: 500;
-        color: var(--steel);
+    .wordmark {{
+        font-family: var(--f-ui);
+        font-size: 18px; font-weight: 700;
+        color: var(--teal);
+        letter-spacing: -0.3px;
+        line-height: 1;
+    }}
+    .temporal {{
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-left: 2px;
+    }}
+    .t-date {{
+        font-family: var(--f-mono);
+        font-size: 11px;
+        color: var(--text-sub);
+        letter-spacing: 0.5px;
         font-variant-numeric: tabular-nums;
     }}
-
-    /* TARS-style horizontal slider bar */
-    .bar-wrap {{
-        display: flex; align-items: center; gap: 10px;
-        margin-top: 6px;
+    .t-clock {{
+        font-family: var(--f-mono);
+        font-size: 20px; font-weight: 500;
+        color: var(--text-main);
+        letter-spacing: 1px;
+        font-variant-numeric: tabular-nums;
     }}
-    .tars-bar {{
-        flex: 1; height: 6px;
-        background: var(--trim);
-        position: relative; overflow: hidden;
+    .t-mission {{
+        font-family: var(--f-mono);
+        font-size: 11px; font-weight: 500;
+        color: var(--teal);
+        letter-spacing: 1px;
+        font-variant-numeric: tabular-nums;
     }}
-    .tars-bar .fill {{
-        position: absolute;
-        top: 0; left: 0; bottom: 0;
-        background: var(--nominal);
-        box-shadow: 0 0 6px currentColor;
-        color: var(--nominal);
-    }}
-    .gauge.alert .tars-bar .fill {{ background: var(--alert); color: var(--alert); }}
-    .gauge.caution .tars-bar .fill {{ background: var(--caution); color: var(--caution); }}
-    .tars-bar .tick {{
-        position: absolute;
-        top: 0; bottom: 0;
-        width: 1px;
-        background: var(--steel);
-        opacity: 0.3;
-    }}
-    .bar-note {{
-        font-family: var(--f-term);
-        font-size: 8px; font-weight: 400;
-        letter-spacing: 1.5px;
-        color: var(--steel-hi);
+    .t-label {{
+        font-family: var(--f-ui);
+        font-size: 9px;
+        color: var(--text-muted);
         text-transform: uppercase;
-        white-space: nowrap;
+        letter-spacing: 1.5px;
+        margin-bottom: 1px;
     }}
+
+    .divider {{
+        width: 1px;
+        background: linear-gradient(180deg,transparent,rgba(166,150,121,0.35),transparent);
+        align-self: stretch;
+        flex-shrink: 0;
+    }}
+
+    .zone-right {{
+        flex: 1;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+    }}
+    .well {{
+        flex: 1;
+        background: var(--well);
+        box-shadow: var(--sh-in);
+        border-radius: 12px;
+        padding: 14px 16px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+    }}
+    .well-label {{
+        font-family: var(--f-ui);
+        font-size: 10px;
+        color: var(--text-sub);
+        text-transform: lowercase;
+        letter-spacing: 0.3px;
+    }}
+    .well-row {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+    .well-val {{
+        font-family: var(--f-mono);
+        font-size: 22px; font-weight: 700;
+        color: var(--text-main);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+    }}
+    .well-sub {{
+        font-family: var(--f-mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+    }}
+    .dot {{
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: nmBreath 3s ease-in-out infinite;
+    }}
+    .dot.nominal {{ background: var(--nominal); }}
+    .dot.caution {{ background: var(--caution); }}
+    .dot.alert   {{ background: var(--alert); animation-duration: 1.6s; }}
+    @keyframes nmBreath {{
+        0%,100% {{ opacity:1; }}
+        50%      {{ opacity:0.45; }}
+    }}
+    .well-status {{
+        font-family: var(--f-ui);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }}
+    .well-status.nominal {{ color: var(--nominal); }}
+    .well-status.caution {{ color: var(--caution); }}
+    .well-status.alert   {{ color: var(--alert); }}
     </style>
 
-    <div class="cockpit">
-        <!-- Deep space star-field layers -->
-        <div class="stars"></div>
-        <div class="stars-2"></div>
-        <div class="stars-3"></div>
-
-        <!-- HERO: Gargantua black hole + movie-poster title -->
-        <div class="hero">
-            <svg class="gargantua" viewBox="0 0 280 156" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <!-- Radial disk glow -->
-                <radialGradient id="garg-glow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stop-color="#fff4d6" stop-opacity="0"/>
-                  <stop offset="55%" stop-color="#ffa84a" stop-opacity="0"/>
-                  <stop offset="72%" stop-color="#e08a2c" stop-opacity="0.45"/>
-                  <stop offset="85%" stop-color="#a85020" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="#5a2810" stop-opacity="0"/>
-                </radialGradient>
-                <!-- Horizontal disk band -->
-                <linearGradient id="garg-disk" x1="0%" x2="100%" y1="0%" y2="0%">
-                  <stop offset="0%" stop-color="#5a2810" stop-opacity="0"/>
-                  <stop offset="12%" stop-color="#a85020" stop-opacity="0.6"/>
-                  <stop offset="30%" stop-color="#e08a2c" stop-opacity="0.95"/>
-                  <stop offset="45%" stop-color="#ffa84a"/>
-                  <stop offset="50%" stop-color="#fff4d6"/>
-                  <stop offset="55%" stop-color="#ffa84a"/>
-                  <stop offset="70%" stop-color="#e08a2c" stop-opacity="0.95"/>
-                  <stop offset="88%" stop-color="#a85020" stop-opacity="0.6"/>
-                  <stop offset="100%" stop-color="#5a2810" stop-opacity="0"/>
-                </linearGradient>
-                <!-- Lensed arc gradient -->
-                <linearGradient id="garg-arc" x1="0%" x2="100%" y1="0%" y2="0%">
-                  <stop offset="0%" stop-color="#5a2810" stop-opacity="0"/>
-                  <stop offset="20%" stop-color="#a85020" stop-opacity="0.7"/>
-                  <stop offset="50%" stop-color="#ffa84a" stop-opacity="0.95"/>
-                  <stop offset="80%" stop-color="#a85020" stop-opacity="0.7"/>
-                  <stop offset="100%" stop-color="#5a2810" stop-opacity="0"/>
-                </linearGradient>
-                <!-- Hole black -->
-                <radialGradient id="garg-hole" cx="50%" cy="50%" r="55%">
-                  <stop offset="0%" stop-color="#030203"/>
-                  <stop offset="85%" stop-color="#050403"/>
-                  <stop offset="100%" stop-color="#1a0f08"/>
-                </radialGradient>
-                <filter id="garg-blur">
-                  <feGaussianBlur stdDeviation="0.8"/>
-                </filter>
-              </defs>
-
-              <!-- outer glow -->
-              <ellipse cx="140" cy="78" rx="130" ry="60" fill="url(#garg-glow)" />
-
-              <!-- Top lensed arc (gravitational lensing rear of disk over hole) -->
-              <path d="M 20 78 Q 140 -6 260 78" fill="none" stroke="url(#garg-arc)" stroke-width="14" stroke-linecap="round" opacity="0.75"/>
-              <path d="M 40 78 Q 140 18 240 78" fill="none" stroke="#ffe0a8" stroke-width="3.5" stroke-linecap="round" opacity="0.9"/>
-              <path d="M 52 78 Q 140 26 228 78" fill="none" stroke="#fff4d6" stroke-width="1.5" stroke-linecap="round" opacity="0.9" filter="url(#garg-blur)"/>
-
-              <!-- Bottom lensed arc (lensing under) -->
-              <path d="M 20 78 Q 140 162 260 78" fill="none" stroke="url(#garg-arc)" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
-
-              <!-- Horizontal accretion disk (foreground flat disk) -->
-              <ellipse cx="140" cy="78" rx="128" ry="8" fill="url(#garg-disk)" opacity="0.95"/>
-              <ellipse cx="140" cy="78" rx="128" ry="3.5" fill="#fff4d6" opacity="0.9"/>
-              <ellipse cx="140" cy="78" rx="100" ry="1.5" fill="#ffffff" opacity="0.7"/>
-
-              <!-- Central black hole shadow (slightly larger than horizon, dark) -->
-              <ellipse cx="140" cy="78" rx="32" ry="30" fill="url(#garg-hole)"/>
-
-              <!-- Inner photon ring bright edge -->
-              <ellipse cx="140" cy="78" rx="34" ry="31" fill="none" stroke="#ffa84a" stroke-width="0.6" opacity="0.45"/>
-              <ellipse cx="140" cy="78" rx="36" ry="32" fill="none" stroke="#e08a2c" stroke-width="0.3" opacity="0.3"/>
-            </svg>
-
-            <div class="title-stack">
-                <div class="title">M O N O &nbsp; D E C K</div>
-                <div class="subtitle">MONOHONPO · Internal Ops Console</div>
-                <div class="tagline">"Love is the one thing we're capable of perceiving that transcends dimensions of time and space."</div>
+    <div class="console">
+        <div class="zone-left">
+            <div class="brand">
+                <div class="logo-sq"><span>M</span></div>
+                <div class="wordmark">MonoDeck</div>
+            </div>
+            <div class="temporal">
+                <div class="t-label">date</div>
+                <div class="t-date">{_date_str}</div>
+                <div class="t-label" style="margin-top:4px;">local time &middot; jst</div>
+                <div class="t-clock" id="live-clock">{_now_str}</div>
+                <div class="t-label" style="margin-top:4px;">mission elapsed</div>
+                <div class="t-mission">{_mission_clock}</div>
             </div>
         </div>
 
-        <!-- STATUS BAR (mission clock + local) -->
-        <div class="statusbar">
-            <div class="status-left">
-                <span class="live">LIVE</span>
-                <span>· eBay LINK ACTIVE · All systems nominal</span>
-            </div>
-            <div class="mission-clock">
-                <span class="lbl">Mission Elapsed</span>
-                {_mission_clock}
-            </div>
-            <div class="local-clock">
-                <span class="lbl">Local · JST</span>
-                {_now_str} &nbsp;·&nbsp; {_date_str}
-            </div>
-        </div>
+        <div class="divider"></div>
 
-        <!-- Telemetry strip (TARS personality setting inspired gauges) -->
-        <div class="tele">
-            <div class="gauge {_inbox_cls}">
-                <div class="gauge-head">
-                    <span class="gauge-label">Inbox</span>
-                    <span class="gauge-unit">Msg · Unread</span>
+        <div class="zone-right">
+            <div class="well">
+                <div class="well-label">受信箱 未確認</div>
+                <div class="well-row">
+                    <div class="well-val">{len(_dash_unconf)}</div>
+                    <div class="well-sub">/{len(_dash_emails_all)}</div>
+                    <div class="dot {_inbox_cls}"></div>
                 </div>
-                <div class="readout">
-                    <span class="big">{len(_dash_unconf):02d}</span>
-                    <span class="pct">/{len(_dash_emails_all)}</span>
-                </div>
-                <div class="bar-wrap">
-                    <div class="tars-bar">
-                        <span class="fill" style="width:{min(100, len(_dash_unconf)*20)}%"></span>
-                        <span class="tick" style="left:25%"></span>
-                        <span class="tick" style="left:50%"></span>
-                        <span class="tick" style="left:75%"></span>
-                    </div>
-                    <span class="bar-note">{'ATTN' if _dash_unconf else 'CLEAR'}</span>
-                </div>
+                <div class="well-status {_inbox_cls}">{'attn' if _dash_unconf else 'clear'}</div>
             </div>
 
-            <div class="gauge {_tasks_cls}">
-                <div class="gauge-head">
-                    <span class="gauge-label">Tasks</span>
-                    <span class="gauge-unit">Active · Pri</span>
+            <div class="well">
+                <div class="well-label">高優先タスク</div>
+                <div class="well-row">
+                    <div class="well-val">{len(_high_tasks)}</div>
+                    <div class="well-sub">/{len(active)} active</div>
+                    <div class="dot {_tasks_cls}"></div>
                 </div>
-                <div class="readout">
-                    <span class="big">{len(active):02d}</span>
-                    <span class="pct">/ {len(_high_tasks)} HI</span>
-                </div>
-                <div class="bar-wrap">
-                    <div class="tars-bar">
-                        <span class="fill" style="width:{min(100, len(active)*10)}%"></span>
-                        <span class="tick" style="left:25%"></span>
-                        <span class="tick" style="left:50%"></span>
-                        <span class="tick" style="left:75%"></span>
-                    </div>
-                    <span class="bar-note">{'CAUTION' if _high_tasks else 'NOMINAL'}</span>
-                </div>
+                <div class="well-status {_tasks_cls}">{'caution' if _high_tasks else 'nominal'}</div>
             </div>
 
-            <div class="gauge nominal">
-                <div class="gauge-head">
-                    <span class="gauge-label">Exec Log</span>
-                    <span class="gauge-unit">Run · 24h</span>
+            <div class="well">
+                <div class="well-label">実行成功率 (24h)</div>
+                <div class="well-row">
+                    <div class="well-val">{_sr:.0f}%</div>
+                    <div class="well-sub">{exec_summary['success']}/{exec_summary['total']}</div>
+                    <div class="dot {_sr_cls}"></div>
                 </div>
-                <div class="readout">
-                    <span class="big">{exec_summary['total']:03d}</span>
-                    <span class="pct">PASS {exec_summary['success']}</span>
-                </div>
-                <div class="bar-wrap">
-                    <div class="tars-bar">
-                        <span class="fill" style="width:{min(100, exec_summary['total']*2)}%"></span>
-                        <span class="tick" style="left:25%"></span>
-                        <span class="tick" style="left:50%"></span>
-                        <span class="tick" style="left:75%"></span>
-                    </div>
-                    <span class="bar-note">FAIL {exec_summary['failed']:02d}</span>
-                </div>
-            </div>
-
-            <div class="gauge {_sr_cls}">
-                <div class="gauge-head">
-                    <span class="gauge-label">Success Rate</span>
-                    <span class="gauge-unit">Rolling · %</span>
-                </div>
-                <div class="readout">
-                    <span class="big">{_sr:.0f}</span>
-                    <span class="pct">%</span>
-                </div>
-                <div class="bar-wrap">
-                    <div class="tars-bar">
-                        <span class="fill" style="width:{_sr:.0f}%"></span>
-                        <span class="tick" style="left:25%"></span>
-                        <span class="tick" style="left:50%"></span>
-                        <span class="tick" style="left:75%"></span>
-                    </div>
-                    <span class="bar-note">{'ALERT' if _sr<80 and exec_summary['total']>0 else 'NOMINAL'}</span>
-                </div>
+                <div class="well-status {_sr_cls}">{'alert' if _sr<80 and exec_summary['total']>0 else 'nominal'}</div>
             </div>
         </div>
     </div>
-    """, height=420)
+
+    <script>
+    (function(){{
+        var el=document.getElementById('live-clock');
+        if(!el)return;
+        function tick(){{
+            var d=new Date();
+            var h=String(d.getHours()).padStart(2,'0');
+            var m=String(d.getMinutes()).padStart(2,'0');
+            var s=String(d.getSeconds()).padStart(2,'0');
+            el.textContent=h+':'+m+':'+s;
+        }}
+        tick();
+        setInterval(tick,1000);
+    }})();
+    </script>
+    """, height=270)
 
     # セクションヘッダーCSS
     _section_css = """
     <style>
     .sec-header {
-        font-family: 'Orbitron', sans-serif;
-        font-size: 11px; font-weight: 500;
-        color: rgba(77,217,240,0.85);
-        letter-spacing: 3px;
+        font-family: Inter, sans-serif;
+        font-size: 11px; font-weight: 700;
+        color: #0e4f4b;
+        letter-spacing: 2.5px;
         text-transform: uppercase;
         padding: 10px 16px;
         margin: 16px 0 10px 0;
-        border: 1px solid rgba(77,217,240,0.35);
-        border-left: 3px solid rgba(77,217,240,0.6);
+        border: 1px solid rgba(14,79,75,0.18);
+        border-left: 3px solid #0e4f4b;
         border-radius: 4px;
-        background: linear-gradient(135deg, rgba(77,217,240,0.08), rgba(77,217,240,0.02));
-        box-shadow: 0 0 15px rgba(77,217,240,0.05), inset 0 0 20px rgba(77,217,240,0.02);
+        background: rgba(14,79,75,0.04);
+        box-shadow: none;
         position: relative;
     }
     .sec-header::before {
         content: ''; position: absolute; top: 3px; bottom: 3px; left: -1px; width: 2px;
-        background: rgba(77,217,240,0.8); box-shadow: 0 0 8px rgba(77,217,240,0.4);
+        background: #0e4f4b;
     }
     .sec-header::after {
         content: ''; position: absolute; top: 0; right: 10px; left: 60%; height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(77,217,240,0.3));
+        background: linear-gradient(90deg, transparent, rgba(14,79,75,0.2));
     }
     .task-section {
-        font-family: 'Exo 2', sans-serif;
+        font-family: Inter, sans-serif;
         font-size: 11px; font-weight: 400;
-        color: rgba(255,145,0,0.8);
+        color: #5f6557;
         letter-spacing: 1.5px;
         text-transform: uppercase;
         padding: 4px 0;
-        border-bottom: 1px solid rgba(255,145,0,0.15);
+        border-bottom: 1px solid rgba(95,101,87,0.2);
         margin: 8px 0 4px 0;
     }
-    .pri-hi { color: #ff4444; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
-    .pri-md { color: #ff9100; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
+    .pri-hi { color: #a8341b; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .pri-md { color: #b8860b; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
     .mail-row {
         padding: 8px 14px;
-        border-left: 2px solid rgba(77,217,240,0.4);
         margin-bottom: 6px;
-        background: rgba(77,217,240,0.04);
+        background: rgba(14,79,75,0.03);
         border-radius: 0 4px 4px 0;
-        border: 1px solid rgba(77,217,240,0.1);
-        border-left: 3px solid rgba(77,217,240,0.4);
+        border: 1px solid rgba(14,79,75,0.1);
+        border-left: 3px solid rgba(14,79,75,0.35);
     }
-    .mail-row.sale { border-left-color: rgba(112,240,128,0.6); background: rgba(112,240,128,0.04); }
-    .mail-row.return { border-left-color: rgba(240,64,80,0.6); background: rgba(240,64,80,0.04); }
-    .mail-row.offer { border-left-color: rgba(240,160,48,0.6); background: rgba(240,160,48,0.04); }
+    .mail-row.sale { border-left-color: #2e7d5b; background: rgba(46,125,91,0.04); }
+    .mail-row.return { border-left-color: #a8341b; background: rgba(168,52,27,0.04); }
+    .mail-row.offer { border-left-color: #b8860b; background: rgba(184,134,11,0.04); }
     .clear-status {
-        font-family: 'Share Tech Mono', monospace;
-        color: rgba(118,255,3,0.7); font-size: 12px; letter-spacing: 1px;
+        font-family: 'JetBrains Mono', monospace;
+        color: #2e7d5b; font-size: 12px; letter-spacing: 1px;
     }
     </style>
     """

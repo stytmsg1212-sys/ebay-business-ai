@@ -4457,21 +4457,21 @@ def render_product_management(config: dict) -> None:
     # ========================================================================
     st.markdown(
         """<style>
-        /* === Design tokens (dark theme 前提固定、Streamlit body bg #1A1817) === */
+        /* === Design tokens (light cream 前提 (W261 2026-06-11、body bg #ede7da)) === */
         :root {
-            --pm-primary:        #818CF8;  /* indigo-400 light、dark bg で見える */
-            --pm-primary-strong: #4F46E5;  /* indigo-600、border 等 */
-            --pm-primary-light:  #A5B4FC;  /* indigo-300、ハイライト */
-            --pm-success:        #34D399;  /* emerald-400 */
-            --pm-warning:        #FBBF24;  /* amber-400 */
-            --pm-danger:         #F87171;  /* red-400 */
-            --pm-info:           #60A5FA;  /* blue-400 */
-            --pm-text-dim:       #9CA3AF;  /* slate-400 */
-            --pm-bg-card:        rgba(255,255,255,0.04);
-            --pm-bg-card2:       rgba(255,255,255,0.07);
-            --pm-border:         rgba(255,255,255,0.12);
-            --pm-border-strong:  rgba(255,255,255,0.2);
-            --pm-shadow:         0 2px 6px rgba(0,0,0,0.3);
+            --pm-primary:        #0e4f4b;  /* 深緑ティール、cream bg で見える */
+            --pm-primary-strong: #0a3d3a;  /* ティール濃い、border 等 */
+            --pm-primary-light:  #156a63;  /* ティール中間、ハイライト */
+            --pm-success:        #2e7d5b;  /* 緑 */
+            --pm-warning:        #b8860b;  /* 琥珀 */
+            --pm-danger:         #a8341b;  /* 赤 */
+            --pm-info:           #156a63;  /* ティール */
+            --pm-text-dim:       #5f6557;  /* sub 文字 */
+            --pm-bg-card:        rgba(166,150,121,0.10);
+            --pm-bg-card2:       rgba(166,150,121,0.16);
+            --pm-border:         rgba(166,150,121,0.30);
+            --pm-border-strong:  rgba(166,150,121,0.45);
+            --pm-shadow:         3px 3px 7px rgba(166,150,121,0.5),-3px -3px 7px rgba(255,255,255,0.9);
         }
 
         /* === expander caret icon を unicode 三角で代替 (2026-05-12 fix) === */
@@ -4585,10 +4585,10 @@ def render_product_management(config: dict) -> None:
         }
 
         /* === Action buttons: 色分けで意図明確化 === */
-        /* DB 保存 (1番目 = neutral): slate */
+        /* DB 保存 (1番目 = neutral): 中間グレー */
         [data-testid="stForm"] [data-testid="column"]:nth-of-type(1)
             button[data-testid="stBaseButton-secondaryFormSubmit"] {
-            background: #475569;
+            background: #5f6557;
             color: white;
         }
         /* eBay 反映 (2番目 = primary): indigo */
@@ -4608,7 +4608,7 @@ def render_product_management(config: dict) -> None:
             filter: brightness(1.15);
         }
 
-        /* === Status pill — dark theme 前提、!important で Streamlit inherit を上書き === */
+        /* === Status pill — light cream 前提、!important で Streamlit inherit を上書き === */
         .pm-pill {
             display: inline-block !important;
             padding: 4px 12px !important;
@@ -4618,29 +4618,29 @@ def render_product_management(config: dict) -> None:
             margin: 3px 5px 3px 0 !important;
             border: 1px solid transparent;
         }
-        /* OK (green): emerald-200 text on emerald-500 bg 20% */
+        /* OK (green): ティール文字 on ティール bg 12% */
         .pm-pill-ok {
-            background: rgba(16, 185, 129, 0.22) !important;
-            color: #A7F3D0 !important;
-            border-color: #34D399 !important;
+            background: rgba(46, 125, 91, 0.15) !important;
+            color: #2e7d5b !important;
+            border-color: #2e7d5b !important;
         }
-        /* WARN (yellow): amber-200 text on amber-500 bg 20% */
+        /* WARN (yellow): 琥珀文字 on 琥珀 bg 12% */
         .pm-pill-warn {
-            background: rgba(245, 158, 11, 0.22) !important;
-            color: #FDE68A !important;
-            border-color: #FBBF24 !important;
+            background: rgba(184, 134, 11, 0.15) !important;
+            color: #7a5800 !important;
+            border-color: #b8860b !important;
         }
-        /* BAD (red): red-200 text on red-500 bg 20% */
+        /* BAD (red): 赤文字 on 赤 bg 12% */
         .pm-pill-bad {
-            background: rgba(239, 68, 68, 0.22) !important;
-            color: #FECACA !important;
-            border-color: #F87171 !important;
+            background: rgba(168, 52, 27, 0.15) !important;
+            color: #a8341b !important;
+            border-color: #a8341b !important;
         }
-        /* INFO (blue): blue-200 text on blue-500 bg 20% */
+        /* INFO (teal): ティール文字 on ティール bg 10% */
         .pm-pill-info {
-            background: rgba(59, 130, 246, 0.22) !important;
-            color: #BFDBFE !important;
-            border-color: #60A5FA !important;
+            background: rgba(14, 79, 75, 0.10) !important;
+            color: #0e4f4b !important;
+            border-color: #156a63 !important;
         }
 
         /* === Dataframe: 見やすい === */
@@ -4655,7 +4655,7 @@ def render_product_management(config: dict) -> None:
             border: 2px solid var(--pm-primary) !important;
             border-radius: 10px !important;
             padding: 16px !important;
-            background: rgba(129, 140, 248, 0.06) !important;
+            background: rgba(14, 79, 75, 0.05) !important;
             box-shadow: var(--pm-shadow);
         }
         [data-testid="stForm"]::before {
@@ -4707,17 +4707,17 @@ def render_product_management(config: dict) -> None:
             margin-top: 4px;
         }
         .pm-kw-badge-ok {
-            background: rgba(16, 185, 129, 0.22);
-            color: #A7F3D0;
-            border: 1px solid #34D399;
+            background: rgba(46, 125, 91, 0.15);
+            color: #2e7d5b;
+            border: 1px solid #2e7d5b;
         }
         .pm-kw-badge-warn {
-            background: rgba(245, 158, 11, 0.22);
-            color: #FDE68A;
-            border: 1px solid #FBBF24;
+            background: rgba(184, 134, 11, 0.15);
+            color: #7a5800;
+            border: 1px solid #b8860b;
         }
         .pm-kw-badge-idle {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(166, 150, 121, 0.12);
             color: var(--pm-text-dim);
             border: 1px solid var(--pm-border);
         }
@@ -4733,13 +4733,13 @@ def render_product_management(config: dict) -> None:
             align-items: center;
         }
         .pm-gap-line-bad {
-            background: rgba(239, 68, 68, 0.18);
+            background: rgba(168, 52, 27, 0.12);
         }
         .pm-gap-line-ok {
-            background: rgba(16, 185, 129, 0.18);
+            background: rgba(46, 125, 91, 0.12);
         }
         .pm-gap-line-eq {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(166, 150, 121, 0.10);
         }
 
         /* === W217-A: ライバル登録済 HTML table (モック準拠、最安行緑背景) === */
@@ -4748,7 +4748,7 @@ def render_product_management(config: dict) -> None:
             border-collapse: collapse;
             font-size: 12px;
             margin: 4px 0 0 0;
-            color: var(--pm-text, #e6e9ee);
+            color: var(--pm-text, #2a2e2a);
         }
         .pm-rival-tbl th {
             text-align: right;
@@ -4767,7 +4767,7 @@ def render_product_management(config: dict) -> None:
         }
         .pm-rival-tbl td {
             padding: 6px 7px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(166, 150, 121, 0.18);
             text-align: right;
             font-variant-numeric: tabular-nums;
         }
@@ -4788,7 +4788,7 @@ def render_product_management(config: dict) -> None:
         }
         /* 最安行: 緑背景 + 合計緑文字 (モックの tr.best と .tot-ok 相当) */
         .pm-rival-tbl tr.pm-rival-best td {
-            background: rgba(16, 185, 129, 0.13);
+            background: rgba(46, 125, 91, 0.12);
         }
         .pm-rival-tbl td.pm-rival-tot-ok {
             color: var(--pm-success);

@@ -2663,8 +2663,8 @@ def render_tab(settings: dict) -> None:
         <style>
         div[class*="st-key-il_cost_"] > div[data-testid="stVerticalBlockBorderWrapper"],
         div[class*="st-key-il_cost_"] {
-            border-left: 3px solid rgba(255, 176, 60, 0.55) !important;
-            background: rgba(255, 176, 60, 0.04) !important;
+            border-left: 3px solid rgba(184, 134, 11, 0.65) !important;
+            background: rgba(184, 134, 11, 0.08) !important;
         }
         </style>
         """,

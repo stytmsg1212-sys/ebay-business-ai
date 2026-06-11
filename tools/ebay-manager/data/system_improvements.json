@@ -2358,12 +2358,13 @@
     "id": 329,
     "tag": "W258",
     "title": "MonoDeck 全タブ UI 全面刷新 (直感操作/コンパクト一覧/スマホ対応/画像比較カード)",
-    "description": "user 要求 (2026-06-10): ボタンや画面の遷移がイケていない、誰でも直感操作できる UI に全面刷新。要件: (1)シンプル直感 (2)毎日の作業がサクサク (3)一覧コンパクト=空白減・情報量最大 (4)ボタン内文字列重複 (ieck/heck) の根治=Material Symbols 無効化 CSS が新版 testid stIconMaterial 未カバー、tab_product_management の局所 fix を全タブ共通レイヤー化 (5)スマホ対応 (6)仕入先候補/在庫監視で eBay 1枚目画像と仕入先1枚目画像を並列比較できるコンパクトカード=短時間で採用/不採用判断。設計=Fable5 直接、実装=Sonnet subagent (user 指示)。Q3 構造化設計フロー必須。",
-    "status": "pending",
+    "description": "user 要求 (2026-06-10): ボタンや画面の遷移がイケていない、誰でも直感操作できる UI に全面刷新。要件: (1)シンプル直感 (2)毎日の作業がサクサク (3)一覧コンパクト=空白減・情報量最大 (4)ボタン内文字列重複 (ieck/heck) の根治=Material Symbols 無効化 CSS が新版 testid stIconMaterial 未カバー、tab_product_management の局所 fix を全タブ共通レイヤー化 (5)スマホ対応 (6)仕入先候補/在庫監視で eBay 1枚目画像と仕入先1枚目画像を並列比較できるコンパクトカード=短時間で採用/不採用判断。設計=Fable5 直接、実装=Sonnet subagent (user 指示)。Q3 構造化設計フロー必須。 / 2026-06-11 Phase B(ボタン重複根治+画像比較カード+スマホ対応 dbeb0a1)+C(毎日の作業常時ナビ+未処理バッジ)+D(仕入先候補ページング初期10件+DASHBOARD label) 完走 (6e3d230)",
+    "status": "完了",
     "priority": "高",
     "created": "2026-06-11",
     "completed": null,
-    "category": "feature"
+    "category": "feature",
+    "completed_at": "2026-06-11"
   },
   {
     "id": 330,
@@ -2375,5 +2376,26 @@
     "created": "2026-06-11",
     "completed": null,
     "category": "bug"
+  },
+  {
+    "id": 331,
+    "tag": "W260",
+    "title": "eBay数量変更の監査ログ (誰が/どの経路で/いつ qty を変えたか追跡可能化)",
+    "description": "2026-06-08 23:05 JST に item 358342452369 の eBay 数量が 1 に push され在庫有化した事象 (Task #12)。DB 痕跡 (last_qty_sync_at/last_synced_quantity) から sync_listing_quantity 経由と特定できたが「どの画面/誰が」までは不明だった。恒久対策=案A (user 承認 2026-06-11): quantity_change_log テーブル新設し、sync_listing_quantity / revise_inventory_quantity 呼出経路 (商品管理UI/在庫監視一括/採用revive/入荷確認/order_alert) ごとに caller タグ + ebay_item_id + old→new qty + タイムスタンプを必須記録。案B (stale session_state 保存ガード) は登録しない (user 判断)。",
+    "status": "pending",
+    "priority": "通常",
+    "created": "2026-06-11",
+    "completed": null,
+    "category": "feature"
+  },
+  {
+    "id": 332,
+    "tag": "W261",
+    "title": "MonoDeck デザイン全面刷新: Neumorphic Cream テーマ (クリーム+ティール/新ロゴ/軽量モーション)",
+    "description": "2026-06-11 user 依頼: 添付デザインシステム画像 (ネオモーフィズム/クリーム地#ede7da/深緑ティール#0e4f4b/二重影 raised-inset/角丸8-16px) に全面変更。ロゴ刷新可 (MonoDeck 名は維持)、CSS-only の軽量モーション (hover浮き/押下沈み/フェードイン/prefers-reduced-motion 対応)。対象: config.toml / ui_themes.py (Dark Paper はロールバック用に温存) / app.py nav+logo / tab_dashboard cockpit hero 再構築 / tab_product_management pm-* tokens / tab_individual_listing / _supplier_card_html。ebay_lister.py / news_deep_dive.py の出品・レポートHTMLは対象外。実装: Fable5 設計+レビュー / Sonnet 4.6 3並列。実機検証で button 内テキスト白潰れを発見し ui_themes に inherit fix 追加。page_title=MonoDeck 化。Playwright デスクトップ+モバイル390px 検証 PASS、console エラー0、pytest 74 passed。",
+    "status": "completed",
+    "priority": "通常",
+    "created": "2026-06-11",
+    "completed_at": "2026-06-11"
   }
 ]
