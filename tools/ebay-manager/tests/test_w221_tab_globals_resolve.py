@@ -227,23 +227,31 @@ def test_inventory_monitor_pnf_no_sku_keyed_query():
 
 
 # ─────────────────────────────────────────────────────────────────────
-# HIGH-2/3 回帰: _supplier_description_pipeline の閉じるボタンが
-#               cache を pop せず、Step E が on_apply_* に依存しているか
+# 2026-06-11 UI シンプル化回帰: description section は「✅ eBay に反映」で
+# 終わる (✖閉じる / W158 画像加工の重複表示を復活させない)。
+# HIGH-3 (Step E は on_apply_* 依存) は下の test で継続担保。
 # ─────────────────────────────────────────────────────────────────────
 
-def test_supplier_desc_pipeline_close_button_no_cache_pop():
-    """HIGH-2 fix 回帰: 閉じるボタンが sk_prefetch を pop しない。
-    close_flag_key を False にするだけの安全な実装になっているか。"""
+def test_supplier_desc_pipeline_simplified_no_close_no_w158():
+    """2026-06-11 user 指示回帰: description section から「✖ 閉じる」ボタンと
+    W158 画像加工 section (操作不能な重複表示) が削除されたままであること。
+    閉じる動線はフッタ「この商品の対応を完了」(tab_supplier_candidates) に一本化。"""
     src = (_TABS / "_supplier_description_pipeline.py").read_text(encoding="utf-8")
 
-    # 新設ボタン (btn_close_) の周囲に sk_prefetch pop がないこと
-    btn_idx = src.find("btn_close_")
-    assert btn_idx >= 0, "閉じるボタン (btn_close_) が見つかりません"
-    # btn_close_ の前後 300 文字以内に "sk_prefetch" pop がないこと
-    context = src[max(0, btn_idx - 50): btn_idx + 300]
-    assert "sk_prefetch" not in context or ".pop(" not in context[context.find("sk_prefetch"):context.find("sk_prefetch") + 20], (
-        "閉じるボタン付近で sk_prefetch を pop しています。"
-        "auto-prefetch 再発火の原因になります (HIGH-2)。"
+    assert "btn_close_" not in src, (
+        "「✖ 閉じる」ボタン (btn_close_) が復活しています。"
+        "閉じる動線は「この商品の対応を完了」に一本化済み (2026-06-11)。"
+    )
+    assert "render_image_pipeline_section" not in src, (
+        "description section 内に W158 画像加工 section が復活しています。"
+        "画像加工は写真反映 section (_supplier_photo_pipeline) に一本化済み (2026-06-11)。"
+    )
+
+    # caller 側も close_flag_key を渡していないこと
+    caller = (_TABS / "tab_supplier_candidates.py").read_text(encoding="utf-8")
+    assert "close_flag_key=" not in caller, (
+        "tab_supplier_candidates.py が close_flag_key を渡しています。"
+        "render_supplier_description_section の同引数は廃止済み (2026-06-11)。"
     )
 
 

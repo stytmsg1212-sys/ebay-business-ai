@@ -492,21 +492,19 @@ def render_supplier_description_section(
     candidate_url: str,
     ebay_item_id: str,
     candidate_title: str,
-    close_flag_key: Optional[str] = None,
 ) -> None:
     """採用直後 prompt 経由で開かれる description 生成+反映 UI section.
 
     flow:
         1. 「📝 生成」ボタン → spinner (scrape→rank→Claude) → preview
         2. preview 表示 → 「✅ eBay に反映」 → ReviseItem → success/error
-        3. 「🔄 再生成」 / 「✖ 閉じる」 で session_state クリア
+        3. 「🔄 再生成」 で session_state クリア
 
-    Args:
-        close_flag_key: セクション末尾の「閉じる」ボタンが False にする
-            session_state キー名 (例: "_sup_desc_open_inline_{cid}")。
-            None の場合は「閉じる」ボタンを表示しない。
-            cache / prefetch を pop せず open フラグのみ切り替えるため、
-            再表示時に auto-prefetch の再発火が起きない。
+    2026-06-11 user 指示 (UI シンプル化): 本 section の末尾は「✅ eBay に反映」で
+    終わる構成に統一。旧「✖ 閉じる」ボタンと W158 画像加工 section (W252 で
+    反映ボタン削除済 = 操作不能な重複表示) は削除。
+    画像加工 = 上の写真反映 section (_supplier_photo_pipeline)、
+    欄を閉じる = フッタ「この商品の対応を完了」(tab_supplier_candidates) に一本化。
 
     K1: 単一テンプレ (default) 自動選択。手動選択が要れば個別出品タブで生成
     してから手動コピペ運用 (本 quick path の主旨は「採用直後に最小操作で
@@ -544,10 +542,6 @@ def render_supplier_description_section(
             unsafe_allow_html=True,
         )
         st.caption(f"対象商品: {candidate_title[:60]}")
-        st.caption(
-            "W158 (2026-05-23): description 生成後、下に Step B-D の画像加工 + "
-            "3 通り反映 button が出ます (画像のみ / 説明文のみ / 両方)."
-        )
 
         # 2026-05-21 user 要望: section 展開時に自動 scrape + rank classify を実行
         # → 結果を session_state にキャッシュ (rerun で再実行しない、~10-15s/回)。
@@ -697,7 +691,7 @@ def render_supplier_description_section(
         )
 
         # 2026-06-01: description を編集可能化 (個別出品 W190 と同等)。
-        # 編集値 desc を以降の eBay 反映 / 画像加工反映の双方で使用する。
+        # 編集値 desc を「✅ eBay に反映」で使用する。
         # widget key を source of truth にし、再生成 (desc_gen 変化) 時のみリセット
         # することで value+key 併用警告と user 編集の取りこぼしを同時に防ぐ。
         sk_desc_widget = f"{_SS}edited_desc_{candidate_id}"
@@ -719,7 +713,7 @@ def render_supplier_description_section(
         desc = st.session_state.get(sk_desc_widget) or ''
         if desc != desc_gen:
             st.caption(
-                f"✏️ 編集済み ({len(desc)} 文字) — この内容で eBay 反映 / 画像加工反映されます"
+                f"✏️ 編集済み ({len(desc)} 文字) — この内容で eBay 反映されます"
             )
 
         with st.expander("▼ description プレビュー (HTML レンダリング)", expanded=True):
@@ -758,50 +752,8 @@ def render_supplier_description_section(
                         del st.session_state[k]
                 st.rerun()
 
-        # ── W158 (2026-05-23): 画像加工 pipeline (Step A-D のみ) ──
-        # W252: Step E の一括反映 3 ボタン (画像だけ/説明文だけ/両方) は
-        # user 指示により削除 (「押せなくなってる」「使用しない」)。
-        # 個別の「✅ eBay に反映」ボタン (description, 上部) は残す。
-        # on_apply_* を None にすることで render_image_pipeline_section が
-        # Step E セクションごと非表示にする
-        # (_image_pipeline_ui.py の `if ebay_item_id and (on_apply_image or ...)` 条件)。
-        st.markdown("---")
-        from tabs._image_pipeline_ui import (
-            render_image_pipeline_section, clear_pipeline_keys,
-        )
-        w158_prefix = f"sup_desc_pipeline_{candidate_id}_w158_"
-
-        # cascade clear: candidate URL 変化検知時 (prefetch 結果の URL 変動)
-        w158_url_key = f"{w158_prefix}last_url"
-        if st.session_state.get(w158_url_key) != candidate_url:
-            clear_pipeline_keys(w158_prefix)
-            st.session_state[w158_url_key] = candidate_url
-
-        # scraped product から source URLs を取得
-        product = prefetch.get('product')
-        source_urls = list(getattr(product, 'image_urls', None) or [])
-
-        render_image_pipeline_section(
-            prefix=w158_prefix,
-            source_urls=source_urls,
-            sku_hint=f"cand_{candidate_id}",
-            ebay_item_id=ebay_item_id,
-            description_html=desc,
-            on_apply_image=None,       # W252: Step E 一括反映 3 ボタン削除
-            on_apply_description=None, # W252: 個別「✅ eBay に反映」は上部で提供
-            on_apply_both=None,        # W252: dead code 除去
-        )
-
-        # ── 閉じるボタン (HIGH-2 fix) ──
-        # close_flag_key が指定された場合のみ表示。
-        # open フラグを False にして rerun するだけ (cache/prefetch は触らない)。
-        # ※ cache を pop すると次の rerun で auto-prefetch が再発火して課金が起きるため禁止。
-        if close_flag_key:
-            st.markdown("---")
-            if st.button(
-                "✖ 閉じる",
-                key=f"{_SS}btn_close_{candidate_id}",
-                help="この description 反映セクションを閉じます",
-            ):
-                st.session_state[close_flag_key] = False
-                st.rerun()
+        # 2026-06-11 user 指示 (UI シンプル化): ここにあった W158 画像加工 section
+        # (W252 で反映ボタン削除済 = 操作不能な重複表示) と「✖ 閉じる」ボタンは削除。
+        # 本 section は「✅ eBay に反映」「🔄 再生成」で終わる。
+        # 画像加工 = 写真反映 section (_supplier_photo_pipeline)、
+        # 欄を閉じる = フッタ「この商品の対応を完了」(tab_supplier_candidates)。

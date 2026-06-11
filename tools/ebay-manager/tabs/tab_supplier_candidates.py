@@ -817,12 +817,13 @@ def render_supplier_candidates_tab(s: dict) -> None:
                     from tabs._supplier_description_pipeline import (
                         render_supplier_description_section,
                     )
+                    # 2026-06-11: close_flag_key 廃止 (✖閉じる 削除、閉じる動線は
+                    # 下のフッタ「この商品の対応を完了」に一本化)
                     render_supplier_description_section(
                         candidate_id=_fcid,
                         candidate_url=_f_url,
                         ebay_item_id=_f_eid,
                         candidate_title=_f_ttl,
-                        close_flag_key=f"_sup_desc_open_inline_{_fcid}",
                     )
 
             # ── フッタ: 完了ボタン (バグ3 fix: このボタン 1 つで cid 全消し) ──
