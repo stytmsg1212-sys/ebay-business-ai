@@ -347,15 +347,34 @@ def render_supplier_candidates_tab(s: dict) -> None:
             _ebay_listing.get("ebay_image_url") if _ebay_listing else None
         )
         _cand_img_url: Optional[str] = row.get("candidate_image_url")
+        # 2026-06-11 user 要望: 還付抜き利益も併記。DB の profit_jpy は還付込み
+        # (calculate の profit_with_refund = profit + 消費税還付 + ポイント還元) なので、
+        # 還付抜き = profit_jpy - 仕入×税率/(1+税率) - 仕入×ポイント率 で表示用に導出
+        # (両項とも仕入価格と現 settings から決定的に逆算可、DB 列追加不要)。
+        _profit_incl = row.get("profit_jpy")
+        _cand_price_jpy = row.get("candidate_price_jpy")
+        _profit_excl: Optional[float] = None
+        if _profit_incl is not None and _cand_price_jpy and _cand_price_jpy > 0:
+            try:
+                _tax = float(s.get("consumption_tax_rate") or 10) / 100
+                _pt = float(s.get("point_reward_rate") or 0) / 100
+                _profit_excl = (
+                    float(_profit_incl)
+                    - float(_cand_price_jpy) * _tax / (1 + _tax)
+                    - float(_cand_price_jpy) * _pt
+                )
+            except (TypeError, ValueError):
+                _profit_excl = None
         st.markdown(
             render_supplier_card_html(
                 row=row,
                 ebay_price_usd=_ebay_price_usd,
                 ebay_price_jpy=_ebay_price_jpy,
-                profit_jpy=row.get("profit_jpy"),
+                profit_jpy=_profit_incl,
                 parent_status=_parent_ss,
                 ebay_image_url=_ebay_img_url,
                 candidate_image_url=_cand_img_url,
+                profit_excl_refund_jpy=_profit_excl,
             ),
             unsafe_allow_html=True,
         )

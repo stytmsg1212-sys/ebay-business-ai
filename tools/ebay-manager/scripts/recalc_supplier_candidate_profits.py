@@ -33,7 +33,9 @@ def _fetch_listing_by_item_id(conn, ebay_item_id: str) -> dict:
     LIMIT 1 不要根拠: ebay_listings.ebay_item_id は UNIQUE 制約 (monitor/database.py:407).
     sku-rules.md 準拠 (W68 Iteration 2 で SKU lookup から移行).
     """
-    cols = ["sku", "current_price", "weight_g", "length_cm", "width_cm", "height_cm"]
+    # 2026-06-11: category_id 追加 (カテゴリ別 FVF。_estimate_profit_for_candidate が参照)
+    cols = ["sku", "current_price", "weight_g", "length_cm", "width_cm", "height_cm",
+            "category_id"]
     cur = conn.execute(
         f"""SELECT {', '.join(cols)}
            FROM ebay_listings WHERE ebay_item_id = ?""",

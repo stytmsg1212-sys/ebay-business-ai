@@ -146,7 +146,7 @@ def test_profit_positive_uses_pos_class():
         parent_status="",
     )
     assert 'class="sc-profit-pos"' in html
-    assert "利益 +¥5,000" in html
+    assert "利益(還付込) +¥5,000" in html
     assert "(50%)" in html
     assert 'class="sc-profit-neg"' not in html
 
@@ -160,9 +160,54 @@ def test_profit_negative_uses_neg_class():
         parent_status="",
     )
     assert 'class="sc-profit-neg"' in html
-    assert "利益 ¥-2,000" in html
+    assert "利益(還付込) ¥-2,000" in html
     assert "(-20%)" in html
     assert 'class="sc-profit-pos"' not in html
+
+
+# ---------------------------------------------------------------------------
+# 還付抜き利益の併記 (2026-06-11 user 要望)
+# ---------------------------------------------------------------------------
+
+def test_profit_excl_refund_shown_when_passed():
+    html = render_supplier_card_html(
+        row=_base_row(candidate_price_jpy=10000),
+        ebay_price_usd=100.0,
+        ebay_price_jpy=15000,
+        profit_jpy=5000,
+        parent_status="",
+        profit_excl_refund_jpy=4090.9,  # 5000 - 10000*0.1/1.1
+    )
+    assert "還付抜 +¥4,090" in html
+    assert "sc-profit-sub" in html
+
+
+def test_profit_excl_refund_negative_uses_neg_color():
+    # 還付込みは黒字、還付抜きは赤字 (還付頼みの案件) — 色が独立して付くこと
+    html = render_supplier_card_html(
+        row=_base_row(candidate_price_jpy=10000),
+        ebay_price_usd=100.0,
+        ebay_price_jpy=15000,
+        profit_jpy=700,
+        parent_status="",
+        profit_excl_refund_jpy=-209.1,
+    )
+    assert "還付抜 ¥-209" in html
+    assert 'class="sc-profit-neg sc-profit-sub"' in html
+    assert "利益(還付込) +¥700" in html
+
+
+def test_profit_excl_refund_omitted_when_none():
+    html = render_supplier_card_html(
+        row=_base_row(candidate_price_jpy=10000),
+        ebay_price_usd=100.0,
+        ebay_price_jpy=15000,
+        profit_jpy=5000,
+        parent_status="",
+        profit_excl_refund_jpy=None,
+    )
+    assert "還付抜" not in html
+    assert "sc-profit-sub" not in html.split("</style>")[1]  # CSS 定義は除外して本文判定
 
 
 def test_profit_alt_listing_uses_na_class():

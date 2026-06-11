@@ -106,6 +106,7 @@ _CARD_CSS = """
 .sc-money .sc-profit-pos{color:#2e7d5b;font-weight:700;font-size:14px;}
 .sc-money .sc-profit-neg{color:#a8341b;font-weight:700;font-size:14px;}
 .sc-money .sc-profit-na{color:#8d927f;font-size:11px;}
+.sc-money .sc-profit-sub{font-weight:600;font-size:12px;opacity:0.85;}
 .sc-money .sc-link{margin-left:auto;color:#0e4f4b;}
 .sc-money .sc-muted{color:#8d927f;font-size:11px;}
 .sc-note{
@@ -221,6 +222,7 @@ def render_supplier_card_html(
     parent_status: str,
     ebay_image_url: Optional[str] = None,
     candidate_image_url: Optional[str] = None,
+    profit_excl_refund_jpy: Optional[float] = None,
 ) -> str:
     """1 候補カードの HTML 文字列を返す (Streamlit ``st.markdown`` 用).
 
@@ -233,7 +235,10 @@ def render_supplier_card_html(
         ebay_price_usd: 親 listing の現在 USD 価格 (caller が
             ``get_ebay_listing_by_item_id`` で取得済). 不明時 None.
         ebay_price_jpy: 上記 JPY 換算 (caller 側の為替). 不明時 None.
-        profit_jpy: ``row['profit_jpy']`` をそのまま渡す (DB 値). None 可.
+        profit_jpy: ``row['profit_jpy']`` をそのまま渡す (DB 値、消費税還付込み). None 可.
+        profit_excl_refund_jpy: 還付抜き利益 (caller が profit_jpy から消費税還付
+            + ポイント還元を差し引いて導出). None なら還付込みのみ表示
+            (2026-06-11 user 要望: 両方表示).
         parent_status: 親 listing の ``source_status`` (``"在庫有"`` で復活警告
             出す). caller の ``_sup_parent_status`` dict から渡す.
         ebay_image_url: W258/Phase-B (2026-06-11) eBay 出品の 1 枚目画像 URL.
@@ -320,18 +325,27 @@ def render_supplier_card_html(
     #   pos (green): profit_jpy>0 + price 既知 → 緑 + 大文字
     #   neg (red):  profit_jpy<=0 + price 既知 → 赤
     #   na  (mute): 別SKU出品機会 (profit 計算対象外) / 不明
+    # 2026-06-11 user 要望: 還付込み (主、採算判定と同基準) + 還付抜き (副) の両表示。
+    # 率 (%) は従来通り 還付込み利益 / 仕入価格 (採算OKバッジのスライド率と同じ仕入基準)。
     if profit_jpy is not None and price and price > 0:
         rate = (float(profit_jpy) / float(price)) * 100
-        if profit_jpy > 0:
-            profit_part = (
-                f'<span class="sc-profit-pos">'
-                f'利益 +¥{int(profit_jpy):,} ({rate:.0f}%)</span>'
+        sign = "+" if profit_jpy > 0 else ""
+        cls = "sc-profit-pos" if profit_jpy > 0 else "sc-profit-neg"
+        main_part = (
+            f'<span class="{cls}">'
+            f'利益(還付込) {sign}¥{int(profit_jpy):,} ({rate:.0f}%)</span>'
+        )
+        sub_part = ""
+        if profit_excl_refund_jpy is not None:
+            sign2 = "+" if profit_excl_refund_jpy > 0 else ""
+            cls2 = (
+                "sc-profit-pos" if profit_excl_refund_jpy > 0 else "sc-profit-neg"
             )
-        else:
-            profit_part = (
-                f'<span class="sc-profit-neg">'
-                f'利益 ¥{int(profit_jpy):,} ({rate:.0f}%)</span>'
+            sub_part = (
+                f'<span class="{cls2} sc-profit-sub">'
+                f'還付抜 {sign2}¥{int(profit_excl_refund_jpy):,}</span>'
             )
+        profit_part = main_part + sub_part
     elif is_alt:
         profit_part = (
             '<span class="sc-profit-na">'

@@ -161,7 +161,9 @@ def _estimate_profit_for_candidate(
         length_cm=float(listing.get("length_cm") or 0),
         width_cm=float(listing.get("width_cm") or 0),
         height_cm=float(listing.get("height_cm") or 0),
-        category_id=0,          # 未取得のためデフォルトFVFレート適用
+        # 2026-06-11: listing の実カテゴリで FVF を計算 (W222 カテゴリ別 FVF の配線)。
+        # 未取得 (None/0) は従来通り 0 = 既定レート 12.7/13.6% フォールバック。
+        category_id=int(listing.get("category_id") or 0),
         is_ddu=False,           # デフォルト DDP（eBay SpeedPAKはDDP基本）
         country_code="US",      # 最多販売先をデフォルト
     )
