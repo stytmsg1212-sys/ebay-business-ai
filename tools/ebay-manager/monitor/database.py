@@ -6047,3 +6047,46 @@ def get_listing_drafts(
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [_deserialize_listing_draft_row(r) for r in rows]
+
+
+def get_nav_badge_counts() -> dict[str, int]:
+    """ナビバッジ用の未処理件数 3 つを返す (W258 Phase C)。
+
+    各件数は対応タブの表示と同一定義 (乖離するとバッジが嘘になる):
+    - supplier_actionable: 仕入先候補タブのデフォルト表示 (status=pending) の actionable 件数
+    - supply_risk: 在庫監視タブの get_ebay_listings_supply_risk() と同条件 COUNT
+    - purchase_unconfirmed: 入荷確認タブの「未確認 N 件」と同一 (直近100件の supplier_purchase メール中 confirmed=0)
+    """
+    try:
+        with get_conn() as conn:
+            supplier_actionable = conn.execute("""
+                SELECT COUNT(*) FROM supplier_candidates
+                WHERE status = 'pending'
+                  AND LOWER(COALESCE(availability_status,'')) NOT IN ('unavailable','not_found')
+            """).fetchone()[0]
+
+            supply_risk = conn.execute("""
+                SELECT COUNT(*) FROM ebay_listings
+                WHERE quantity_ebay >= 1
+                  AND COALESCE(is_ended, 0) = 0
+                  AND source_status IN ('在庫無', 'ページなし')
+                  AND sku GLOB 'ebay*'
+                  AND COALESCE(risk_confirmed, 0) = 0
+            """).fetchone()[0]
+
+            purchase_unconfirmed = conn.execute("""
+                SELECT COUNT(*) FROM (
+                  SELECT COALESCE(confirmed, 0) AS c FROM emails
+                  WHERE category = 'supplier_purchase'
+                  ORDER BY fetched_at DESC LIMIT 100
+                ) WHERE c = 0
+            """).fetchone()[0]
+
+        return {
+            "supplier_actionable": int(supplier_actionable),
+            "supply_risk": int(supply_risk),
+            "purchase_unconfirmed": int(purchase_unconfirmed),
+        }
+    except Exception:
+        logger.exception("get_nav_badge_counts failed")
+        return {}

@@ -592,23 +592,46 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 st.rerun(scope="app")
                 return  # H-2: defensive early return
         with _btn_cols[1]:
-            if st.button("不採用", key=f"sup_reject_{context}_{cid}"):
+            # 2026-06-11 不採用高速化: on_click コールバックは fragment 再実行の前に
+            # 走るため、DB 更新 + hide フラグを先に済ませて 1 往復で関数冒頭の早期
+            # return (caption 表示) に直行する。旧 if st.button + st.rerun(scope=
+            # "fragment") は 2 往復 (実測 2.4s) だった。fragment 内 widget の
+            # interaction は fragment-scope rerun のままなのでタブ維持も不変 (W174-pm)。
+            def _on_reject(cid_: int = cid) -> None:
                 # 不採用の DB 更新も例外吸収せず痕跡残す (Surface B 対称性 / Q0 silent skip 防止)
                 try:
-                    update_supplier_candidate_status(cid, "rejected")
+                    update_supplier_candidate_status(cid_, "rejected")
                     # W174-pm H-1: fragment scope で card 自体が消えないので
                     # hide フラグを立てて関数冒頭の早期 return path で caption 表示
-                    st.session_state[f"_sup_rejected_{cid}"] = True
+                    st.session_state[f"_sup_rejected_{cid_}"] = True
                 except Exception:  # noqa: BLE001
-                    logger.exception("supplier reject failed cid=%s", cid)
-                    st.session_state[f"_sup_msgs_{cid}"] = [
-                        ("error", f"不採用記録に失敗しました (cid={cid}). 詳細はログ確認."),
+                    logger.exception("supplier reject failed cid=%s", cid_)
+                    st.session_state[f"_sup_msgs_{cid_}"] = [
+                        ("error", f"不採用記録に失敗しました (cid={cid_}). 詳細はログ確認."),
                     ]
-                # W174-pm 重要: st.rerun() は @st.fragment 内でも default scope="app"
-                # (Streamlit 1.37+ 仕様、user 報告で発覚). 明示的に scope="fragment"
-                # 指定でタブ維持を実現.
-                st.rerun(scope="fragment")
-                return  # H-2
+
+            st.button("不採用", key=f"sup_reject_{context}_{cid}", on_click=_on_reject)
+
+    @st.fragment
+    def _render_card_page(rows: list[dict], context: str, page_key: str) -> None:
+        """W258 Phase D (2026-06-11): カードリストを初期 10 件 + さらに表示に
+        ページング。旧 [:30] 一括描画は 4 タブ合計 ~80 枚で初期 4.4s かかっていた。
+        fragment スコープなので「さらに表示」押下でも st.tabs のタブ位置維持
+        (W174-pm と同 pattern)。page_key は履歴タブで rejected/applied の 2 リストを
+        区別するため context と別引数 (widget key 衝突防止)。"""
+        _key = f"_sup_shown_{page_key}"
+        _shown = st.session_state.setdefault(_key, 10)
+        for _row in rows[:_shown]:
+            _render_candidate_card(_row, context=context)
+        _remain = len(rows) - _shown
+        if _remain > 0:
+            def _show_more(k: str = _key) -> None:
+                st.session_state[k] = st.session_state.get(k, 10) + 20
+            st.button(
+                f"さらに 20 件表示 (残り {_remain} 件)",
+                key=f"sup_more_{page_key}",
+                on_click=_show_more,
+            )
 
     # ── 2026-05-20 user 緊急要望: 採用後の写真反映 prompt (タブ非依存) ──
     # 採用 button (W112 1-click) が status='applied' に遷移させると候補は
@@ -825,10 +848,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 "復活候補はありません。eBay 在庫 0 の商品に新仕入先が見つかればここに表示されます。"
             )
         else:
-            for _row in _sup_revive[:30]:
-                _render_candidate_card(_row, context="revive")
-            if len(_sup_revive) > 30:
-                st.caption(f"... ほか {len(_sup_revive) - 30}件")
+            _render_card_page(_sup_revive, "revive", "revive")
 
     with _tab_replace:
         st.markdown(
@@ -854,10 +874,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
                     "actionable な置換候補はありません (rejected/applied は履歴タブへ移動しました)。"
                 )
         else:
-            for _row in _sup_replace[:30]:
-                _render_candidate_card(_row, context="replace")
-            if len(_sup_replace) > 30:
-                st.caption(f"... ほか {len(_sup_replace) - 30}件（SKUで絞り込んでください）")
+            _render_card_page(_sup_replace, "replace", "replace")
 
     with _tab_altlist:
         st.markdown(
@@ -873,10 +890,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
         if not _sup_altlist:
             st.info("別SKU出品機会は現在の条件では見つかりません。")
         else:
-            for _row in _sup_altlist[:30]:
-                _render_candidate_card(_row, context="altlist")
-            if len(_sup_altlist) > 30:
-                st.caption(f"... ほか {len(_sup_altlist) - 30}件")
+            _render_card_page(_sup_altlist, "altlist", "altlist")
 
     with _tab_history:
         st.markdown(
@@ -898,13 +912,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
             _app = [r for r in _sup_history if (r.get("status") or "").lower() == "applied"]
             if _rej:
                 st.markdown(f"#### 不採用 ({len(_rej)}件)")
-                for _row in _rej[:20]:
-                    _render_candidate_card(_row, context="history")
-                if len(_rej) > 20:
-                    st.caption(f"... ほか {len(_rej) - 20}件")
+                _render_card_page(_rej, "history", "history_rej")
             if _app:
                 st.markdown(f"#### 反映済 ({len(_app)}件)")
-                for _row in _app[:20]:
-                    _render_candidate_card(_row, context="history")
-                if len(_app) > 20:
-                    st.caption(f"... ほか {len(_app) - 20}件")
+                _render_card_page(_app, "history", "history_app")

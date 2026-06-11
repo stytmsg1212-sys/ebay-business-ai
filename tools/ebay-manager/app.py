@@ -443,18 +443,34 @@ if _picked_cat and _picked_cat != _cur_view:
     st.session_state[_W217A_VIEW_KEY] = _picked_cat
     _cur_view = _picked_cat
 
-# ── 下段: 選択カテゴリのページを単一行の横並びボタンに ──
-# W258 (2026-06-11): 旧「最大 4 列/行」チャンク分割を廃止。物理 2 行になると
-# モバイルの横スクロール 1 行 CSS (nowrap + overflow-x) が成立しないため。
-# 列幅は stColumn の pill CSS (flex: 0 0 auto) で内容幅に収まる。
-_pages_in_view = _W134_GROUPS.get(_cur_view, [])
-if _pages_in_view:
-    _cols = _navbar.columns(len(_pages_in_view), gap="small")
-    for _i_btn, _page in enumerate(_pages_in_view):
+# ── 下段: ページボタン行 ──
+# W258 Phase C (2026-06-11):
+#   Row 1 (常時表示): ★毎日 カテゴリのページボタンを常に描画
+#   Row 2 (条件付き): _cur_view != "★ 毎日" のとき、そのカテゴリのページボタンを追加描画
+# ナビバッジ: 仕入先候補 / 在庫監視 / 入荷確認 に未処理件数を (N) 形式で付加。
+# key は素のページ名で不変 (label に (N) 付けても key 変えない = widget state 維持)。
+# routing contract: _w134_sel への代入は必ず素のページ名 (label 変数でなく page 変数)。
+from monitor.database import get_nav_badge_counts as _get_nav_badge_counts
+_nav_badges = _get_nav_badge_counts()
+_BADGE_MAP = {
+    "仕入先候補": "supplier_actionable",
+    "在庫監視": "supply_risk",
+    "入荷確認": "purchase_unconfirmed",
+}
+
+
+def _render_nav_row(pages: list[str]) -> None:
+    if not pages:
+        return
+    _cols = _navbar.columns(len(pages), gap="small")
+    for _i_btn, _page in enumerate(pages):
         with _cols[_i_btn]:
             _is_active = (st.session_state._w134_sel == _page)
+            _badge_key = _BADGE_MAP.get(_page)
+            _badge_n = _nav_badges.get(_badge_key, 0) if _badge_key else 0
+            _label = f"{_page} ({_badge_n})" if _badge_n >= 1 else _page
             if st.button(
-                _page,
+                _label,
                 key=f"_w134_navbtn_{_page}",
                 use_container_width=False,
                 type=("primary" if _is_active else "secondary"),
@@ -465,6 +481,11 @@ if _pages_in_view:
                     _page, _cur_view
                 )
                 st.rerun()
+
+
+_render_nav_row(_W134_GROUPS["★ 毎日"])
+if _cur_view != "★ 毎日":
+    _render_nav_row(_W134_GROUPS.get(_cur_view, []))
 
 _w134_sel = st.session_state._w134_sel
 # 2026-04-22: MAIL タブを削除 (ダッシュボードに統合)。

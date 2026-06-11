@@ -135,8 +135,8 @@ _CARD_CSS = """
   gap:4px;
 }
 .sc-imgpair-cell img{
-  max-height:150px;
-  max-width:100%;
+  height:150px;        /* 2026-06-11: max-height→height 固定。読み込み前から150pxを予約し layout shift (実測1.7s のボタン位置不安定) を根治 */
+  width:100%;
   object-fit:contain;
   border-radius:4px;
   background:rgba(255,255,255,0.04);

@@ -195,8 +195,9 @@ def render_dashboard_tab(s: dict) -> None:
                 st.markdown("### 📦 在庫通知")
                 metric_cols = st.columns(3)
                 with metric_cols[0]:
-                    st.metric("🔴 在庫切れ (0 個)", len(_inv_zero),
-                              help="商品管理タブで在庫補充 + eBay 反映を")
+                    st.metric("🔴 在庫切れ (有在庫)", len(_inv_zero),
+                              help="有在庫 (stock SKU) で在庫数が 0 個になっている listing 数。"
+                                   "商品管理タブで在庫補充 + eBay 反映を")
                 with metric_cols[1]:
                     st.metric("⚪ 在庫数未入力", len(_inv_unset),
                               help="stock prefix SKU だが inventory_count=NULL. "
