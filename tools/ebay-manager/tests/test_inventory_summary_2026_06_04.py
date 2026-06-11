@@ -4,7 +4,7 @@
 DB アクセス禁止 (呼出側が集計済の数値を渡す純関数). K1 Simplicity / K2 Surgical.
 
 検証ポイント:
-  1. `total_risk == 0` → 緑系 (rgba(118,255,3,...)) を含む
+  1. `total_risk == 0` → 緑系 (#2e7d5b、W261-fix で旧 rgba(118,255,3,...) から変更) を含む
   2. `total_risk > 0` → 赤系 (rgba(255,90,90,...) / rgba(255,140,140,...)) を含む
   3. oos_n / pnf_n / last_checked_str が出力 HTML 内に含まれる
   4. 件数値が表示されている
@@ -48,8 +48,8 @@ class TestZeroRisk:
     def test_zero_risk_uses_green(self):
         fn = _load_summary_func()
         out = fn(total_risk=0, oos_n=0, pnf_n=0, last_checked_str="2026-06-04 02:35:21")
-        # 緑系 (rgba(118,255,3,...))
-        assert "rgba(118,255,3" in out, "0 件のときは緑系トーンであるべき"
+        # 緑系 (#2e7d5b、W261-fix 92b0f4a の Neumorphic Cream 化で変更)
+        assert "#2e7d5b" in out, "0 件のときは緑系トーンであるべき"
 
     def test_zero_risk_does_not_use_red(self):
         fn = _load_summary_func()

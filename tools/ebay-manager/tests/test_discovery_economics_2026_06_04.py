@@ -30,12 +30,12 @@ class TestProfitPositive:
         assert "見積不能" not in html
 
     def test_positive_profit_uses_positive_color(self):
-        """profit > 0 で緑系トーン (#7ac17a / #9bbf9b 等) を含む."""
+        """profit > 0 で緑系トーン (#2e7d5b、W261-fix 92b0f4a でコントラスト改訂) を含む."""
         html = _render_discovery_economics_html(
             sup_jpy=5000, ebay_usd=80, profit_usd=25, sold_30d=12, comp_jp=3
         )
-        # 緑系のいずれか
-        assert any(c in html for c in ("#7ac17a", "#9bbf9b"))
+        # 緑系 (旧 #7ac17a/#9bbf9b → W261-fix で #2e7d5b に変更)
+        assert "#2e7d5b" in html
 
     def test_positive_profit_shows_supplier_and_ebay(self):
         html = _render_discovery_economics_html(
@@ -69,11 +69,11 @@ class TestProfitZeroEstimationFailed:
             sup_jpy=5000, ebay_usd=80, profit_usd=0, sold_30d=8, comp_jp=2
         )
         # 想定粗利の値自体に赤系を当てない (見出し他に赤系トーンが入る可能性は許容)
-        # → "見積不能" の直前後に赤系 (#d05858) が密接していないことを近似チェック
+        # → "見積不能" の直前後に赤系 (#a8341b、W261-fix 改訂後) が密接していないことを近似チェック
         idx = html.find("見積不能")
         assert idx >= 0
         nearby = html[max(0, idx - 80) : idx + 80]
-        assert "#d05858" not in nearby
+        assert "#a8341b" not in nearby
 
 
 class TestProfitNegative:
@@ -90,7 +90,8 @@ class TestProfitNegative:
         html = _render_discovery_economics_html(
             sup_jpy=10000, ebay_usd=60, profit_usd=-15, sold_30d=4, comp_jp=8
         )
-        assert "#d05858" in html
+        # 赤系 (旧 #d05858 → W261-fix 92b0f4a で #a8341b に変更)
+        assert "#a8341b" in html
 
 
 class TestGracefulFallback:

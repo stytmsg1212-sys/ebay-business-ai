@@ -14,22 +14,24 @@ from tabs.tab_individual_listing import _il_step_label
 # 置換前の 8 か所と HTML レベルで完全一致すべき期待値。
 # (num, title_en, margin) -> expected HTML.
 # 既存リテラルから一字一句コピーして起こした (margin の差分含む)。
+# 2026-06-12: W261-fix (92b0f4a) の Neumorphic Cream 化で color が
+# rgba(180,220,255,0.55) → #8d927f に変更されたため期待値を追従。
 _LEGACY_LABELS: list[tuple[tuple[str, str, str], str]] = [
     (
         ("1", "S O U R C E &nbsp; U R L", "4px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:4px 0 6px;">'
         "S T E P &nbsp; 1 &nbsp; — &nbsp; S O U R C E &nbsp; U R L</div>",
     ),
     (
         ("2", "S C R A P E D &nbsp; D A T A", "16px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:16px 0 6px;">'
         "S T E P &nbsp; 2 &nbsp; — &nbsp; S C R A P E D &nbsp; D A T A</div>",
     ),
     (
         ("2.5", "B R A N D &nbsp; H E R O &nbsp; C O M P O S E", "20px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:20px 0 6px;">'
         "S T E P &nbsp; 2 . 5 &nbsp; — &nbsp; "
         "B R A N D &nbsp; H E R O &nbsp; C O M P O S E</div>",
@@ -40,7 +42,7 @@ _LEGACY_LABELS: list[tuple[tuple[str, str, str], str]] = [
             "O T H E R &nbsp; I M A G E S &nbsp; B A C K G R O U N D &nbsp; U N I F Y",
             "18px 0 6px",
         ),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:18px 0 6px;">'
         "S T E P &nbsp; 2 . 6 &nbsp; — &nbsp; "
         "O T H E R &nbsp; I M A G E S &nbsp; "
@@ -48,26 +50,26 @@ _LEGACY_LABELS: list[tuple[tuple[str, str, str], str]] = [
     ),
     (
         ("2.7", "E B A Y &nbsp; E P S &nbsp; U P L O A D", "18px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:18px 0 6px;">'
         "S T E P &nbsp; 2 . 7 &nbsp; — &nbsp; "
         "E B A Y &nbsp; E P S &nbsp; U P L O A D</div>",
     ),
     (
         ("3", "L I S T I N G &nbsp; S E T T I N G S", "16px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:16px 0 6px;">'
         "S T E P &nbsp; 3 &nbsp; — &nbsp; L I S T I N G &nbsp; S E T T I N G S</div>",
     ),
     (
         ("4", "G E N E R A T E D &nbsp; P R E V I E W", "16px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:16px 0 6px;">'
         "S T E P &nbsp; 4 &nbsp; — &nbsp; G E N E R A T E D &nbsp; P R E V I E W</div>",
     ),
     (
         ("5", "V E R I F Y &nbsp; &amp; &nbsp; S A V E", "16px 0 6px"),
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin:16px 0 6px;">'
         "S T E P &nbsp; 5 &nbsp; — &nbsp; V E R I F Y &nbsp; &amp; &nbsp; S A V E</div>",
     ),
