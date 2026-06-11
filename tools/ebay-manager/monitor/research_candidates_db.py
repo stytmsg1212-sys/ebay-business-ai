@@ -539,6 +539,63 @@ def save_profit_true(
     return True
 
 
+def record_listing_draft(rc_id: int, draft_id: int) -> bool:
+    """出品下書き ID を research_candidates.listing_draft_id に記録する (Phase 4).
+
+    Args:
+        rc_id: research_candidates の PK。
+        draft_id: listing_drafts の id (save_listing_draft の返り値)。
+
+    Returns:
+        True = 書込成功。False = rc_id 不在。
+
+    Q0: rc_id / draft_id が不正なら ValueError。rowcount=0 は rc_id 不在の証拠。
+    """
+    if rc_id is None:
+        raise ValueError("rc_id is required for record_listing_draft")
+    if draft_id is None:
+        raise ValueError("draft_id is required for record_listing_draft")
+
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE research_candidates "
+            "SET listing_draft_id=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE rc_id=?",
+            (int(draft_id), rc_id),
+        )
+    if cur.rowcount == 0:
+        logger.warning("record_listing_draft: rc_id=%s not found", rc_id)
+        return False
+    return True
+
+
+def record_watch_ids(rc_id: int, watch_ids: list[int]) -> bool:
+    """登録した keyword_watches.id のリストを watch_ids_json に記録する (Phase 4).
+
+    Args:
+        rc_id: research_candidates の PK。
+        watch_ids: keyword_watches.id のリスト。
+
+    Returns:
+        True = 書込成功。False = rc_id 不在。
+    """
+    if rc_id is None:
+        raise ValueError("rc_id is required for record_watch_ids")
+
+    watch_ids_json = json.dumps(watch_ids, ensure_ascii=False)
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE research_candidates "
+            "SET watch_ids_json=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE rc_id=?",
+            (watch_ids_json, rc_id),
+        )
+    if cur.rowcount == 0:
+        logger.warning("record_watch_ids: rc_id=%s not found", rc_id)
+        return False
+    return True
+
+
 def clear_profit_fields(rc_id: int) -> bool:
     """利益関連カラムを NULL に戻す (match_score < floor の別商品判定時).
 

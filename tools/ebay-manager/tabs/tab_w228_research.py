@@ -24,9 +24,11 @@ Q0 (サイレントスキップ禁止): フリマ探索エラーは偽成功を�
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -43,6 +45,7 @@ from monitor.research_gate import (
 from monitor.research_candidates_db import (
     STATUS_APPROVED,
     STATUS_AWAITING_APPROVAL,
+    STATUS_DRAFT_GENERATED,
     STATUS_GATE_PASSED,
     STATUS_GATE_REJECTED,
     STATUS_HARVESTED,
@@ -57,6 +60,8 @@ from monitor.research_candidates_db import (
     get_research_candidate,
     insert_research_candidate,
     list_research_candidates,
+    record_listing_draft,
+    record_watch_ids,
     save_gate_decision,
     update_status,
 )
@@ -81,6 +86,12 @@ _GATE_RC_ID_KEY = "_w228_gate_rc_id"  # FIX-1: ゲート判定時に作成した
 
 # セクション C のデフォルト件数上限
 _CANDIDATE_LIST_LIMIT = 100
+
+# セクション D: 承認ハンドラの連打防止ロック (module-level、プロセス全体共有)
+_APPROVE_PROCESS_LOCK = threading.Lock()
+
+# セクション D: rerun を跨いで結果メッセージを表示する flash key
+_SEC_D_FLASH_KEY = "_w228_sec_d_flash"
 
 
 # ============================================================================
@@ -825,6 +836,538 @@ def _render_section_c() -> None:
 
 
 # ============================================================================
+# セクション D: 承認キュー (Phase 4)
+# ============================================================================
+
+def _count_oos_active_listings() -> int:
+    """W228 リサーチ経由で出品された listing のうち active なものの数を返す.
+
+    在庫0上限ガード (P0-3) の比較元として使用。
+    設計書 §7-5 の定義: research_candidates.status='listed' かつ
+    result_ebay_item_id が紐づく ebay_listings が active なもの。
+    listing 識別は ebay_item_id (SKU 規約準拠)。
+    現状 listed 行は 0 件なのでガードは通過する (正常)。
+    """
+    from monitor.database import get_conn
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) "
+            "FROM research_candidates rc "
+            "JOIN ebay_listings el ON el.ebay_item_id = rc.result_ebay_item_id "
+            "WHERE rc.status = 'listed' "
+            "  AND rc.result_ebay_item_id IS NOT NULL "
+            "  AND (el.is_ended IS NULL OR el.is_ended = 0)",
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _load_max_oos_limit() -> int:
+    """schedule_config.json から max_oos_active_listings を読む.
+
+    読み取り失敗 / キー不在時は 20 をフォールバックとして返す。
+    silent 化しないため失敗時は logger.warning を出す。
+    """
+    cfg_path = Path(__file__).resolve().parent.parent / 'config' / 'schedule_config.json'
+    try:
+        with cfg_path.open(encoding='utf-8') as f:
+            cfg = json.load(f)
+        return int(
+            cfg.get('tasks_enabled', {})
+            .get('research_harvest', {})
+            .get('max_oos_active_listings', 20)
+        )
+    except Exception as e:
+        logger.warning(
+            '[w228_sec_d] schedule_config.json から max_oos_active_listings 読み取り失敗 '
+            '(fallback=20): %s', e,
+        )
+        return 20
+
+
+def _run_approval_logic(
+    rc_id: int,
+    rc: dict,
+    config: dict,
+    max_oos_limit: Optional[int] = None,
+) -> dict:
+    """承認ボタン押下のロジック層 (UI 非依存、テスト可能).
+
+    設計書 §7-4 の 6 step を実装:
+      1. update_status → approved
+      2. W226 description 生成 (同期)
+      3. save_listing_draft → draft_id
+      4. 個別出品 prefill (il_* session_state へ積む)
+      5. update_status → draft_generated + listing_draft_id 記録
+      6. 在庫0上限ガード → keyword watch 登録 (P0-3)
+
+    Args:
+        rc_id: research_candidates の行 ID。
+        rc: research_candidates の行データ辞書。
+        config: app.py から渡される計算設定辞書 (max_oos 読み取りには不使用)。
+        max_oos_limit: テスト用上限値の直接 override。None 時は schedule_config.json を参照。
+
+    Returns:
+        {
+            'success': bool,
+            'draft_id': int or None,
+            'watch_registered': bool,
+            'watch_skipped_oos_limit': bool,   # True = 上限超過でスキップ
+            'watch_ids': list[int],
+            'needs_review_fallen': bool,        # True = step 2/5 失敗で needs_review に落ちた
+            'message': str,
+        }
+    UI 層は本関数の戻り値を見て st.success / st.error / st.warning を出す。
+    """
+    result: dict = {
+        'success': False,
+        'draft_id': None,
+        'watch_registered': False,
+        'watch_skipped_oos_limit': False,
+        'watch_ids': [],
+        'needs_review_fallen': False,
+        'message': '',
+    }
+
+    title_ja = rc.get('title_ja') or f'rc_id={rc_id}'
+    found_url = rc.get('found_url') or ''
+    manual_weight_g = rc.get('manual_weight_g')
+    found_price_jpy = rc.get('found_price_jpy')
+    max_oos = max_oos_limit if max_oos_limit is not None else _load_max_oos_limit()
+
+    # ── Step 1: approved に遷移 ───────────────────────────────────────────
+    try:
+        ok = update_status(rc_id, STATUS_APPROVED)
+        if not ok:
+            result['message'] = f'rc_id={rc_id} の状態遷移に失敗しました (既に変更済みの可能性)。'
+            return result
+    except ValueError as e:
+        result['message'] = f'状態遷移エラー: {e}'
+        return result
+
+    # ── Step 2: W226 description 生成 ────────────────────────────────────
+    # rank_override_code は None = auto-classify に任せる。
+    # found_condition_ja はフリマ状態表記 (「美品」等) であり rank code ではない。
+    gen_result: dict = {'success': False, 'description_html': '', 'rank_code': '', 'title_en': ''}
+    try:
+        from tabs._supplier_description_pipeline import generate_supplier_description
+        gen_result = generate_supplier_description(
+            candidate_id=rc_id,
+            candidate_url=found_url,
+            in_stock=False,  # 承認候補は全件無在庫前提
+            rank_override_code=None,
+        )
+    except Exception as e:
+        logger.exception('[w228_sec_d] generate_supplier_description failed rc_id=%s', rc_id)
+        gen_result = {
+            'success': False,
+            'message': f'description 生成例外: {type(e).__name__}: {e}',
+            'description_html': '', 'rank_code': '', 'title_en': '',
+        }
+
+    if not gen_result.get('success'):
+        # 生成失敗 → needs_review に降格、理由を記録
+        reason = gen_result.get('message') or 'description 生成失敗 (詳細不明)'
+        try:
+            update_status(
+                rc_id, STATUS_NEEDS_REVIEW,
+                needs_review_reason=f'[Phase4 description 生成失敗] {reason}',
+            )
+        except ValueError as e2:
+            logger.error('[w228_sec_d] needs_review 遷移も失敗 rc_id=%s: %s', rc_id, e2)
+        result['needs_review_fallen'] = True
+        result['message'] = f'description 生成に失敗したため needs_review に戻しました。理由: {reason}'
+        return result
+
+    used_rank = gen_result.get('rank_code') or ''
+    title_en = gen_result.get('title_en') or ''
+    description_html = gen_result.get('description_html') or ''
+
+    # ── Step 3: listing_drafts に下書き保存 ──────────────────────────────
+    draft_data: dict = {
+        'supplier_url': found_url,
+        'supplier_title_ja': title_ja,
+        'supplier_price_jpy': found_price_jpy,
+        'rank_code': used_rank,
+        'ebay_title': title_en,
+        'ebay_description': description_html,
+        'weight_g': int(manual_weight_g) if manual_weight_g is not None else None,
+        'in_stock': 0,  # 無在庫
+        'status': 'draft',
+    }
+    try:
+        from monitor.database import save_listing_draft
+        draft_id = save_listing_draft(draft_data)
+    except Exception as e:
+        logger.exception('[w228_sec_d] save_listing_draft failed rc_id=%s', rc_id)
+        reason = f'listing_drafts 保存失敗: {type(e).__name__}: {e}'
+        try:
+            update_status(
+                rc_id, STATUS_NEEDS_REVIEW,
+                needs_review_reason=f'[Phase4 draft 保存失敗] {reason}',
+            )
+        except ValueError as e2:
+            logger.error('[w228_sec_d] needs_review 遷移も失敗 rc_id=%s: %s', rc_id, e2)
+        result['needs_review_fallen'] = True
+        result['message'] = f'下書き保存に失敗したため needs_review に戻しました。理由: {reason}'
+        return result
+
+    result['draft_id'] = draft_id
+
+    # ── Step 4: 個別出品タブへ prefill (W176 正規経路) ────────────────────
+    # il_* state key 直書きは widget key (il_input_supplier_url) に反映されず、
+    # さらに URL 差分検知 (_clear_from_step) で prefill が全消去される。
+    # 保存済みドラフト読込と同じ _load_draft_into_form を呼び、pending seed /
+    # scraped_product / generated_listing / current_draft_id を一括復元する
+    # (tab_individual_listing.py の「保存済みドラフト」読込ボタンと同型)。
+    try:
+        from monitor.database import get_listing_draft
+        from tabs.tab_individual_listing import _load_draft_into_form
+        _full_draft = get_listing_draft(int(draft_id))
+        if _full_draft:
+            _load_draft_into_form(_full_draft)
+    except Exception:
+        # prefill 失敗でも draft は保存済みのためフローは止めない (痕跡は log)
+        logger.exception(
+            '[w228_sec_d] 個別出品 prefill 失敗 rc_id=%s draft_id=%s', rc_id, draft_id
+        )
+
+    # ── Step 5: draft_generated に遷移 + listing_draft_id 記録 ───────────
+    try:
+        update_status(rc_id, STATUS_DRAFT_GENERATED)
+        record_listing_draft(rc_id, draft_id)
+    except Exception as e:
+        logger.error('[w228_sec_d] draft_generated 遷移失敗 rc_id=%s: %s', rc_id, e)
+        reason = f'draft_generated 遷移失敗: {e}'
+        try:
+            update_status(
+                rc_id, STATUS_NEEDS_REVIEW,
+                needs_review_reason=f'[Phase4 status 更新失敗] {reason}',
+            )
+        except ValueError as e2:
+            logger.error('[w228_sec_d] needs_review 遷移も失敗 rc_id=%s: %s', rc_id, e2)
+        result['needs_review_fallen'] = True
+        result['message'] = (
+            f'下書き生成後の status 更新に失敗し needs_review に戻しました。'
+            f'下書き #{draft_id} は listing_drafts に保存済みです。理由: {reason}'
+        )
+        return result
+
+    # ── Step 6: 在庫0上限ガード + keyword watch 登録 (P0-3) ──────────────
+    try:
+        current_oos_count = _count_oos_active_listings()
+    except Exception as e:
+        logger.error('[w228_sec_d] OOS count 失敗 rc_id=%s: %s', rc_id, e)
+        current_oos_count = 0  # 取得失敗は保守的に 0 として続行 (watch 登録の機会は守る)
+
+    if current_oos_count >= max_oos:
+        result['watch_skipped_oos_limit'] = True
+        logger.warning(
+            '[w228_sec_d] P0-3 上限超過でwatch未登録 rc_id=%s '
+            'oos_active=%d max=%d',
+            rc_id, current_oos_count, max_oos,
+        )
+        # M-1: 上限超過を Discord 通知 (Q0 痕跡必須、送信失敗はフローを止めない)
+        try:
+            from notifiers.discord_notifier import DiscordNotifier
+            notifier = DiscordNotifier('')
+            if notifier.webhook_url:
+                notifier.send_message(
+                    f'W228 承認: 在庫0上限超過のため watch 未登録 '
+                    f'(rc_id={rc_id} / 現在 {current_oos_count} 件 / 上限 {max_oos} 件) '
+                    f'— 手動登録要'
+                )
+        except Exception as _disc_e:
+            logger.error('[w228_sec_d] Discord 通知失敗 rc_id=%s: %s', rc_id, _disc_e)
+        result['success'] = True
+        result['message'] = (
+            f'下書き #{draft_id} を生成しました。'
+            f'在庫0上限 {max_oos} 件超過のため watch 未登録 — 手動登録要。'
+            f'(現在 {current_oos_count} 件アクティブ)'
+        )
+        return result
+
+    # watch 登録
+    from monitor.keyword_watch_db import add_watch
+    keyword = title_ja.strip()
+    sites = [
+        ('mercari', _mercari_search_url(keyword)),
+        ('yahoo_auctions', _yahoo_auctions_search_url(keyword)),
+    ]
+    watch_ids_registered: list[int] = []
+    for site, search_url in sites:
+        try:
+            watch_id, _is_new = add_watch(
+                site=site,
+                search_url=search_url,
+                keyword=keyword,
+                price_max_jpy=found_price_jpy,
+                memo=f'W228 research rc_id={rc_id} (Phase4 承認)',
+                source='w228_research',
+            )
+            watch_ids_registered.append(watch_id)
+            logger.info(
+                '[w228_sec_d] watch 登録 rc_id=%s site=%s watch_id=%s',
+                rc_id, site, watch_id,
+            )
+        except Exception as e:
+            logger.exception('[w228_sec_d] add_watch 失敗 rc_id=%s site=%s', rc_id, site)
+            # watch 登録失敗は draft_generated 遷移を取り消さない (下書きは有効)
+            # ただし Q0 で痕跡を残す (呼出元が UI に警告表示)
+            result['message'] = (
+                f'下書き #{draft_id} を生成しましたが、{site} の watch 登録に失敗しました: {e}'
+            )
+            result['success'] = True
+            result['watch_registered'] = len(watch_ids_registered) > 0
+            result['watch_ids'] = watch_ids_registered
+            return result
+
+    if watch_ids_registered:
+        try:
+            record_watch_ids(rc_id, watch_ids_registered)
+        except Exception as e:
+            logger.error('[w228_sec_d] record_watch_ids 失敗 rc_id=%s: %s', rc_id, e)
+
+    result['watch_registered'] = True
+    result['watch_ids'] = watch_ids_registered
+    result['success'] = True
+    result['message'] = (
+        f'下書き #{draft_id} を生成し、keyword watch を {len(watch_ids_registered)} サイトに登録しました。'
+        f'「個別出品」タブで続きを行ってください。'
+    )
+    return result
+
+
+def _render_section_d(config: dict) -> None:
+    """承認キュー UI (セクション D、Phase 4).
+
+    awaiting_approval 状態の候補を一覧表示し、
+    承認 → 出品下書き自動生成 / 見送り を提供する。
+    既存セクション A/B/C は一切触らない (K2 Surgical)。
+    """
+    st.markdown('### D. 承認キュー')
+    st.caption(
+        '探索と利益計算が完了した候補を確認して「承認 → 下書き生成」または「見送り」を選んでください。'
+        '承認すると description が自動生成され「個別出品」タブに引き継がれます。'
+    )
+
+    # 直前 rerun で stash した結果メッセージ (st.rerun() は直書き表示を即消すため flash 化)
+    _flash = st.session_state.pop(_SEC_D_FLASH_KEY, None)
+    if _flash:
+        _kind, _msg = _flash
+        if _kind == 'success':
+            st.success(_msg)
+        elif _kind == 'warning':
+            st.warning(_msg)
+        elif _kind == 'error':
+            st.error(_msg)
+        else:
+            st.info(_msg)
+
+    # 候補取得
+    try:
+        candidates = list_research_candidates(status=STATUS_AWAITING_APPROVAL, limit=50)
+    except Exception as e:
+        st.error(f'承認キューの取得に失敗しました: {e}')
+        logger.exception('[w228_sec_d] list_research_candidates 失敗')
+        return
+
+    if not candidates:
+        st.info('承認待ちの候補はありません。夜間バッチ (04:30) が実行されると自動的に追加されます。')
+        return
+
+    st.caption(f'{len(candidates)} 件の承認待ち候補')
+
+    for rc in candidates:
+        rc_id: int = rc['rc_id']
+        title_ja: str = rc.get('title_ja') or f'rc_id={rc_id}'
+
+        with st.container(border=True):
+            # ヘッダ
+            harvest_tag = ''
+            hp = rc.get('harvest_pattern')
+            if hp == 'fresh_24h':
+                harvest_tag = ' `[直近]`'
+            elif hp == 'two_year_echo':
+                harvest_tag = ' `[2年前型]`'
+            st.markdown(f'**rc_id={rc_id}** — {title_ja}{harvest_tag}')
+
+            # ── Terapeak 売れ行き ───────────────────────────────────────
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                st.caption('【Terapeak 売れ行き】')
+                avg_price = rc.get('ebay_avg_sold_price_usd')
+                total_sold = rc.get('ebay_total_sold')
+                gate_inputs_raw = rc.get('gate_inputs_json') or '{}'
+                try:
+                    gate_inputs = json.loads(gate_inputs_raw)
+                except Exception:
+                    gate_inputs = {}
+                sold_1_2yr = gate_inputs.get('sold_1_2yr') or rc.get('ebay_total_sold')
+                st.write(
+                    f'90日 sold: **{total_sold if total_sold is not None else "N/A"}** 件 '
+                    f'/ 1〜2年: **{sold_1_2yr if sold_1_2yr is not None else "N/A"}** 件 '
+                    f'/ Avg: **{"${:.2f}".format(avg_price) if avg_price is not None else "N/A"}**'
+                )
+                gate_decision = rc.get('gate_decision') or ''
+                if gate_decision:
+                    st.caption(f'ゲート判定: `{gate_decision}`')
+
+            with col_t2:
+                # ── 仕入先候補 ────────────────────────────────────────
+                st.caption('【仕入先候補 (フリマ)】')
+                found_url = rc.get('found_url') or ''
+                found_price_jpy = rc.get('found_price_jpy')
+                match_score = rc.get('match_score')
+                match_reason = rc.get('match_reason') or ''
+                found_condition = rc.get('found_condition_ja') or ''
+
+                if found_url:
+                    price_str = f'¥{found_price_jpy:,}' if found_price_jpy is not None else 'N/A'
+                    score_str = f'{match_score}' if match_score is not None else 'N/A'
+                    st.write(
+                        f'[仕入先リンク]({found_url})  '
+                        f'**{price_str}**  状態: `{found_condition or "不明"}`'
+                    )
+                    st.write(f'AI 一致度: **{score_str}**')
+                    if match_reason:
+                        st.caption(f'根拠: {match_reason[:120]}')
+                else:
+                    st.write('仕入先 URL なし (監視候補)')
+
+            # ── 利益額 ──────────────────────────────────────────────────
+            profit_jpy = rc.get('profit_jpy_true')
+            profit_usd = rc.get('profit_usd_true')
+            keisuke_pass = rc.get('keisuke_pass')
+            keisuke_detail_raw = rc.get('keisuke_detail_json') or '{}'
+            try:
+                keisuke_detail = json.loads(keisuke_detail_raw)
+            except Exception:
+                keisuke_detail = {}
+
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                st.caption('【利益額 (真値)】')
+                if profit_jpy is None:
+                    st.warning('利益未計算 (監視候補)')
+                else:
+                    profit_jpy_int = int(profit_jpy)
+                    profit_usd_f = float(profit_usd) if profit_usd is not None else 0.0
+                    color = 'green' if profit_jpy_int >= 0 else 'red'
+                    st.markdown(
+                        f'利益: <span style="color:{color};font-weight:bold;">'
+                        f'¥{profit_jpy_int:,} / ${profit_usd_f:+.2f}</span>',
+                        unsafe_allow_html=True,
+                    )
+                # けいすけ基準バッジ (Q11: detail_json の有無で判別)
+                if not keisuke_detail:
+                    st.caption('けいすけ基準: 未判定')
+                elif keisuke_pass:
+                    st.success('けいすけ基準: PASS')
+                else:
+                    st.error('けいすけ基準: 不合格')
+
+            with col_p2:
+                # Section 232 赤バッジ
+                if rc.get('section232_flag'):
+                    s232_reason = rc.get('section232_reason') or '詳細不明'
+                    st.error(f'Section232 該当の可能性: {s232_reason}')
+                    st.caption('DDP関税で赤字化リスク。承認は任意 (自動BLOCKしない)。')
+
+                # 重量表示
+                weight_g = rc.get('manual_weight_g')
+                weight_src = rc.get('weight_source') or ''
+                weight_conf = rc.get('weight_confidence') or ''
+                if weight_g is not None:
+                    src_label = (
+                        'AI推定' if weight_src == 'ai_estimate'
+                        else ('手動' if weight_src == 'manual' else weight_src)
+                    )
+                    conf_label = f' (確信度: {weight_conf})' if weight_conf else ''
+                    st.caption(f'推定重量: {int(weight_g)} g ({src_label}{conf_label})')
+                else:
+                    st.caption('重量: 未設定')
+
+            # ── ボタン (form 外で即時反応、W225 教訓) ────────────────────
+            # 連打防止 key
+            _inflight_key = f'_w228_sec_d_inflight_{rc_id}'
+            _processing = st.session_state.get(_inflight_key, False)
+
+            btn_col1, btn_col2 = st.columns([2, 1])
+            with btn_col1:
+                if _processing:
+                    st.caption('処理中... (しばらくお待ちください)')
+                elif st.button(
+                    '承認 → 下書き生成',
+                    key=f'w228_approve_{rc_id}',
+                    type='primary',
+                    help='description を自動生成し「個別出品」タブに引き継ぎます。',
+                ):
+                    st.session_state[_inflight_key] = True
+                    # _APPROVE_PROCESS_LOCK で同時実行防止
+                    acquired = _APPROVE_PROCESS_LOCK.acquire(blocking=False)
+                    if not acquired:
+                        st.warning('別の承認処理が進行中です。少し待ってから再試行してください。')
+                        st.session_state[_inflight_key] = False
+                    else:
+                        try:
+                            with st.spinner(f'rc_id={rc_id} の description を生成中...'):
+                                approval_result = _run_approval_logic(
+                                    rc_id=rc_id,
+                                    rc=rc,
+                                    config=config,
+                                )
+                        finally:
+                            _APPROVE_PROCESS_LOCK.release()
+                            st.session_state[_inflight_key] = False
+
+                        # st.rerun() は直書き表示を即消すため flash に stash して次 render で表示
+                        if approval_result.get('success'):
+                            msg = approval_result.get('message', '承認完了')
+                            if approval_result.get('watch_skipped_oos_limit'):
+                                _kind = 'warning'
+                                logger.warning(
+                                    '[w228_sec_d] OOS上限超過でwatch未登録 rc_id=%s', rc_id
+                                )
+                            else:
+                                _kind = 'success'
+                            st.session_state[_SEC_D_FLASH_KEY] = (_kind, f'「{title_ja}」: {msg}')
+                        elif approval_result.get('needs_review_fallen'):
+                            st.session_state[_SEC_D_FLASH_KEY] = (
+                                'error',
+                                f'「{title_ja}」: '
+                                + approval_result.get('message', '下書き生成失敗'),
+                            )
+                        else:
+                            st.session_state[_SEC_D_FLASH_KEY] = (
+                                'error',
+                                f'「{title_ja}」: '
+                                + approval_result.get('message', '承認に失敗しました'),
+                            )
+                        st.rerun()
+
+            with btn_col2:
+                if not _processing and st.button(
+                    '見送り',
+                    key=f'w228_reject_{rc_id}',
+                    type='secondary',
+                    help='この候補を見送り (gate_rejected) にします。DB には残ります。',
+                ):
+                    try:
+                        update_status(
+                            rc_id, STATUS_GATE_REJECTED,
+                        )
+                        logger.info('[w228_sec_d] 見送り rc_id=%s', rc_id)
+                        st.session_state[_SEC_D_FLASH_KEY] = (
+                            'info', f'「{title_ja}」を見送りました。'
+                        )
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f'見送り遷移エラー: {e}')
+                        logger.exception('[w228_sec_d] 見送り遷移失敗 rc_id=%s', rc_id)
+
+
+# ============================================================================
 # Public API
 # ============================================================================
 
@@ -850,3 +1393,6 @@ def render_w228_research_tab(config: dict) -> None:
 
     st.divider()
     _render_section_c()
+
+    st.divider()
+    _render_section_d(config)

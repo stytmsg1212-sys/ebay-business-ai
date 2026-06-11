@@ -242,6 +242,8 @@
     },
     "research_harvest": {
       "enabled": true,
+      "max_oos_active_listings": 20,
+      "_max_oos_note": "Phase 4 (W228): 在庫0承認時のkeyword watch登録上限。現在のtarget_oos_watch由来activeリスト数がこれを超えたら新規watch登録をスキップしUIに警告。初期値20は履行不能(Defect)リスクのバランス点。",
       "description": "W229 商品リサーチ発掘: Terapeak 2パターン収穫 + 自動ゲート判定 (毎日03:30)",
       "priority": 14,
       "cron_hour": 3,
