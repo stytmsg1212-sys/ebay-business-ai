@@ -267,7 +267,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
         f"**actionable**: {_actionable_total}件 "
         f"(復活 {len(_sup_revive)} / 置換 {len(_sup_replace)} / 別SKU {len(_sup_altlist)})　"
         f"**履歴 (rejected/applied)**: {len(_sup_history)}件 "
-        f"<span style='color:rgba(180,220,255,0.5);font-size:11px;'>"
+        f"<span style='color:#8d927f;font-size:11px;'>"
         f"※ 履歴は status filter 非依存</span>",
         unsafe_allow_html=True,
     )
@@ -705,7 +705,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
 
         with st.container(border=True):
             st.markdown(
-                f'<div style="font-size:11px;color:rgba(255,220,100,0.9);'
+                f'<div style="font-size:11px;color:#b8860b;'
                 f'letter-spacing:2px;margin:0 0 8px;">'
                 f'採 用 後 フ ォ ロ ー ア ッ プ &nbsp;—&nbsp; '
                 f'{_f_ttl} (item {_f_eid})</div>',
@@ -834,7 +834,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
     with _tab_revive:
         st.markdown(
             '<div style="font-family:var(--f-mono,monospace);font-size:11px;'
-            'letter-spacing:2px;color:#ffa84a;text-transform:uppercase;">'
+            'letter-spacing:2px;color:#b35a2e;text-transform:uppercase;">'
             '復 活 候 補 キ ュ ー</div>',
             unsafe_allow_html=True,
         )
@@ -853,7 +853,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
     with _tab_replace:
         st.markdown(
             '<div style="font-family:var(--f-mono,monospace);font-size:11px;'
-            'letter-spacing:2px;color:#d8cdb5;text-transform:uppercase;">'
+            'letter-spacing:2px;color:#5f6557;text-transform:uppercase;">'
             '置 換 候 補 キ ュ ー</div>',
             unsafe_allow_html=True,
         )

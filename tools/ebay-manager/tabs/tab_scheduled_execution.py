@@ -183,7 +183,7 @@ def render_tab() -> None:
         for c, lbl in zip(cols, ["時刻", "タスク", "状態", "開始", "終了", "メッセージ"]):
             c.markdown(
                 f"<div style='font-family:JetBrains Mono,monospace;font-size:11px;"
-                f"color:#a89d8a;letter-spacing:1px;text-transform:uppercase;'>{lbl}</div>",
+                f"color:#8d927f;letter-spacing:1px;text-transform:uppercase;'>{lbl}</div>",
                 unsafe_allow_html=True,
             )
 
@@ -225,22 +225,22 @@ def render_tab() -> None:
             cols = st.columns([0.7, 2.4, 1.0, 1.0, 1.0, 2.0])
             cols[0].markdown(
                 f"<div style='font-family:JetBrains Mono,monospace;font-size:13px;"
-                f"color:#e8ddc9;'>{r['hour']:02d}:00</div>",
+                f"color:#2a2e2a;'>{r['hour']:02d}:00</div>",
                 unsafe_allow_html=True,
             )
             cols[1].markdown(
-                f"<div style='font-family:Inter,sans-serif;font-size:13px;color:#fbf9f3;'>"
+                f"<div style='font-family:Inter,sans-serif;font-size:13px;color:#2a2e2a;'>"
                 f"{r['display']} <span style='color:#7a6e5f;font-size:11px;font-family:JetBrains Mono;'>"
                 f"({r['task_key']})</span></div>",
                 unsafe_allow_html=True,
             )
             cols[2].markdown(state_html, unsafe_allow_html=True)
             cols[3].markdown(
-                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#a89d8a;'>{started_disp}</div>",
+                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#8d927f;'>{started_disp}</div>",
                 unsafe_allow_html=True,
             )
             cols[4].markdown(
-                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#a89d8a;'>{finished_disp}</div>",
+                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#8d927f;'>{finished_disp}</div>",
                 unsafe_allow_html=True,
             )
             cols[5].markdown(
@@ -261,7 +261,7 @@ def render_tab() -> None:
         for c, lbl in zip(cols, ["タスク", "想定スケジュール", "最終成功", "経過"]):
             c.markdown(
                 f"<div style='font-family:JetBrains Mono,monospace;font-size:11px;"
-                f"color:#a89d8a;letter-spacing:1px;text-transform:uppercase;'>{lbl}</div>",
+                f"color:#8d927f;letter-spacing:1px;text-transform:uppercase;'>{lbl}</div>",
                 unsafe_allow_html=True,
             )
 
@@ -301,17 +301,17 @@ def render_tab() -> None:
         with st.container(border=True):
             cols = st.columns([2.4, 1.5, 1.5, 1.5])
             cols[0].markdown(
-                f"<div style='font-family:Inter,sans-serif;font-size:13px;color:#fbf9f3;'>"
+                f"<div style='font-family:Inter,sans-serif;font-size:13px;color:#2a2e2a;'>"
                 f"{t['display']} <span style='color:#7a6e5f;font-size:11px;font-family:JetBrains Mono;'>"
                 f"({t['key']})</span></div>",
                 unsafe_allow_html=True,
             )
             cols[1].markdown(
-                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#a89d8a;'>{sched_str}</div>",
+                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#8d927f;'>{sched_str}</div>",
                 unsafe_allow_html=True,
             )
             cols[2].markdown(
-                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#e8ddc9;'>{last_str}</div>",
+                f"<div style='font-family:JetBrains Mono;font-size:12px;color:#2a2e2a;'>{last_str}</div>",
                 unsafe_allow_html=True,
             )
             cols[3].markdown(

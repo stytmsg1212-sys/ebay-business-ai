@@ -186,7 +186,7 @@ def render_image_pipeline_section(
     out_base = Path("data/hero_candidates") / out_base_name
 
     st.markdown(
-        '<div style="font-size:11px;color:rgba(180,220,255,0.55);'
+        '<div style="font-size:11px;color:#8d927f;'
         'letter-spacing:2px;margin:8px 0 6px;">'
         '画 像 加 工 　 + 　 e B a y 反 映</div>',
         unsafe_allow_html=True,

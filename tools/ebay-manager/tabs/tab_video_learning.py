@@ -119,9 +119,9 @@ def render_video_learning_tab() -> None:
 
             _status = _r.get("status", "?")
             _st_color = {
-                "done": "rgba(118,255,3,0.8)",
-                "processing": "rgba(240,200,48,0.9)",
-                "pending": "rgba(180,200,220,0.7)",
+                "done": "#2e7d5b",
+                "processing": "#b8860b",
+                "pending": "#5f6557",
                 "failed": "rgba(255,80,80,0.9)",
             }.get(_status, "rgba(200,200,200,0.5)")
 
@@ -131,7 +131,7 @@ def render_video_learning_tab() -> None:
             _added = _r.get("added_at") or ""
 
             _dur_html = (
-                f'<span style="color:rgba(180,220,255,0.5);font-size:11px;">{_dur_str}</span>'
+                f'<span style="color:#8d927f;font-size:11px;">{_dur_str}</span>'
                 if _dur_str else ''
             )
 
@@ -147,7 +147,7 @@ def render_video_learning_tab() -> None:
                 "pre_tariff": "rgba(200,150,150,0.75)",
                 "transition": "rgba(240,200,80,0.85)",
                 "post_tariff": "rgba(118,255,180,0.85)",
-                "evergreen": "rgba(180,200,220,0.7)",
+                "evergreen": "#5f6557",
             }.get(_era, "rgba(180,180,180,0.5)")
             _era_html = (
                 f'<span style="color:{_era_color};font-size:11px;font-weight:700;">[{_era_label}]</span>'
@@ -157,31 +157,31 @@ def render_video_learning_tab() -> None:
             # 公開日
             _pub = _r.get("published_date") or ""
             _pub_html = (
-                f'<span style="color:rgba(180,220,255,0.6);font-size:11px;">{html.escape(_pub)}</span>'
+                f'<span style="color:#8d927f;font-size:11px;">{html.escape(_pub)}</span>'
                 if _pub else ''
             )
             _summary_html = (
-                f'<div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,0.85);line-height:1.5;">'
+                f'<div style="margin-top:6px;font-size:13px;color:#2a2e2a;line-height:1.5;">'
                 f'{html.escape((_r.get("summary_ja") or "")[:300])}</div>'
                 if _r.get("summary_ja") else ''
             )
             _topics_html = (
-                f'<div style="margin-top:4px;font-size:11px;color:rgba(180,220,255,0.6);">'
+                f'<div style="margin-top:4px;font-size:11px;color:#8d927f;">'
                 f'Topics: {html.escape(_r.get("topics") or "")}</div>'
                 if _r.get("topics") else ''
             )
 
             st.markdown(
-                f'<div style="border:1px solid rgba(120,180,255,0.3);'
+                f'<div style="border:1px solid rgba(166,150,121,0.30);'
                 f'border-radius:6px;padding:10px 14px;margin:6px 0;'
-                f'background:rgba(20,30,50,0.4);">'
+                f'background:rgba(166,150,121,0.24);">'
                 f'<div style="display:flex;gap:12px;align-items:center;font-family:Share Tech Mono,monospace;">'
                 f'<span style="color:{_st_color};font-size:11px;font-weight:700;">[{_status.upper()}]</span>'
                 f'{_era_html}'
                 f'{_pub_html}'
-                f'<span style="color:rgba(180,220,255,0.8);font-size:12px;">{html.escape(_title[:80])}</span>'
+                f'<span style="color:#2a2e2a;font-size:12px;">{html.escape(_title[:80])}</span>'
                 f'{_dur_html}'
-                f'<span style="color:rgba(180,220,255,0.4);font-size:10px;margin-left:auto;">{html.escape(_added[:16])}</span>'
+                f'<span style="color:#8d927f;font-size:10px;margin-left:auto;">{html.escape(_added[:16])}</span>'
                 f'</div>'
                 f'{_summary_html}{_topics_html}'
                 f'</div>',

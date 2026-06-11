@@ -182,15 +182,15 @@ def render_model_comparison_tab() -> None:
                 if _verdict_diff:
                     _diff_badge = ' <span style="color:#ff6464;font-weight:600;font-size:11px;background:rgba(200,80,80,0.2);padding:2px 8px;border-radius:3px;">採用判定が不一致</span>'
                 elif _diff > 20:
-                    _diff_badge = f' <span style="color:#f0c830;font-weight:600;font-size:11px;background:rgba(180,150,40,0.18);padding:2px 8px;border-radius:3px;">score 差 {_diff} 点</span>'
+                    _diff_badge = f' <span style="color:#b8860b;font-weight:600;font-size:11px;background:rgba(180,150,40,0.18);padding:2px 8px;border-radius:3px;">score 差 {_diff} 点</span>'
 
                 # _cand_price が None (= scraper で価格取得失敗) でも format crash しないよう
                 # 明示 fallback. 2026-05-05 修正.
                 _price_disp = f"¥{_cand_price:,}" if _cand_price is not None else "¥-"
                 st.markdown(
                     f"**候補 #{_idx}** [{_cand_plat}]　"
-                    f"<a href='{_cand_url}' target='_blank' style='color:rgba(120,200,255,0.9);'>{_cand_title}</a>　"
-                    f"<span style='color:rgba(180,180,180,0.7);'>{_price_disp}</span>"
+                    f"<a href='{_cand_url}' target='_blank' style='color:#156a63;'>{_cand_title}</a>　"
+                    f"<span style='color:#8d927f;'>{_price_disp}</span>"
                     f"{_diff_badge}",
                     unsafe_allow_html=True,
                 )
@@ -198,7 +198,7 @@ def render_model_comparison_tab() -> None:
                 _col1, _col2 = st.columns(2)
                 for _col, _row, _label, _color in [
                     (_col1, _opus,   "Opus 4.7",   "rgba(196,128,255,0.95)"),
-                    (_col2, _sonnet, "Sonnet 4.6", "rgba(120,200,255,0.95)"),
+                    (_col2, _sonnet, "Sonnet 4.6", "#156a63"),
                 ]:
                     with _col:
                         if not _row:
@@ -207,14 +207,14 @@ def render_model_comparison_tab() -> None:
                         if _row.get("error"):
                             st.markdown(
                                 f"<span style='color:{_color};font-weight:600;'>{_label}</span>: "
-                                f"<span style='color:#ff8a80;'>ERROR — {_row['error']}</span>",
+                                f"<span style='color:#a8341b;'>ERROR — {_row['error']}</span>",
                                 unsafe_allow_html=True,
                             )
                             continue
                         _score = _row["match_score"]
                         _score_color = (
-                            "rgba(118,255,3,0.9)" if _score >= 80
-                            else "rgba(240,200,48,0.9)" if _score >= 60
+                            "#2e7d5b" if _score >= 80
+                            else "#b8860b" if _score >= 60
                             else "rgba(255,128,128,0.9)"
                         )
                         _flags = []
@@ -223,7 +223,7 @@ def render_model_comparison_tab() -> None:
                         if _row.get("junk_likely_untested"):
                             _flags.append("junk_untested")
                         _flag_html = (
-                            f' <span style="color:#a89d8a;font-size:10px;">[{",".join(_flags)}]</span>'
+                            f' <span style="color:#8d927f;font-size:10px;">[{",".join(_flags)}]</span>'
                             if _flags else ""
                         )
                         _cache_marker = "✓" if (_row.get("cache_read_tokens") or 0) > 0 else "—"
@@ -231,7 +231,7 @@ def render_model_comparison_tab() -> None:
                             f"<span style='color:{_color};font-weight:600;font-size:13px;'>{_label}</span>　"
                             f"<span style='color:{_score_color};font-size:18px;font-weight:700;'>{_score}</span>"
                             f"{_flag_html}　"
-                            f"<span style='color:rgba(160,160,160,0.7);font-size:11px;'>"
+                            f"<span style='color:#8d927f;font-size:11px;'>"
                             f"${_row['cost_usd']:.5f} / {_row['duration_ms']/1000:.1f}s / cache {_cache_marker}"
                             f"</span>",
                             unsafe_allow_html=True,

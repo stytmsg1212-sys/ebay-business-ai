@@ -116,12 +116,12 @@ def render_agent_monitor_tab() -> None:
     if _err_rows:
         for _e in _err_rows:
             st.markdown(
-                f'<div style="border-left:2px solid rgba(240,64,80,0.6);padding:4px 10px;'
-                f'margin:3px 0;background:rgba(240,64,80,0.04);font-size:12px;">'
-                f'<span style="color:rgba(180,200,220,0.6);">{html.escape(_e.get("called_at") or "")}</span> '
-                f'<span style="color:rgba(240,200,48,0.85);">{html.escape(_e.get("model") or "")}</span> '
-                f'<span style="color:rgba(180,220,255,0.7);">{html.escape(_e.get("operation") or "")}</span>'
-                f'<br><span style="color:rgba(255,180,180,0.9);">{html.escape((_e.get("error_message") or "")[:200])}</span>'
+                f'<div style="border-left:2px solid rgba(168,52,27,0.45);padding:4px 10px;'
+                f'margin:3px 0;background:rgba(168,52,27,0.12);font-size:12px;">'
+                f'<span style="color:#8d927f;">{html.escape(_e.get("called_at") or "")}</span> '
+                f'<span style="color:#b8860b;">{html.escape(_e.get("model") or "")}</span> '
+                f'<span style="color:#5f6557;">{html.escape(_e.get("operation") or "")}</span>'
+                f'<br><span style="color:#a8341b;">{html.escape((_e.get("error_message") or "")[:200])}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )

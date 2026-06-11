@@ -564,9 +564,21 @@ def apply_neumorph_cream_theme():
 
     p, span, li, label, .stMarkdown, div {
         font-family: var(--f-body) !important;
+    }
+    /* 文字色の既定は inline style で色指定が無い要素のみに適用する。
+       :not([style*="color"]) が無いと、各タブが意図して付けた
+       ステータス色 (利益の緑 / 警告の琥珀 / エラーの赤 等) まで
+       一律 --nm-text-2 に潰れて色の階層が消える (W261-fix 2026-06-11)。 */
+    /* :where() で詳細度を 0,0,1 に据え置く (:not 直書きだと属性セレクタ分
+       0,1,1 に上がり、下の `button p { inherit }` 0,0,2 を逆転してしまう)。 */
+    p:where(:not([style*="color"])), span:where(:not([style*="color"])),
+    li:where(:not([style*="color"])), label:where(:not([style*="color"])),
+    .stMarkdown, div:where(:not([style*="color"])) {
         color: var(--nm-text-2) !important;
     }
     strong, b { color: var(--nm-text) !important; font-weight: 600 !important; }
+    /* 色付きブロック内の太字は親の色を継承 (例: 緑の「効果」行の <b>) */
+    [style*="color"] strong, [style*="color"] b { color: inherit !important; }
 
     /* ボタン内テキストは button 要素の color (primary=白) を継承させる。
        上の全 div/p/span 文字色ルールがティール塗りボタンの白文字を
@@ -585,40 +597,45 @@ def apply_neumorph_cream_theme():
         letter-spacing: 0 !important;
     }
 
-    /* ────── Tabs ────── */
+    /* ────── Tabs ──────
+       ピル型チップ化 (W261-fix 2026-06-11): 旧・下線式は本文と見分けが
+       つかないと user 指摘 → 上部ナビと同じ「浮き出るボタン」文法に統一。 */
     .stTabs [data-baseweb="tab-list"] {
         background: transparent !important;
-        border-bottom: 1px solid rgba(166,150,121,0.30) !important;
-        gap: 0 !important; padding: 0 !important;
+        border-bottom: 0 !important;
+        gap: 8px !important; padding: 2px 2px 10px 2px !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"],
+    .stTabs [data-baseweb="tab-border"] {
+        display: none !important;
     }
     .stTabs [data-baseweb="tab-list"] button {
-        background: transparent !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        color: var(--nm-text-3) !important;
+        background: var(--nm-surface) !important;
+        border: 1px solid rgba(166,150,121,0.25) !important;
+        border-radius: 999px !important;
+        color: var(--nm-text-2) !important;
         font-family: var(--f-body) !important;
-        font-weight: 500 !important; font-size: 13px !important;
+        font-weight: 600 !important; font-size: 13px !important;
         letter-spacing: 0.3px !important; text-transform: none !important;
-        padding: 12px 20px !important; margin: 0 !important;
-        box-shadow: none !important;
+        padding: 7px 18px !important; margin: 0 !important;
+        box-shadow: var(--nm-shadow-raised-sm) !important;
+        cursor: pointer !important;
         transition: box-shadow .18s ease, transform .18s ease, color .18s, background .18s !important;
     }
     .stTabs [data-baseweb="tab-list"] button:hover {
         color: var(--nm-teal) !important;
-        background: rgba(14,79,75,0.05) !important;
-        transform: none !important;
+        transform: translateY(-1px) !important;
+        box-shadow: var(--nm-shadow-raised) !important;
     }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        color: var(--nm-teal) !important;
-        background: transparent !important;
-        position: relative !important;
+        background: var(--nm-teal) !important;
+        border-color: var(--nm-teal) !important;
+        color: #ffffff !important;
+        box-shadow: inset 2px 2px 5px rgba(0,0,0,0.25),
+                    2px 2px 6px rgba(166,150,121,0.35) !important;
     }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"]::after {
-        content: '';
-        position: absolute;
-        bottom: 0; left: 0; right: 0;
-        height: 2px;
-        background: var(--nm-teal);
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"]:hover {
+        transform: none !important;
     }
 
     /* ────── Buttons ────── */
@@ -875,10 +892,14 @@ def apply_neumorph_cream_theme():
         font-size: 13px !important;
         color: var(--nm-text-2) !important;
     }
-    .stCheckbox input:checked + div,
-    .stRadio input:checked + div {
-        background: var(--nm-teal) !important;
-        border-color: var(--nm-teal) !important;
+    /* チェック ON の塗りは config.toml primaryColor (#0e4f4b) に任せる。
+       旧 `input:checked + div` は実 DOM (span=箱 / input / div=ラベル文字)
+       でラベル文字コンテナに誤マッチし、文字背景をティールに塗り潰して
+       読めなくなる (W261-fix 2026-06-11 user 報告) ため削除。
+       誤マッチの保険として、ラベル文字 div の背景を常に透明に固定する。 */
+    .stCheckbox label > div:last-child,
+    .stRadio label > div:last-child {
+        background: transparent !important;
     }
 
     /* ────── Data tables ────── */

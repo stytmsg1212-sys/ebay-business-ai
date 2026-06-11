@@ -537,7 +537,7 @@ def render_supplier_description_section(
 
     with st.container(border=True):
         st.markdown(
-            f'<div style="font-size:11px;color:rgba(180,255,200,0.7);'
+            f'<div style="font-size:11px;color:#2e7d5b;'
             f'letter-spacing:2px;margin:8px 0 6px;">'
             f'description 反 映 　 — 　 候補 #{candidate_id} → '
             f'商品ID {ebay_item_id}</div>',

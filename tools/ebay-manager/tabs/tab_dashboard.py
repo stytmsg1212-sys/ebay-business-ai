@@ -138,7 +138,7 @@ def render_dashboard_tab(s: dict) -> None:
         if _today_brief:
             with st.container(border=True):
                 st.markdown(
-                    '<div style="font-size:11px;color:#a89d8a;letter-spacing:2px;'
+                    '<div style="font-size:11px;color:#8d927f;letter-spacing:2px;'
                     'margin-bottom:6px;">M O R N I N G &nbsp; B R I E F &nbsp; — &nbsp; '
                     'Research 脳 (Opus 4.8)</div>',
                     unsafe_allow_html=True,
@@ -848,45 +848,45 @@ def render_dashboard_tab(s: dict) -> None:
 
             # カテゴリ別の色/ラベル
             if cat == 'buyer_message':
-                action_color = 'rgba(240,160,48,0.85)'
+                action_color = '#b8860b'
                 row_cls = 'mail-row'
                 is_reply = subj.startswith('Re:')
                 type_label = f'{sender} — {"返信" if is_reply else "問い合わせ"}'
             elif cat == 'sale':
-                action_color = 'rgba(112,240,128,0.85)'
+                action_color = '#2e7d5b'
                 row_cls = 'mail-row sale'
                 type_label = '売上通知'
             elif cat == 'offer':
-                action_color = 'rgba(240,160,48,0.85)'
+                action_color = '#b8860b'
                 row_cls = 'mail-row offer'
                 type_label = f'{sender} — オファー'
             elif cat == 'return':
-                action_color = 'rgba(240,64,80,0.85)'
+                action_color = '#a8341b'
                 row_cls = 'mail-row return'
                 type_label = f'{sender} — 返品リクエスト'
             else:
-                action_color = 'rgba(180,200,220,0.7)'
+                action_color = '#5f6557'
                 row_cls = 'mail-row'
                 type_label = f'{sender} — {cat}'
 
             # 優先度バッジ（Claude 判定）
             _pri_badge = ''
             if _pri_ai == 'urgent':
-                _pri_badge = '<span style="color:rgba(240,64,80,0.9);font-size:11px;font-weight:700;margin-right:6px;">[最優先]</span>'
+                _pri_badge = '<span style="color:#a8341b;font-size:11px;font-weight:700;margin-right:6px;">[最優先]</span>'
             elif _pri_ai == 'high':
-                _pri_badge = '<span style="color:rgba(240,160,48,0.9);font-size:11px;font-weight:700;margin-right:6px;">[高]</span>'
+                _pri_badge = '<span style="color:#b8860b;font-size:11px;font-weight:700;margin-right:6px;">[高]</span>'
 
             # 受信日時（相対＋絶対）
             _rel, _abs = _format_email_date(_em.get('date', ''))
             _date_html = ''
             if _rel or _abs:
                 # 1時間以内は緑、1日以内は通常、1日以上は薄灰
-                _age_color = 'rgba(112,240,128,0.85)' if '分前' in _rel or '時間前' in _rel else \
-                             'rgba(180,200,220,0.7)'
+                _age_color = '#2e7d5b' if '分前' in _rel or '時間前' in _rel else \
+                             '#5f6557'
                 _date_html = (
                     f'<span style="color:{_age_color};font-size:11px;margin-right:6px;">'
                     f'{html.escape(_rel)}'
-                    + (f' <span style="color:rgba(150,170,190,0.6);">({html.escape(_abs)})</span>'
+                    + (f' <span style="color:#8d927f;">({html.escape(_abs)})</span>'
                        if _abs else '')
                     + '</span>'
                 )
@@ -901,7 +901,7 @@ def render_dashboard_tab(s: dict) -> None:
 
             # 詳細情報をHTMLカードで（XSS対策）
             _link_safe = html.escape(gmail_link or "", quote=True)
-            link_btn = f'<a href="{_link_safe}" target="_blank" style="font-size:11px;color:rgba(77,217,240,0.7);float:right;">▸ Gmailで開く</a>' if gmail_link else ''
+            link_btn = f'<a href="{_link_safe}" target="_blank" style="font-size:11px;color:#156a63;float:right;">▸ Gmailで開く</a>' if gmail_link else ''
 
             # バイヤー実メッセージ（Claude の buyer_message_ja、なければ body_text抽出）
             if not buyer_msg_ja and body:
@@ -909,8 +909,8 @@ def render_dashboard_tab(s: dict) -> None:
             quote_html = ''
             if buyer_msg_ja:
                 quote_html = (
-                    f'<div style="color:#d0e4f0;font-size:12px;margin:3px 0;padding:4px 8px;'
-                    f'background:rgba(77,217,240,0.06);border-radius:3px;border-left:2px solid rgba(77,217,240,0.4);">'
+                    f'<div style="color:#2a2e2a;font-size:12px;margin:3px 0;padding:4px 8px;'
+                    f'background:rgba(14,79,75,0.06);border-radius:3px;border-left:2px solid rgba(14,79,75,0.4);">'
                     f'「{html.escape(buyer_msg_ja[:150])}」</div>'
                 )
 
@@ -918,7 +918,7 @@ def render_dashboard_tab(s: dict) -> None:
             summary_html = ''
             if summary_ja:
                 summary_html = (
-                    f'<div style="color:#e0ecfa;font-size:12px;margin:4px 0 2px 0;">'
+                    f'<div style="color:#2a2e2a;font-size:12px;margin:4px 0 2px 0;">'
                     f'{html.escape(summary_ja[:200])}</div>'
                 )
 
@@ -933,7 +933,7 @@ def render_dashboard_tab(s: dict) -> None:
                 f'{link_btn}'
                 f'{_pri_badge}'
                 f'{_date_html}'
-                f'<span style="color:#a8c4d8;font-size:12px;">{html.escape(product or "")}</span>'
+                f'<span style="color:#5f6557;font-size:12px;">{html.escape(product or "")}</span>'
                 f'{summary_html}'
                 f'{quote_html}'
                 f'{action_html}'
@@ -1001,18 +1001,18 @@ def render_dashboard_tab(s: dict) -> None:
                 _link_safe = html.escape(gmail_link or "", quote=True)
                 _link_btn = (
                     f'<a href="{_link_safe}" target="_blank" '
-                    f'style="font-size:11px;color:rgba(77,217,240,0.5);float:right;">▸ Gmail</a>'
+                    f'style="font-size:11px;color:#156a63;float:right;">▸ Gmail</a>'
                     if gmail_link else ''
                 )
                 _summary_line = (
-                    f'<div style="color:#c0d4e8;font-size:11px;margin-top:2px;">'
+                    f'<div style="color:#5f6557;font-size:11px;margin-top:2px;">'
                     f'{html.escape(summary_ja[:180])}</div>'
                 ) if summary_ja else ''
                 st.markdown(
                     f'<div class="mail-row" style="margin-top:-6px;margin-bottom:6px;'
-                    f'border-left-color:rgba(168,196,216,0.3);background:rgba(168,196,216,0.03);">'
+                    f'border-left-color:rgba(166,150,121,0.3);background:rgba(168,196,216,0.03);">'
                     f'{_link_btn}'
-                    f'<span style="color:rgba(168,196,216,0.55);font-size:10px;">{html.escape(_date_str)}</span>'
+                    f'<span style="color:#8d927f;font-size:10px;">{html.escape(_date_str)}</span>'
                     f'{_summary_line}'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -1037,7 +1037,7 @@ def render_dashboard_tab(s: dict) -> None:
             archived = get_archived_tasks()
             if archived:
                 for task in archived:
-                    st.markdown(f"~~{task['name']}~~ <span style='color:#5a7a96;font-size:11px;'>({task['completed_date']})</span>", unsafe_allow_html=True)
+                    st.markdown(f"~~{task['name']}~~ <span style='color:#8d927f;font-size:11px;'>({task['completed_date']})</span>", unsafe_allow_html=True)
             else:
                 st.caption("—")
         else:
@@ -1101,15 +1101,15 @@ def render_dashboard_tab(s: dict) -> None:
                 'a': 'Claude/Agent', 'b': 'eBay応用', 'c': '関税/EC', 'd': 'スクレイピング',
             }
             _axis_color = {
-                'a': 'rgba(120,200,255,0.9)',
-                'b': 'rgba(118,255,3,0.85)',
-                'c': 'rgba(240,200,48,0.85)',
-                'd': 'rgba(255,140,80,0.9)',
+                'a': '#156a63',
+                'b': '#2e7d5b',
+                'c': '#b8860b',
+                'd': '#b35a2e',
             }
             _effort_color = {
-                'S': 'rgba(118,255,3,0.7)',
-                'M': 'rgba(240,200,48,0.7)',
-                'L': 'rgba(240,64,80,0.7)',
+                'S': '#2e7d5b',
+                'M': '#b8860b',
+                'L': '#a8341b',
             }
             _conf_label = {'high': '高', 'medium': '中', 'low': '低'}
             for _r in _action_rows:
@@ -1125,7 +1125,7 @@ def render_dashboard_tab(s: dict) -> None:
                 _url = html.escape(_r.get('url') or '', quote=True)
                 _title_link = (
                     f'<a href="{_url}" target="_blank" '
-                    f'style="color:rgba(120,200,255,0.85);text-decoration:none;">'
+                    f'style="color:#156a63;text-decoration:none;">'
                     f'{_title}</a>'
                 ) if _url else _title
                 _sum = html.escape((_r.get('summary_ja') or '')[:240])
@@ -1136,34 +1136,34 @@ def render_dashboard_tab(s: dict) -> None:
                 st.markdown(
                     f'<div style="border-left:2px solid {_ax_col};'
                     f'padding:8px 12px;margin-bottom:10px;'
-                    f'background:rgba(80,120,180,0.04);border-radius:0 4px 4px 0;">'
+                    f'background:rgba(166,150,121,0.08);border-radius:0 4px 4px 0;">'
                     f'<div style="display:flex;gap:6px;align-items:center;'
                     f'margin-bottom:5px;flex-wrap:wrap;">'
-                    f'<span style="background:rgba(0,0,0,0.3);color:{_ax_col};'
+                    f'<span style="background:rgba(166,150,121,0.18);color:{_ax_col};'
                     f'padding:1px 6px;border-radius:3px;font-size:10px;'
                     f'letter-spacing:1px;">[{_ax.upper()}] {_ax_lbl}</span>'
-                    f'<span style="background:rgba(0,0,0,0.3);color:{_eff_col};'
+                    f'<span style="background:rgba(166,150,121,0.18);color:{_eff_col};'
                     f'padding:1px 6px;border-radius:3px;font-size:10px;">'
                     f'工数 {_eff}</span>'
-                    f'<span style="color:rgba(180,220,255,0.45);font-size:10px;'
+                    f'<span style="color:#8d927f;font-size:10px;'
                     f'margin-left:4px;">関連度 {_score} / 確度 {_conf_jp}</span>'
                     f'</div>'
-                    f'<div style="font-size:13px;color:#e0ecfa;line-height:1.5;'
+                    f'<div style="font-size:13px;color:#2a2e2a;line-height:1.5;'
                     f'margin-bottom:4px;">{_sum}</div>'
-                    f'<div style="font-size:11px;color:rgba(160,220,255,0.75);'
+                    f'<div style="font-size:11px;color:#5f6557;'
                     f'margin-bottom:3px;">'
                     f'<b>組込先</b>: {_tgt}</div>'
                     + (
-                        f'<div style="font-size:11px;color:rgba(160,220,255,0.65);'
+                        f'<div style="font-size:11px;color:#5f6557;'
                         f'margin-bottom:3px;"><b>方法</b>: {_intg}</div>'
                         if _intg else ''
                     )
                     + (
-                        f'<div style="font-size:11px;color:rgba(118,255,3,0.7);'
+                        f'<div style="font-size:11px;color:#2e7d5b;'
                         f'margin-bottom:4px;"><b>効果</b>: {_ben}</div>'
                         if _ben else ''
                     )
-                    + f'<div style="font-size:10px;color:#5a7a96;">{_title_link}</div>'
+                    + f'<div style="font-size:10px;color:#156a63;">{_title_link}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -1212,10 +1212,10 @@ def render_dashboard_tab(s: dict) -> None:
                 'x': 'X', 'reddit': 'Reddit', 'hn': 'HN', 'web': 'Web',
             }
             _src_color = {
-                'x': 'rgba(120,200,255,0.9)',
-                'reddit': 'rgba(255,140,80,0.9)',
-                'hn': 'rgba(255,180,60,0.9)',
-                'web': 'rgba(160,180,200,0.85)',
+                'x': '#156a63',
+                'reddit': '#b35a2e',
+                'hn': '#b8860b',
+                'web': '#5f6557',
             }
             # W224 (2026-06-05): 参照元の投稿日 (published_at) を JST + 相対表示。
             # 鮮度重視 = 古い記事 (投稿から N 日経過) はカード全体を視覚的に弱める。
@@ -1223,8 +1223,8 @@ def render_dashboard_tab(s: dict) -> None:
             _now_utc224 = _dt224.now(_tz224.utc)
             for _n in _news_db_rows[:8]:
                 _lvl = _n.get('impact_level') or 'low'
-                _accent = {'high': 'rgba(240,64,80,0.55)', 'medium': 'rgba(240,200,48,0.55)',
-                           'low': 'rgba(120,180,255,0.45)'}.get(_lvl, 'rgba(160,180,200,0.4)')
+                _accent = {'high': 'rgba(168,52,27,0.55)', 'medium': 'rgba(184,134,11,0.55)',
+                           'low': 'rgba(46,125,91,0.45)'}.get(_lvl, 'rgba(166,150,121,0.4)')
                 _badge = {'high': '[高影響]', 'medium': '[中影響]', 'low': '[低影響]'}.get(_lvl, '')
                 _st = (_n.get('source_type') or 'web').lower()
                 _src_tag = _src_label.get(_st, 'Web')
@@ -1232,13 +1232,13 @@ def render_dashboard_tab(s: dict) -> None:
                 _handle = html.escape((_n.get('source_handle') or '')[:24])
                 _handle_part = f' {_handle}' if _handle else ''
                 _src_html = (
-                    f'<span style="background:rgba(0,0,0,0.3);color:{_src_tag_color};'
+                    f'<span style="background:rgba(166,150,121,0.18);color:{_src_tag_color};'
                     f'padding:1px 6px;border-radius:3px;font-size:10px;letter-spacing:1px;">'
                     f'{_src_tag}{_handle_part}</span>'
                 )
                 _eng = int(_n.get('engagement_count') or 0)
                 _eng_html = (
-                    f'<span style="color:rgba(180,220,255,0.45);font-size:10px;'
+                    f'<span style="color:#8d927f;font-size:10px;'
                     f'margin-left:6px;">♥ {_eng:,}</span>'
                 ) if _eng > 0 else ''
                 # W224: 投稿日 (published_at) を JST + 相対表示。古いほど色を弱める。
@@ -1251,7 +1251,7 @@ def render_dashboard_tab(s: dict) -> None:
                     if _pub_dt is not None:
                         _jst_abs, _rel, _age_d = _fmt_news_freshness(_pub_dt, _now_utc224)
                         # 鮮度: 3 日以内は明るく、それ以降は段階的に弱める (下限 0.5)。
-                        _date_color = 'rgba(150,210,255,0.75)' if _age_d < 3 else 'rgba(150,170,190,0.5)'
+                        _date_color = '#5f6557' if _age_d < 3 else '#8d927f'
                         if _age_d >= 7:
                             _card_opacity = 0.5
                         elif _age_d >= 3:
@@ -1270,21 +1270,21 @@ def render_dashboard_tab(s: dict) -> None:
                 _imp = html.escape((_n.get('impact_ja') or '')[:150])
                 _url = html.escape(_n.get('url') or '', quote=True)
                 _title_or_link = (
-                    f'<a href="{_url}" target="_blank" style="color:rgba(120,200,255,0.9);text-decoration:none;">'
+                    f'<a href="{_url}" target="_blank" style="color:#156a63;text-decoration:none;">'
                     f'{html.escape((_n.get("title") or "")[:80])}</a>'
                 ) if _url else html.escape((_n.get('title') or '')[:80])
                 st.markdown(
                     f'<div style="border-left:2px solid {_accent};padding:6px 12px;margin-bottom:8px;'
-                    f'background:rgba(80,120,180,0.03);border-radius:0 4px 4px 0;opacity:{_card_opacity};">'
+                    f'background:rgba(166,150,121,0.06);border-radius:0 4px 4px 0;opacity:{_card_opacity};">'
                     f'<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap;">'
                     f'{_src_html}'
-                    f'<span style="color:rgba(180,220,255,0.55);font-size:10px;letter-spacing:1px;">{_badge}</span>'
+                    f'<span style="color:#8d927f;font-size:10px;letter-spacing:1px;">{_badge}</span>'
                     f'{_eng_html}'
                     f'{_date_html}'
                     f'</div>'
-                    f'<span style="font-size:13px;color:#e0ecfa;line-height:1.5;">{_sum}</span>'
-                    + (f'<br><span style="color:rgba(160,220,255,0.7);font-size:11px;">▸ 影響: {_imp}</span>' if _imp else '')
-                    + f'<br><span style="font-size:10px;color:#5a7a96;">{_title_or_link}</span>'
+                    f'<span style="font-size:13px;color:#2a2e2a;line-height:1.5;">{_sum}</span>'
+                    + (f'<br><span style="color:#5f6557;font-size:11px;">▸ 影響: {_imp}</span>' if _imp else '')
+                    + f'<br><span style="font-size:10px;color:#156a63;">{_title_or_link}</span>'
                     f'</div>', unsafe_allow_html=True)
             # 早期 return（旧 file-based 表示はスキップ）
             _news_file = None
@@ -1323,26 +1323,26 @@ def render_dashboard_tab(s: dict) -> None:
 
             # 技術制約に関連するニュースを優先表示
             if _constraint_hits:
-                st.markdown('<div style="border:1px solid rgba(118,255,3,0.3);border-radius:6px;padding:8px 12px;margin-bottom:8px;background:rgba(118,255,3,0.04);">'
-                    '<span style="color:rgba(118,255,3,0.8);font-size:11px;letter-spacing:1px;">CONSTRAINT CHECK — 技術制約に関連</span></div>', unsafe_allow_html=True)
+                st.markdown('<div style="border:1px solid rgba(46,125,91,0.45);border-radius:6px;padding:8px 12px;margin-bottom:8px;background:rgba(46,125,91,0.10);">'
+                    '<span style="color:#2e7d5b;font-size:11px;letter-spacing:1px;">CONSTRAINT CHECK — 技術制約に関連</span></div>', unsafe_allow_html=True)
                 for _ch in _constraint_hits[:3]:
                     _n = _ch["news"]
                     _title = html.escape((_n.get("title") or "")[:55])
                     _source = html.escape(_n.get("source") or "")
                     _constraint = html.escape(_ch.get("constraint") or "")
-                    st.markdown(f'<div style="border-left:2px solid rgba(118,255,3,0.5);padding:4px 10px;margin-bottom:4px;background:rgba(118,255,3,0.03);border-radius:0 4px 4px 0;">'
+                    st.markdown(f'<div style="border-left:2px solid rgba(46,125,91,0.45);padding:4px 10px;margin-bottom:4px;background:rgba(46,125,91,0.10);border-radius:0 4px 4px 0;">'
                         f'<span style="font-size:13px;">{_title}</span><br>'
-                        f'<span style="color:rgba(118,255,3,0.6);font-size:11px;">▸ {_constraint}</span> '
-                        f'<span style="color:#5a7a96;font-size:11px;">({_source})</span></div>', unsafe_allow_html=True)
+                        f'<span style="color:#2e7d5b;font-size:11px;">▸ {_constraint}</span> '
+                        f'<span style="color:#8d927f;font-size:11px;">({_source})</span></div>', unsafe_allow_html=True)
 
             if _high_news:
                 for _n in _high_news:
                     _title = html.escape((_n.get("title") or "")[:60])
                     _source = html.escape(_n.get("source") or "")
                     _kw = html.escape(_n.get("matched_keyword") or "")
-                    st.markdown(f'<div style="border-left:2px solid rgba(240,64,80,0.5);padding:4px 10px;margin-bottom:4px;background:rgba(240,64,80,0.04);border-radius:0 4px 4px 0;">'
+                    st.markdown(f'<div style="border-left:2px solid rgba(168,52,27,0.45);padding:4px 10px;margin-bottom:4px;background:rgba(168,52,27,0.12);border-radius:0 4px 4px 0;">'
                         f'<strong>{_title}</strong><br>'
-                        f'<span style="color:#5a7a96;font-size:11px;">{_source} — [{_kw}]</span></div>', unsafe_allow_html=True)
+                        f'<span style="color:#8d927f;font-size:11px;">{_source} — [{_kw}]</span></div>', unsafe_allow_html=True)
 
             if _med_news:
                 _remaining_med = [n for n in _med_news if not any(c["news"].get("title") == n.get("title") for c in _constraint_hits)]
@@ -1350,9 +1350,9 @@ def render_dashboard_tab(s: dict) -> None:
                     _title = html.escape((_n.get("title") or "")[:55])
                     _source = html.escape(_n.get("source") or "")
                     _kw = html.escape(_n.get("matched_keyword") or "")
-                    st.markdown(f'<div style="border-left:2px solid rgba(240,160,48,0.4);padding:4px 10px;margin-bottom:4px;background:rgba(240,160,48,0.03);border-radius:0 4px 4px 0;">'
+                    st.markdown(f'<div style="border-left:2px solid rgba(184,134,11,0.40);padding:4px 10px;margin-bottom:4px;background:rgba(184,134,11,0.12);border-radius:0 4px 4px 0;">'
                         f'<span style="font-size:13px;">{_title}</span><br>'
-                        f'<span style="color:#5a7a96;font-size:11px;">{_source} — [{_kw}]</span></div>', unsafe_allow_html=True)
+                        f'<span style="color:#8d927f;font-size:11px;">{_source} — [{_kw}]</span></div>', unsafe_allow_html=True)
                 if len(_remaining_med) > 3:
                     st.caption(f"他 {len(_remaining_med)-3}件")
 
@@ -1369,7 +1369,7 @@ def render_dashboard_tab(s: dict) -> None:
         company_status = get_company_status()
         if company_status['exists']:
             for name, ok in [("SECRETARY", company_status['has_secretary']), ("RESEARCH", company_status['has_research']), ("FINANCE", company_status['has_finance'])]:
-                color = "rgba(118,255,3,0.7)" if ok else "rgba(255,23,68,0.7)"
+                color = "#2e7d5b" if ok else "#a8341b"
                 dot = "●" if ok else "○"
                 label = "ONLINE" if ok else "OFFLINE"
                 st.markdown(f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:{color};padding:2px 0;">{dot} {name} — {label}</div>', unsafe_allow_html=True)
@@ -1385,7 +1385,7 @@ def render_dashboard_tab(s: dict) -> None:
         if _fuel_days is None or _fuel_days >= UPDATE_WARNING_DAYS:
             _msg = "未記録" if _fuel_days is None else f"{_fuel_days}日経過"
             st.markdown(
-                f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:rgba(240,160,48,0.85);padding:3px 0;">'
+                f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#b8860b;padding:3px 0;">'
                 f'▲ 燃料サーチャージ更新 — {_msg}（設定タブで値を確認）</div>',
                 unsafe_allow_html=True,
             )
@@ -1395,7 +1395,7 @@ def render_dashboard_tab(s: dict) -> None:
         if _ship_days is None or _ship_days >= SHIPPING_RATE_WARNING_DAYS:
             _msg = "未記録" if _ship_days is None else f"{_ship_days}日経過"
             st.markdown(
-                f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:rgba(240,160,48,0.85);padding:3px 0;">'
+                f'<div style="font-family:Share Tech Mono,monospace;font-size:11px;color:#b8860b;padding:3px 0;">'
                 f'▲ 運送料PDF更新 — {_msg}（設定タブで最新運送料PDFをアップロード）</div>',
                 unsafe_allow_html=True,
             )
@@ -1421,9 +1421,9 @@ def render_dashboard_tab(s: dict) -> None:
                 st.warning(f"ROADMAP 読込失敗のため編集を一時無効化しました: {_e}")
 
         _status_meta = {
-            "完了": ("完了", "●", "rgba(112,240,128,0.75)", "rgba(112,240,128,0.10)"),
-            "進行中": ("進行中", "◐", "rgba(77,217,240,0.85)", "rgba(77,217,240,0.10)"),
-            "未着手": ("予定", "○", "rgba(240,200,48,0.75)", "rgba(240,200,48,0.08)"),
+            "完了": ("完了", "●", "#2e7d5b", "rgba(46,125,91,0.10)"),
+            "進行中": ("進行中", "◐", "#156a63", "rgba(21,106,99,0.10)"),
+            "未着手": ("予定", "○", "#b8860b", "rgba(184,134,11,0.08)"),
         }
 
         # status の表記揺れ ("completed"/"実装中"/"保留"/"一部完了" 等) を
@@ -1521,11 +1521,11 @@ def render_dashboard_tab(s: dict) -> None:
                     f'<div style="padding:4px 10px;margin:2px 0;'
                     f'border-left:3px solid {_fg};background:{_bg};'
                     f'font-family:Share Tech Mono,monospace;font-size:12px;'
-                    f'color:rgba(210,225,240,0.9);display:flex;align-items:center;gap:8px;">'
+                    f'color:#2a2e2a;display:flex;align-items:center;gap:8px;">'
                     f'<span style="color:{_fg};">{_icon}</span>'
                     f'{_tag_html}'
                     f'<span style="flex:1;">{html.escape(_title)}</span>'
-                    f'<span style="color:#5a7a96;font-size:10px;margin-right:6px;">[{html.escape(_priority)}]</span>'
+                    f'<span style="color:#8d927f;font-size:10px;margin-right:6px;">[{html.escape(_priority)}]</span>'
                     f'<span style="color:{_fg};font-size:10px;letter-spacing:1px;">{_label}</span>'
                     f'</div>',
                     unsafe_allow_html=True,

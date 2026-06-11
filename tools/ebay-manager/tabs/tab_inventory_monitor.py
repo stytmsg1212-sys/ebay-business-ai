@@ -56,9 +56,9 @@ def _render_inventory_summary_html(
     戻り値: <div> 1 枚の HTML 文字列 (`st.markdown(..., unsafe_allow_html=True)` 用).
     """
     if total_risk == 0:
-        bar_color = "rgba(118,255,3,0.85)"     # 緑系
-        bar_bg = "rgba(118,255,3,0.06)"
-        count_color = "rgba(118,255,3,0.95)"
+        bar_color = "#2e7d5b"     # 緑系
+        bar_bg = "rgba(46,125,91,0.10)"
+        count_color = "#2e7d5b"
         head_label = "要対応"
     else:
         bar_color = "rgba(255,90,90,0.85)"     # 赤系
@@ -72,12 +72,12 @@ def _render_inventory_summary_html(
         f'<div style="border-left:4px solid {bar_color};background:{bar_bg};'
         f'padding:10px 14px;margin-bottom:10px;border-radius:4px;">'
         f'<div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;">'
-        f'<span style="font-size:13px;color:rgba(220,235,250,0.65);">{head_label}</span>'
+        f'<span style="font-size:13px;color:#8d927f;">{head_label}</span>'
         f'<span style="font-size:26px;font-weight:700;color:{count_color};">{int(total_risk)}件</span>'
-        f'<span style="font-size:12px;color:rgba(220,235,250,0.7);">'
+        f'<span style="font-size:12px;color:#5f6557;">'
         f'在庫切れ <b>{int(oos_n)}</b> ・ ページ消失 <b>{int(pnf_n)}</b>'
         f'</span>'
-        f'<span style="font-size:12px;color:rgba(180,220,255,0.55);margin-left:auto;">'
+        f'<span style="font-size:12px;color:#8d927f;margin-left:auto;">'
         f'最終チェック: {last_checked_safe}'
         f'</span>'
         f'</div></div>'
@@ -400,25 +400,25 @@ def render_inventory_monitor_tab(s: dict) -> None:
                 with _h2:
                     st.markdown(
                         f'<div style="font-family:var(--font-mono,monospace);'
-                        f'font-size:12px;color:rgba(180,220,255,0.85);padding-top:6px;">'
+                        f'font-size:12px;color:#2a2e2a;padding-top:6px;">'
                         f'<a href="https://www.ebay.com/itm/{html.escape(eid)}" target="_blank" '
-                        f'style="color:rgba(120,200,255,0.9);text-decoration:none;">{html.escape(eid)}</a></div>',
+                        f'style="color:#156a63;text-decoration:none;">{html.escape(eid)}</a></div>',
                         unsafe_allow_html=True,
                     )
                 with _h3:
                     st.markdown(
-                        f'<div style="font-size:12px;color:rgba(220,235,250,0.85);padding-top:6px;">'
+                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">'
                         f'{html.escape(title)}</div>',
                         unsafe_allow_html=True,
                     )
                 with _h4:
                     st.markdown(
-                        f'<div style="font-size:12px;color:rgba(180,220,255,0.85);padding-top:6px;">{price_str}</div>',
+                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">{price_str}</div>',
                         unsafe_allow_html=True,
                     )
                 with _h5:
                     st.markdown(
-                        f'<div style="font-size:12px;color:rgba(180,220,255,0.85);padding-top:6px;">ランク{rank}</div>',
+                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">ランク{rank}</div>',
                         unsafe_allow_html=True,
                     )
 
@@ -438,7 +438,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                     )
                 with _e3:
                     st.markdown(
-                        f'<div style="font-size:11px;color:rgba(180,220,255,0.6);padding-top:8px;">'
+                        f'<div style="font-size:11px;color:#8d927f;padding-top:8px;">'
                         f'仕入先: {html.escape(source)}</div>',
                         unsafe_allow_html=True,
                     )
@@ -447,7 +447,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         st.markdown(
                             f'<div style="padding-top:6px;">'
                             f'<a href="{html.escape(source_url, quote=True)}" target="_blank" '
-                            f'style="color:rgba(120,200,255,0.9);font-size:12px;">仕入先URLを開く</a></div>',
+                            f'style="color:#156a63;font-size:12px;">仕入先URLを開く</a></div>',
                             unsafe_allow_html=True,
                         )
 
@@ -457,7 +457,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                 if cands:
                     _total_for_sku = len(cands)
                     st.markdown(
-                        f'<div style="font-size:11px;color:rgba(180,220,255,0.6);margin-bottom:4px;">'
+                        f'<div style="font-size:11px;color:#8d927f;margin-bottom:4px;">'
                         f'仕入先候補 {_total_for_sku}件（score降順／上位最大3件）／'
                         f'下部「一括実行」で採用チェック済みURLをSKUに反映</div>',
                         unsafe_allow_html=True,
@@ -468,8 +468,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         _score = _c.get("match_score") or 0
                         _is_alt = bool(_c.get("alt_listing_possible")) and _score < 60
                         _score_color = (
-                            "rgba(118,255,3,0.85)" if _score >= 80
-                            else "rgba(240,200,48,0.85)" if _score >= 60
+                            "#2e7d5b" if _score >= 80
+                            else "#b8860b" if _score >= 60
                             else "rgba(200,150,220,0.85)"
                         )
                         _plat = _c.get("source_platform") or "?"
@@ -486,7 +486,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         if _profit_jpy_v is not None and _price_jpy and _price_jpy > 0:
                             _rate_v = (_profit_jpy_v / _price_jpy) * 100
                             _profit_str = (
-                                f' <span style="color:#ffa84a;font-weight:600;">'
+                                f' <span style="color:#b35a2e;font-weight:600;">'
                                 f'利益 +¥{int(_profit_jpy_v):,} ({_rate_v:.0f}%)</span>'
                             )
 
@@ -499,12 +499,12 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             _status_badge = ""
                             if _status == "accepted":
                                 _status_badge = (
-                                    '<span style="color:rgba(118,255,3,0.9);'
+                                    '<span style="color:#2e7d5b;'
                                     'font-size:10px;margin-left:6px;">[採用済]</span>'
                                 )
                             elif _status == "applied":
                                 _status_badge = (
-                                    '<span style="color:rgba(120,200,255,0.9);'
+                                    '<span style="color:#156a63;'
                                     'font-size:10px;margin-left:6px;">[反映済]</span>'
                                 )
                             # W100: grace UI 廃止
@@ -518,12 +518,12 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             )
                             st.markdown(
                                 f'<div style="border-left:2px solid {_score_color};padding:4px 10px;'
-                                f'background:rgba(80,120,180,0.03);font-size:12px;">'
+                                f'background:rgba(166,150,121,0.06);font-size:12px;">'
                                 f'{_score_badge}'
-                                f' <span style="color:rgba(180,220,255,0.5);font-size:10px;">[{_type_label}]</span>'
-                                f' <span style="color:rgba(180,220,255,0.6);">{html.escape(_plat)}</span>'
-                                f' <span style="color:rgba(255,255,255,0.85);">{html.escape(_ttl)}</span>'
-                                f' <span style="color:#d8cdb5;">{_price_str}</span>'
+                                f' <span style="color:#8d927f;font-size:10px;">[{_type_label}]</span>'
+                                f' <span style="color:#5f6557;">{html.escape(_plat)}</span>'
+                                f' <span style="color:#2a2e2a;">{html.escape(_ttl)}</span>'
+                                f' <span style="color:#5f6557;">{_price_str}</span>'
                                 f'{_profit_str}'
                                 f'{_status_badge}{_grace_html}'
                                 f'</div>',
@@ -571,7 +571,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             if _url:
                                 st.markdown(
                                     f'<a href="{html.escape(_url, quote=True)}" target="_blank" '
-                                    f'style="color:rgba(120,200,255,0.9);font-size:12px;">[商品開く]</a>',
+                                    f'style="color:#156a63;font-size:12px;">[商品開く]</a>',
                                     unsafe_allow_html=True,
                                 )
                         with _btn_col:
@@ -975,7 +975,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
             if _missing_skus:
                 st.divider()
                 st.markdown(
-                    f'<div style="font-size:12px;color:rgba(180,220,255,0.7);margin-bottom:6px;">'
+                    f'<div style="font-size:12px;color:#5f6557;margin-bottom:6px;">'
                     f'候補未探索 {len(_missing_skus)}件（次回02:30 Pattern 2バッチで max 50件自動探索／'
                     f'下記ボタンで個別または一括即時探索）'
                     f'</div>',

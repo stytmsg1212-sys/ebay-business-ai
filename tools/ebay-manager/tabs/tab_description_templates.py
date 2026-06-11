@@ -96,14 +96,14 @@ def _render_placeholder_hint() -> None:
     """利用可能な placeholder 一覧をインラインで表示 (expander 不使用)。"""
     chips_html = "".join(
         f'<span style="display:inline-block;margin:2px 4px;padding:3px 8px;'
-        f'background:rgba(77,217,240,0.08);border:1px solid rgba(77,217,240,0.25);'
+        f'background:rgba(14,79,75,0.08);border:1px solid rgba(14,79,75,0.25);'
         f'border-radius:3px;font-family:monospace;font-size:11px;'
-        f'color:rgba(160,220,255,0.85);">{{{{{html.escape(p)}}}}}</span>'
+        f'color:#2a2e2a;">{{{{{html.escape(p)}}}}}</span>'
         for p in _PLACEHOLDERS
     )
     st.markdown(
         f'<div style="margin-bottom:8px;">'
-        f'<div style="font-size:11px;color:rgba(160,200,230,0.6);margin-bottom:4px;">'
+        f'<div style="font-size:11px;color:#8d927f;margin-bottom:4px;">'
         f'利用可能なプレースホルダ（本文中に <code>{{{{name}}}}</code> 形式で記載）</div>'
         f'<div>{chips_html}</div>'
         f'</div>',
@@ -114,7 +114,7 @@ def _render_placeholder_hint() -> None:
 def _render_list(templates: list[dict]) -> None:
     """テンプレ一覧と新規追加ボタンを描画。"""
     st.markdown(
-        '<div style="font-size:13px;color:rgba(180,220,255,0.75);margin-bottom:8px;">'
+        '<div style="font-size:13px;color:#5f6557;margin-bottom:8px;">'
         f'登録済みテンプレート: {len(templates)} 件 '
         '（個別出品タブでデフォルトが自動選択される）</div>',
         unsafe_allow_html=True,
@@ -148,18 +148,18 @@ def _render_list(templates: list[dict]) -> None:
             with _h1:
                 badge = (
                     '<span style="display:inline-block;margin-left:8px;padding:2px 8px;'
-                    'background:rgba(240,200,48,0.15);border:1px solid rgba(240,200,48,0.35);'
-                    'border-radius:3px;font-size:10px;color:rgba(240,220,120,0.95);'
+                    'background:rgba(184,134,11,0.12);border:1px solid rgba(184,134,11,0.40);'
+                    'border-radius:3px;font-size:10px;color:#b8860b;'
                     'letter-spacing:1px;">DEFAULT</span>'
                 ) if is_default else ""
                 st.markdown(
-                    f'<div style="padding-top:6px;font-size:14px;color:rgba(220,235,250,0.95);">'
+                    f'<div style="padding-top:6px;font-size:14px;color:#2a2e2a;">'
                     f'{html.escape(name)}{badge}</div>',
                     unsafe_allow_html=True,
                 )
             with _h2:
                 st.markdown(
-                    f'<div style="padding-top:6px;font-size:11px;color:rgba(180,220,255,0.6);">'
+                    f'<div style="padding-top:6px;font-size:11px;color:#8d927f;">'
                     f'{body_len} 文字</div>',
                     unsafe_allow_html=True,
                 )
@@ -218,7 +218,7 @@ def _render_form() -> None:
 
     title = "テンプレート編集" if mode == "edit" else "テンプレート新規作成"
     st.markdown(
-        f'<div style="font-size:14px;color:rgba(220,235,250,0.95);margin:12px 0 8px;">'
+        f'<div style="font-size:14px;color:#2a2e2a;margin:12px 0 8px;">'
         f'{title}</div>',
         unsafe_allow_html=True,
     )
@@ -301,12 +301,12 @@ def render_tab(settings: dict | None = None) -> None:
     _init_session_state()
 
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin-bottom:6px;">D E S C R I P T I O N &nbsp; T E M P L A T E S</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div style="font-size:13px;color:rgba(220,235,250,0.85);margin-bottom:12px;">'
+        '<div style="font-size:13px;color:#2a2e2a;margin-bottom:12px;">'
         'eBay 出品の description HTML テンプレートを管理する。'
         '個別出品タブで selectbox から選択される。</div>',
         unsafe_allow_html=True,

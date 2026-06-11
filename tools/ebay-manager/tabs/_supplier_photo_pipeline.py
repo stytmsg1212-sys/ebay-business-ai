@@ -509,7 +509,7 @@ def render_supplier_photo_apply_section(
 
     with st.container(border=True):
         st.markdown(
-            f'<div style="font-size:11px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+            f'<div style="font-size:11px;color:#8d927f;letter-spacing:2px;'
             f'margin:8px 0 6px;">写 真 反 映 　 — 　 '
             f'候補 #{candidate_id} → 商品ID {ebay_item_id}</div>',
             unsafe_allow_html=True,

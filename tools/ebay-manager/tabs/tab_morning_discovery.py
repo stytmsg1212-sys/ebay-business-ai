@@ -98,32 +98,32 @@ def _render_discovery_economics_html(
     if isinstance(profit_usd, (int, float)):
         if profit_usd == 0:
             profit_str = "見積不能 (理由は根拠欄)"
-            profit_color = "#bfb59a"
+            profit_color = "#5f6557"
         elif profit_usd > 0:
             profit_str = f"${profit_usd:.0f}"
-            profit_color = "#7ac17a"
+            profit_color = "#2e7d5b"
         else:
             profit_str = f"-${abs(profit_usd):.0f}"
-            profit_color = "#d05858"
+            profit_color = "#a8341b"
     else:
         profit_str = "—"
-        profit_color = "#bfb59a"
+        profit_color = "#5f6557"
     # 類似 sold / 競合
     sold_str = f"{sold_30d} 件" if isinstance(sold_30d, (int, float)) else "—"
     comp_str = f"{comp_jp} 人" if isinstance(comp_jp, (int, float)) else "—"
 
     # 2 軸レイアウト (self-contained inline CSS、pm-* 共有 class 非依存)
-    label_style = "color:#a89d8a;font-size:11px;letter-spacing:0.04em;"
+    label_style = "color:#8d927f;font-size:11px;letter-spacing:0.04em;"
     axis_style = (
-        "flex:1;padding:8px 10px;border:1px solid #3a342a;"
-        "border-radius:4px;background:rgba(40,36,30,0.35);"
+        "flex:1;padding:8px 10px;border:1px solid rgba(166,150,121,0.25);"
+        "border-radius:4px;background:#f2ecdf;"
     )
     return (
         f'<div style="display:flex;gap:10px;margin:6px 0 4px 0;">'
         # 軸 1: input (仕入 → eBay 想定)
         f'<div style="{axis_style}">'
         f'<div style="{label_style}">仕入 → eBay 想定</div>'
-        f'<div style="color:#e8dcc4;font-size:14px;font-weight:600;'
+        f'<div style="color:#2a2e2a;font-size:14px;font-weight:600;'
         f'margin-top:2px;">{sup_str} → {ebay_str}</div>'
         f'</div>'
         # 軸 2: output (想定粗利 / sold / 競合)
@@ -131,10 +131,10 @@ def _render_discovery_economics_html(
         f'<div style="{label_style}">想定粗利 / 類似 sold(30d) / JP 競合</div>'
         f'<div style="margin-top:2px;font-size:14px;">'
         f'<span style="color:{profit_color};font-weight:700;">{profit_str}</span>'
-        f'<span style="color:#7a6e5f;"> / </span>'
-        f'<span style="color:#e8dcc4;">{sold_str}</span>'
-        f'<span style="color:#7a6e5f;"> / </span>'
-        f'<span style="color:#e8dcc4;">{comp_str}</span>'
+        f'<span style="color:#8d927f;"> / </span>'
+        f'<span style="color:#2a2e2a;">{sold_str}</span>'
+        f'<span style="color:#8d927f;"> / </span>'
+        f'<span style="color:#2a2e2a;">{comp_str}</span>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -167,7 +167,7 @@ def _render_candidate(cand: dict) -> None:
             f'<div style="display:flex;gap:10px;align-items:center;'
             f'font-family:JetBrains Mono;font-size:12px;'
             f'letter-spacing:0.03em;">'
-            f'<span style="color:#a89d8a;">#{rank}</span>'
+            f'<span style="color:#8d927f;">#{rank}</span>'
             f'<span style="color:#7a6e5f;">{_layer_label(origin)}</span>'
             f'<span style="color:{_vero_color(vero)};font-weight:700;'
             f'padding:1px 6px;border:1px solid {_vero_color(vero)};'
@@ -179,14 +179,14 @@ def _render_candidate(cand: dict) -> None:
         )
         # 商品名
         st.markdown(
-            f'<div style="font-size:18px;font-weight:700;color:#e8dcc4;'
+            f'<div style="font-size:18px;font-weight:700;color:#2a2e2a;'
             f'margin:6px 0 4px 0;">{name}</div>',
             unsafe_allow_html=True,
         )
         # 売れる根拠
         if rationale:
             st.markdown(
-                f'<div style="color:#bfb59a;font-size:13px;margin-bottom:8px;">'
+                f'<div style="color:#5f6557;font-size:13px;margin-bottom:8px;">'
                 f'{rationale}</div>',
                 unsafe_allow_html=True,
             )
@@ -203,7 +203,7 @@ def _render_candidate(cand: dict) -> None:
         # 次アクション
         if next_action:
             st.markdown(
-                f'<div style="color:#9bbf9b;font-size:13px;margin-top:6px;">'
+                f'<div style="color:#2e7d5b;font-size:13px;margin-top:6px;">'
                 f'<b>次アクション:</b> {next_action}</div>',
                 unsafe_allow_html=True,
             )
@@ -219,7 +219,7 @@ def _render_candidate(cand: dict) -> None:
 
         # フィードバック UI (セピアトーン維持、letter-spacing で視認性向上)
         st.markdown(
-            '<div style="margin-top:8px;color:#a89d8a;font-size:11px;'
+            '<div style="margin-top:8px;color:#8d927f;font-size:11px;'
             'letter-spacing:0.06em;font-weight:600;">'
             'フィードバック</div>',
             unsafe_allow_html=True,
@@ -290,7 +290,7 @@ def _render_recent_feedback(days: int = 7) -> None:
     rows = get_recent_feedback(days=days)
     with st.container(border=True):
         st.markdown(
-            f'<div style="color:#a89d8a;font-size:13px;font-weight:600;">'
+            f'<div style="color:#8d927f;font-size:13px;font-weight:600;">'
             f'過去 {days} 日のフィードバック ({len(rows)} 件)</div>',
             unsafe_allow_html=True,
         )
@@ -326,7 +326,7 @@ def render_morning_discovery_tab() -> None:
     )
 
     st.markdown(
-        '<h2 style="color:#e8dcc4;margin-bottom:0;">今日の発掘候補</h2>',
+        '<h2 style="color:#2a2e2a;margin-bottom:0;">今日の発掘候補</h2>',
         unsafe_allow_html=True,
     )
     today = datetime.now().strftime("%Y-%m-%d")

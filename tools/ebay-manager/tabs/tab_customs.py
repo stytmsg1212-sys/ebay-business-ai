@@ -103,11 +103,11 @@ def render_customs_tab() -> None:
             )
             st.markdown(
                 f'<div style="border-left:3px solid {_deadline_color};padding:6px 12px;'
-                f'margin:6px 0;background:rgba(80,120,180,0.03);">'
+                f'margin:6px 0;background:rgba(166,150,121,0.06);">'
                 f'{_header}<br>'
                 f'<span style="color:{_deadline_color};font-size:12px;">'
                 f'期限: {_deadline or "不明"}{_days_left}</span>  '
-                f'<span style="color:rgba(180,220,255,0.55);font-size:11px;">'
+                f'<span style="color:#8d927f;font-size:11px;">'
                 f'| 検知: {_req.get("detected_at","")[:16]}</span>'
                 f'</div>', unsafe_allow_html=True)
             with st.expander(f"ドラフト内容を確認 (#{_req['id']})", expanded=False):
@@ -258,7 +258,7 @@ def render_customs_tab() -> None:
                     if _gmail_draft_url:
                         st.markdown(
                             f'<a href="{_gmail_draft_url}" target="_blank" '
-                            f'style="color:#7ab8ff;">📧 Gmail で内容を確認する</a>',
+                            f'style="color:#156a63;">📧 Gmail で内容を確認する</a>',
                             unsafe_allow_html=True,
                         )
 

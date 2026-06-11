@@ -48,7 +48,7 @@ def _model_color(model: str) -> str:
     s = _model_short(model)
     return {
         "Opus": "rgba(196,128,255,0.95)",
-        "Sonnet": "rgba(120,200,255,0.95)",
+        "Sonnet": "#156a63",
         "Haiku": "rgba(180,220,200,0.85)",
     }.get(s, "rgba(180,180,180,0.7)")
 
@@ -66,8 +66,8 @@ def _render_qa_card(qa: dict) -> None:
 
         st.markdown(
             f'<div style="display:flex;gap:10px;align-items:center;font-family:JetBrains Mono;font-size:11px;">'
-            f'<span style="color:#a89d8a;">#{qa["id"]}</span>'
-            f'<span style="color:#a89d8a;">{_format_dt(qa.get("asked_at"))}</span>'
+            f'<span style="color:#8d927f;">#{qa["id"]}</span>'
+            f'<span style="color:#8d927f;">{_format_dt(qa.get("asked_at"))}</span>'
             f'<span style="color:{m_color};font-weight:600;">{m_short}</span>'
             f'<span style="color:#7a6e5f;">{dur}s</span>'
             f'<span style="color:#7a6e5f;">${cost:.4f}</span>'
@@ -78,7 +78,7 @@ def _render_qa_card(qa: dict) -> None:
         # query (1 行省略表示)
         q_short = (qa.get("query") or "")[:120]
         st.markdown(
-            f'<div style="font-size:13px;color:#e8ddc9;margin-top:4px;">{q_short}</div>',
+            f'<div style="font-size:13px;color:#2a2e2a;margin-top:4px;">{q_short}</div>',
             unsafe_allow_html=True,
         )
 

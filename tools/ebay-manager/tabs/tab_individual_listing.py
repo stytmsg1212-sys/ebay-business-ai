@@ -417,7 +417,7 @@ def _load_draft_into_form(draft: dict) -> None:
 # 8 箇所の重複インライン markdown を 1 関数化したもので、文言・色・letter-spacing は完全に維持する。
 # margin だけは箇所ごとに異なるため引数で受ける (Step 1 は冒頭で詰めて 4px、他は 16-20px の縦間)。
 _IL_STEP_LABEL_STYLE = (
-    "font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;"
+    "font-size:12px;color:#8d927f;letter-spacing:2px;"
 )
 
 
@@ -1123,7 +1123,7 @@ def _do_hero_compose(source_url: str, force_regenerate: bool = False) -> None:
 def _render_manual_fallback_form(product: dict) -> None:
     """スクレイプ失敗 / 手動補正モード用の入力フォーム。"""
     st.markdown(
-        '<div style="font-size:11px;color:rgba(240,200,48,0.75);margin:4px 0 8px;">'
+        '<div style="font-size:11px;color:#b8860b;margin:4px 0 8px;">'
         'M A N U A L &nbsp; F A L L B A C K</div>',
         unsafe_allow_html=True,
     )
@@ -2518,7 +2518,7 @@ def _compose_draft_record(draft_params: dict, status: str = "submitted") -> dict
 
 def _render_saved_drafts_subtab() -> None:
     st.markdown(
-        '<div style="font-size:12px;color:rgba(180,220,255,0.55);letter-spacing:2px;'
+        '<div style="font-size:12px;color:#8d927f;letter-spacing:2px;'
         'margin-bottom:6px;">S A V E D &nbsp; D R A F T S</div>',
         unsafe_allow_html=True,
     )
@@ -2552,7 +2552,7 @@ def _render_saved_drafts_subtab() -> None:
         return
 
     st.markdown(
-        f'<div style="font-size:12px;color:rgba(180,220,255,0.6);margin:4px 0 10px;">'
+        f'<div style="font-size:12px;color:#8d927f;margin:4px 0 10px;">'
         f'{len(drafts)} 件を表示</div>',
         unsafe_allow_html=True,
     )
@@ -2569,9 +2569,9 @@ def _render_draft_card(draft: dict) -> None:
     did = draft.get("id")
     status = draft.get("status") or "?"
     status_color = {
-        "draft": "rgba(180,220,255,0.8)",
-        "submitted": "rgba(240,200,48,0.9)",
-        "applied": "rgba(118,255,3,0.9)",
+        "draft": "#5f6557",
+        "submitted": "#b8860b",
+        "applied": "#2e7d5b",
         "api_failed": "rgba(255,120,120,0.9)",
         "deleted": "rgba(128,128,128,0.6)",
     }.get(status, "rgba(180,180,180,0.8)")
@@ -2581,12 +2581,12 @@ def _render_draft_card(draft: dict) -> None:
         with _h1:
             title = (draft.get("ebay_title") or draft.get("supplier_title_ja") or "(タイトル未生成)")[:80]
             st.markdown(
-                f'<div style="font-size:13px;color:rgba(220,235,250,0.95);padding-top:4px;">'
+                f'<div style="font-size:13px;color:#2a2e2a;padding-top:4px;">'
                 f'{html.escape(title)}</div>',
                 unsafe_allow_html=True,
             )
             st.markdown(
-                f'<div style="font-size:10px;color:rgba(180,220,255,0.55);font-family:monospace;">'
+                f'<div style="font-size:10px;color:#8d927f;font-family:monospace;">'
                 f'#{did} / {html.escape(draft.get("supplier_platform") or "?")} / '
                 f'created {html.escape(str(draft.get("created_at") or "?"))}</div>',
                 unsafe_allow_html=True,
@@ -2602,9 +2602,9 @@ def _render_draft_card(draft: dict) -> None:
         with _h3:
             price = draft.get("listing_price_usd")
             st.markdown(
-                f'<div style="padding-top:4px;font-size:12px;color:rgba(180,220,255,0.8);">'
+                f'<div style="padding-top:4px;font-size:12px;color:#2a2e2a;">'
                 f'${price:.2f}</div>' if price else
-                f'<div style="padding-top:4px;font-size:12px;color:rgba(180,220,255,0.4);">-</div>',
+                f'<div style="padding-top:4px;font-size:12px;color:#8d927f;">-</div>',
                 unsafe_allow_html=True,
             )
         with _h4:
@@ -2672,7 +2672,7 @@ def render_tab(settings: dict) -> None:
     )
 
     st.markdown(
-        '<div style="font-size:13px;color:rgba(180,220,255,0.75);margin-bottom:14px;">'
+        '<div style="font-size:13px;color:#5f6557;margin-bottom:14px;">'
         '仕入先URL から商品情報をスクレイプし、Claude が英語タイトルと description を生成、'
         'eBay Trading API で Active 出品 (即時公開) を行う。</div>',
         unsafe_allow_html=True,
