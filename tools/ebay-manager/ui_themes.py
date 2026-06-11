@@ -293,6 +293,27 @@ def apply_dark_paper_theme():
         display: none !important;
     }
 
+    /* W258 (2026-06-11): Material icon 生テキスト露出の根治。
+       Streamlit 1.56 は icon を [data-testid="stIconMaterial"] に "check" 等の
+       生テキストで描画する。フォント無効化だけでは生テキストが露出し、ボタン幅で
+       先頭が欠けて "heck"/"ieck" に見える。要素ごと非表示 + expander caret は
+       ::before の unicode 三角で代替 (tab_product_management.py の実績ある局所 fix の
+       グローバル昇格)。 */
+    [data-testid="stIconMaterial"] {
+        display: none !important;
+    }
+    [data-testid="stExpander"] details summary::before {
+        content: '▶';
+        display: inline-block;
+        margin-right: 0.6em;
+        font-size: 0.85em;
+        font-weight: 700;
+        transition: transform 0.15s;
+    }
+    [data-testid="stExpander"] details[open] summary::before {
+        content: '▼';
+    }
+
     /* ────── Alerts (brand-v3 pill) ────── */
     .stSuccess {
         border: 1px solid var(--sage) !important;
@@ -420,6 +441,32 @@ def apply_dark_paper_theme():
     code.pill-ok { background: transparent !important; color: var(--green-ok) !important; border: 1px solid var(--green-ok) !important; }
     code.pill-sage { background: var(--sage) !important; color: var(--paper-hi) !important; border: 0 !important; }
     code.pill-brass { background: var(--brass) !important; color: var(--paper-hi) !important; border: 0 !important; }
+
+    /* ────── W258 Mobile layer (2026-06-11) ────── */
+    @media (max-width: 640px) {
+        /* タッチターゲット 44px (iOS HIG)。デスクトップ密度 CSS (app.py 34px) を上書くため
+           詳細度を body 前置で 1 段上げる (cascade 順で app.py が後勝ちするため)。 */
+        body [data-testid="stButton"] > button,
+        body [data-testid="stDownloadButton"] > button,
+        body [data-testid="stFormSubmitButton"] > button {
+            min-height: 44px !important;
+            font-size: 14px !important;
+            padding: 8px 14px !important;
+        }
+        body [data-testid="stTextInput"] input,
+        body [data-testid="stNumberInput"] input,
+        body [data-testid="stSelectbox"] div[role="combobox"] {
+            min-height: 44px !important;
+            font-size: 15px !important;
+        }
+        body .main .block-container {
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+        }
+        body [data-testid="stDataFrame"] {
+            overflow-x: auto !important;
+        }
+    }
 
     </style>
     """, unsafe_allow_html=True)

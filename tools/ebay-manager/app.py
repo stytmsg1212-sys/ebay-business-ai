@@ -180,6 +180,13 @@ st.markdown(
         font-size: 13px !important;
         line-height: 1.35 !important;
     }
+    /* W258 (2026-06-11): 密度追補 — divider / expander 内 padding 詰め */
+    hr {
+        margin: 10px 0 !important;
+    }
+    [data-testid="stExpander"] [data-testid="stVerticalBlock"] {
+        gap: 0.45rem !important;
+    }
     </style>""",
     unsafe_allow_html=True,
 )
@@ -363,6 +370,31 @@ st.markdown(
         padding-top: 1rem;
         max-width: 1600px;
     }
+    @media (max-width: 640px) {
+        /* W258 (2026-06-11): ページボタン行: 縦積みでなく横スクロール 1 行 (親指スワイプ) */
+        [data-testid="stHorizontalBlock"]:has([class*="st-key-_w134_navbtn_"]) {
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 4px;
+        }
+        /* カテゴリ segmented_control も折返さず横スクロール 1 行 */
+        .st-key-_w134_nav_group [role="radiogroup"] {
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        /* カテゴリボタンは縮ませない (「★ …」省略を防ぎスクロールに逃がす) */
+        .st-key-_w134_nav_group [role="radiogroup"] > button {
+            flex-shrink: 0 !important;
+        }
+        .st-key-_w217a_navbar {
+            margin-left: -8px;
+            margin-right: -8px;
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+    }
     </style>""",
     unsafe_allow_html=True,
 )
@@ -411,14 +443,14 @@ if _picked_cat and _picked_cat != _cur_view:
     st.session_state[_W217A_VIEW_KEY] = _picked_cat
     _cur_view = _picked_cat
 
-# ── 下段: 選択カテゴリのページのみ横並びボタン (最大 4 列/行) ──
+# ── 下段: 選択カテゴリのページを単一行の横並びボタンに ──
+# W258 (2026-06-11): 旧「最大 4 列/行」チャンク分割を廃止。物理 2 行になると
+# モバイルの横スクロール 1 行 CSS (nowrap + overflow-x) が成立しないため。
+# 列幅は stColumn の pill CSS (flex: 0 0 auto) で内容幅に収まる。
 _pages_in_view = _W134_GROUPS.get(_cur_view, [])
-_PAGE_COLS_PER_ROW = 4
-for _row_start in range(0, len(_pages_in_view), _PAGE_COLS_PER_ROW):
-    _row_pages = _pages_in_view[_row_start:_row_start + _PAGE_COLS_PER_ROW]
-    # 端数行も同じ列幅で揃える (右端が伸びるのを防ぐ)
-    _cols = _navbar.columns(_PAGE_COLS_PER_ROW, gap="small")
-    for _i_btn, _page in enumerate(_row_pages):
+if _pages_in_view:
+    _cols = _navbar.columns(len(_pages_in_view), gap="small")
+    for _i_btn, _page in enumerate(_pages_in_view):
         with _cols[_i_btn]:
             _is_active = (st.session_state._w134_sel == _page)
             if st.button(

@@ -4478,6 +4478,7 @@ def render_product_management(config: dict) -> None:
         /* 実 test-id は `stIconMaterial` (Streamlit 新版)、text content は
            "keyboard_arrow_right" / "keyboard_arrow_down". 完全に非表示 + ::before で
            ▶ / ▼ を unicode 描画. */
+        /* (W258 2026-06-11: ui_themes.py へグローバル昇格済。本ブロックは重複だが無害のため残置) */
         [data-testid="stIconMaterial"] {
             display: none !important;
         }
