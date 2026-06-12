@@ -8,6 +8,7 @@ app.py の `if _w134_sel == "仕入先候補":` 分岐 body をそのまま移�
 from __future__ import annotations
 
 import logging
+import unicodedata
 from pathlib import Path
 import streamlit as st
 
@@ -154,7 +155,10 @@ def render_supplier_candidates_tab(s: dict) -> None:
                         st.error(f"再計算エラー: {_e}")
 
     # ── フィルタ ──
-    _sup_f1, _sup_f2, _sup_f3 = st.columns([2, 2, 1])
+    # 依頼ボード#15 (2026-06-12): SKU 完全一致検索 → 商品名/SKU 部分一致検索に変更
+    # + 並び順 selectbox 追加 (利益順=従来 DB order / 新着順 / 一致度順)。
+    # 旧 UI は「謎の SKU 完全一致のみ・ソート不可」で履歴から商品を探せなかった。
+    _sup_f1, _sup_f2, _sup_f3, _sup_f4 = st.columns([2, 3, 2, 1])
     with _sup_f1:
         _sup_filter_status = st.selectbox(
             "ステータス",
@@ -164,29 +168,97 @@ def render_supplier_candidates_tab(s: dict) -> None:
             key="sup_filter_status",
         )
     with _sup_f2:
-        _sup_filter_sku = st.text_input(
-            "SKUで絞り込み（空欄で全件）",
+        _sup_query = st.text_input(
+            "商品名 / SKU で検索（部分一致・スペース区切りで AND・空欄で全件）",
             value="",
-            key="sup_filter_sku",
+            key="sup_filter_query",
         )
     with _sup_f3:
+        _SUP_SORT_JA = {
+            "profit": "利益順 (高→低)",
+            "newest": "新着順 (新→旧)",
+            "score": "一致度順 (高→低)",
+        }
+        _sup_sort = st.selectbox(
+            "並び順",
+            options=["profit", "newest", "score"],
+            format_func=lambda x: _SUP_SORT_JA.get(x, x),
+            index=0,
+            key="sup_sort_order",
+        )
+    with _sup_f4:
         st.write("")  # spacer
         if st.button("再読込", key="sup_reload"):
             st.rerun()
 
     _sup_all = get_supplier_candidates(
-        sku=_sup_filter_sku or None,
         status=None if _sup_filter_status == "すべて" else _sup_filter_status,
     )
 
     # W115 v2 root fix (2026-05-10): 履歴 tab は status filter から独立 fetch.
     # 旧挙動: status filter default='pending' で _sup_all=pending only → _sup_history=[] (常に 0 件、UX 不能)
-    # 新挙動: 履歴は sku filter のみ尊重して rejected+applied を独立 fetch.
+    # 新挙動: 履歴は検索 filter のみ尊重して rejected+applied を独立 fetch.
     # status filter は actionable 3 tab (revive/replace/altlist) のみに適用.
     _sup_history_raw = (
-        get_supplier_candidates(sku=_sup_filter_sku or None, status="rejected")
-        + get_supplier_candidates(sku=_sup_filter_sku or None, status="applied")
+        get_supplier_candidates(status="rejected")
+        + get_supplier_candidates(status="applied")
     )
+
+    # 商品名 / SKU 部分一致検索 (依頼ボード#15)。candidate_title (仕入先側商品名) +
+    # 親 listing の eBay title + sku を対象に、スペース区切り全トークン AND・大小文字無視。
+    # NFKC 正規化で全角英数 (「ＳＯＮＹ」等、Yahoo/メルカリ由来タイトルに頻出) も
+    # 半角入力で hit させる (code-reviewer MED-2 2026-06-12)。
+    _sup_query_norm = unicodedata.normalize("NFKC", _sup_query.strip()).lower()
+    if _sup_query_norm:
+        _sup_tokens = _sup_query_norm.split()
+
+        # eBay 側タイトルも検索対象 (code-reviewer MED-1: user は英語 eBay タイトルで
+        # 探すことがあり、仕入先タイトルは日本語主体のため取りこぼす)。
+        # ebay_item_id → title の一括 map (IN 句 1 クエリ、N+1 回避)。
+        _q_eids = list({
+            r.get("ebay_item_id")
+            for r in (_sup_all + _sup_history_raw)
+            if r.get("ebay_item_id")
+        })
+        _sup_title_map: dict[str, str] = {}
+        if _q_eids:
+            from monitor.database import get_conn as _q_conn
+            with _q_conn() as _q_cc:
+                _q_ph = ",".join("?" * len(_q_eids))
+                for _trow in _q_cc.execute(
+                    f"SELECT ebay_item_id, title FROM ebay_listings "
+                    f"WHERE ebay_item_id IN ({_q_ph})",
+                    _q_eids,
+                ).fetchall():
+                    _sup_title_map[_trow["ebay_item_id"]] = _trow["title"] or ""
+
+        def _sup_match_query(row: dict) -> bool:
+            hay = unicodedata.normalize(
+                "NFKC",
+                f"{row.get('candidate_title') or ''} {row.get('sku') or ''} "
+                f"{_sup_title_map.get(row.get('ebay_item_id') or '', '')}",
+            ).lower()
+            return all(tok in hay for tok in _sup_tokens)
+
+        _sup_all = [r for r in _sup_all if _sup_match_query(r)]
+        _sup_history_raw = [r for r in _sup_history_raw if _sup_match_query(r)]
+
+    # 並び順 (依頼ボード#15)。"profit" は DB 既定 order (profit DESC → score DESC →
+    # created_at DESC、NULL 末尾) をそのまま使う。以降の 4 区分 partition は
+    # 順序保存 loop なので、ここで並べ替えれば全サブタブに反映される。
+    if _sup_sort == "newest":
+        _sup_all.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+        _sup_history_raw.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    elif _sup_sort == "score":
+        # match_score NULL は末尾 (-1 扱い)
+        _sup_all.sort(
+            key=lambda r: r.get("match_score") if r.get("match_score") is not None else -1,
+            reverse=True,
+        )
+        _sup_history_raw.sort(
+            key=lambda r: r.get("match_score") if r.get("match_score") is not None else -1,
+            reverse=True,
+        )
 
     # 親 listing の source_status + quantity_ebay + is_ended をまとめて取得 (N+1 回避)
     # 2026-04-24: qty_ebay も取得して「復活候補」(qty=0) と「置換候補」(qty≥1) を分離
@@ -652,191 +724,12 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 on_click=_show_more,
             )
 
-    # ── 2026-05-20 user 緊急要望: 採用後の写真反映 prompt (タブ非依存) ──
-    # 採用 button (W112 1-click) が status='applied' に遷移させると候補は
-    # 履歴タブに移動するため、user は元のタブを見ていて写真反映ボタンに
-    # 気付かない (= 「採用して終わり」になる)。セクション最上部に prompt
-    # を出してから、はい押下で個別出品同様のプレート選択フローを inline
-    # 展開する (履歴タブへ移動不要)。
-    #
-    # 2026-06-11 バグ3/4 修正: 2 つの浮動コンテナを cid 単位の統合ブロックに再構成。
-    # - バグ3: 完了ボタン1つで cid スコープの session_state を全消し → 欄が消える
-    # - バグ4: cid ごとに独立ブロックで sorted → 別商品の干渉がない
-
-    def _close_supplier_followup(cid: int) -> None:
-        """採用後フォローアップ欄を商品単位で完全クローズ (バグ3 root fix).
-
-        実装は tabs._supplier_followup_state.close_supplier_followup_state に委譲。
-        st.session_state を渡す thin wrapper。
-        """
-        from tabs._supplier_followup_state import close_supplier_followup_state
-        close_supplier_followup_state(st.session_state, cid)
-
-    # アクティブな cid を photo / desc 両 namespace から収集
-    _followup_cids: set[int] = set()
-    for _k in list(st.session_state.keys()):
-        if _k.startswith("_sup_photo_prompt_") and st.session_state.get(_k):
-            try:
-                _followup_cids.add(int(_k.replace("_sup_photo_prompt_", "")))
-            except ValueError:
-                pass
-        elif _k.startswith("_sup_photo_open_inline_") and st.session_state.get(_k):
-            try:
-                _followup_cids.add(int(_k.replace("_sup_photo_open_inline_", "")))
-            except ValueError:
-                pass
-        elif _k.startswith("_sup_desc_prompt_") and st.session_state.get(_k):
-            try:
-                _followup_cids.add(int(_k.replace("_sup_desc_prompt_", "")))
-            except ValueError:
-                pass
-        elif _k.startswith("_sup_desc_open_inline_") and st.session_state.get(_k):
-            try:
-                _followup_cids.add(int(_k.replace("_sup_desc_open_inline_", "")))
-            except ValueError:
-                pass
-
-    for _fcid in sorted(_followup_cids):
-        _fmeta: dict = st.session_state.get(f"_sup_photo_meta_{_fcid}") or {}
-        # meta が session_state にない場合は DB から補完 (2026-05-25 防御強化を継承)
-        if not _fmeta.get("url"):
-            try:
-                from monitor.database import get_conn
-                with get_conn() as _conn:
-                    _row = _conn.execute(
-                        "SELECT candidate_url, ebay_item_id, candidate_title "
-                        "FROM supplier_candidates WHERE id=?", (_fcid,),
-                    ).fetchone()
-            except Exception:  # noqa: BLE001 — UI 補完経路なので例外で section 壊さない
-                logger.exception("followup meta DB 補完失敗 cid=%s", _fcid)
-                _row = None
-            if _row and _row[0]:
-                _fmeta = {
-                    "url": _row[0],
-                    "eid": _fmeta.get("eid") or (_row[1] or ""),
-                    "title": _fmeta.get("title") or (_row[2] or ""),
-                }
-                st.session_state[f"_sup_photo_meta_{_fcid}"] = _fmeta
-
-        _f_ttl = (_fmeta.get("title") or "")[:60]
-        _f_eid = _fmeta.get("eid") or ""
-        _f_url = _fmeta.get("url") or ""
-
-        with st.container(border=True):
-            st.markdown(
-                f'<div style="font-size:11px;color:#b8860b;'
-                f'letter-spacing:2px;margin:0 0 8px;">'
-                f'採 用 後 フ ォ ロ ー ア ッ プ &nbsp;—&nbsp; '
-                f'{_f_ttl} (item {_f_eid})</div>',
-                unsafe_allow_html=True,
-            )
-
-            # ── 写真サブセクション ──
-            if st.session_state.get(f"_sup_photo_prompt_{_fcid}"):
-                # Step 1: prompt (採用押下直後、まだ「はい/いいえ」未選択)
-                st.warning(
-                    f"📷 採用しました ({_f_ttl} / item {_f_eid})。"
-                    f"仕入先の画像で写真も反映しますか？ "
-                    f"(個別出品と同じ Photoroom + Gemini 3 候補プレートから選択)"
-                )
-                _pc = st.columns([1, 1, 5])
-                with _pc[0]:
-                    if st.button(
-                        "📷 はい、写真も選ぶ",
-                        key=f"_sup_photo_yes_{_fcid}", type="primary",
-                    ):
-                        st.session_state[f"_sup_photo_open_inline_{_fcid}"] = True
-                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
-                        st.rerun()
-                with _pc[1]:
-                    if st.button(
-                        "いいえ、後でやる",
-                        key=f"_sup_photo_no_{_fcid}",
-                    ):
-                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
-                        # meta は履歴タブ「📷 写真反映」ボタン再操作用に残す
-                        st.rerun()
-
-            elif st.session_state.get(f"_sup_photo_open_inline_{_fcid}"):
-                # Step 2: opened (はい押下後 → photo apply section を inline 展開)
-                if not _f_url:
-                    st.error(
-                        f"cid={_fcid}: URL 情報不足 → 履歴タブの「📷 写真反映」"
-                        f"から操作してください"
-                    )
-                else:
-                    st.markdown(
-                        f"**▼ 写真反映: {_f_ttl} (item {_f_eid})**"
-                    )
-                    from tabs._supplier_photo_pipeline import (
-                        render_supplier_photo_apply_section,
-                    )
-                    render_supplier_photo_apply_section(
-                        candidate_id=_fcid,
-                        candidate_url=_f_url,
-                        ebay_item_id=_f_eid,
-                        candidate_title=_f_ttl,
-                    )
-
-            # ── description サブセクション ──
-            if st.session_state.get(f"_sup_desc_prompt_{_fcid}"):
-                # Step 1: prompt
-                st.warning(
-                    f"📝 採用しました ({_f_ttl} / item {_f_eid})。"
-                    f"仕入先 URL から description (HTML 本文) も生成して反映しますか？ "
-                    f"(個別出品と同じ Claude パイプライン、~30-60 秒)"
-                )
-                _dpc = st.columns([1.6, 1.4, 5])
-                with _dpc[0]:
-                    if st.button(
-                        "📝 はい、description も生成",
-                        key=f"_sup_desc_yes_{_fcid}", type="primary",
-                    ):
-                        st.session_state[f"_sup_desc_open_inline_{_fcid}"] = True
-                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
-                        st.rerun()
-                with _dpc[1]:
-                    if st.button(
-                        "いいえ、後でやる",
-                        key=f"_sup_desc_no_{_fcid}",
-                    ):
-                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
-                        st.rerun()
-
-            elif st.session_state.get(f"_sup_desc_open_inline_{_fcid}"):
-                # Step 2: opened
-                if not _f_url:
-                    st.error(
-                        f"cid={_fcid}: URL 情報不足 + DB lookup 失敗 → "
-                        f"採用やり直しで再 prompt 発生"
-                    )
-                else:
-                    st.markdown(
-                        f"**▼ description 反映: {_f_ttl} (item {_f_eid})**"
-                    )
-                    from tabs._supplier_description_pipeline import (
-                        render_supplier_description_section,
-                    )
-                    # 2026-06-11: close_flag_key 廃止 (✖閉じる 削除、閉じる動線は
-                    # 下のフッタ「この商品の対応を完了」に一本化)
-                    render_supplier_description_section(
-                        candidate_id=_fcid,
-                        candidate_url=_f_url,
-                        ebay_item_id=_f_eid,
-                        candidate_title=_f_ttl,
-                    )
-
-            # ── フッタ: 完了ボタン (バグ3 fix: このボタン 1 つで cid 全消し) ──
-            st.markdown("---")
-            if st.button(
-                "この商品の対応を完了 (欄を閉じる)",
-                key=f"_sup_followup_done_{_fcid}",
-                type="primary",
-            ):
-                _close_supplier_followup(_fcid)
-                st.rerun()
-
-    if _followup_cids:
+    # ── 採用後フォローアップ欄 (写真/description prompt) ──
+    # 2026-06-12 依頼ボード#11: inline ブロックを tabs/_supplier_followup_section.py
+    # へ移設 (在庫監視タブと共有)。経緯コメント (2026-05-20 W115 / 2026-06-11
+    # バグ3/4 / 依頼ボード#12 行き先通知) は移設先に保持。
+    from tabs._supplier_followup_section import render_supplier_followup_section
+    if render_supplier_followup_section():
         st.markdown("---")
 
     # ── サブタブ 4 分割 (2026-04-24 rev2) ──
