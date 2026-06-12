@@ -3,7 +3,9 @@
 """採用後フォローアップ session_state クリーンアップ ロジック (2026-06-11 H-1 抽出)。
 
 streamlit 非依存の純関数として定義し、unit test から直接 import できるようにする。
-tab_supplier_candidates.py の _close_supplier_followup は本関数を呼ぶ thin wrapper。
+_supplier_followup_section.py の _close_supplier_followup は本関数を呼ぶ thin wrapper
+(2026-06-12 依頼ボード#11: followup render が tab_supplier_candidates.py から
+_supplier_followup_section.py へ移設、wrapper も同移設先に在る)。
 """
 from __future__ import annotations
 

@@ -94,6 +94,15 @@ def render_inventory_monitor_tab(s: dict) -> None:
     from sku_mapping_manager import url_to_sku
     from tasks.task_supplier_apply import accept_supplier_candidate, apply_supplier_candidate
     from ui_cache import bump_db_version, get_db_version
+
+    # 依頼ボード#11 (2026-06-12): 採用バッチ成功後の写真/description フォロー
+    # アップ欄を在庫監視タブでも展開 (仕入先候補タブと共通 section)。
+    # _process_apply 成功時に立てた _sup_photo_prompt_/_sup_desc_prompt_ を
+    # ここで描画 (バッチ末尾の st.rerun 後にタブ最上部へ出る)。
+    from tabs._supplier_followup_section import render_supplier_followup_section
+    if render_supplier_followup_section():
+        st.markdown("---")
+
     monitor_tab_risk, monitor_tab1, monitor_tab2 = st.tabs(["要対応", "監視リスト", "サイト設定"])
 
     # ---------- 要対応（仕入先在庫リスク） ----------
@@ -881,6 +890,12 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                     f"({_res_b.get('message') or 'applied'})"
                                 )
                                 adopt_succeeded_eids.add(_eid_applied)
+                                # 依頼ボード#11 (2026-06-12): 仕入先候補タブと同様、
+                                # 採用成功後に写真/description 生成プロンプトを展開。
+                                # meta (url/eid/title) は render 側が DB 補完するため
+                                # フラグのみ set (バッチ末尾 st.rerun → タブ先頭に表示)
+                                st.session_state[f"_sup_photo_prompt_{_cid_p}"] = True
+                                st.session_state[f"_sup_desc_prompt_{_cid_p}"] = True
                                 _it_adopted = _eid_to_item.get(_eid_applied)
                                 if not _it_adopted:
                                     return
@@ -1357,6 +1372,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                     return
                                 st.success(f"{_eid_applied}: 採用→SKU設定 成功 ({_res_b.get('message') or 'applied'})")
                                 adopt_succeeded_eids_pnf.add(_eid_applied)
+                                # 依頼ボード#11 (2026-06-12): OOS 経路と同様、採用成功後に
+                                # 写真/description 生成プロンプトを展開 (meta は DB 補完)
+                                st.session_state[f"_sup_photo_prompt_{_cid_p}"] = True
+                                st.session_state[f"_sup_desc_prompt_{_cid_p}"] = True
                                 _it_adopted = _eid_to_item_pnf.get(_eid_applied)
                                 if not _it_adopted:
                                     return
