@@ -43,11 +43,17 @@ def test_inventory_monitor_tab_uses_shared_section():
 
 
 def test_inventory_monitor_sets_prompt_flags_on_adopt():
-    """OOS / PNF 両採用経路が成功時に photo+desc prompt フラグを set する。"""
+    """採用経路が成功時に photo+desc prompt フラグを set する。
+
+    依頼ボード#18 (2026-06-13): 一括 UI (_process_apply / _process_apply_pnf
+    の 2 経路) を撤去し、_adopt_and_apply 単一経路に統合。OOS/PNF 両ブロック
+    がこのヘルパーを共有するため、フラグ set は 1 箇所のみが正。
+    """
     src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
-    # _process_apply (OOS) と _process_apply_pnf (PNF) の 2 経路分
-    assert src.count('st.session_state[f"_sup_photo_prompt_{_cid_p}"] = True') == 2
-    assert src.count('st.session_state[f"_sup_desc_prompt_{_cid_p}"] = True') == 2
+    assert src.count('st.session_state[f"_sup_photo_prompt_{cid}"] = True') == 1
+    assert src.count('st.session_state[f"_sup_desc_prompt_{cid}"] = True') == 1
+    # meta (url/eid/title) も同時 set (followup 欄のタイトル/URL 表示用)
+    assert 'st.session_state[f"_sup_photo_meta_{cid}"]' in src
 
 
 def test_shared_section_keeps_later_notice():

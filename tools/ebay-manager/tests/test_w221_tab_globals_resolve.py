@@ -156,9 +156,11 @@ def test_render_func_no_use_before_local_binding(module_name, func_name):
 # HIGH-1 回帰: _ebay_creds / _cfg が PNF ハンドラより前に定義されているか
 # ─────────────────────────────────────────────────────────────────────
 
-def test_inventory_monitor_ebay_creds_defined_before_pnf_handler():
-    """HIGH-1 fix 回帰: _ebay_creds と _cfg は OOS / PNF の if ブロックより前の
-    共通スコープで定義されている (pnf_submitted ハンドラより前に束縛)。"""
+def test_inventory_monitor_ebay_creds_defined_before_render_calls():
+    """HIGH-1 fix 回帰 (依頼ボード#18 で構造追従): _ebay_creds と _cfg は
+    _render_oos_block の呼出 (OOS / PNF 両ブロック) より前の共通スコープで
+    定義されている。_adopt_and_apply は両者を closure 参照するため、
+    fragment 描画時点で未束縛だと NameError になる。"""
     src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
     lines = src.splitlines()
 
@@ -170,24 +172,22 @@ def test_inventory_monitor_ebay_creds_defined_before_pnf_handler():
                 return i
         return -1
 
-    def first_use_in_pnf(name: str) -> int:
-        """pnf_submitted ハンドラ内で name が最初に現れる行番号 (1-indexed)。"""
-        in_pnf = False
+    def first_render_call_line() -> int:
+        """_render_oos_block の呼出 (def 行は除く) が最初に現れる行番号。"""
         for i, ln in enumerate(lines, 1):
-            if "if _pnf_submitted:" in ln:
-                in_pnf = True
-            if in_pnf and name in ln:
+            stripped = ln.strip()
+            if "_render_oos_block(" in stripped and not stripped.startswith("def "):
                 return i
         return -1
 
+    call_ln = first_render_call_line()
+    assert call_ln > 0, "_render_oos_block の呼出が見つかりません"
     for varname in ("_ebay_creds", "_cfg"):
         assign_ln = first_assign_line(varname)
-        use_ln = first_use_in_pnf(varname)
         assert assign_ln > 0, f"{varname} の代入が見つかりません"
-        assert use_ln > 0, f"{varname} の PNF ハンドラ内での参照が見つかりません"
-        assert assign_ln < use_ln, (
-            f"{varname} の代入 (L{assign_ln}) が PNF ハンドラ内の参照 (L{use_ln}) より後にある。"
-            f"共通スコープで定義されていません (HIGH-1 NameError)。"
+        assert assign_ln < call_ln, (
+            f"{varname} の代入 (L{assign_ln}) が _render_oos_block 呼出 (L{call_ln}) より後。"
+            f"closure 参照が未束縛になります (HIGH-1 NameError)。"
         )
 
 
@@ -224,6 +224,34 @@ def test_inventory_monitor_pnf_no_sku_keyed_query():
         "PNF セクションに '_pnf_eid_to_sku' (eid→sku 橋渡し) が残っています。"
         "_pnf_alt_only_count は ebay_item_id キーのまま格納してください (HIGH-1')。"
     )
+
+
+def test_inventory_monitor_oos_no_sku_keyed_candidate_query():
+    """依頼ボード#18 reviewer HIGH-1 回帰: OOS セクションの候補取得が
+    WHERE sku IN / _cand_by_sku を使っていない (sku-rules)。同一 sku 共有
+    listing で別 listing の候補がカードに混入し、採用時の followup meta eid
+    が誤 listing を指す事故の再発防止。"""
+    src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
+    start = src.find("### 仕入先在庫切れ (")
+    end = src.find("仕入先在庫切れ（確認不可）")
+    assert start >= 0 and end > start, "OOS セクションの切り出しに失敗"
+    oos_section = src[start:end]
+    assert "WHERE sku IN" not in oos_section, (
+        "OOS セクションに 'WHERE sku IN' が残っています。"
+        "ebay_item_id IN に張り替えてください (SKU 規約 / HIGH-1)。"
+    )
+    assert "_cand_by_sku" not in oos_section, (
+        "OOS セクションに '_cand_by_sku' (SKU キー dict) が残っています。"
+        "_cand_by_eid に変更してください (SKU 規約 / HIGH-1)。"
+    )
+
+
+def test_adopt_and_apply_meta_eid_from_candidate_row():
+    """依頼ボード#18 reviewer HIGH-1 回帰: _adopt_and_apply の eid が候補行
+    (cand) 由来であること。SKU 反映先 = 候補行の ebay_item_id なので、
+    followup (写真/description) の宛先も候補行を正とする。"""
+    src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
+    assert 'eid = cand.get("ebay_item_id") or item["ebay_item_id"]' in src
 
 
 # ─────────────────────────────────────────────────────────────────────
