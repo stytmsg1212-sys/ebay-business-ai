@@ -106,6 +106,33 @@ def _detect_orientalmotor_status(url: str, html: str) -> Optional[str]:
     return "unavailable"
 
 
+def _detect_paypay_signals(html: str) -> tuple[Optional[str], str]:
+    """PayPay フリマ raw HTML から在庫状態を判定。(status|None, signal) を返す。
+
+    W182 gate (`_check_paypay_availability`) と定時在庫監視 (`_check_with_httpx`) の
+    共有判定 (依頼ボード#14 2026-06-12: 定時監視へ配線、シグナル 2 重管理を防ぐ)。
+
+    確実シグナル (Codex 2026-05-28 検証: raw HTML に server-side で必ず入る):
+      この商品は存在しません -> not_found / 購入日時・"SoldOut" -> unavailable
+    site_configs の『関連商品をアプリで探す』『購入手続きへ』は JS 描画後にしか
+    出ないことがあり httpx 段では拾えない — これが依頼ボード#14 (売切が 1 か月
+    以上「不明」のまま残存) の真因。
+    ⚠️ 売切ページにも別 JSON-LD で schema.org/InStock が残るため InStock は使わない。
+    """
+    if 'この商品は存在しません' in html:
+        return 'not_found', 'no_page_text'
+    # sold_out signals: 優先順 (購入日時 = 購入済の確定 signal)
+    if '購入日時' in html:
+        return 'unavailable', '購入日時 in HTML'
+    if '"SoldOut"' in html or "'SoldOut'" in html:
+        return 'unavailable', 'SoldOut JSON-LD'
+    if '関連商品をアプリで探す' in html:
+        return 'unavailable', 'related items text'
+    if '購入手続きへ' in html:
+        return 'available', '購入手続きへ'
+    return None, 'no signal matched'
+
+
 def _status_for_404(content: str, in_stock_texts: list[str], sold_out_texts: list[str], no_page_texts: list[str]) -> str:
     """404 レスポンスの本文をキーワード判定し not_found / unavailable を返す。
 
@@ -168,6 +195,14 @@ def _check_with_httpx(
         om_status = _detect_orientalmotor_status(url, html)
         if om_status is not None:
             return om_status
+        if "paypayfleamarket.yahoo.co.jp" in url.lower():
+            # 依頼ボード#14 (2026-06-12): W182 の確実シグナルを定時監視にも配線。
+            # site_configs シグナルは JS 描画後のみで httpx 段では全滅 → 不明 stuck。
+            pp_status, pp_signal = _detect_paypay_signals(html)
+            if pp_status is not None:
+                logger.debug(f"PayPay raw signal ({pp_signal}) -> {pp_status}: {url}")
+                return pp_status
+            # シグナル無し → 既定判定 + Playwright fallback へ (確定を作らない / Q0)
         if "item.rakuten" in url.lower():
             rakuten_sold_out_texts = [
                 t for t in sold_out_texts
@@ -601,20 +636,10 @@ def _check_paypay_availability(url: str, timeout_sec: int, checked_at: str) -> d
         return {'status': 'not_found', 'signal': 'HTTP 404', 'checked_at': checked_at}
     if resp.status_code != 200:
         return {'status': 'unknown', 'signal': f'HTTP {resp.status_code}', 'checked_at': checked_at}
-    html = resp.text
-    if 'この商品は存在しません' in html:
-        return {'status': 'not_found', 'signal': 'no_page_text', 'checked_at': checked_at}
-    # sold_out signals (Codex 検証で raw HTML に必ず入る): 優先順
-    if '購入日時' in html:
-        return {'status': 'unavailable', 'signal': '購入日時 in HTML', 'checked_at': checked_at}
-    if '"SoldOut"' in html or "'SoldOut'" in html:
-        return {'status': 'unavailable', 'signal': 'SoldOut JSON-LD', 'checked_at': checked_at}
-    if '関連商品をアプリで探す' in html:
-        return {'status': 'unavailable', 'signal': 'related items text', 'checked_at': checked_at}
-    # in_stock 確認
-    if '購入手続きへ' in html:
-        return {'status': 'available', 'signal': '購入手続きへ', 'checked_at': checked_at}
-    return {'status': 'unknown', 'signal': 'no signal matched', 'checked_at': checked_at}
+    # シグナル判定は _detect_paypay_signals に一元化 (依頼ボード#14 2026-06-12:
+    # 定時在庫監視 _check_with_httpx と共有、シグナル 2 重管理によるドリフト防止)
+    status, signal = _detect_paypay_signals(resp.text)
+    return {'status': status or 'unknown', 'signal': signal, 'checked_at': checked_at}
 
 
 def _check_yahoo_auctions_availability(url: str, timeout_sec: int, checked_at: str) -> dict:
