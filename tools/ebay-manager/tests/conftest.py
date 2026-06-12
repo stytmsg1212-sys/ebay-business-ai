@@ -27,6 +27,11 @@ def _isolate_monitor_db(monkeypatch, tmp_path):
     test_db = tmp_path / "monitor.db"
     test_db.parent.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr("monitor.database.DB_PATH", test_db)
+    # W267: 依頼ボード回答の検知イベント (JSONL 追記) も tmp に隔離
+    monkeypatch.setattr(
+        "monitor.database.BOARD_ANSWER_EVENTS_PATH",
+        tmp_path / "board_answer_events.jsonl",
+    )
 
 
 @pytest.fixture(autouse=True)

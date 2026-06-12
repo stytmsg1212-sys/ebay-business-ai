@@ -3410,6 +3410,78 @@ def init_db():
                     f"[init_db v71] 部分適用: 列未追加 {_v71_missing}。次回 init_db で再試行。"
                 )
 
+        # ---- v72 (W266, 2026-06-12): user_requests 依頼ボード ----
+        # user 依頼単位のタスク管理 (ROADMAP system_improvements = assistant 発の
+        # 実装管理とは別軸)。status フロー:
+        #   open(受付) → in_progress(対応中) → awaiting_check(対応完了・確認待ち)
+        #   → done(user 確認完了ボタンで終了)。
+        #   ＋ waiting_user(assistant から質問中) / on_hold(保留)。
+        # verify_steps = awaiting_check 遷移時に assistant が必ず記入する
+        # user 向け確認手順 (空のまま確認待ちにしない = Q0 偽装完了防止)。
+        # progress_log = タイムスタンプ付き追記ログ (assistant/user 両方が追記)。
+        # created_at/updated_at は CURRENT_TIMESTAMP = UTC (sqlite-timezone rule)。
+        # 冪等: CREATE TABLE IF NOT EXISTS + table 実在確認後にのみ bump (v71 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 71:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS user_requests (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title         TEXT NOT NULL,
+                        description   TEXT,
+                        kind          TEXT NOT NULL DEFAULT '不具合',
+                        priority      TEXT NOT NULL DEFAULT '通常',
+                        status        TEXT NOT NULL DEFAULT 'open',
+                        related_w     TEXT,
+                        verify_steps  TEXT,
+                        progress_log  TEXT NOT NULL DEFAULT '',
+                        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at  TIMESTAMP,
+                        confirmed_at  TIMESTAMP
+                    )
+                """)
+                logger.info("[init_db v72] user_requests created")
+            except sqlite3.OperationalError:
+                pass  # 既存 (重複適用) = OK、冪等
+
+            _v72_ok = conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='user_requests'"
+            ).fetchone()
+            if _v72_ok:
+                conn.execute("PRAGMA user_version = 72")
+                logger.info("[init_db v72] schema_ver bumped to 72")
+            else:
+                logger.warning(
+                    "[init_db v72] 部分適用: user_requests 未作成。次回 init_db で再試行。"
+                )
+
+        # ---- v73 (W267 / 依頼ボード#13, 2026-06-12): 回答待ち双方向化 ----
+        # waiting_user 時の質問本文を pending_question に保持し、依頼ボードタブが
+        # 「質問 + 回答欄」を表示する。回答送信 (answer_user_request) で
+        # in_progress に戻り、検知イベント (BOARD_ANSWER_EVENTS_PATH) を発行。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 72:
+            try:
+                conn.execute(
+                    "ALTER TABLE user_requests ADD COLUMN pending_question TEXT"
+                )
+                logger.info("[init_db v73] user_requests.pending_question added")
+            except sqlite3.OperationalError:
+                pass  # 既存列 (重複適用) = OK、冪等
+
+            _v73_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(user_requests)")
+            }
+            if "pending_question" in _v73_cols:
+                conn.execute("PRAGMA user_version = 73")
+                logger.info("[init_db v73] schema_ver bumped to 73")
+            else:
+                logger.warning(
+                    "[init_db v73] 部分適用: pending_question 未追加。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -6090,3 +6162,282 @@ def get_nav_badge_counts() -> dict[str, int]:
     except Exception:
         logger.exception("get_nav_badge_counts failed")
         return {}
+
+
+# ---- 依頼ボード (user_requests / W266, 2026-06-12) ----
+# user 依頼単位のタスク管理。ROADMAP (system_improvements = assistant 発の
+# W 番号管理) とは別軸で、related_w で紐付けのみ行う。
+# status: open / in_progress / waiting_user / awaiting_check / done / on_hold
+
+USER_REQUEST_STATUSES = frozenset({
+    "open", "in_progress", "waiting_user", "awaiting_check", "done", "on_hold",
+})
+
+# UI / 通知表示用の日本語ラベル (単一ソース、tab 側で import)
+USER_REQUEST_STATUS_LABELS = {
+    "open": "受付",
+    "in_progress": "対応中",
+    "waiting_user": "回答待ち (質問中)",
+    "awaiting_check": "確認待ち",
+    "done": "完了",
+    "on_hold": "保留",
+}
+
+
+def _user_request_log_line(note: str, author: str) -> str:
+    """progress_log 1 行を生成。タイムスタンプは JST 明記 (機械比較には使わない表示用)。"""
+    from datetime import timedelta, timezone as _tz  # M3: マシン TZ 非依存で JST 明示
+
+    jst = datetime.now(_tz(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
+    return f"[{jst} JST] ({author}) {note.strip()}"
+
+
+def add_user_request(
+    title: str,
+    description: str = "",
+    kind: str = "不具合",
+    priority: str = "通常",
+    related_w: Optional[str] = None,
+    status: str = "open",
+    first_note: Optional[str] = None,
+    author: str = "user",
+) -> int:
+    """依頼ボードに新規依頼を登録して id を返す。
+
+    Args:
+        title: 依頼の短いタイトル (必須・空は ValueError)
+        kind: '不具合' / '実装依頼' / '質問・相談'
+        status: 初期 status (既定 open。assistant が既に着手済の依頼を
+                投入する時のみ in_progress 等を指定)
+        first_note: progress_log の初行 (省略時は「依頼を受付」)
+    """
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("依頼タイトルは必須です")
+    if status not in USER_REQUEST_STATUSES:
+        raise ValueError(f"不正な status: {status}")
+    log = _user_request_log_line(first_note or "依頼を受付", author)
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO user_requests
+                (title, description, kind, priority, status, related_w, progress_log)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (title, description, kind, priority, status, related_w, log),
+        )
+        return int(cur.lastrowid)
+
+
+def get_user_requests(statuses: Optional[list[str]] = None) -> list[dict]:
+    """依頼一覧を取得。statuses 指定でフィルタ。並びは 未完了優先 → id 降順。"""
+    sql = "SELECT * FROM user_requests"
+    params: list = []
+    if statuses:
+        bad = set(statuses) - USER_REQUEST_STATUSES
+        if bad:
+            raise ValueError(f"不正な status: {bad}")
+        sql += f" WHERE status IN ({','.join('?' * len(statuses))})"
+        params = list(statuses)
+    sql += " ORDER BY (status = 'done'), id DESC"
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_user_request(request_id: int) -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_requests WHERE id = ?", (request_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def append_user_request_log(
+    request_id: int, note: str, author: str = "assistant"
+) -> bool:
+    """進捗ログに 1 行追記 (status は変えない)。行追記 = 改行連結。"""
+    note = (note or "").strip()
+    if not note:
+        return False
+    line = _user_request_log_line(note, author)
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE user_requests
+            SET progress_log = progress_log || char(10) || ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (line, request_id),
+        )
+        return cur.rowcount == 1
+
+
+def set_user_request_status(
+    request_id: int,
+    status: str,
+    note: Optional[str] = None,
+    verify_steps: Optional[str] = None,
+    related_w: Optional[str] = None,
+    author: str = "assistant",
+) -> bool:
+    """status 遷移 + 進捗ログ追記。
+
+    ガード (Q0 偽装完了防止):
+      - awaiting_check への遷移は verify_steps (新規 or 既存) が必須。
+        確認手順なしの「対応完了」を物理的に作れないようにする。
+      - done への遷移は awaiting_check からのみ (user 確認完了ボタン専用)。
+        confirmed_at を打刻。
+    """
+    if status not in USER_REQUEST_STATUSES:
+        raise ValueError(f"不正な status: {status}")
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status, verify_steps FROM user_requests WHERE id = ?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return False
+
+        if status == "done" and row["status"] != "awaiting_check":
+            # H1 (code-reviewer 2026-06-12): user 確認なしの直接クローズを物理 BLOCK
+            raise ValueError(
+                "done への遷移は awaiting_check (user 確認待ち) からのみ可能です"
+            )
+
+        if status == "awaiting_check":
+            effective_steps = (verify_steps or row["verify_steps"] or "").strip()
+            if not effective_steps:
+                raise ValueError(
+                    "awaiting_check には verify_steps (user 確認手順) が必須です"
+                )
+            # H2 (code-reviewer 2026-06-12): 空文字 param による verify_steps wipe 防止
+            # (ガード通過に使った値を正本として書き戻す)
+            verify_steps = effective_steps
+        elif verify_steps is not None and not verify_steps.strip():
+            # 非 awaiting_check 遷移でも空文字での既存手順消去は不許可
+            verify_steps = None
+
+        sets = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+        params: list = [status]
+        if status != "waiting_user":
+            # W267 H2 (code-reviewer 2026-06-12): answer 以外の経路 (legacy 直接遷移)
+            # で waiting_user を離脱しても stale 質問を残さない (旧質問の再表示防止)
+            sets.append("pending_question = NULL")
+        if verify_steps is not None:
+            sets.append("verify_steps = ?")
+            params.append(verify_steps)
+        if related_w is not None:
+            sets.append("related_w = ?")
+            params.append(related_w)
+        if status == "awaiting_check":
+            sets.append("completed_at = CURRENT_TIMESTAMP")
+        if status == "done":
+            sets.append("confirmed_at = CURRENT_TIMESTAMP")
+
+        default_note = {
+            "in_progress": "対応を開始",
+            "waiting_user": "user へ質問中 (回答待ち)",
+            "awaiting_check": "対応完了 → user 確認待ち",
+            "done": "user 確認完了 → クローズ",
+            "on_hold": "保留に変更",
+            "open": "受付に戻す",
+        }.get(status, f"status → {status}")
+        line = _user_request_log_line(note or default_note, author)
+        sets.append("progress_log = progress_log || char(10) || ?")
+        params.append(line)
+
+        params.append(request_id)
+        cur = conn.execute(
+            f"UPDATE user_requests SET {', '.join(sets)} WHERE id = ?", params
+        )
+        return cur.rowcount == 1
+
+
+# 回答検知イベント (W267): answer_user_request が 1 回答 = 1 行 JSONL を追記する。
+# Claude Code 側は Monitor (tail -F) で本ファイルを監視し、回答送信を即検知して
+# 作業を再開する。セッション不在時は SessionStart hook の未完了サマリが保険。
+BOARD_ANSWER_EVENTS_PATH = Path(__file__).parent.parent / "data" / "board_answer_events.jsonl"
+
+
+def ask_user_request(
+    request_id: int, question: str, author: str = "assistant"
+) -> bool:
+    """assistant が user へ質問して回答待ちにする (W267 双方向化)。
+
+    pending_question に質問本文を保持し、依頼ボードタブが質問 + 回答欄を表示。
+    回答は answer_user_request() で受領する。
+    """
+    question = (question or "").strip()
+    if not question:
+        raise ValueError("質問本文は必須です")
+    row = get_user_request(request_id)
+    if row is None:
+        return False
+    if row["status"] == "done":
+        # MED (code-reviewer 2026-06-12): クローズ済み依頼の waiting_user 巻き戻し防止
+        # (H1 ガード「done は user 確認完了専用」の対称化)
+        raise ValueError("done (クローズ済み) の依頼には質問できません")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE user_requests SET pending_question = ? WHERE id = ?",
+            (question, request_id),
+        )
+        if cur.rowcount != 1:
+            return False
+    return set_user_request_status(
+        request_id, "waiting_user", note=f"質問: {question}", author=author
+    )
+
+
+def answer_user_request(
+    request_id: int, answer: str, author: str = "user"
+) -> bool:
+    """user の回答受領: 回答ログ追記 + 質問クリア + in_progress 復帰 + 検知イベント発行。
+
+    ガード: waiting_user 以外からの回答は ValueError (UI 表示と状態の race 防止)。
+    検知イベント書込失敗は DB 更新を巻き戻さない (logger.warning で痕跡、
+    検知は次回 SessionStart hook が保険 = Q0 silent 化させない)。
+    """
+    answer = (answer or "").strip()
+    if not answer:
+        raise ValueError("回答本文は必須です")
+    row = get_user_request(request_id)
+    if row is None:
+        return False
+    if row["status"] != "waiting_user":
+        raise ValueError("回答待ち (waiting_user) の依頼ではありません")
+
+    # pending_question のクリアは set_user_request_status が同一 UPDATE 内で実施
+    # (W267 H2: waiting_user 以外への全遷移で NULL クリア)
+    ok = set_user_request_status(
+        request_id, "in_progress", note=f"回答: {answer}", author=author
+    )
+    if not ok:
+        return False
+
+    try:
+        from datetime import timezone as _tz
+
+        event_path = Path(str(BOARD_ANSWER_EVENTS_PATH))
+        event_path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(
+            {
+                "id": request_id,
+                "answered_at_utc": datetime.now(_tz.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+                "preview": answer[:80],
+            },
+            ensure_ascii=False,
+        )
+        with open(event_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        logger.warning(
+            "board answer event 書込失敗 (検知は次回 SessionStart hook が保険)",
+            exc_info=True,
+        )
+    return True
