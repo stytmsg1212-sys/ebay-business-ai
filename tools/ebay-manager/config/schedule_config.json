@@ -250,15 +250,39 @@
       "cron_minute": 30,
       "seed_queries": [
         {
-          "label": "全カテゴリ除外語",
+          "label": "S: Business & Industrial",
           "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
-          "category_id": 0,
+          "category_id": 12576,
+          "min_price": 100
+        },
+        {
+          "label": "A1: Computers/Tablets & Networking",
+          "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
+          "category_id": 58058,
+          "min_price": 100
+        },
+        {
+          "label": "A2: Consumer Electronics",
+          "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
+          "category_id": 293,
+          "min_price": 100
+        },
+        {
+          "label": "B: Books & Magazines",
+          "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
+          "category_id": 267,
+          "min_price": 100
+        },
+        {
+          "label": "C: Crafts",
+          "query": "(-abcd)  (-Card) (-camera) (-Vuitton) (-Hermes) (-GUCCI) (-Mint) (-COACH)",
+          "category_id": 14339,
           "min_price": 100
         }
       ],
       "max_items_per_run": 50,
       "max_pages": 2,
-      "note": "2026-06-10 Q1 実機 PASS で enabled=true 化。CDP Chrome (port 9222) + eBay ログイン事前起動が必要。seed_queries の query は括弧記法の除外語のみ方式 (probe5-B 実証済)。50件/日は fresh_24h + two_year_echo 合算上限、fresh_24h 優先。"
+      "note": "2026-06-10 Q1 実機 PASS で enabled=true 化。CDP Chrome (port 9222) + eBay ログイン事前起動が必要。seed_queries の query は括弧記法の除外語のみ方式 (probe5-B 実証済)。50件/日は fresh_24h + two_year_echo 合算上限、fresh_24h 優先。2026-06-12 依頼ボード#2: user 指定カテゴリ縛り (優先順 S→A→B→C、リスト順=収穫順)。category_id=0 (全カテゴリ) は使用禁止 — rc65 Oakley 混入の真因。"
     },
     "customs_check": {
       "enabled": true,
