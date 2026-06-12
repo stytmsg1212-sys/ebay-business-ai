@@ -133,6 +133,34 @@ def _detect_paypay_signals(html: str) -> tuple[Optional[str], str]:
     return None, 'no signal matched'
 
 
+def _detect_yahoo_auction_status(url: str, html: str) -> Optional[str]:
+    """ヤフオク __NEXT_DATA__ 埋込 JSON の status で在庫判定 (依頼ボード#17 D, 2026-06-12)。
+
+    site_configs のテキストシグナル (入札する / 今すぐ落札 / このオークションは終了) は
+    オークション形式専用で、**定額 (フリマ形式) 出品は「購入手続き」ボタンのみ** →
+    全シグナル不一致で『不明』stuck していた (GS-71N5 実例: status='open' なのに不明)。
+    埋込 JSON の status は出品形式に依らず server-side で必ず入るため最優先で使う。
+      status='open' → available / status='closed' → unavailable / JSON 取れない → None
+    (None は既定のテキスト判定 + Playwright fallback へ — 確定を作らない / Q0)
+    """
+    if "page.auctions.yahoo.co.jp" not in url.lower():
+        return None
+    try:
+        from monitor.yahoo_auction_status import _extract_yahoo_item
+        item = _extract_yahoo_item(html)
+    except Exception as e:
+        logger.debug(f"yahoo __NEXT_DATA__ parse error: {url}: {e}")
+        return None
+    if not item:
+        return None
+    status = item.get("status")
+    if status == "open":
+        return "available"
+    if status == "closed":
+        return "unavailable"
+    return None
+
+
 def _status_for_404(content: str, in_stock_texts: list[str], sold_out_texts: list[str], no_page_texts: list[str]) -> str:
     """404 レスポンスの本文をキーワード判定し not_found / unavailable を返す。
 
@@ -195,6 +223,9 @@ def _check_with_httpx(
         om_status = _detect_orientalmotor_status(url, html)
         if om_status is not None:
             return om_status
+        ya_status = _detect_yahoo_auction_status(url, html)
+        if ya_status is not None:
+            return ya_status
         if "paypayfleamarket.yahoo.co.jp" in url.lower():
             # 依頼ボード#14 (2026-06-12): W182 の確実シグナルを定時監視にも配線。
             # site_configs シグナルは JS 描画後のみで httpx 段では全滅 → 不明 stuck。

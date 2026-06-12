@@ -176,7 +176,11 @@ def detect_inventory_changes(current_results: list, previous_results: dict) -> d
                     became_out_of_stock.append({
                         'url': url,
                         'sku': current.get('sku'),
-                        'source': current.get('source')
+                        'source': current.get('source'),
+                        # 依頼ボード#17 (2026-06-12): eid を直接持たせる。従来は下流が
+                        # source_url 完全一致で ebay_listings 逆引きしており、URL 乖離 /
+                        # listing 側 source_url=NULL で newly_oos が silent drop していた。
+                        'ebay_item_id': current.get('ebay_id'),
                     })
 
     logger.info(f"状態変化を検出: {len(changed_items)}件（うち在庫切れ: {len(became_out_of_stock)}件）")
@@ -289,6 +293,78 @@ def _classify_yahoo_grace(
     return immediate, grace_set_count
 
 
+def _notify_supplier_search_results(config: dict, outcomes: list) -> None:
+    """依頼ボード#17 (2026-06-12): OOS 起点の仕入先候補探索の結果を Discord 通知 (E).
+
+    従来は探索が走っても結果 (候補 N 件保存 / 全滅 / 失敗) がどこにも通知されず、
+    user は「売り切れ通知のみ = 即時検索が動いてない」と区別できなかった。
+    best-effort: 通知失敗で探索本体を落とさない (daemon thread 内で呼ばれる)。
+    """
+    if not outcomes:
+        return
+    try:
+        from monitor.database import get_conn
+        from notifiers.discord_notifier import DiscordNotifier
+
+        webhook = (config or {}).get("discord", {}).get("webhook_url") or ""
+        notifier = DiscordNotifier(webhook)
+        if not notifier.webhook_url:
+            logger.warning("[supplier] Discord webhook 未設定 — 探索結果通知 skip")
+            return
+
+        # 商品呼称規約: title (ebay_item_id 末尾 4 桁) で呼ぶ (SKU は識別に使わない)
+        titles: dict = {}
+        try:
+            with get_conn() as conn:
+                eids = [o["eid"] for o in outcomes]
+                ph = ",".join("?" * len(eids))
+                for row in conn.execute(
+                    f"SELECT ebay_item_id, title FROM ebay_listings "
+                    f"WHERE ebay_item_id IN ({ph})", eids,
+                ).fetchall():
+                    titles[row["ebay_item_id"]] = row["title"] or ""
+        except Exception as e:
+            logger.warning(f"[supplier] 通知用 title 取得失敗 (eid のみで通知): {e}")
+
+        n_hit = sum(1 for o in outcomes if o["persisted"] > 0)
+        n_miss = sum(1 for o in outcomes if not o["error"] and o["persisted"] == 0)
+        n_err = sum(1 for o in outcomes if o["error"])
+        lines = []
+        for o in outcomes[:10]:  # W257 教訓: embed 1900 字以内 / 最大 10 件
+            name = (titles.get(o["eid"]) or "(title 不明)")[:40]
+            tag = "新規売切" if o["src"] == "pattern_1_newly_oos" else "継続売切"
+            if o["error"]:
+                detail = f"探索失敗: {o['error']}"
+            elif o["persisted"] > 0:
+                detail = f"候補 {o['persisted']} 件保存 → 仕入先候補タブで採用判断を"
+            elif o["found"] > 0:
+                # MEDIUM (2026-06-12 review): persisted=0 は「基準未達」だけでなく
+                # INSERT OR IGNORE による既存候補との重複もあり得る — 断定しない文言に
+                detail = (
+                    f"新規候補なし (検索ヒット {o['found']} 件 — "
+                    f"基準未達 or 既存候補と重複)"
+                )
+            else:
+                detail = "候補なし (検索ヒット 0 件)"
+            lines.append(f"- {name} ({o['eid'][-4:]}) [{tag}] {detail}")
+        if len(outcomes) > 10:
+            lines.append(f"... 他 {len(outcomes) - 10} 件 (詳細は scheduler.log)")
+
+        desc = (
+            f"探索 {len(outcomes)} 件: 候補あり {n_hit} / 候補なし {n_miss} / 失敗 {n_err}\n"
+            + "\n".join(lines)
+        )[:1900]
+        embed = {
+            "title": "売り切れ検知 → 仕入先候補探索 結果",
+            "description": desc,
+            "color": 0x3399FF if n_hit else 0xC89B2A,
+            "timestamp": datetime.now().isoformat(),
+        }
+        notifier.send_message("", embed=embed)
+    except Exception as e:
+        logger.warning(f"[supplier] 探索結果 Discord 通知失敗: {e}")
+
+
 def _start_supplier_candidate_search_async(changes: dict, config: dict,
                                             synchronous: bool = False) -> None:
     """Pattern 1 拡張: OOS 検知時に、対象SKUの仕入先候補を探索。
@@ -317,8 +393,9 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
 
     # 2026-05-01 W75 4b: run_supplier_candidate_search が ebay_item_id 主導 signature に
     # 変更されたため、target を (ebay_item_id, sku) tuple で揃える。
-    # newly_oos は supplier 由来 dict (url/sku/source) で eid を持たない → source_url で
-    # ebay_listings から逆引き (SKU rule 準拠 = listing 識別に SKU を使わない).
+    # 依頼ボード#17 (2026-06-12): monitored_items 由来の ebay_item_id を第一に使う。
+    # 従来の source_url 完全一致逆引きは URL 乖離 / listing 側 NULL で silent drop
+    # していたため fallback に降格 (eid 未解決は warning で痕跡を残す / Q0)。
     newly_oos = changes.get('became_out_of_stock', []) if changes else []
     newly_pairs: list[tuple[str, str]] = []  # (ebay_item_id, sku)
     seen_eids: set[str] = set()
@@ -327,16 +404,41 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
             for c in newly_oos:
                 url = (c.get('url') or '').strip()
                 sku = (c.get('sku') or '').strip()
-                if not url or not sku:
+                if not sku:
                     continue
-                row = conn.execute(
-                    "SELECT ebay_item_id FROM ebay_listings "
-                    "WHERE source_url=? AND (is_ended IS NULL OR is_ended=0) "
-                    "LIMIT 1",
-                    (url,),
+                eid = str(c.get('ebay_item_id') or '').strip() or None
+                if not eid and url:
+                    # fallback: source_url 完全一致で逆引き (旧経路)
+                    row = conn.execute(
+                        "SELECT ebay_item_id FROM ebay_listings "
+                        "WHERE source_url=? AND (is_ended IS NULL OR is_ended=0) "
+                        "LIMIT 1",
+                        (url,),
+                    ).fetchone()
+                    eid = row["ebay_item_id"] if row else None
+                if not eid:
+                    logger.warning(
+                        f"[supplier] newly_oos eid 未解決のため探索 skip: "
+                        f"sku={sku} url={url[:70]}"
+                    )
+                    continue
+                # HIGH-2 (2026-06-12 review): monitored_items 由来 eid は drift 実績あり
+                # (W139: 退役 listing 残存/孤立 17 件)。旧 source_url 逆引きが持っていた
+                # is_ended=0 フィルタ + listing 実在確認を eid 直接経路でも維持し、
+                # 退役/販売停止済 listing への課金探索を防ぐ。
+                alive = conn.execute(
+                    "SELECT 1 FROM ebay_listings "
+                    "WHERE ebay_item_id=? AND (is_ended IS NULL OR is_ended=0) "
+                    "AND quantity_ebay >= 1 LIMIT 1",
+                    (eid,),
                 ).fetchone()
-                eid = row["ebay_item_id"] if row else None
-                if eid and eid not in seen_eids:
+                if not alive:
+                    logger.info(
+                        f"[supplier] newly_oos listing 不在/終了/qty0 のため探索 skip: "
+                        f"item={eid} sku={sku}"
+                    )
+                    continue
+                if eid not in seen_eids:
                     newly_pairs.append((eid, sku))
                     seen_eids.add(eid)
     except Exception as e:
@@ -368,10 +470,23 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
                       )
                       AND (l.yahoo_grace_until IS NULL
                            OR l.yahoo_grace_until <= datetime('now'))
-                      AND NOT EXISTS (
-                          SELECT 1 FROM supplier_candidates sc
-                          WHERE sc.ebay_item_id = l.ebay_item_id
-                            AND sc.created_at >= datetime('now', ?)
+                      -- 依頼ボード#17 (2026-06-12): throttle を「現在の OOS イベント以降の
+                      -- **探索試行**」に限定。旧仕様 (supplier_candidates に直近 N 日の行が
+                      -- あれば skip) は 2 つの構造欠陥があった:
+                      --   (1)「採用→再売切」「探索→翌日売切」が最大 N 日再検索ブロック
+                      --   (2) 候補 0 件 / INSERT OR IGNORE 重複時は行が増えず、毎サイクル
+                      --       再探索ループ (課金 API 反復)。oos_since は探索より後に書かれる
+                      --       (task_sync_data_stores が inventory_check 後段) ため候補行の
+                      --       created_at >= oos_since 比較も毎回偽になる。
+                      -- → 探索試行マーカー last_supplier_search_at (v74、_do_search が成否
+                      --   問わず UPDATE) で判定。NULL = 未探索 → 対象。
+                      -- 両列とも UTC 保存 (sqlite-timezone rule) で直接比較可。
+                      -- oos_since NULL の行は N 日 throttle のみに fallback。
+                      AND NOT (
+                          l.last_supplier_search_at IS NOT NULL
+                          AND l.last_supplier_search_at >= datetime('now', ?)
+                          AND (l.source_out_of_stock_since IS NULL
+                               OR l.last_supplier_search_at >= l.source_out_of_stock_since)
                       )""",
                 (f"-{skip_days} days",),
             ).fetchall()
@@ -413,6 +528,22 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
             return
 
         from tasks.task_supplier_candidate_search import run_supplier_candidate_search
+
+        def _mark_search_attempt(eid_: str) -> None:
+            # HIGH-1 (2026-06-12 review): throttle 判定の根拠 = 探索「試行」マーカー。
+            # 候補 0 件 / INSERT OR IGNORE 重複 / 例外でも必ず記録し、
+            # 毎サイクル再探索ループ (課金 API 反復) を構造的に止める (Q0: 痕跡必須)。
+            try:
+                with get_conn() as conn:
+                    conn.execute(
+                        "UPDATE ebay_listings SET last_supplier_search_at=CURRENT_TIMESTAMP "
+                        "WHERE ebay_item_id=?",
+                        (eid_,),
+                    )
+            except Exception as e:
+                logger.warning(f"[supplier] 試行マーカー更新失敗 item={eid_}: {e}")
+
+        outcomes: list[dict] = []  # 依頼ボード#17: 探索結果を user に通知する (E)
         for eid, sku in immediate_pairs:
             src = "pattern_1_newly_oos" if eid in newly_eids else "pattern_1_continuing_oos"
             try:
@@ -422,8 +553,21 @@ def _start_supplier_candidate_search_async(changes: dict, config: dict,
                 logger.info(
                     f"[supplier] item={eid} sku={sku} ({src}): {r.get('message', '(no message)')}"
                 )
+                outcomes.append({
+                    "eid": eid, "src": src,
+                    "persisted": int(r.get("persisted", 0)),
+                    "found": int(r.get("found", 0)),
+                    "error": None,
+                })
             except Exception as e:
                 logger.warning(f"[supplier] item={eid} sku={sku} failed: {e}")
+                outcomes.append({
+                    "eid": eid, "src": src,
+                    "persisted": 0, "found": 0, "error": str(e)[:80],
+                })
+            finally:
+                _mark_search_attempt(eid)
+        _notify_supplier_search_results(config, outcomes)
 
     if synchronous:
         # foreground 実行（手動CLI実行時）

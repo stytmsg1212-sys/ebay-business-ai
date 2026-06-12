@@ -13,7 +13,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -191,8 +191,25 @@ def sync_inventory_status_to_db() -> Dict:
         # 2026-06-11 BUG-2: checked_at は Python datetime.now().isoformat() = JST naive で
         # 消費側 (task_supplier_sweep / task_inventory_check) の datetime('now') UTC 比較と
         # 9h ズレる。UTC に統一して常に UTC "%Y-%m-%d %H:%M:%S" 形式で保存する。
+        # 依頼ボード#17 MEDIUM (2026-06-12 review): sync 実行時刻でなく **検知時刻**
+        # (checked_at の UTC 換算) を書く。即時探索が sync より先に走った item は
+        # 探索マーカー < oos_since となり throttle が効かず 1 回重複探索していた
+        # (検知時刻意味論としてもこちらが正)。parse 不能時は従来の now() fallback。
         if status in ('在庫無', 'ページなし') and prev_status not in ('在庫無', 'ページなし'):
-            oos_since_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            oos_since_utc = None
+            try:
+                if checked_at:
+                    # checked_at = datetime.now().isoformat() (JST naive) → UTC へ -9h
+                    dt_jst = datetime.fromisoformat(checked_at)
+                    if dt_jst.tzinfo is None:
+                        dt_utc = dt_jst - timedelta(hours=9)
+                    else:
+                        dt_utc = dt_jst.astimezone(timezone.utc)
+                    oos_since_utc = dt_utc.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                pass  # fallback 側で必ず値が入る (silent drop ではない)
+            if not oos_since_utc:
+                oos_since_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             conn.execute(
                 """UPDATE ebay_listings SET source_out_of_stock_since=?
                    WHERE ebay_item_id=? AND source_out_of_stock_since IS NULL""",

@@ -3482,6 +3482,37 @@ def init_db():
                     "[init_db v73] 部分適用: pending_question 未追加。次回 init_db で再試行。"
                 )
 
+        # ---- v74 (依頼ボード#17, 2026-06-12): 仕入先候補探索の試行マーカー ----
+        # OOS 即時探索の throttle を supplier_candidates の存在 (INSERT OR IGNORE で
+        # 再発見時に created_at が更新されない + oos_since は探索より後に書かれる) に
+        # 依存させると「毎サイクル再探索ループ」(課金 API 反復) になるため、
+        # 探索の **試行** 自体を listing 側に記録する列を新設。
+        # _do_search が成否問わず UPDATE → continuing_oos throttle はこの列で判定。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 73:
+            try:
+                conn.execute(
+                    "ALTER TABLE ebay_listings "
+                    "ADD COLUMN last_supplier_search_at TIMESTAMP"
+                )
+                logger.info(
+                    "[init_db v74] ebay_listings.last_supplier_search_at added"
+                )
+            except sqlite3.OperationalError:
+                pass  # 既存列 (重複適用) = OK、冪等
+
+            _v74_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(ebay_listings)")
+            }
+            if "last_supplier_search_at" in _v74_cols:
+                conn.execute("PRAGMA user_version = 74")
+                logger.info("[init_db v74] schema_ver bumped to 74")
+            else:
+                logger.warning(
+                    "[init_db v74] 部分適用: last_supplier_search_at 未追加。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4302,9 +4333,15 @@ def set_ebay_listing_risk_confirmed(ebay_item_id: str, confirmed: int = 1):
 
 
 def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
-    """仕入先在庫リスク商品を取得（在庫切れ / 確認不可 に区分）。
+    """仕入先在庫リスク商品を取得（在庫切れ / ページ消失 / 状態不明 の 3 区分）。
     業務ロジック: 在庫監視 = 無在庫出品 で 仕入先OOS になった RISK の検知。
     qty>=1 (販売中) + 仕入先OOS のみ RISK 対象。
+
+    返り値 (依頼ボード#17 / 2026-06-12 で 3 バケツ化):
+    - out_of_stock: source_status = '在庫無'
+    - page_not_found: source_status = 'ページなし'
+    - status_unknown: 上記以外 ('不明' / 'エラー' 等) — 従来は silent drop
+      されて UI のどこにも出なかった (Q0)。read-only 一覧で可視化する。
 
     フィルタ条件 (2026-04-30 改訂、user 公認 Q1-A + Q3):
     - quantity_ebay >= 1: 在庫 0 化されたら一覧から即消す (不具合 1 修正)
@@ -4339,13 +4376,20 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
         """).fetchall()
     out_of_stock = []
     page_not_found = []
+    status_unknown = []
     for r in rows:
         item = dict(r)
         if item["source_status"] == "在庫無":
             out_of_stock.append(item)
         elif item["source_status"] == "ページなし":
             page_not_found.append(item)
-    return {"out_of_stock": out_of_stock, "page_not_found": page_not_found}
+        else:
+            # 依頼ボード#17 C (2026-06-12): 不明/エラー等を silent drop しない。
+            # 旧実装は 2 バケツ外の status を捨てており、『不明』9 件が要対応 UI
+            # からも仕入先探索 SQL からも見えないまま滞留していた (Q0)。
+            status_unknown.append(item)
+    return {"out_of_stock": out_of_stock, "page_not_found": page_not_found,
+            "status_unknown": status_unknown}
 
 
 def delete_ebay_listing(ebay_item_id: str):

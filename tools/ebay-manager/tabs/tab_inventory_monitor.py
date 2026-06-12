@@ -1447,6 +1447,37 @@ def render_inventory_monitor_tab(s: dict) -> None:
         else:
             st.success("確認不可の商品はありません。")
 
+        # --- 状態不明 (依頼ボード#17 C / 2026-06-12) ---
+        # 旧実装は『不明』『エラー』を 2 バケツ (在庫切れ/確認不可) のどちらにも
+        # 入れず silent drop → 9 件が要対応 UI からも探索からも見えず滞留していた。
+        # 俯瞰テーブルで可視化のみ (在庫判定が未確定のため一括操作 UI は付けない)。
+        unk_items = risk_data.get("status_unknown", [])
+        if unk_items:
+            st.markdown("---")
+            st.markdown(f"### 状態不明 ({len(unk_items)}件)")
+            st.caption(
+                "仕入先ページの在庫状態を自動判定できなかった商品です。"
+                "仕入先URLを開いて実状態を確認してください "
+                "(ページ形式が変わった場合はサイト設定の見直しが必要です)。"
+            )
+            import pandas as pd
+            _unk_df = pd.DataFrame([
+                {
+                    "タイトル": (it.get("title") or "")[:60],
+                    "状態": it.get("source_status") or "",
+                    "eBay在庫": it.get("quantity_ebay"),
+                    "仕入先URL": it.get("source_url") or "",
+                    "最終チェック": it.get("source_last_checked") or "",
+                }
+                for it in unk_items
+            ])
+            st.dataframe(
+                _unk_df, hide_index=True, width="stretch",
+                column_config={
+                    "仕入先URL": st.column_config.LinkColumn("仕入先URL"),
+                },
+            )
+
     # ---------- 監視リスト ----------
     with monitor_tab1:
         h1, h2, h3 = st.columns([3, 1, 1])
