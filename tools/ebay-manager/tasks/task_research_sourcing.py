@@ -387,6 +387,7 @@ def run_research_sourcing(config: Optional[dict] = None) -> dict:
         update_status,
         get_research_candidate,
         clear_profit_fields,
+        clear_found_fields,
         STATUS_NEEDS_REVIEW,
         STATUS_SOURCED,
         STATUS_NOT_FOUND,
@@ -614,6 +615,18 @@ def run_research_sourcing(config: Optional[dict] = None) -> dict:
 
             sold_1_2yr = gate_inputs.get("sold_1_2yr") or 0
             if sold_1_2yr and sold_1_2yr > 0:
+                # 承認キューに戻す前に誤マッチ仕入先フィールドを必ず除去
+                # (残すと承認 UI が found_url/found_price_jpy を下書きに消費 =
+                #  誤商品 URL・虚偽原価の draft 汚染。retrospective H1 / rc 36)
+                if not clear_found_fields(rc_id):
+                    logger.error(
+                        f"research_sourcing: rc_id={rc_id} found フィールド除去失敗 "
+                        "→ 汚染防止のため監視候補再キュー中止 (not_found のまま)"
+                    )
+                    result["errors"].append(
+                        f"rc_id={rc_id}: clear_found_fields 失敗 → 再キュー中止"
+                    )
+                    continue
                 try:
                     update_status(rc_id, STATUS_AWAITING_APPROVAL)
                     counters["not_found_approval"] += 1

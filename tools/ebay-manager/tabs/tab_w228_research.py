@@ -885,6 +885,114 @@ def _load_max_oos_limit() -> int:
         return 20
 
 
+def _run_watch_only_approval(
+    rc_id: int,
+    title_ja: str,
+    found_price_jpy: Optional[int],
+    max_oos: int,
+    result: dict,
+) -> dict:
+    """found_url 無し (監視候補) の承認: keyword watch 登録のみ実施.
+
+    not_found → awaiting_approval 再キュー行 (在庫0 + 過去取引あり) は仕入先 URL を
+    持たない (誤マッチ URL は clear_found_fields で NULL 化 / retrospective H1)。
+    description / draft 生成は不可能かつ不要のため跳ばし、watch 登録成功で
+    watch_registered 終端に遷移する。watch 登録が唯一の目的のため、失敗・上限超過は
+    needs_review に戻して可視化する (silent 終端禁止 / Q0)。
+    """
+    # 在庫0上限ガード (P0-3、通常経路と同一基準)
+    try:
+        current_oos_count = _count_oos_active_listings()
+    except Exception as e:
+        logger.error('[w228_sec_d] OOS count 失敗 rc_id=%s: %s', rc_id, e)
+        current_oos_count = 0  # 取得失敗は保守的に 0 として続行 (watch 登録の機会は守る)
+
+    if current_oos_count >= max_oos:
+        result['watch_skipped_oos_limit'] = True
+        reason = (
+            f'在庫0上限 {max_oos} 件超過で watch 未登録 '
+            f'(現在 {current_oos_count} 件) — 手動登録要'
+        )
+        try:
+            update_status(
+                rc_id, STATUS_NEEDS_REVIEW,
+                needs_review_reason=f'[watch-only 承認] {reason}',
+            )
+        except ValueError as e:
+            logger.error('[w228_sec_d] needs_review 遷移失敗 rc_id=%s: %s', rc_id, e)
+        result['needs_review_fallen'] = True
+        result['message'] = f'監視候補ですが{reason}。needs_review に戻しました。'
+        return result
+
+    from monitor.keyword_watch_db import add_watch
+    keyword = title_ja.strip()
+    sites = [
+        ('mercari', _mercari_search_url(keyword)),
+        ('yahoo_auctions', _yahoo_auctions_search_url(keyword)),
+    ]
+    watch_ids_registered: list[int] = []
+    for site, search_url in sites:
+        try:
+            watch_id, _is_new = add_watch(
+                site=site,
+                search_url=search_url,
+                keyword=keyword,
+                price_max_jpy=found_price_jpy,
+                memo=f'W228 research rc_id={rc_id} (監視候補承認)',
+                source='w228_research',
+            )
+            watch_ids_registered.append(watch_id)
+            logger.info(
+                '[w228_sec_d] watch-only 登録 rc_id=%s site=%s watch_id=%s',
+                rc_id, site, watch_id,
+            )
+        except Exception as e:
+            logger.exception(
+                '[w228_sec_d] add_watch 失敗 (watch-only) rc_id=%s site=%s', rc_id, site
+            )
+            # M-1: 部分成功分 (登録済 watch) の対応関係を先に記録 (orphan watch 痕跡保全)
+            if watch_ids_registered:
+                try:
+                    record_watch_ids(rc_id, watch_ids_registered)
+                except Exception as e3:
+                    logger.error('[w228_sec_d] record_watch_ids 失敗 rc_id=%s: %s', rc_id, e3)
+            try:
+                update_status(
+                    rc_id, STATUS_NEEDS_REVIEW,
+                    needs_review_reason=f'[watch-only 承認] {site} watch 登録失敗: {e}',
+                )
+            except ValueError as e2:
+                logger.error('[w228_sec_d] needs_review 遷移も失敗 rc_id=%s: %s', rc_id, e2)
+            result['needs_review_fallen'] = True
+            result['watch_registered'] = bool(watch_ids_registered)
+            result['watch_ids'] = watch_ids_registered
+            result['message'] = (
+                f'{site} の watch 登録に失敗したため needs_review に戻しました: {e}'
+            )
+            return result
+
+    if watch_ids_registered:
+        try:
+            record_watch_ids(rc_id, watch_ids_registered)
+        except Exception as e:
+            logger.error('[w228_sec_d] record_watch_ids 失敗 rc_id=%s: %s', rc_id, e)
+
+    try:
+        update_status(rc_id, STATUS_WATCH_REGISTERED)
+    except ValueError as e:
+        # watch 自体は登録済 (実害なし)。遷移失敗だけ log + message で痕跡
+        logger.error('[w228_sec_d] watch_registered 遷移失敗 rc_id=%s: %s', rc_id, e)
+
+    result['success'] = True
+    result['watch_registered'] = True
+    result['watch_ids'] = watch_ids_registered
+    result['message'] = (
+        f'監視候補として keyword watch を {len(watch_ids_registered)} サイトに登録しました '
+        '(仕入先未発見のため下書きは生成していません。新着検知をお待ちください)。'
+    )
+    return result
+
+
 def _run_approval_logic(
     rc_id: int,
     rc: dict,
@@ -944,6 +1052,16 @@ def _run_approval_logic(
     except ValueError as e:
         result['message'] = f'状態遷移エラー: {e}'
         return result
+
+    # ── Step 1.5: found_url 無し (監視候補) は watch 登録のみ ─────────────
+    # not_found 再キュー行は仕入先 URL を持たない (retrospective H1 で誤マッチ
+    # URL は clear_found_fields により NULL 化)。description 生成に進むと必ず
+    # 失敗 → needs_review 降格し watch 登録 (本経路の唯一の目的) に到達できない
+    # ため、ここで分岐する (2026-06-12 code-review H-1)。
+    if not found_url:
+        return _run_watch_only_approval(
+            rc_id, title_ja, found_price_jpy, max_oos, result
+        )
 
     # ── Step 2: W226 description 生成 ────────────────────────────────────
     # rank_override_code は None = auto-classify に任せる。
@@ -1225,9 +1343,10 @@ def _render_section_d(config: dict) -> None:
                 if found_url:
                     price_str = f'¥{found_price_jpy:,}' if found_price_jpy is not None else 'N/A'
                     score_str = f'{match_score}' if match_score is not None else 'N/A'
+                    # 「状態: 不明」だと仕入先 URL 不明と誤読される (2026-06-12 user 指摘)
                     st.write(
                         f'[仕入先リンク]({found_url})  '
-                        f'**{price_str}**  状態: `{found_condition or "不明"}`'
+                        f'**{price_str}**  コンディション: `{found_condition or "未取得"}`'
                     )
                     st.write(f'AI 一致度: **{score_str}**')
                     if match_reason:
@@ -1293,15 +1412,23 @@ def _render_section_d(config: dict) -> None:
             _inflight_key = f'_w228_sec_d_inflight_{rc_id}'
             _processing = st.session_state.get(_inflight_key, False)
 
+            # watch-only 判定 (found_url 無し = 監視候補、下書きは生成しない)
+            _is_watch_only = not (rc.get('found_url') or '')
+            _btn_label = '承認 → 監視登録' if _is_watch_only else '承認 → 下書き生成'
+            _btn_help = (
+                '仕入先未発見のため keyword watch (メルカリ+ヤフオク) のみ登録します。'
+                if _is_watch_only
+                else 'description を自動生成し「個別出品」タブに引き継ぎます。'
+            )
             btn_col1, btn_col2 = st.columns([2, 1])
             with btn_col1:
                 if _processing:
                     st.caption('処理中... (しばらくお待ちください)')
                 elif st.button(
-                    '承認 → 下書き生成',
+                    _btn_label,
                     key=f'w228_approve_{rc_id}',
                     type='primary',
-                    help='description を自動生成し「個別出品」タブに引き継ぎます。',
+                    help=_btn_help,
                 ):
                     st.session_state[_inflight_key] = True
                     # _APPROVE_PROCESS_LOCK で同時実行防止
@@ -1311,7 +1438,7 @@ def _render_section_d(config: dict) -> None:
                         st.session_state[_inflight_key] = False
                     else:
                         try:
-                            with st.spinner(f'rc_id={rc_id} の description を生成中...'):
+                            with st.spinner(f'rc_id={rc_id} を処理中...'):
                                 approval_result = _run_approval_logic(
                                     rc_id=rc_id,
                                     rc=rc,
@@ -1385,14 +1512,16 @@ def render_w228_research_tab(config: dict) -> None:
         "実eBay出品は別ステップ (最高リスクのため未実装)。"
     )
 
-    st.divider()
-    _render_section_a()
-
-    st.divider()
-    _render_section_b(config)
-
-    st.divider()
-    _render_section_c()
-
+    # 日常運用は承認キュー (D) だけで完結するため D を先頭に表示し、
+    # 手動調査ツール (A/B) と全候補一覧 (C) は折りたたみに格納する (2026-06-12 user 指示)。
+    # A/B = 自動化前の手動単品調査 (リカバリ/スポット調査用に温存)、C = 監査用全履歴。
     st.divider()
     _render_section_d(config)
+
+    st.divider()
+    with st.expander('手動調査ツール / 全候補一覧 (A・B・C) — 日常運用では通常使いません', expanded=False):
+        _render_section_a()
+        st.divider()
+        _render_section_b(config)
+        st.divider()
+        _render_section_c()

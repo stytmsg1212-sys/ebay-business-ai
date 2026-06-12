@@ -136,7 +136,10 @@ _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     STATUS_AWAITING_APPROVAL: frozenset(
         {STATUS_APPROVED, STATUS_GATE_REJECTED, STATUS_NEEDS_REVIEW}
     ),
-    STATUS_APPROVED: frozenset({STATUS_DRAFT_GENERATED, STATUS_NEEDS_REVIEW}),
+    STATUS_APPROVED: frozenset({
+        STATUS_DRAFT_GENERATED, STATUS_NEEDS_REVIEW,
+        STATUS_WATCH_REGISTERED,  # watch-only 承認 (found_url 無し監視候補) の終端
+    }),
     STATUS_DRAFT_GENERATED: frozenset({STATUS_LISTED, STATUS_NEEDS_REVIEW}),
     STATUS_LISTED: frozenset(),  # 終端
 }
@@ -616,6 +619,35 @@ def clear_profit_fields(rc_id: int) -> bool:
             "UPDATE research_candidates "
             "SET profit_jpy_true=NULL, profit_usd_true=NULL, keisuke_pass=0, "
             "    keisuke_detail_json='{}', estimated_profit_usd=NULL, "
+            "    updated_at=CURRENT_TIMESTAMP "
+            "WHERE rc_id=?",
+            (rc_id,),
+        )
+    return True
+
+
+def clear_found_fields(rc_id: int) -> bool:
+    """誤マッチ仕入先フィールドを NULL に戻す (監視候補として承認キュー再投入時).
+
+    match_score < floor の行を not_found 終端に置く場合は found_url を監査痕跡と
+    して残すが (clear_profit_fields docstring 参照)、承認キュー (awaiting_approval)
+    に戻す行に残すと承認 UI (tab_w228_research) が found_url / found_price_jpy を
+    仕入先としてそのまま下書き生成に消費し、誤商品 URL・虚偽原価の draft が生まれる
+    (2026-06-12 retrospective review H1: rc 36 / draft 26 で実発生)。
+    監査痕跡は match_score / match_reason / gate_inputs_json で維持する。
+
+    Returns:
+        True = 書込成功。False = rc_id 不在。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT rc_id FROM research_candidates WHERE rc_id=?", (rc_id,)
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "UPDATE research_candidates "
+            "SET found_url=NULL, found_price_jpy=NULL, found_condition_ja=NULL, "
             "    updated_at=CURRENT_TIMESTAMP "
             "WHERE rc_id=?",
             (rc_id,),

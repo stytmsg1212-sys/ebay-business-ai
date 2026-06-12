@@ -626,8 +626,13 @@ class TestLowMatchScoreDemotion:
         assert cand["profit_usd_true"] is None
         assert cand["estimated_profit_usd"] is None
         assert not cand["keisuke_pass"]
-        # 棄却監査痕跡は残す
-        assert cand["found_url"] == "https://mercari.com/items/m_wrong"
+        # 承認キュー再投入行は誤マッチ仕入先フィールドも除去
+        # (残すと承認 UI が found_url/found_price_jpy を下書きに消費 =
+        #  誤商品 URL・虚偽原価の draft 汚染。retrospective H1 / rc 36 実発生)
+        assert cand["found_url"] is None
+        assert cand["found_price_jpy"] is None
+        assert cand["found_condition_ja"] is None
+        # 棄却監査痕跡は match_score / match_reason で残す
         assert cand["match_score"] == 30
 
     def test_low_score_without_sold_history_stays_not_found(self, monkeypatch):
@@ -655,6 +660,8 @@ class TestLowMatchScoreDemotion:
         cand = get_research_candidate(rc_id)
         assert cand["status"] == STATUS_NOT_FOUND
         assert cand["profit_jpy_true"] is None
+        # 終端 not_found (承認キューに戻さない行) は found_url を監査痕跡として残す
+        assert cand["found_url"] == "https://mercari.com/items/m_wrong"
 
     def test_score_at_floor_passes_through(self, monkeypatch):
         """score=60 (floor ちょうど) は降格しない → 従来どおり awaiting_approval + 利益保持."""
