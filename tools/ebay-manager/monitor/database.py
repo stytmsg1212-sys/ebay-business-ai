@@ -3513,6 +3513,29 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v75 (依頼ボード#10, 2026-06-13): eBaymag 商品マッピング ----
+        # 商品管理タブから eBaymag の国別出品 ON/OFF を操作するため、
+        # ebay_item_id ↔ eBaymag productId の対応と国別状態キャッシュを保持。
+        # 識別キーは ebay_item_id (SKU 禁止 / sku-rules.md)。
+        # productId は 6/11 プラン v2 反映時のバッチログから seed する
+        # (scripts/seed_ebaymag_products_2026_06_13.py)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 74:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ebaymag_products (
+                    ebay_item_id TEXT PRIMARY KEY,
+                    product_id TEXT NOT NULL,
+                    site_states_json TEXT,
+                    last_synced_at TIMESTAMP,
+                    last_applied_at TIMESTAMP,
+                    last_apply_result TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("PRAGMA user_version = 75")
+            logger.info("[init_db v75] ebaymag_products created, schema_ver 75")
+
 
 # ---- サイト設定 ----
 
@@ -6485,3 +6508,112 @@ def answer_user_request(
             exc_info=True,
         )
     return True
+
+
+# ---- eBaymag 商品マッピング (v75 / 依頼ボード#10) ----
+# ebay_item_id ↔ eBaymag productId の対応 + 国別出品状態キャッシュ。
+# 操作実体は monitor/ebaymag_driver.py (CDP Chrome 経由)、本層は永続化のみ。
+
+
+def upsert_ebaymag_product(
+    ebay_item_id: str,
+    product_id: str,
+    site_states: dict | None = None,
+) -> None:
+    """eBaymag productId マッピングを登録/更新 (site_states は与えた時のみ上書き)。"""
+    if not ebay_item_id or not product_id:
+        raise ValueError("ebay_item_id / product_id は必須")
+    states_json = (
+        json.dumps(site_states, ensure_ascii=False) if site_states is not None else None
+    )
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO ebaymag_products (ebay_item_id, product_id, site_states_json,
+                                          last_synced_at, updated_at)
+            VALUES (?, ?, ?,
+                    CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END,
+                    CURRENT_TIMESTAMP)
+            ON CONFLICT(ebay_item_id) DO UPDATE SET
+                product_id = excluded.product_id,
+                site_states_json = COALESCE(excluded.site_states_json,
+                                            ebaymag_products.site_states_json),
+                last_synced_at = CASE WHEN excluded.site_states_json IS NOT NULL
+                                      THEN CURRENT_TIMESTAMP
+                                      ELSE ebaymag_products.last_synced_at END,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (ebay_item_id, product_id, states_json, states_json),
+        )
+
+
+def get_ebaymag_product(ebay_item_id: str) -> dict | None:
+    """1 listing の eBaymag マッピングを取得 (site_states は dict 化済)。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM ebaymag_products WHERE ebay_item_id = ?",
+            (ebay_item_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    d["site_states"] = _parse_site_states(d.pop("site_states_json", None))
+    return d
+
+
+def get_ebaymag_products(ebay_item_ids: list[str] | None = None) -> list[dict]:
+    """eBaymag マッピング一覧 (ebay_item_ids 指定時はその集合のみ、空リスト=空)。"""
+    if ebay_item_ids is not None and not ebay_item_ids:
+        return []  # IN () は SQLite 構文エラーのため早期 return
+    with get_conn() as conn:
+        if ebay_item_ids is not None:
+            ph = ",".join("?" * len(ebay_item_ids))
+            rows = conn.execute(
+                f"SELECT * FROM ebaymag_products WHERE ebay_item_id IN ({ph})",
+                tuple(ebay_item_ids),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM ebaymag_products").fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["site_states"] = _parse_site_states(d.pop("site_states_json", None))
+        result.append(d)
+    return result
+
+
+def _parse_site_states(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("ebaymag_products.site_states_json が不正 JSON: %r", raw[:80])
+        return {}
+
+
+def record_ebaymag_apply(
+    ebay_item_id: str,
+    result: str,
+    site_states: dict | None = None,
+) -> bool:
+    """反映 (apply) 結果を記録。成功時は site_states も更新。"""
+    states_json = (
+        json.dumps(site_states, ensure_ascii=False) if site_states is not None else None
+    )
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ebaymag_products SET
+                last_applied_at = CURRENT_TIMESTAMP,
+                last_apply_result = ?,
+                site_states_json = COALESCE(?, site_states_json),
+                last_synced_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP
+                                      ELSE last_synced_at END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE ebay_item_id = ?
+            """,
+            (result, states_json, states_json, ebay_item_id),
+        )
+        return cur.rowcount == 1

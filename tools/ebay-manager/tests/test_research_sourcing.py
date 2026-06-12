@@ -663,6 +663,41 @@ class TestLowMatchScoreDemotion:
         # 終端 not_found (承認キューに戻さない行) は found_url を監査痕跡として残す
         assert cand["found_url"] == "https://mercari.com/items/m_wrong"
 
+    def test_requeue_aborted_when_clear_found_fields_fails(self, monkeypatch):
+        """clear_found_fields が False → 汚染防止のため再キュー中止 (not_found のまま).
+
+        2026-06-13 retrospective H1: found_* を温存したまま awaiting_approval に
+        戻すと承認 UI が誤商品 URL・虚偽原価を draft に消費する (rc 36 / draft 26
+        実発生)。除去に失敗したら監視候補としても戻さない fail-closed を検証。
+        """
+        init_db()
+        rc_id = _make_gate_passed_candidate(
+            "clear失敗fail-closed検証商品", manual_weight_g=800.0,
+            gate_inputs={"sold_90d": 5, "has_active_listing": True,
+                         "listing_start_date": "2024-01", "sold_1_2yr": 4},
+        )
+        monkeypatch.setattr(
+            "monitor.research_poc.evaluate_product", _mock_evaluate_sourced_factory(30)
+        )
+        _patch_common(monkeypatch)
+        monkeypatch.setattr(
+            "monitor.research_candidates_db.clear_found_fields", lambda _rc: False
+        )
+
+        from tasks.task_research_sourcing import run_research_sourcing
+        result = run_research_sourcing(_make_config())
+
+        assert result["success"] is True
+        assert result["not_found"] == 1
+        # 再キューは中止される (sold_1_2yr>0 でも承認キューに積まない)
+        assert result["not_found_approval"] == 0
+        assert result["awaiting_approval"] == 0
+        # Q0: 中止の痕跡が errors に残る
+        assert any("clear_found_fields 失敗" in e for e in result["errors"])
+
+        cand = get_research_candidate(rc_id)
+        assert cand["status"] == STATUS_NOT_FOUND, "fail-closed: not_found のまま"
+
     def test_score_at_floor_passes_through(self, monkeypatch):
         """score=60 (floor ちょうど) は降格しない → 従来どおり awaiting_approval + 利益保持."""
         init_db()

@@ -37,15 +37,18 @@ from monitor.database import (
     add_or_reactivate_competitor,
     dismiss_sale_warning,
     get_conn,
+    get_ebaymag_product,
     get_japan_competitor_alerts,
     get_listing_note,
     get_open_sale_warnings,
     get_rival_discoveries,
+    record_ebaymag_apply,
     set_initial_registered,
     set_rival_search_keywords,
     set_rival_watch_enabled,
     update_alert_action,
     update_rival_discovery_status,
+    upsert_ebaymag_product,
     upsert_listing_note,
 )
 from calculator import (
@@ -1928,6 +1931,100 @@ def _render_supplier_section(p: dict, config: dict) -> None:
         )
 
 
+def _render_ebaymag_section(p: dict) -> None:
+    """eBaymag 国別出品管理 (依頼ボード#10 / 2026-06-13).
+
+    ebaymag_products (v75) のマッピングがある listing のみ操作 UI を表示。
+    操作実体は monitor/ebaymag_driver.py (CDP Chrome 経由、実証済 5 step +
+    安全弁 3 種: itm 照合 / 変動数チェック / リロード定着検証)。
+
+    誤 OFF 防止: 状態キャッシュが無い間は「反映」を無効化 (checkbox 既定 False の
+    まま反映すると ON 中の国を意図せず OFF にするため、先に「状態取得」必須)。
+    """
+    eid = str(p.get("ebay_item_id") or "")
+    mapping = get_ebaymag_product(eid)
+    with st.expander("🌍 eBaymag 国別出品 (UK / DE / FR / IT / ES / CA / AU)",
+                     expanded=False):
+        if mapping is None:
+            st.info(
+                "この商品は eBaymag 連携情報 (productId) がありません。"
+                "6/11 プラン v2 反映分 119 件のみ登録済 — それ以外は eBaymag 取込後に"
+                "連携登録が必要です (依頼ボード #5 スコープ)。"
+            )
+            return
+
+        from monitor import ebaymag_driver  # playwright import をタブ読込から遅延
+
+        states: dict = mapping.get("site_states") or {}
+        synced = mapping.get("last_synced_at")
+        applied = mapping.get("last_applied_at")
+        st.caption(
+            f"productId: {mapping['product_id']} / 状態取得: {synced or '未'} / "
+            f"最終反映: {applied or '無'}"
+            + (f" ({mapping.get('last_apply_result')})"
+               if mapping.get("last_apply_result") else "")
+        )
+
+        # ── 状態取得 (read-only、CDP Chrome 必須) ──
+        if st.button("🔄 eBaymag から現在状態を取得", key=f"ebaymag_sync_{eid}",
+                     help="CDP Chrome (port 9222) で eBaymag ログイン済タブが必要"):
+            with st.spinner("eBaymag panel を開いて状態取得中 (~30 秒)..."):
+                res = ebaymag_driver.fetch_site_states(
+                    mapping["product_id"], expected_itm=eid)
+            if res.ok:
+                upsert_ebaymag_product(eid, mapping["product_id"], res.site_states)
+                # checkbox 既定値を最新状態に追従 (stale session_state 残留防止)
+                for code in ebaymag_driver.SITE_MAP:
+                    st.session_state[f"ebaymag_cb_{eid}_{code}"] = bool(
+                        res.site_states.get(code))
+                # st.success は直後の rerun で描画されない → toast (rerun 跨ぎ表示)
+                st.toast(f"eBaymag 状態取得完了: {res.site_states}", icon="✅")
+                st.rerun()
+            else:
+                st.error(res.error or "状態取得失敗")
+            return
+
+        if not states:
+            st.warning("国別状態が未取得です。先に「現在状態を取得」を実行してください "
+                       "(誤 OFF 防止のため反映は無効化中)。")
+            return
+
+        # ── 国別 checkbox (既定 = キャッシュ状態) ──
+        codes = list(ebaymag_driver.SITE_MAP)
+        cols = st.columns(len(codes))
+        desired: dict[str, bool] = {}
+        for col, code in zip(cols, codes):
+            with col:
+                desired[code] = st.checkbox(
+                    code, value=bool(states.get(code)),
+                    key=f"ebaymag_cb_{eid}_{code}")
+
+        diff_on = [c for c in codes if desired[c] and not states.get(c)]
+        diff_off = [c for c in codes if not desired[c] and states.get(c)]
+        if diff_on or diff_off:
+            st.caption(f"変更予定: ON={diff_on or 'なし'} / OFF={diff_off or 'なし'}")
+
+        if st.button("📤 eBaymag に反映", key=f"ebaymag_apply_{eid}",
+                     type="primary", disabled=not (diff_on or diff_off)):
+            with st.spinner("eBaymag へ反映中 (トグル→保存→定着検証、~1-2 分)..."):
+                res = ebaymag_driver.apply_site_changes(
+                    mapping["product_id"], expected_itm=eid,
+                    turn_on=diff_on, turn_off=diff_off)
+            record_ebaymag_apply(
+                eid, "ok" if res.ok else (res.error or "ng")[:200],
+                site_states=res.site_states if res.site_states else None)
+            if res.ok:
+                # st.success は直後の rerun で描画されない → toast (rerun 跨ぎ表示)
+                st.toast(f"eBaymag 反映完了 (定着検証済): {res.site_states}",
+                         icon="✅")
+                st.rerun()
+            else:
+                st.error(res.error or "反映失敗")
+                if res.log:
+                    with st.expander("実行ログ", expanded=False):
+                        st.code("\n".join(res.log))
+
+
 def _render_rival_section(p: dict, config: dict) -> None:
     """ライバル集約パネル (🎯 監視 + 登録済 dataframe). W217-B v2 (2026-06-04)
     で _render_right_inventory_supplier_rival から分割。
@@ -3509,6 +3606,10 @@ def _render_product_editor(p: dict, config: dict) -> None:
         with right:
             # 右列 (form 外): ライバル監視 + 登録済 dataframe
             _render_rival_section(p, config)
+
+        # eBaymag 国別出品管理 (依頼ボード#10、full-width / form 外 =
+        # 状態取得/反映 button の即時反応を維持)
+        _render_ebaymag_section(p)
 
         # ── form 外: submit 結果処理 ──
         if save_db or save_ebay or calc_be:

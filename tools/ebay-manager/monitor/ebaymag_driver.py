@@ -1,0 +1,521 @@
+# -*- coding: utf-8 -*-
+"""eBaymag 国別出品 ON/OFF ドライバ (依頼ボード#10 / 2026-06-13).
+
+scripts/ebaymag_publish_driver_2026_06_11.py (プラン v2 全 117 件反映で実証済) の
+ライブラリ化。商品管理タブから 1 商品ずつ状態取得/反映する。
+
+設計方針 (terapeak_scraper.py と同型):
+  - user が事前に Chrome を --remote-debugging-port=9222 で起動 + eBaymag ログイン済
+    + ebaymag.com タブを開いておく
+  - 本モジュールは CDP attach して操作。CDP 不在 / タブ不在は明確なエラーで返す (Q0)
+  - 安全弁 (実証済 3 種): (1) panel itm リンク照合 = 誤商品 mutation 防止の権威
+    (2) 「N 変動を保存」の N が期待数一致必須 (3) リロード後 PSfVs class で定着検証
+  - アーカイブ中の保存はサーバ側が黙って巻き戻す → 必要なら先に「戻す」
+
+戻り値は EbaymagResult (ok / error / site_states / log)。例外は内部で吸収して
+error に格納 (UI 層が st.error 表示)。
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+try:
+    from playwright.sync_api import sync_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+CDP_ENDPOINT = "http://localhost:9222"
+
+# site code (UI / DB キー) ↔ eBaymag 表示ドメイン
+SITE_MAP = {
+    "UK": "ebay.co.uk", "DE": "ebay.de", "FR": "ebay.fr", "IT": "ebay.it",
+    "ES": "ebay.es", "CA": "ebay.ca", "AU": "ebay.com.au",
+}
+DOMAIN_TO_CODE = {v: k for k, v in SITE_MAP.items()}
+# US (ebay.com) は本体 listing そのもの = eBaymag からトグルしない (表示参考のみ)
+
+# --- JS snippets (2026-06-10/11 実証済パターン、script から逐語移植) ---------
+
+PANEL_TITLE_JS = r"""() => {
+  const body = document.body.innerText;
+  const act = Array.from(document.querySelectorAll('button'))
+    .find(b => b.innerText.trim() === 'アクション');
+  let title = '';
+  if (act) {
+    let n = act.parentElement;
+    for (let i = 0; i < 6 && n; i++) {
+      if (n.innerText.length > 80) { title = n.innerText.split('\n')[0].trim(); break; }
+      n = n.parentElement;
+    }
+  }
+  let itm = null;
+  for (const a of document.querySelectorAll('a[href*="ebay."]')) {
+    const m = a.href.match(/itm\/.*?(\d{12})/);
+    if (m) { itm = m[1]; break; }
+  }
+  return {url: location.href, title, itm, hasAction: !!act, head: body.slice(0, 300)};
+}"""
+
+UNARCHIVE_JS = r"""() => {
+  const els = Array.from(document.querySelectorAll('li, a, button, [role="menuitem"]'));
+  let restore = els.find(el => el.innerText && el.innerText.trim() === '戻す');
+  if (!restore) {
+    const act = Array.from(document.querySelectorAll('button'))
+      .find(b => b.innerText.trim() === 'アクション');
+    if (!act) return 'NO_ACTION_BUTTON';
+    act.click();
+    return 'MENU_OPENED';
+  }
+  restore.click();
+  return 'RESTORE_CLICKED';
+}"""
+
+# 行同定 = 「site 名 1 種類のみ + ボタン 2 個以上」 (ebay.com.au を ebay.com と
+# 誤マッチさせない distinct mention set 判定、regex 交替順バグの再発防止)
+TOGGLE_ON_JS = r"""(siteName) => {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let tnode = null;
+  while (walker.nextNode()) {
+    if (walker.currentNode.textContent.trim() === siteName) { tnode = walker.currentNode; break; }
+  }
+  if (!tnode) return 'SITE_NOT_FOUND';
+  let node = tnode.parentElement;
+  for (let i = 0; i < 10 && node; i++) {
+    const mentions = new Set(node.innerText.match(/ebay\.[a-z][a-z.]*[a-z]/g) || []);
+    if (mentions.size > 1) return 'ROW_NOT_ISOLATED';
+    const btns = Array.from(node.querySelectorAll('button'))
+      .filter(b => /掲載され|リストされ|完売/.test(b.innerText));
+    if (btns.length >= 2) {
+      const offBtn = btns.find(b => /掲載されていません/.test(b.innerText.trim()));
+      const onBtn = btns.find(b => b !== offBtn);
+      if (!onBtn) return 'ON_BUTTON_NOT_FOUND';
+      if (onBtn.className.includes('PSfVs')) return 'ALREADY_ON:' + onBtn.innerText.trim();
+      onBtn.click();
+      return 'CLICKED';
+    }
+    node = node.parentElement;
+  }
+  return 'ROW_NOT_FOUND';
+}"""
+
+TOGGLE_OFF_JS = r"""(siteName) => {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let tnode = null;
+  while (walker.nextNode()) {
+    if (walker.currentNode.textContent.trim() === siteName) { tnode = walker.currentNode; break; }
+  }
+  if (!tnode) return 'SITE_NOT_FOUND';
+  let node = tnode.parentElement;
+  for (let i = 0; i < 10 && node; i++) {
+    const mentions = new Set(node.innerText.match(/ebay\.[a-z][a-z.]*[a-z]/g) || []);
+    if (mentions.size > 1) return 'ROW_NOT_ISOLATED';
+    const btns = Array.from(node.querySelectorAll('button'))
+      .filter(b => /掲載され|リストされ|完売/.test(b.innerText));
+    if (btns.length >= 2) {
+      const offBtn = btns.find(b => /掲載されていません/.test(b.innerText.trim()));
+      if (!offBtn) return 'OFF_BUTTON_NOT_FOUND';
+      if (offBtn.className.includes('PSfVs')) return 'ALREADY_OFF';
+      offBtn.click();
+      return 'CLICKED';
+    }
+    node = node.parentElement;
+  }
+  return 'ROW_NOT_FOUND';
+}"""
+
+SAVE_JS = r"""(expected) => {
+  const btn = Array.from(document.querySelectorAll('button'))
+    .find(b => /変動\s*を保存/.test(b.innerText));
+  if (!btn) return 'SAVE_BUTTON_NOT_FOUND';
+  const label = btn.innerText.trim();
+  const m = label.match(/^(\d+)\s/);
+  if (!m) return 'ABORT: ラベル解析不能 ' + label;
+  if (parseInt(m[1], 10) !== expected) return 'ABORT: 変動数=' + m[1] + ' 期待=' + expected;
+  btn.click();
+  return 'SAVED:' + label;
+}"""
+
+VERIFY_JS = r"""() => {
+  const out = {sites: [], errors: null};
+  const body = document.body.innerText;
+  if (/エラー|失敗/.test(body.slice(0, 3000))) out.errors = body.slice(0, 300);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const names = [];
+  while (walker.nextNode()) {
+    const t = walker.currentNode.textContent.trim();
+    if (/^ebay\.[a-z][a-z.]*[a-z]$/.test(t)) names.push(walker.currentNode);
+  }
+  for (const tn of names) {
+    const site = tn.textContent.trim();
+    let node = tn.parentElement;
+    for (let i = 0; i < 8 && node; i++) {
+      const mentions = new Set(node.innerText.match(/ebay\.[a-z][a-z.]*[a-z]/g) || []);
+      if (mentions.size > 1) break;
+      const btns = Array.from(node.querySelectorAll('button'))
+        .filter(b => /掲載され|リストされ|完売/.test(b.innerText));
+      if (btns.length >= 2) {
+        const on = btns.find(b => b.className.includes('PSfVs'));
+        out.sites.push({site, on: on ? on.innerText.trim() : null});
+        break;
+      }
+      node = node.parentElement;
+    }
+  }
+  return out;
+}"""
+
+
+@dataclass
+class EbaymagResult:
+    ok: bool = False
+    error: str | None = None
+    site_states: dict[str, bool] = field(default_factory=dict)  # {"UK": True, ...}
+    log: list[str] = field(default_factory=list)
+
+    def _log(self, msg: str) -> None:
+        self.log.append(msg)
+        logger.info("[ebaymag_driver] %s", msg)
+
+
+def _label_is_on(label: str | None) -> bool:
+    """ON 判定: 「リストされている」/「掲載されている」/「完売」(qty=0 で ON 定着)."""
+    if not label:
+        return False
+    return "リスト" in label or label in ("掲載されている", "完売")
+
+
+def _states_from_verify(verify: dict) -> dict[str, bool]:
+    states: dict[str, bool] = {}
+    for s in verify.get("sites", []):
+        code = DOMAIN_TO_CODE.get(s["site"])
+        if code:
+            states[code] = _label_is_on(s.get("on"))
+    return states
+
+
+def _goto_and_wait(page, url: str, settle_s: float = 6.0) -> None:
+    """予約遷移 → URL 変化 + 描画待ち (evaluate は遷移中に落ちるので retry)."""
+    page.evaluate("url => { setTimeout(() => { location.href = url; }, 100); }", url)
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        time.sleep(1.0)
+        try:
+            cur = page.evaluate("() => location.href")
+            if "productId=" in url:
+                if "productId=" in cur:
+                    break
+            elif url.split("?")[0] in cur:
+                break
+        except Exception:
+            continue
+    time.sleep(settle_s)
+
+
+def _read_panel(page, url: str) -> dict:
+    """panel を開いて info を取得 (itm リンクは描画遅延あり → 最長 12s ポーリング)."""
+    _goto_and_wait(page, url)
+    info = page.evaluate(PANEL_TITLE_JS)
+    deadline = time.time() + 12
+    while info.get("itm") is None and info.get("hasAction") and time.time() < deadline:
+        time.sleep(2)
+        info = page.evaluate(PANEL_TITLE_JS)
+    return info
+
+
+def _open_panel_and_check_itm(
+    page, url: str, expected_itm: str, res: EbaymagResult
+) -> dict | None:
+    """panel を開いて itm 照合 (権威安全弁)。OK なら panel info、NG なら None."""
+    info = _read_panel(page, url)
+    res._log(f"panel: itm={info.get('itm')} title={ (info.get('title') or '')[:60] }")
+    if not info.get("hasAction"):
+        return None
+    if info.get("itm") != expected_itm:
+        res.error = (
+            f"itm 照合 NG: panel={info.get('itm')} 期待={expected_itm} (誤商品防止で中断)"
+        )
+        return None
+    return info
+
+
+# --- Streamlit (Windows) 配下は subprocess 隔離 -------------------------------
+# Tornado が SelectorEventLoop を強制するため Playwright の Node 起動
+# (asyncio.create_subprocess_exec) が NotImplementedError (str 空) で必ず失敗する。
+# supplier_scraper._should_isolate_playwright と同型の子プロセス隔離で回避
+# (2026-06-13 依頼ボード#10 Q1 実機 verify で発覚)。
+
+
+def _should_isolate() -> bool:
+    """Streamlit (Windows) 配下なら True (env EBAYMAG_DRIVER_SUBPROCESS で強制可)."""
+    override = os.environ.get("EBAYMAG_DRIVER_SUBPROCESS", "").strip()
+    if override == "1":
+        return True
+    if override == "0":
+        return False
+    if sys.platform != "win32":
+        return False
+    try:
+        import streamlit.runtime.scriptrunner as _sr
+        return _sr.get_script_run_ctx() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResult:
+    """子プロセスで driver 関数を実行し JSON で結果回収 (event loop 衝突回避)."""
+    res = EbaymagResult()
+    script = (
+        "import json, sys; from monitor import ebaymag_driver as d; "
+        "r = getattr(d, sys.argv[1])(**json.loads(sys.argv[2])); "
+        "print(json.dumps({'ok': r.ok, 'error': r.error, "
+        "'site_states': r.site_states, 'log': r.log}, ensure_ascii=True))"
+    )
+    env = dict(os.environ)
+    env["EBAYMAG_DRIVER_SUBPROCESS"] = "0"  # 再帰防止 (子は in-process 実行)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    project_root = str(Path(__file__).resolve().parent.parent)
+    # apply 経路で子が死んだ場合、eBaymag 側は適用済みの可能性がある
+    # (save 後 verify 前) — 状態不明性を error 文言に明示 (reviewer M1)
+    apply_hint = ("。反映済みの可能性あり — 「状態取得」で再確認してください"
+                  if func_name == "apply_site_changes" else "")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", script, func_name, json.dumps(kwargs)],
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=timeout_sec, env=env, cwd=project_root,
+        )
+    except subprocess.TimeoutExpired:
+        res.error = f"eBaymag 操作 timeout ({timeout_sec}s, subprocess){apply_hint}"
+        return res
+    except Exception as e:  # noqa: BLE001
+        res.error = f"subprocess 起動失敗: {str(e) or type(e).__name__}"
+        return res
+    if proc.returncode != 0:
+        res.error = (f"subprocess 異常終了 rc={proc.returncode}: "
+                     f"{(proc.stderr or '').strip()[-400:]}{apply_hint}")
+        return res
+    try:
+        # node の deprecation warning 等が混ざっても最終行が JSON
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+    except Exception:  # noqa: BLE001
+        # 先頭は warning 行で埋まり得るため tail を出す (reviewer M3)
+        res.error = f"subprocess 出力 parse 失敗: {proc.stdout[-300:]!r}{apply_hint}"
+        return res
+    res.ok = bool(out.get("ok"))
+    res.error = out.get("error")
+    res.site_states = out.get("site_states") or {}
+    res.log = out.get("log") or []
+    for line in res.log:  # 子の log は親 logger に流れないため relay (reviewer LOW)
+        logger.info("[ebaymag_driver/sub] %s", line)
+    return res
+
+
+def fetch_site_states(product_id: str, expected_itm: str) -> EbaymagResult:
+    """read-only: アクティブ panel を開いて国別 ON/OFF 状態を取得.
+
+    URL は productId 単独で panel が開く (ebaymag_audit_applied_2026_06_11.py 実証済)。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    if _should_isolate():
+        return _run_isolated(
+            "fetch_site_states",
+            {"product_id": product_id, "expected_itm": expected_itm},
+            timeout_sec=180)
+    active_url = f"https://ebaymag.com/stock?productId={product_id}"
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+            info = _open_panel_and_check_itm(page, active_url, expected_itm, res)
+            if info is None:
+                if res.error is None:
+                    res.error = (
+                        "アクティブ一覧に panel が開けません "
+                        "(アーカイブ中 or productId 不一致の可能性)"
+                    )
+                return res
+            verify = page.evaluate(VERIFY_JS)
+            res.site_states = _states_from_verify(verify)
+            if not res.site_states:
+                # eBaymag UI 構造変化等で site 行が 1 つも拾えなかった場合に
+                # ok=True/{} を返すと UI 側が正常キャッシュを {} で上書きするため
+                # error 扱いにする (reviewer MEDIUM-1)
+                res.error = (
+                    "国別状態を 1 件も検出できず (eBaymag UI 変化の可能性) — "
+                    "キャッシュ未更新"
+                )
+                return res
+            res._log(f"states: {res.site_states}")
+            res.ok = True
+    except Exception as e:
+        res.error = f"eBaymag 状態取得失敗: {str(e) or type(e).__name__}"
+        logger.warning("fetch_site_states failed", exc_info=True)
+    return res
+
+
+def apply_site_changes(
+    product_id: str,
+    expected_itm: str,
+    turn_on: list[str],
+    turn_off: list[str],
+) -> EbaymagResult:
+    """国トグル変更を反映 (ON/OFF 混在可)。実証済 5 step + 安全弁 3 種.
+
+    turn_on / turn_off は site code (UK/DE/...) のリスト。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    bad = [s for s in turn_on + turn_off if s not in SITE_MAP]
+    if bad:
+        res.error = f"未知の site code: {bad}"
+        return res
+    if not turn_on and not turn_off:
+        res.error = "変更対象なし"
+        return res
+    if _should_isolate():
+        return _run_isolated(
+            "apply_site_changes",
+            {"product_id": product_id, "expected_itm": expected_itm,
+             "turn_on": turn_on, "turn_off": turn_off},
+            timeout_sec=420)
+
+    arch_url = f"https://ebaymag.com/stock?archived=true&productId={product_id}"
+    active_url = f"https://ebaymag.com/stock?productId={product_id}"
+
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+
+            # Step 1: ON する場合のみ、アーカイブ中なら先に「戻す」
+            # (アーカイブ中の保存はサーバ側が黙って巻き戻すため)
+            if turn_on:
+                # itm ポーリング付きで読む (1 回評価だと描画遅延で偽 abort、
+                # reviewer MEDIUM-2)
+                info = _read_panel(page, arch_url)
+                if info.get("hasAction"):
+                    if info.get("itm") != expected_itm:
+                        res.error = (
+                            f"itm 照合 NG (アーカイブ panel): panel={info.get('itm')} "
+                            f"期待={expected_itm}"
+                        )
+                        return res
+                    r = page.evaluate(UNARCHIVE_JS)
+                    res._log(f"unarchive: {r}")
+                    if r == "MENU_OPENED":
+                        page.wait_for_timeout(1500)
+                        r = page.evaluate(UNARCHIVE_JS)
+                        res._log(f"unarchive(2): {r}")
+                    if r == "RESTORE_CLICKED":
+                        page.wait_for_timeout(5000)
+                else:
+                    res._log("アーカイブ一覧に panel なし → 既にアクティブ")
+
+            # Step 2: アクティブ panel + itm 照合 (権威)
+            info = _open_panel_and_check_itm(page, active_url, expected_itm, res)
+            if info is None:
+                if res.error is None:
+                    res.error = "アクティブ panel が開けません (mutation せず中断)"
+                return res
+
+            # Step 3: トグル (ON → OFF の順、各 1.2s 待ち)
+            clicked = 0
+            for code in turn_on:
+                r = page.evaluate(TOGGLE_ON_JS, SITE_MAP[code])
+                res._log(f"toggle-on {code}: {r}")
+                if r == "CLICKED":
+                    clicked += 1
+                    page.wait_for_timeout(1200)
+                elif not r.startswith("ALREADY_ON"):
+                    res.error = f"{code} の ON 失敗 ({r}) → 保存せず中断"
+                    return res
+            for code in turn_off:
+                r = page.evaluate(TOGGLE_OFF_JS, SITE_MAP[code])
+                res._log(f"toggle-off {code}: {r}")
+                if r == "CLICKED":
+                    clicked += 1
+                    page.wait_for_timeout(1200)
+                elif r != "ALREADY_OFF":
+                    res.error = f"{code} の OFF 失敗 ({r}) → 保存せず中断"
+                    return res
+
+            if clicked == 0:
+                res._log("変更なし (全て既に目標状態) → 保存不要")
+                verify = page.evaluate(VERIFY_JS)
+                res.site_states = _states_from_verify(verify)
+                res.ok = True
+                return res
+
+            # Step 4: 保存 (変動数チェック安全弁)
+            page.wait_for_timeout(1000)
+            r = page.evaluate(SAVE_JS, clicked)
+            res._log(f"save: {r}")
+            if not str(r).startswith("SAVED"):
+                res.error = f"保存失敗: {r}"
+                return res
+            page.wait_for_timeout(6000)
+
+            # Step 5: リロード定着検証
+            _goto_and_wait(page, active_url)
+            verify = page.evaluate(VERIFY_JS)
+            res.site_states = _states_from_verify(verify)
+            missing_on = [c for c in turn_on if not res.site_states.get(c)]
+            still_on = [c for c in turn_off if res.site_states.get(c)]
+            if missing_on or still_on:
+                res.error = (
+                    f"定着検証 NG: ON未定着={missing_on} OFF残存={still_on}"
+                )
+                return res
+            if verify.get("errors"):
+                res.error = f"画面エラー語検出: {verify['errors'][:200]}"
+                return res
+            res._log(f"states: {res.site_states}")
+            res.ok = True
+    except Exception as e:
+        res.error = f"eBaymag 反映失敗: {str(e) or type(e).__name__}"
+        logger.warning("apply_site_changes failed", exc_info=True)
+    return res
+
+
+def _get_ebaymag_page(p, res: EbaymagResult):  # -> Page | None (playwright optional)
+    """CDP attach して ebaymag.com タブを取得。不在は明確なエラー (Q0)."""
+    try:
+        browser = p.chromium.connect_over_cdp(CDP_ENDPOINT)
+    except Exception as e:
+        res.error = (
+            "CDP Chrome (localhost:9222) に接続できません。"
+            "Chrome を --remote-debugging-port=9222 で起動してください。"
+            f" ({e})"
+        )
+        return None
+    if not browser.contexts:
+        res.error = "CDP Chrome にコンテキストがありません"
+        return None
+    ctx = browser.contexts[0]
+    page = next((pg for pg in ctx.pages if "ebaymag.com" in pg.url), None)
+    if page is None:
+        res.error = (
+            "ebaymag.com のタブが見つかりません。"
+            "CDP Chrome で eBaymag を開いてログインしてください。"
+        )
+        return None
+    return page
