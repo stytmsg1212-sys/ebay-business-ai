@@ -81,6 +81,7 @@ from tabs.tab_morning_discovery import render_morning_discovery_tab
 from tabs.tab_purchase_confirm import render_purchase_confirm_tab
 from tabs.tab_keyword_watch import render_keyword_watch_tab  # W148 (2026-05-21)
 from tabs.tab_w228_research import render_w228_research_tab  # W228 (2026-06-07)
+from tabs.tab_request_board import render_request_board_tab  # W266 (2026-06-12)
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
 # ── W134 Step2: 重い DB ローダの read-cache (体感改善) ──
@@ -233,6 +234,7 @@ s = st.session_state.settings
 _W134_GROUPS = {
     "★ 毎日": [
         "DASHBOARD",
+        "依頼ボード",       # W266 (2026-06-12)
         "商品管理",         # W119 (2026-05-11)
         "在庫監視",
         "仕入先候補",
@@ -638,6 +640,10 @@ if _w134_sel == "今日の発掘":
 # ========== 入荷確認タブ (W133 2026-05-16) ==========
 if _w134_sel == "入荷確認":
     render_purchase_confirm_tab()
+
+# ========== 依頼ボードタブ (W266 2026-06-12) ==========
+if _w134_sel == "依頼ボード":
+    render_request_board_tab()
 
 # ========== キーワード新着監視タブ (W148 2026-05-21) ==========
 if _w134_sel == "キーワード新着監視":
