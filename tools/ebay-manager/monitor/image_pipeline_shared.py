@@ -42,6 +42,11 @@ PROMPT_VERSION = "1"
 
 MANIFEST_FILENAME = "_manifest.json"
 
+# board#9 (2026-06-13): hero 合成オプションの default。
+# 旧 manifest (compose_options キー無し) はこの値で生成された扱いにして
+# cache 有効性を維持する (auto + standard = 改修前と完全同一の挙動)。
+_DEFAULT_COMPOSE_OPTIONS = {"position": "auto", "model": "standard"}
+
 
 # ─────────────────────────────────────────────
 # Dataclasses (frozen, session 可搬)
@@ -128,17 +133,28 @@ def _read_manifest(out_base: Path) -> Optional[dict]:
         return None
 
 
-def _write_manifest(out_base: Path, source_url: str, stage_outputs: dict) -> None:
+def _write_manifest(
+    out_base: Path,
+    source_url: str,
+    stage_outputs: dict,
+    compose_options: Optional[dict] = None,
+) -> None:
     """{out_base}/_manifest.json を atomic 書込.
 
     stage_outputs = {"hero": [...], "additional": [...]} 形.
+    compose_options = {"position": ..., "model": ...} (board#9)。None なら
+    既存 manifest の値を温存 (additional 単独更新で hero 設定を消さない)。
     """
     p = out_base / MANIFEST_FILENAME
+    if compose_options is None:
+        existing = _read_manifest(out_base) or {}
+        compose_options = existing.get("compose_options") or _DEFAULT_COMPOSE_OPTIONS
     payload = {
         "source_url": source_url,
         "source_sha256": _sha256_url(source_url),
         "pipeline_version": PIPELINE_VERSION,
         "prompt_version": PROMPT_VERSION,
+        "compose_options": compose_options,
         "stage_outputs": stage_outputs,
         "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
@@ -151,11 +167,19 @@ def _write_manifest(out_base: Path, source_url: str, stage_outputs: dict) -> Non
         logger.warning(f"manifest 書込失敗 ({p}): {e}")
 
 
-def _manifest_matches(out_base: Path, source_url: str) -> bool:
+def _manifest_matches(
+    out_base: Path,
+    source_url: str,
+    compose_options: Optional[dict] = None,
+) -> bool:
     """manifest があり source_url が現入力と一致するか.
 
     v2.2 HIGH-Codex-2: source URL 不一致時に古い cache を skip 復元する
     silent gap を防止する.
+
+    board#9: compose_options (position/model) 指定時はそれも一致必須。
+    manifest 側にキーが無い旧 cache は _DEFAULT_COMPOSE_OPTIONS 扱い
+    (= auto/standard 要求なら旧 cache 有効のまま)。
     """
     manifest = _read_manifest(out_base)
     if not manifest:
@@ -166,6 +190,10 @@ def _manifest_matches(out_base: Path, source_url: str) -> bool:
         return False
     if manifest.get("prompt_version") != PROMPT_VERSION:
         return False
+    if compose_options is not None:
+        stored = manifest.get("compose_options") or _DEFAULT_COMPOSE_OPTIONS
+        if stored != compose_options:
+            return False
     return True
 
 
@@ -181,6 +209,8 @@ def compose_hero_candidates_cached(
     k: int = 3,
     max_parallel: int = 3,
     download_timeout: float = 30.0,
+    position: str = "auto",
+    model: str = "standard",
 ) -> tuple[list[HeroCandidate], Optional[Path]]:
     """Photoroom (背景除去 + studio 化) + Gemini (3 候補 hero 合成) を実行.
 
@@ -188,6 +218,7 @@ def compose_hero_candidates_cached(
       1. force_regenerate=False
       2. out_base 配下に hero_W*.png ファイルが 1 つ以上 + _studio.png 存在
       3. manifest.json の source_url が現入力と一致 + pipeline_version 一致
+         + compose_options (position/model) 一致 (board#9)
 
     上記すべて満たせば API 呼出 skip して既存ファイルから復元.
     一つでも不一致なら API 再実行 + manifest 更新.
@@ -199,6 +230,8 @@ def compose_hero_candidates_cached(
         k: Gemini 生成候補数 (default 3)
         max_parallel: 並列度 (default 3)
         download_timeout: source download timeout (秒)
+        position: プレート配置 ("auto" / "bottom_left" / "bottom_right", board#9)
+        model: 合成モデル ("standard"=nano-banana / "pro"=nano-banana-pro, board#9)
 
     Returns:
         (candidates, studio_path).
@@ -208,23 +241,30 @@ def compose_hero_candidates_cached(
     例外: 例外を呼出元に raise しない. 失敗時は ([], None) を返す.
     """
     out_base.mkdir(parents=True, exist_ok=True)
+    compose_options = {"position": position, "model": model}
 
-    # cache 復元判定 (HIGH-Codex-2)
-    existing_heros = sorted(out_base.glob("hero_W*.png"))
+    # cache 復元判定 (HIGH-Codex-2 + board#9 compose_options)
+    # board#9 2巡目 HIGH-A(a): 復元は glob ではなく manifest の hero list 基準。
+    # glob だと旧設定 (standard 等) で生成した stale hero_W*.png が新設定の候補に
+    # 紛れ込む (設定切替 + 部分失敗で plate 構成が変わるケース)。
     studio_path = out_base / "_studio.png"
     if (not force_regenerate
-            and existing_heros
             and studio_path.exists()
-            and _manifest_matches(out_base, source_url)):
+            and _manifest_matches(out_base, source_url, compose_options)):
         # manifest から hero 情報を復元 (plate_id / score / reasoning)
         manifest = _read_manifest(out_base) or {}
+        stage = manifest.get("stage_outputs", {})
+        hero_files = [f for f in stage.get("hero", []) if isinstance(f, str)]
         cached_heros_meta = {
             h.get("filename"): h
-            for h in manifest.get("stage_outputs", {}).get("hero_meta", [])
+            for h in stage.get("hero_meta", [])
             if isinstance(h, dict)
         }
         candidates: list[HeroCandidate] = []
-        for p in existing_heros:
+        for fname in hero_files:
+            p = out_base / fname
+            if not p.exists():
+                continue  # manifest 記載だが実ファイル欠落 → 候補から除外
             meta = cached_heros_meta.get(p.name, {})
             candidates.append(HeroCandidate(
                 plate_id=str(meta.get("plate_id") or p.stem),
@@ -232,10 +272,12 @@ def compose_hero_candidates_cached(
                 path=p,
                 reasoning=str(meta.get("reasoning") or "(cached, no reasoning)"),
             ))
-        logger.info(
-            f"hero cache 復元 (manifest 一致): {len(candidates)} 候補, out_base={out_base}"
-        )
-        return candidates, studio_path
+        if candidates:
+            logger.info(
+                f"hero cache 復元 (manifest 一致): {len(candidates)} 候補, out_base={out_base}"
+            )
+            return candidates, studio_path
+        # manifest 一致だが hero 実体 0 件 → cache 破損扱いで生成経路へ
 
     # cache miss = source download → Photoroom → Gemini
     try:
@@ -273,12 +315,22 @@ def compose_hero_candidates_cached(
         return [], None
 
     # 3. Gemini 3 候補合成
+    # board#9 2巡目 HIGH-A(a): 旧設定産の stale hero_W*.png を生成直前に掃除
+    # (Photoroom 成功後 = 旧 cache を消しても新規生成が確実に走る位置)。
+    # 残すと部分失敗時に新 manifest + 旧ファイルの混在 cache が出来る。
+    for stale in out_base.glob("hero_W*.png"):
+        try:
+            stale.unlink()
+        except OSError as e:
+            logger.warning(f"stale hero 削除失敗 ({stale.name}): {e}")
     try:
         result = generate_hero_candidates(
             studio_product_path=studio_path,
             output_dir=out_base,
             k=k,
             max_parallel=max_parallel,
+            position=position,
+            model=model,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Gemini 合成例外: {e}")
@@ -302,11 +354,26 @@ def compose_hero_candidates_cached(
                 "reasoning": cand.reasoning,
             })
 
-    # manifest 更新 (HIGH-Codex-2 source URL 紐付け)
-    _write_manifest(out_base, source_url, {
-        "hero": [c.path.name for c in candidates],
-        "hero_meta": hero_meta_for_manifest,
-    })
+    # manifest 更新 (HIGH-Codex-2 source URL 紐付け + board#9 compose_options)
+    # board#9 2巡目 HIGH-A(a): 候補 0 件 (全滅) の時は新設定で manifest を書かない。
+    # 書くと次回の _manifest_matches が「一致」になり、ディスク残存の stale を
+    # 新設定の cache として復元してしまう。失敗時は manifest 自体を無効化。
+    if candidates:
+        _write_manifest(out_base, source_url, {
+            "hero": [c.path.name for c in candidates],
+            "hero_meta": hero_meta_for_manifest,
+        }, compose_options=compose_options)
+    else:
+        # hero キーのみ空に更新 (additional cache は巻き添え無効化しない =
+        # Photoroom 再課金防止)。hero=[] なので次回復元は不成立 → 必ず再生成。
+        existing = _read_manifest(out_base) or {}
+        stage = existing.get("stage_outputs", {}) if isinstance(existing, dict) else {}
+        stage["hero"] = []
+        stage["hero_meta"] = []
+        _write_manifest(out_base, source_url, stage, compose_options=compose_options)
+        logger.warning(
+            f"hero 合成 0 候補 (全滅): hero cache 無効化, source={source_url[:60]}"
+        )
 
     logger.info(
         f"hero 合成完了: {len(candidates)} 候補, source={source_url[:60]}"

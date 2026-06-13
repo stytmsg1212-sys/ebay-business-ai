@@ -32,6 +32,7 @@ H-6 Phase D verify (実機 user 在席で 1 件試行する DoD 11 step 抜粋):
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -140,12 +141,20 @@ def fetch_supplier_images_all(candidate_url: str, timeout: float = 15.0) -> list
 # ==========================================================================
 
 def _do_supplier_hero_compose(
-    candidate_id: int, source_url: str, force_regenerate: bool = False
+    candidate_id: int, source_url: str, force_regenerate: bool = False,
+    position: str = "auto", model: str = "standard",
+    legacy_reuse_ok: bool = True,
 ) -> None:
     """Photoroom + Gemini で hero 候補 3 枚を生成. session_state 経由で UI に反映.
 
     既存合成結果 (data/hero_candidates/sup_<cid>/hero_W*.png) があれば force_regenerate=
     False で API skip. 課金保護.
+
+    board#9 (2026-06-13): position/model 対応。manifest が無い経路のため、前回実行時の
+    設定を out_base/_compose_opts.json に保存し、設定一致時のみ reuse する。legacy
+    (opts ファイル無し) は legacy_reuse_ok=True (= picker が default の 1 枚目) かつ
+    auto/standard 指定時のみ一致扱い (旧 cache は常に 1 枚目から生成されているため、
+    picker で別画像を選んだ時に旧結果を silent 返却しない / reviewer HIGH-3)。
     """
     out_base = Path(f"data/hero_candidates/sup_{candidate_id}")
     out_base.mkdir(parents=True, exist_ok=True)
@@ -154,15 +163,31 @@ def _do_supplier_hero_compose(
     sk_studio = f"{_SS}hero_studio_path_{candidate_id}"
     sk_source = f"{_SS}hero_source_url_{candidate_id}"
     sk_picked = f"{_SS}hero_selected_path_{candidate_id}"
+    sk_used = f"{_SS}hero_used_{candidate_id}"
 
-    # 既存合成結果 reuse
+    opts = {"position": position, "model": model, "source_url": source_url}
+    opts_path = out_base / "_compose_opts.json"
+
+    # 既存合成結果 reuse (board#9: 設定一致時のみ)
     existing_heros = sorted(out_base.glob("hero_W*.png"))
     existing_studio = out_base / "_studio.png"
-    if not force_regenerate and existing_heros and existing_studio.exists():
+    if opts_path.exists():
+        try:
+            stored_opts = json.loads(opts_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"_compose_opts.json 読込失敗 (sup_{candidate_id}): {e}")
+            stored_opts = None
+        opts_match = stored_opts == opts
+    else:
+        # legacy cache (board#9 以前 = 常に 1 枚目から生成): picker が default の
+        # 1 枚目 (legacy_reuse_ok=True) かつ auto/standard の時のみ reuse 可
+        opts_match = legacy_reuse_ok and position == "auto" and model == "standard"
+    if not force_regenerate and existing_heros and existing_studio.exists() and opts_match:
         candidates = [{"name": p.stem, "path": str(p)} for p in existing_heros]
         st.session_state[sk_cands] = candidates
         st.session_state[sk_source] = source_url
         st.session_state[sk_studio] = str(existing_studio)
+        st.session_state[sk_used] = opts
         st.success(
             f"既存合成結果 {len(candidates)} 候補を再使用 (API 課金 0)。"
             "再生成するには「再生成」ボタンを使用してください。"
@@ -205,6 +230,19 @@ def _do_supplier_hero_compose(
         return
 
     # 3. Gemini 3 候補
+    # board#9 2巡目 HIGH-A(b): 旧設定産の stale hero_W*.png を生成直前に掃除
+    # (残すと失敗時に旧ファイル + 新 opts side-file の混在 cache が出来る)
+    # 3巡目 M1: 旧 opts side-file も同時に無効化 — 生成成功後の opts 書込が
+    # OSError で失敗しても「新設定産 hero + 旧設定 opts」の不整合 cache を残さない
+    for stale in out_base.glob("hero_W*.png"):
+        try:
+            stale.unlink()
+        except OSError as e:
+            logger.warning(f"stale hero 削除失敗 (sup_{candidate_id}, {stale.name}): {e}")
+    try:
+        opts_path.unlink(missing_ok=True)
+    except OSError as e:
+        logger.warning(f"旧 _compose_opts.json 削除失敗 (sup_{candidate_id}): {e}")
     try:
         with st.status("Gemini でプレート合成中 (約 30-40 秒, 3 候補並列)...", expanded=False) as _s:
             result = generate_hero_candidates(
@@ -212,6 +250,8 @@ def _do_supplier_hero_compose(
                 output_dir=out_base,
                 k=3,
                 max_parallel=3,
+                position=position,
+                model=model,
             )
             cands = []
             for c in result.candidates:
@@ -225,7 +265,25 @@ def _do_supplier_hero_compose(
             st.session_state[sk_cands] = cands
             st.session_state[sk_source] = source_url
             st.session_state[sk_picked] = None
-            _s.update(label=f"完了: {len(cands)} 候補生成", state="complete")
+            st.session_state[sk_used] = opts
+            # board#9 2巡目 HIGH-A(b): side-file は成功 (候補 1 件以上) 時のみ書込。
+            # 0 件で書くと次回 reuse 判定が「一致」になり stale を誤復元する。
+            # 0 件は state="error" で正直に表示 (Q0 偽装成功防止)。
+            if cands:
+                _s.update(label=f"完了: {len(cands)} 候補生成", state="complete")
+                try:
+                    opts_path.write_text(
+                        json.dumps(opts, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+                except OSError as e:
+                    logger.warning(f"_compose_opts.json 書込失敗 (sup_{candidate_id}): {e}")
+            else:
+                _s.update(label="合成失敗: 候補 0 件 (再生成してください)", state="error")
+                try:
+                    opts_path.unlink(missing_ok=True)
+                except OSError as e:
+                    logger.warning(f"_compose_opts.json 無効化失敗 (sup_{candidate_id}): {e}")
+                logger.warning(f"supplier hero 合成 0 候補 (sup_{candidate_id})")
     except Exception as e:
         st.error(f"Gemini 合成例外: {e}")
         return
@@ -236,7 +294,8 @@ def _do_supplier_hero_compose(
 # ==========================================================================
 
 def _do_supplier_additional_compose(
-    candidate_id: int, additional_urls: list[str], force_regenerate: bool = False
+    candidate_id: int, additional_urls: list[str], force_regenerate: bool = False,
+    legacy_reuse_ok: bool = True,
 ) -> None:
     """hero 以外の supplier 画像を Photoroom で背景抜き (Gemini なし).
 
@@ -261,9 +320,29 @@ def _do_supplier_additional_compose(
 
     sk_proc = f"{_SS}additional_processed_{candidate_id}"
 
-    # Cost protection: 既存 _additional_*.png があれば API skip
+    # board#9 reviewer HIGH-1: _additional_NN.png は index ↔ URL の盲目ペアリングの
+    # ため、生成時の URL list を side-file に保存し、完全一致時のみ reuse する。
+    # picker で hero 変更 → additional 集合が変わった時に旧 PNG を誤帰属させない。
+    add_urls_path = out_base / "_additional_urls.json"
+    if add_urls_path.exists():
+        try:
+            stored_urls = json.loads(add_urls_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"_additional_urls.json 読込失敗 (sup_{candidate_id}): {e}")
+            stored_urls = None
+        urls_match = stored_urls == list(additional_urls)
+    else:
+        # legacy cache (side-file 無し = board#9 以前、常に all_urls[1:12] から生成):
+        # picker が default (legacy_reuse_ok=True) なら集合構成は同一 = reuse 可
+        urls_match = legacy_reuse_ok
+
+    # Cost protection: 既存 _additional_*.png があり URL list 一致なら API skip
     existing = sorted(out_base.glob("_additional_*.png"))
-    if not force_regenerate and len(existing) >= len(additional_urls):
+    if (
+        not force_regenerate
+        and len(existing) >= len(additional_urls)
+        and urls_match
+    ):
         results = []
         for idx, url in enumerate(additional_urls):
             target = out_base / f"_additional_{idx:02d}.png"
@@ -286,6 +365,15 @@ def _do_supplier_additional_compose(
         st.error(f"Photoroom モジュール import 失敗: {e}")
         st.session_state[sk_proc] = []
         return
+
+    # board#9 2巡目 HIGH-A(c): 再生成前に旧 _additional_*.png を全削除。
+    # 残すと部分失敗 index に旧 hero 構成時の別画像が残存し、新 URL list の
+    # side-file と組み合わさって誤帰属 reuse → eBay へ誤画像アップロードに至る。
+    for stale in existing:
+        try:
+            stale.unlink()
+        except OSError as e:
+            logger.warning(f"stale additional 削除失敗 (sup_{candidate_id}, {stale.name}): {e}")
 
     def _process_one(idx_url: tuple[int, str]) -> Optional[dict]:
         idx, url = idx_url
@@ -331,6 +419,25 @@ def _do_supplier_additional_compose(
         )
 
     st.session_state[sk_proc] = results
+    # board#9 reviewer HIGH-1: 生成時 URL list を永続化 (次回 reuse の照合元)。
+    # 2巡目 HIGH-A(c): 完全成功時のみ書込。部分/全失敗で新 list を書くと
+    # 欠落 index が次回 reuse 判定をすり抜けて誤帰属する。失敗時は旧 list も無効化。
+    if len(results) == len(additional_urls):
+        try:
+            add_urls_path.write_text(
+                json.dumps(list(additional_urls), ensure_ascii=False), encoding="utf-8"
+            )
+        except OSError as e:
+            logger.warning(f"_additional_urls.json 書込失敗 (sup_{candidate_id}): {e}")
+    else:
+        try:
+            add_urls_path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(f"_additional_urls.json 無効化失敗 (sup_{candidate_id}): {e}")
+        logger.warning(
+            f"additional 部分失敗 (sup_{candidate_id}): "
+            f"{len(results)}/{len(additional_urls)} 成功, side-file 無効化"
+        )
 
 
 # ==========================================================================
@@ -529,29 +636,73 @@ def render_supplier_photo_apply_section(
                 )
                 return
 
-        # hero source = image_urls[0]、additional = [1:11] (eBay max 12 = hero 1 + additional 11)
-        source_url = all_urls[0]
-        additional_urls = all_urls[1:12]
+        # board#9: 合成元 picker + 位置/モデル選択 (共有部品)
+        from tabs._image_pipeline_ui import (
+            COMPOSE_COST_LABELS,
+            hero_source_index,
+            render_compose_options,
+            render_hero_source_picker,
+        )
+
+        kp = f"{_SS}c{candidate_id}_"
+        src_idx = hero_source_index(kp, all_urls)
+        source_url = all_urls[src_idx]
+        # additional = hero 以外の先頭 11 枚 (eBay max 12 = hero 1 + additional 11)
+        additional_urls = [u for i, u in enumerate(all_urls) if i != src_idx][:11]
+
+        # reviewer HIGH-2: picker での合成元変更を検知したら下流 stage を cascade clear
+        # (旧 hero 候補 / 採用 / additional / 反映結果が stale なまま残ると、誤画像を
+        # 「課金0」表示や旧結果のまま eBay に反映し得る)
+        prev_source = st.session_state.get(sk_source)
+        if prev_source and prev_source != source_url:
+            st.info("合成元画像が変わったため前回の合成候補・追加画像・反映結果は破棄されました。")
+            for k in (sk_cands, sk_picked, sk_additional_proc, sk_apply_result):
+                st.session_state.pop(k, None)
         st.session_state[sk_source] = source_url
         st.caption(
             f"取得画像: 全 {len(all_urls)} 枚 "
             f"(hero 候補 1 + additional {len(additional_urls)} 枚) / source: {source_url[:60]}"
         )
 
+        render_hero_source_picker(kp, all_urls)
+        position, model = render_compose_options(kp)
+        cost = COMPOSE_COST_LABELS.get(model, "$0.14")
+
         # Step 2: hero 合成 button
         cands = st.session_state.get(sk_cands) or []
+
+        # 正直な課金ラベル (Q0 UI 版): 設定/合成元が前回実行時と異なるなら再課金を明示
+        used = st.session_state.get(f"{_SS}hero_used_{candidate_id}")
+        opts_changed = (
+            bool(cands)
+            and used is not None
+            and used != {"position": position, "model": model, "source_url": source_url}
+        )
+        if opts_changed:
+            st.caption(
+                "⚠️ 合成設定または合成元が前回実行時と異なります。"
+                "実行すると新しい設定で再生成されます (再課金)。"
+            )
+
         _b1, _b2, _b3 = st.columns([1.4, 1.4, 4])
         with _b1:
-            label = "プレート合成実行" if not cands else "再使用 (課金0)"
+            label = "プレート合成実行" if (not cands or opts_changed) else "再使用 (課金0)"
             if st.button(label, key=f"{_SS}btn_compose_{candidate_id}", type="primary"):
-                _do_supplier_hero_compose(candidate_id, source_url, force_regenerate=False)
+                _do_supplier_hero_compose(
+                    candidate_id, source_url, force_regenerate=False,
+                    position=position, model=model,
+                    legacy_reuse_ok=(src_idx == 0),
+                )
                 st.rerun()
         with _b2:
             if st.button(
-                "再生成 ($0.14)", key=f"{_SS}btn_regen_{candidate_id}",
+                f"再生成 ({cost})", key=f"{_SS}btn_regen_{candidate_id}",
                 help="既存合成結果を破棄して Photoroom + Gemini で再合成",
             ):
-                _do_supplier_hero_compose(candidate_id, source_url, force_regenerate=True)
+                _do_supplier_hero_compose(
+                    candidate_id, source_url, force_regenerate=True,
+                    position=position, model=model,
+                )
                 st.rerun()
         with _b3:
             if cands:
@@ -593,7 +744,9 @@ def render_supplier_photo_apply_section(
         additional_processed = st.session_state.get(sk_additional_proc)
         if additional_urls and additional_processed is None:
             # auto-trigger (cache hit なら課金 0、新規なら $0.02 × N)
-            _do_supplier_additional_compose(candidate_id, additional_urls)
+            _do_supplier_additional_compose(
+                candidate_id, additional_urls, legacy_reuse_ok=(src_idx == 0),
+            )
             st.rerun()
 
         # Step 4.5: additional preview (画像処理済の場合のみ)

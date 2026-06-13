@@ -221,6 +221,8 @@ def _clear_from_step(step: int) -> None:
         # hero compose は source 画像が変わればすべてクリア (source_url は step1 入力に連動)
         f"{_SS}hero_candidates", f"{_SS}hero_selected_path",
         f"{_SS}hero_studio_path", f"{_SS}hero_source_url",
+        # board#9: picker index / 前回合成設定も別商品に持ち越さない
+        f"{_SS}hero_src_idx", f"{_SS}hero_compose_opts",
         f"{_SS}additional_processed",
         # Phase D: EPS 済みの公開 URL もクリア
         f"{_SS}processed_image_urls",
@@ -714,42 +716,77 @@ def _render_hero_compose_section() -> None:
         unsafe_allow_html=True,
     )
 
-    source_url = selected_urls[0]
+    # board#9: 合成元 picker + 位置/モデル選択 (共有部品)
+    from tabs._image_pipeline_ui import (
+        COMPOSE_COST_LABELS,
+        hero_source_index,
+        render_compose_options,
+        render_hero_source_picker,
+    )
+
+    src_idx = hero_source_index(_SS, selected_urls)
+    source_url = selected_urls[src_idx]
     candidates = st.session_state.get(f"{_SS}hero_candidates") or []
     last_source = st.session_state.get(f"{_SS}hero_source_url")
 
-    # 課金ゾーン: Photoroom + Gemini で 1 回 $0.14。CSS で amber 左ラインを付ける.
+    # 課金ゾーン: Photoroom + Gemini で 1 回 $0.14〜。CSS で amber 左ラインを付ける.
     with st.container(border=True, key=f"{_SS}cost_hero"):
+        render_hero_source_picker(_SS, selected_urls)
+        position, model = render_compose_options(_SS)
+        cost = COMPOSE_COST_LABELS.get(model, "$0.14")
+
         st.caption(
-            "選択画像の 1 枚目に MonoHonpo プレートを合成して eBay hero 画像を "
-            "生成します (約 $0.14 = 21 円 / 回、所要 30-50 秒)"
+            f"選択した合成元画像 (#{src_idx + 1}) に MonoHonpo プレートを合成して "
+            f"eBay hero 画像を生成します (約 {cost} / 回、所要 30-50 秒)"
         )
 
-        # source 変更時はキャッシュ破棄
+        # source 変更時はキャッシュ破棄 (picker での合成元変更も同経路)。
+        # reviewer HIGH-2: additional / EPS URL も cascade clear (stale EPS 反映防止)
         if last_source and last_source != source_url:
-            st.info("source 画像が変わったため前回の合成候補は破棄されました。再生成してください。")
+            st.info("source 画像が変わったため前回の合成候補・追加画像・EPS URL は破棄されました。再生成してください。")
             st.session_state[f"{_SS}hero_candidates"] = None
             st.session_state[f"{_SS}hero_selected_path"] = None
+            st.session_state.pop(f"{_SS}additional_processed", None)
+            st.session_state.pop(f"{_SS}processed_image_urls", None)
+            st.session_state[f"{_SS}hero_source_url"] = source_url  # info 再表示防止
             candidates = []
+
+        # 正直な課金ラベル (Q0 UI 版): 設定が前回実行時と異なるなら再課金を明示
+        last_opts = st.session_state.get(f"{_SS}hero_compose_opts")
+        opts_changed = (
+            bool(candidates)
+            and last_opts is not None
+            and last_opts != {"position": position, "model": model}
+        )
+        if opts_changed:
+            st.caption(
+                "⚠️ 合成設定が前回実行時と異なります。実行すると新しい設定で再生成されます (再課金)。"
+            )
 
         _b1, _b2, _b3, _b4 = st.columns([1.2, 1.4, 1.2, 4])
         with _b1:
             if st.button(
-                "プレート合成実行" if not candidates else "再使用 (課金0)",
+                "プレート合成実行" if (not candidates or opts_changed) else "再使用 (課金0)",
                 key=f"{_SS}btn_hero_compose",
                 type="primary",
                 help="既存合成結果があれば API skip して復元 (リトライ時のコスト 0)",
             ):
-                _do_hero_compose(source_url, force_regenerate=False)
+                _do_hero_compose(
+                    source_url, force_regenerate=False,
+                    position=position, model=model,
+                )
                 st.rerun()
         with _b2:
             # 明示的な再生成 (有料): Photoroom + Gemini を再実行
             if st.button(
-                "再生成 ($0.14)",
+                f"再生成 ({cost})",
                 key=f"{_SS}btn_hero_regen",
-                help="既存合成結果を破棄して Photoroom + Gemini で再合成 (約 $0.14)",
+                help=f"既存合成結果を破棄して Photoroom + Gemini で再合成 (約 {cost})",
             ):
-                _do_hero_compose(source_url, force_regenerate=True)
+                _do_hero_compose(
+                    source_url, force_regenerate=True,
+                    position=position, model=model,
+                )
                 st.rerun()
         with _b3:
             if candidates and st.button(
@@ -1060,7 +1097,10 @@ def _upload_processed_to_eps_sync() -> None:
                 st.error(f"失敗: {fname}: {err}")
 
 
-def _do_hero_compose(source_url: str, force_regenerate: bool = False) -> None:
+def _do_hero_compose(
+    source_url: str, force_regenerate: bool = False,
+    position: str = "auto", model: str = "standard",
+) -> None:
     """Photoroom + Gemini パイプライン実行 (session_state に結果を詰める).
 
     W159 (2026-05-24): W158 で新設した monitor.image_pipeline_shared の
@@ -1097,6 +1137,7 @@ def _do_hero_compose(source_url: str, force_regenerate: bool = False) -> None:
             source_url, out_base,
             force_regenerate=force_regenerate,
             k=3, max_parallel=3,
+            position=position, model=model,
         )
         if not candidates:
             _s.update(label="hero 合成失敗 (logger 参照)", state="error")
@@ -1106,6 +1147,7 @@ def _do_hero_compose(source_url: str, force_regenerate: bool = False) -> None:
         # session_state 互換維持: 旧 dict 形 (plate_id / score / path / reasoning) で書込
         st.session_state[f"{_SS}hero_candidates"] = [c.to_dict() for c in candidates]
         st.session_state[f"{_SS}hero_source_url"] = source_url
+        st.session_state[f"{_SS}hero_compose_opts"] = {"position": position, "model": model}
         if studio_path:
             st.session_state[f"{_SS}hero_studio_path"] = str(studio_path)
         # cache restored vs fresh で hero_selected_path の扱いを分岐 (旧挙動互換)

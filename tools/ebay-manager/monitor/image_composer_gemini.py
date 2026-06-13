@@ -41,6 +41,16 @@ from monitor.plate_selector import (
 
 MODEL_ID = "fal-ai/nano-banana/edit"  # Gemini 2.5 Flash Image multi-image
 
+# board#9 (2026-06-13): 高品質 opt-in モデル (Gemini 3 Pro Image)。
+# reasoning ベースで配置指示の遵守率が高い (商品と重なる/変な位置 問題への対策)。
+# $0.15/枚 (standard は $0.039/枚)。default は standard (baseline 維持)。
+MODEL_ID_PRO = "fal-ai/nano-banana-pro/edit"
+
+COMPOSE_MODELS = {
+    "standard": MODEL_ID,
+    "pro": MODEL_ID_PRO,
+}
+
 
 @dataclass
 class CompositionResult:
@@ -61,26 +71,72 @@ class HeroGenerationResult:
     product_studio_path: Optional[Path] = None
 
 
-_COMPOSE_PROMPT = (
+# board#9 (2026-06-13): プレート位置を user が指定できるよう placement block を
+# 3 つの **静的** variant に分離 (W178 教訓 = 動的 prompt 生成は品質を落とす。
+# variant は固定文のみ、"auto" は従来 prompt と一字一句同一 = baseline 不変)。
+_PROMPT_HEADER = (
     "You are compositing two images into one realistic product photograph. "
     "Image 1 is a product on a studio backdrop (keep the product exactly as shown). "
     "Image 2 is a physical gray washi paper tag you will place into the scene. "
     "\n\n"
     "TASK: Place the gray washi tag from Image 2 lying flat on the studio surface. "
     "\n\n"
-    "**CRITICAL PLACEMENT RULES** (MUST FOLLOW):\n"
-    "- The tag MUST be placed in the BOTTOM-LEFT CORNER of the frame, entirely "
-    "within the bottom-left 35% of the image (x: 0%-35% from left, y: 60%-95% "
-    "from top).\n"
-    "- The tag MUST NOT overlap, touch, or obscure any part of the product body.\n"
-    "- There MUST be at least 15% of clear empty floor space (gap) between the "
-    "tag and the nearest edge of the product.\n"
-    "- The tag must be entirely BELOW the product's horizontal midline (i.e., "
-    "positioned in the lower portion of the frame, closer to the camera).\n"
-    "- The tag size: its longest edge ~25% of final image width (smaller than "
-    "the product, so the product remains the dominant subject).\n"
-    "- If the product already occupies the bottom-left area, shift the tag to the "
-    "bottom-right corner instead (still maintaining no overlap).\n"
+)
+
+_PLACEMENT_BLOCKS = {
+    # 従来 default: 左下優先 + 商品が左下を占める時のみ右下 fallback
+    "auto": (
+        "**CRITICAL PLACEMENT RULES** (MUST FOLLOW):\n"
+        "- The tag MUST be placed in the BOTTOM-LEFT CORNER of the frame, entirely "
+        "within the bottom-left 35% of the image (x: 0%-35% from left, y: 60%-95% "
+        "from top).\n"
+        "- The tag MUST NOT overlap, touch, or obscure any part of the product body.\n"
+        "- There MUST be at least 15% of clear empty floor space (gap) between the "
+        "tag and the nearest edge of the product.\n"
+        "- The tag must be entirely BELOW the product's horizontal midline (i.e., "
+        "positioned in the lower portion of the frame, closer to the camera).\n"
+        "- The tag size: its longest edge ~25% of final image width (smaller than "
+        "the product, so the product remains the dominant subject).\n"
+        "- If the product already occupies the bottom-left area, shift the tag to the "
+        "bottom-right corner instead (still maintaining no overlap).\n"
+    ),
+    # user 指定: 左下固定 (fallback 文なし)
+    "bottom_left": (
+        "**CRITICAL PLACEMENT RULES** (MUST FOLLOW):\n"
+        "- The tag MUST be placed in the BOTTOM-LEFT CORNER of the frame, entirely "
+        "within the bottom-left 35% of the image (x: 0%-35% from left, y: 60%-95% "
+        "from top).\n"
+        "- The tag MUST NOT overlap, touch, or obscure any part of the product body.\n"
+        "- There MUST be at least 15% of clear empty floor space (gap) between the "
+        "tag and the nearest edge of the product.\n"
+        "- The tag must be entirely BELOW the product's horizontal midline (i.e., "
+        "positioned in the lower portion of the frame, closer to the camera).\n"
+        "- The tag size: its longest edge ~25% of final image width (smaller than "
+        "the product, so the product remains the dominant subject).\n"
+        "- Do NOT place the tag anywhere else: the bottom-left corner is the only "
+        "acceptable location.\n"
+    ),
+    # user 指定: 右下固定 (auto の鏡像)
+    "bottom_right": (
+        "**CRITICAL PLACEMENT RULES** (MUST FOLLOW):\n"
+        "- The tag MUST be placed in the BOTTOM-RIGHT CORNER of the frame, entirely "
+        "within the bottom-right 35% of the image (x: 65%-100% from left, y: 60%-95% "
+        "from top).\n"
+        "- The tag MUST NOT overlap, touch, or obscure any part of the product body.\n"
+        "- There MUST be at least 15% of clear empty floor space (gap) between the "
+        "tag and the nearest edge of the product.\n"
+        "- The tag must be entirely BELOW the product's horizontal midline (i.e., "
+        "positioned in the lower portion of the frame, closer to the camera).\n"
+        "- The tag size: its longest edge ~25% of final image width (smaller than "
+        "the product, so the product remains the dominant subject).\n"
+        "- Do NOT place the tag anywhere else: the bottom-right corner is the only "
+        "acceptable location.\n"
+    ),
+}
+
+PLATE_POSITIONS = tuple(_PLACEMENT_BLOCKS.keys())
+
+_PROMPT_TAIL = (
     "\n"
     "TAG FIDELITY (critical): Reproduce the tag from Image 2 with FULL FIDELITY. "
     "The tag must be a SQUARE SHAPE (not circular, not oval, not rounded-corner "
@@ -109,26 +165,53 @@ _COMPOSE_PROMPT = (
 )
 
 
+def build_compose_prompt(position: str = "auto") -> str:
+    """placement variant を選んで合成 prompt を組み立てる.
+
+    position="auto" は従来の _COMPOSE_PROMPT と一字一句同一 (baseline 不変)。
+    未知の position は auto に fallback (Q0: 無音にせず warning)。
+    """
+    block = _PLACEMENT_BLOCKS.get(position)
+    if block is None:
+        logger.warning(f"未知の plate position '{position}' → auto に fallback")
+        block = _PLACEMENT_BLOCKS["auto"]
+    return _PROMPT_HEADER + block + _PROMPT_TAIL
+
+
+# 後方互換 (既存 test / 他 module が参照しても従来文字列が得られる)
+_COMPOSE_PROMPT = build_compose_prompt("auto")
+
+
 def _compose_single(
     product_url: str,
     rec: PlateRecommendation,
     output_dir: Path,
     output_size: str = "1:1",
+    position: str = "auto",
+    model: str = "standard",
 ) -> CompositionResult:
     import time
     start = time.time()
     plate = rec.plate
     out_path = output_dir / f"hero_{plate.id}.png"
     try:
+        model_id = COMPOSE_MODELS.get(model)
+        if model_id is None:
+            logger.warning(f"未知の compose model '{model}' → standard に fallback")
+            model_id = MODEL_ID
         plate_url = fal_client.upload_file(str(plate.transparent_path))
+        arguments: dict = {
+            "prompt": build_compose_prompt(position),
+            "image_urls": [product_url, plate_url],
+            "num_images": 1,
+            "output_format": "png",
+        }
+        if model_id == MODEL_ID_PRO:
+            # pro は aspect_ratio param を持つ (standard は prompt 内 1:1 指示のみ)
+            arguments["aspect_ratio"] = "1:1"
         resp = fal_client.subscribe(
-            MODEL_ID,
-            arguments={
-                "prompt": _COMPOSE_PROMPT,
-                "image_urls": [product_url, plate_url],
-                "num_images": 1,
-                "output_format": "png",
-            },
+            model_id,
+            arguments=arguments,
             with_logs=False,
         )
         imgs = resp.get("images") or []
@@ -164,6 +247,8 @@ def generate_hero_candidates(
     k: int = 3,
     max_parallel: int = 3,
     pinned_plate_id: Optional[str] = PINNED_PLATE_ID,
+    position: str = "auto",
+    model: str = "standard",
 ) -> HeroGenerationResult:
     """Photoroom 済の商品画像を入力に、AI 判定→top-k 合成を実行する.
 
@@ -172,6 +257,8 @@ def generate_hero_candidates(
         output_dir: 合成結果の保存先
         k: Gemini 合成する候補数 (default 3)
         max_parallel: 並列度 (default 3)
+        position: プレート位置 ("auto" / "bottom_left" / "bottom_right"、board#9)
+        model: 合成モデル ("standard" = nano-banana / "pro" = nano-banana-pro)
 
     Returns:
         HeroGenerationResult with analysis + k 個の CompositionResult
@@ -202,7 +289,10 @@ def generate_hero_candidates(
     results: list[CompositionResult] = []
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {
-            pool.submit(_compose_single, product_url, r, output_dir): r
+            pool.submit(
+                _compose_single, product_url, r, output_dir,
+                position=position, model=model,
+            ): r
             for r in recs
         }
         for fut in as_completed(futures):

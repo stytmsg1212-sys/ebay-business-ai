@@ -43,6 +43,8 @@ _SUFFIX_HERO_CANDIDATES = "hero_candidates"
 _SUFFIX_HERO_SELECTED = "hero_selected_path"
 _SUFFIX_HERO_STUDIO = "hero_studio_path"
 _SUFFIX_HERO_SOURCE = "hero_source_url"
+_SUFFIX_HERO_SRC_IDX = "hero_src_idx"        # board#9: 合成元画像の選択 index
+_SUFFIX_HERO_OPTS = "hero_compose_opts"      # board#9: 前回実行時の position/model
 _SUFFIX_ADDITIONAL = "additional_processed"
 _SUFFIX_PROCESSED_URLS = "processed_image_urls"
 _SUFFIX_LAST_APPLY = "last_apply_result"
@@ -53,6 +55,98 @@ STAGE_HERO = "hero"
 STAGE_ADDITIONAL = "additional"
 STAGE_EPS = "eps"
 STAGE_APPLY = "apply"
+
+# ─────────────────────────────────────────────
+# board#9 (2026-06-13): 合成元 picker + 位置/モデル選択 (3 タブ共通部品)
+# ─────────────────────────────────────────────
+
+# UI label → 内部値 (内部値は monitor.image_composer_gemini の
+# PLATE_POSITIONS / COMPOSE_MODELS のキーと一致)
+COMPOSE_POSITION_CHOICES = {
+    "おまかせ (左下優先)": "auto",
+    "左下に固定": "bottom_left",
+    "右下に固定": "bottom_right",
+}
+COMPOSE_MODEL_CHOICES = {
+    "標準 (約 $0.14 = 21 円)": "standard",
+    "高品質 Pro (約 $0.47 = 70 円)": "pro",
+}
+# 1 回分の概算コスト (Photoroom $0.02 + 合成 3 枚分)
+COMPOSE_COST_LABELS = {"standard": "$0.14", "pro": "$0.47"}
+
+
+def hero_source_index(key_prefix: str, source_urls: list[str]) -> int:
+    """picker が保存した合成元 index を range guard 付きで返す (board#9).
+
+    URL list が変わって範囲外になったら 0 (1 枚目) に戻す。
+    """
+    cur = st.session_state.get(f"{key_prefix}{_SUFFIX_HERO_SRC_IDX}", 0)
+    if not isinstance(cur, int) or not (0 <= cur < len(source_urls)):
+        return 0
+    return cur
+
+
+def render_hero_source_picker(key_prefix: str, source_urls: list[str]) -> int:
+    """プレート合成の元画像をサムネイル一覧から選ぶ picker (board#9).
+
+    1 枚しか無い場合は UI を出さず 0 を返す。選択 index は session_state
+    f"{key_prefix}hero_src_idx" に保持。
+    """
+    n = len(source_urls)
+    if n <= 1:
+        return 0
+    cur = hero_source_index(key_prefix, source_urls)
+    with st.expander(f"合成元画像を選択 (現在: #{cur + 1} / 全 {n} 枚)", expanded=False):
+        st.caption(
+            "プレート合成の元にする画像を 1 枚選んでください (既定は 1 枚目)。"
+            "残りの画像は追加画像として扱われます。"
+        )
+        per_row = 6
+        for i in range(0, n, per_row):
+            cols = st.columns(per_row)
+            for j, url in enumerate(source_urls[i:i + per_row]):
+                idx = i + j
+                with cols[j]:
+                    try:
+                        st.image(url, use_container_width=True)
+                    except Exception:  # noqa: BLE001
+                        st.caption("(表示失敗)")
+                    if st.button(
+                        "合成元" if idx == cur else f"#{idx + 1}",
+                        key=f"{key_prefix}btn_hero_src_{idx}",
+                        type="primary" if idx == cur else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state[f"{key_prefix}{_SUFFIX_HERO_SRC_IDX}"] = idx
+                        st.rerun()
+    return cur
+
+
+def render_compose_options(key_prefix: str) -> tuple[str, str]:
+    """プレート位置 + 合成モデルの selectbox を描画し (position, model) を返す (board#9)."""
+    c1, c2 = st.columns(2)
+    with c1:
+        pos_label = st.selectbox(
+            "プレート位置",
+            list(COMPOSE_POSITION_CHOICES),
+            key=f"{key_prefix}compose_position",
+            help=(
+                "「おまかせ」は従来どおり左下優先 (商品が左下を占める時だけ右下)。"
+                "固定を選ぶとその位置のみを指示します。"
+            ),
+        )
+    with c2:
+        model_label = st.selectbox(
+            "合成モデル",
+            list(COMPOSE_MODEL_CHOICES),
+            key=f"{key_prefix}compose_model",
+            help=(
+                "Pro = Gemini 3 Pro Image。位置指示の遵守率・仕上がりが高い分、"
+                "1 回あたり約 3.4 倍のコスト。まず標準で試し、配置が乱れる商品だけ "
+                "Pro を使うのがおすすめ。"
+            ),
+        )
+    return COMPOSE_POSITION_CHOICES[pos_label], COMPOSE_MODEL_CHOICES[model_label]
 
 
 # ─────────────────────────────────────────────
@@ -110,7 +204,8 @@ def clear_pipeline_keys(prefix: str) -> None:
     """
     keys = [
         _SUFFIX_HERO_CANDIDATES, _SUFFIX_HERO_SELECTED, _SUFFIX_HERO_STUDIO,
-        _SUFFIX_HERO_SOURCE, _SUFFIX_ADDITIONAL, _SUFFIX_PROCESSED_URLS,
+        _SUFFIX_HERO_SOURCE, _SUFFIX_HERO_SRC_IDX, _SUFFIX_HERO_OPTS,
+        _SUFFIX_ADDITIONAL, _SUFFIX_PROCESSED_URLS,
         _SUFFIX_LAST_APPLY,
     ]
     for suffix in keys:
@@ -175,9 +270,10 @@ def render_image_pipeline_section(
         )
         return
 
-    # source_urls[0] = hero source
-    hero_source_url = source_urls[0]
-    additional_source_urls = list(source_urls[1:]) if len(source_urls) > 1 else []
+    # board#9: picker で選んだ index を hero source に、残りを additional に
+    hero_idx = hero_source_index(prefix, source_urls)
+    hero_source_url = source_urls[hero_idx]
+    additional_source_urls = [u for i, u in enumerate(source_urls) if i != hero_idx]
 
     # out_base (caller の sku_hint を使う、空なら eid or temp fallback)
     out_base_name = sku_hint.strip() or (f"eid_{ebay_item_id}" if ebay_item_id else f"temp_{int(time.time())}")
@@ -195,6 +291,7 @@ def render_image_pipeline_section(
     # ── Step B: hero compose ──
     _render_step_b_hero_compose(
         prefix=prefix,
+        source_urls=source_urls,
         hero_source_url=hero_source_url,
         out_base=out_base,
     )
@@ -234,39 +331,72 @@ def render_image_pipeline_section(
 # Step B: hero compose UI
 # ─────────────────────────────────────────────
 
-def _render_step_b_hero_compose(*, prefix: str, hero_source_url: str, out_base: Path) -> None:
+def _render_step_b_hero_compose(
+    *, prefix: str, source_urls: list[str], hero_source_url: str, out_base: Path,
+) -> None:
     """1 枚目の hero 合成 (Photoroom + Gemini 3 候補)."""
     sk_cands = f"{prefix}{_SUFFIX_HERO_CANDIDATES}"
     sk_selected = f"{prefix}{_SUFFIX_HERO_SELECTED}"
     sk_source = f"{prefix}{_SUFFIX_HERO_SOURCE}"
 
-    # source URL 変化検知 → 候補 cascade clear
+    # source URL 変化検知 → 下流 stage まで cascade clear (picker での合成元変更も同経路)。
+    # reviewer HIGH-2: additional / EPS URL を残すと「再使用 (課金0)」偽装 + 旧 hero の
+    # stale EPS が eBay に反映され得るため、hero 候補だけでなく下流も全て破棄する。
     last_source = st.session_state.get(sk_source)
     if last_source and last_source != hero_source_url:
-        st.info("source 画像が変わったため前回の合成候補は破棄されました。再生成してください。")
-        st.session_state.pop(sk_cands, None)
-        st.session_state.pop(sk_selected, None)
+        st.info("source 画像が変わったため前回の合成候補・追加画像・EPS URL は破棄されました。再生成してください。")
+        for sfx in (
+            _SUFFIX_HERO_CANDIDATES, _SUFFIX_HERO_SELECTED,
+            _SUFFIX_ADDITIONAL, _SUFFIX_PROCESSED_URLS, _SUFFIX_LAST_APPLY,
+        ):
+            st.session_state.pop(f"{prefix}{sfx}", None)
+        st.session_state[sk_source] = hero_source_url  # info の毎 rerun 再表示防止
 
     candidates_raw = st.session_state.get(sk_cands) or []
     # session_state は dict 形 (HeroCandidate.to_dict() の result)
     candidates = candidates_raw
 
     with st.container(border=True):
+        # board#9: 合成元 picker + 位置/モデル選択
+        render_hero_source_picker(prefix, source_urls)
+        position, model = render_compose_options(prefix)
+        cost = COMPOSE_COST_LABELS.get(model, "$0.14")
+
         st.caption(
-            f"Step B: ロゴプレート合成 (Photoroom + Gemini 3 候補, 約 $0.14 = 21 円). "
+            f"Step B: ロゴプレート合成 (Photoroom + Gemini 3 候補, 約 {cost}/回). "
             f"source: {hero_source_url[:80]}"
         )
+
+        # 正直な課金ラベル (Q0 UI 版): 設定が前回実行時と異なるなら「再使用」と
+        # 表示せず、実行 = 再生成 (再課金) であることを明示する。
+        last_opts = st.session_state.get(f"{prefix}{_SUFFIX_HERO_OPTS}")
+        opts_changed = (
+            bool(candidates)
+            and last_opts is not None
+            and last_opts != {"position": position, "model": model}
+        )
+        if opts_changed:
+            st.caption(
+                "⚠️ 合成設定が前回実行時と異なります。実行すると新しい設定で再生成されます (再課金)。"
+            )
+
         cols = st.columns([1.3, 1.4, 1.3, 4])
         with cols[0]:
             locked = _is_locked(prefix, STAGE_HERO)
-            label = "プレート合成実行" if not candidates else "再使用 (課金0)"
+            label = "プレート合成実行" if (not candidates or opts_changed) else "再使用 (課金0)"
             if st.button(label, key=f"{prefix}btn_hero_compose", type="primary", disabled=locked):
-                _do_hero_compose(prefix, hero_source_url, out_base, force_regenerate=False)
+                _do_hero_compose(
+                    prefix, hero_source_url, out_base,
+                    force_regenerate=False, position=position, model=model,
+                )
                 st.rerun()
         with cols[1]:
             locked = _is_locked(prefix, STAGE_HERO)
-            if st.button("再生成 ($0.14)", key=f"{prefix}btn_hero_regen", disabled=locked):
-                _do_hero_compose(prefix, hero_source_url, out_base, force_regenerate=True)
+            if st.button(f"再生成 ({cost})", key=f"{prefix}btn_hero_regen", disabled=locked):
+                _do_hero_compose(
+                    prefix, hero_source_url, out_base,
+                    force_regenerate=True, position=position, model=model,
+                )
                 st.rerun()
         with cols[2]:
             if candidates and st.button("候補クリア", key=f"{prefix}btn_hero_clear"):
@@ -305,7 +435,10 @@ def _render_step_b_hero_compose(*, prefix: str, hero_source_url: str, out_base: 
                     st.rerun()
 
 
-def _do_hero_compose(prefix: str, source_url: str, out_base: Path, *, force_regenerate: bool) -> None:
+def _do_hero_compose(
+    prefix: str, source_url: str, out_base: Path, *,
+    force_regenerate: bool, position: str = "auto", model: str = "standard",
+) -> None:
     """hero compose を実行して session_state に保存."""
     if not _acquire_lock(prefix, STAGE_HERO):
         st.warning("hero 合成は実行中です. 完了をお待ちください.")
@@ -317,6 +450,7 @@ def _do_hero_compose(prefix: str, source_url: str, out_base: Path, *, force_rege
         ) as _s:
             candidates, studio = compose_hero_candidates_cached(
                 source_url, out_base, force_regenerate=force_regenerate,
+                position=position, model=model,
             )
             if not candidates:
                 _s.update(label="hero 合成失敗 (logger 参照)", state="error")
@@ -324,6 +458,7 @@ def _do_hero_compose(prefix: str, source_url: str, out_base: Path, *, force_rege
                 return
             st.session_state[f"{prefix}{_SUFFIX_HERO_CANDIDATES}"] = [c.to_dict() for c in candidates]
             st.session_state[f"{prefix}{_SUFFIX_HERO_SOURCE}"] = source_url
+            st.session_state[f"{prefix}{_SUFFIX_HERO_OPTS}"] = {"position": position, "model": model}
             if studio:
                 st.session_state[f"{prefix}{_SUFFIX_HERO_STUDIO}"] = str(studio)
             st.session_state.pop(f"{prefix}{_SUFFIX_HERO_SELECTED}", None)
@@ -634,6 +769,12 @@ def _render_apply_result(result: dict) -> None:
 __all__ = [
     "render_image_pipeline_section",
     "clear_pipeline_keys",
+    "hero_source_index",
+    "render_hero_source_picker",
+    "render_compose_options",
+    "COMPOSE_POSITION_CHOICES",
+    "COMPOSE_MODEL_CHOICES",
+    "COMPOSE_COST_LABELS",
     "STAGE_HERO",
     "STAGE_ADDITIONAL",
     "STAGE_EPS",
