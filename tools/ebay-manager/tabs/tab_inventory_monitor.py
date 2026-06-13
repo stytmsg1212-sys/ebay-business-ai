@@ -84,6 +84,88 @@ def _render_inventory_summary_html(
     )
 
 
+def _run_candidate_search_in_subprocess(
+    ebay_item_id: str, sku: str, discovered_via: str, timeout_sec: int = 600
+) -> dict:
+    """run_supplier_candidate_search を別プロセスで実行 (board#19 root cause 修正).
+
+    Streamlit プロセスは tornado 互換のため WindowsSelectorEventLoopPolicy が
+    プロセス全体に設定され、Windows の SelectorEventLoop は asyncio subprocess
+    非対応 → Playwright sync API がどの thread でも NotImplementedError で即死し、
+    search_* 内の except Exception が握りつぶして空リストを返す
+    = UI 即時探索が常に「偽の市場 0 件」になっていた (W228 FIX-E と同根)。
+    フレッシュな子プロセスは既定の ProactorEventLoop で Playwright が正常動作する。
+
+    Q0: 環境エラー (起動失敗 / timeout / 出力解析不能) は success=False で返し、
+    「市場で類似商品が見つかりませんでした」(success=True + found=0) と必ず区別する。
+
+    Returns: run_supplier_candidate_search と同形の dict。
+    """
+    import json as _json
+    import os as _os
+    import subprocess as _sp
+    import sys as _sys
+
+    _base = Path(__file__).resolve().parent.parent
+    _flags = _sp.CREATE_NO_WINDOW if _sys.platform == "win32" else 0
+    try:
+        proc = _sp.run(
+            [_sys.executable, "-m", "tasks.supplier_search_cli",
+             ebay_item_id, discovered_via],
+            input=sku + "\n",
+            capture_output=True, text=True, encoding="utf-8",
+            # reviewer MEDIUM-2 (2026-06-13): 子の stderr encoding は親 env 継承に
+            # 依存させず明示 (house パターン: supplier_scraper.py L430 と同)。
+            # errors="replace" で万一の混入 byte でも reader thread を死なせない。
+            errors="replace",
+            env={**_os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+            timeout=timeout_sec, cwd=str(_base), creationflags=_flags,
+        )
+    except _sp.TimeoutExpired:
+        logger.warning("supplier_search_cli timeout eid=%s timeout=%ss",
+                       ebay_item_id, timeout_sec)
+        return {"success": False, "found": 0, "persisted": 0,
+                "message": f"探索プロセス timeout ({timeout_sec}秒) — 環境エラー (市場0件ではありません)"}
+    except OSError as e:
+        logger.warning("supplier_search_cli 起動失敗 eid=%s err=%r", ebay_item_id, e)
+        return {"success": False, "found": 0, "persisted": 0,
+                "message": f"探索プロセス起動失敗: {e}"}
+
+    if proc.returncode != 0:
+        # reviewer MEDIUM-1 (2026-06-13): UI message は揮発 (session_state) のため
+        # 子の traceback 末尾を必ず log に恒久記録 (board#19 の診断経路を閉じない)
+        logger.warning("supplier_search_cli 異常終了 eid=%s exit=%s stderr_tail=%s",
+                       ebay_item_id, proc.returncode, (proc.stderr or "")[-2000:])
+        return {"success": False, "found": 0, "persisted": 0,
+                "message": f"探索プロセス異常終了 (exit={proc.returncode}): "
+                           f"{(proc.stderr or '')[-200:]}"}
+
+    # stdout から RESULT_JSON: マーカー行を後方探索 (pipeline の print/log 汚染耐性)
+    _marker = "RESULT_JSON:"
+    payload = None
+    for _line in reversed((proc.stdout or "").splitlines()):
+        if _line.startswith(_marker):
+            try:
+                payload = _json.loads(_line[len(_marker):])
+            except _json.JSONDecodeError:
+                payload = None
+            break
+    if payload is None:
+        logger.warning("supplier_search_cli 出力解析失敗 eid=%s stdout_tail=%s",
+                       ebay_item_id, (proc.stdout or "")[-2000:])
+        return {"success": False, "found": 0, "persisted": 0,
+                "message": f"探索プロセス出力解析失敗: {(proc.stdout or '')[-200:]}"}
+    if not payload.get("ok"):
+        logger.warning("supplier_search_cli 内部エラー eid=%s error=%s",
+                       ebay_item_id, payload.get("error"))
+        return {"success": False, "found": 0, "persisted": 0,
+                "message": f"探索プロセス内エラー: {payload.get('error')}"}
+    return payload.get("result") or {
+        "success": False, "found": 0, "persisted": 0,
+        "message": "探索プロセスが空の結果を返しました",
+    }
+
+
 def render_inventory_monitor_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
@@ -697,10 +779,11 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         type="primary", width="stretch",
                         help="未探索SKUを上限件数まで即時バックグラウンド探索。完了まで数分〜数十分",
                     ):
-                        from tasks.task_supplier_candidate_search import (
-                            run_supplier_candidate_search as _run_cs_bulk,
-                        )
                         import threading as _th_bulk
+                        from streamlit.runtime.scriptrunner import (
+                            add_script_run_ctx as _add_ctx_bulk,
+                            get_script_run_ctx as _get_ctx_bulk,
+                        )
                         # 古い順・qty=0優先で N 件選出
                         _sorted_missing = sorted(
                             _missing_skus,
@@ -715,24 +798,31 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             if it.get("sku")
                         ]
 
-                        def _bg_bulk_search(targets=_targets, cfg=_cfg,
+                        def _bg_bulk_search(targets=_targets,
                                             flag_key=_bulk_search_flag,
                                             result_key=_bulk_search_result):
                             ok_count = 0
                             ng_count = 0
+                            persisted_sum = 0
+                            persisted_alt_sum = 0
                             errors = []
                             try:
                                 for eid, sku in targets:
                                     try:
-                                        r = _run_cs_bulk(
-                                            ebay_item_id=eid, sku=sku, config=cfg,
+                                        # board#19 (2026-06-13): 直接呼出は Streamlit
+                                        # プロセス内で Playwright 起動不可 → 偽 found=0。
+                                        # subprocess 経由で実探索する (helper docstring 参照)
+                                        r = _run_candidate_search_in_subprocess(
+                                            ebay_item_id=eid, sku=sku,
                                             discovered_via="ui_bulk_search",
                                         )
                                         if r.get("success"):
                                             ok_count += 1
+                                            persisted_sum += int(r.get("persisted") or 0)
+                                            persisted_alt_sum += int(r.get("persisted_alt") or 0)
                                         else:
                                             ng_count += 1
-                                            errors.append(f"{sku}: {r.get('message', 'fail')[:40]}")
+                                            errors.append(f"{sku}: {(r.get('message') or 'fail')[:40]}")
                                     except Exception as e:
                                         ng_count += 1
                                         errors.append(f"{sku}: 例外 {str(e)[:40]}")
@@ -740,28 +830,55 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 st.session_state[result_key] = {
                                     "ok": ok_count, "ng": ng_count,
                                     "total": len(targets),
+                                    "persisted": persisted_sum,
+                                    "persisted_alt": persisted_alt_sum,
                                     "errors": errors[:10],  # 最初の10件のみ保持
                                 }
                                 st.session_state[flag_key] = False
 
-                        _th_bulk.Thread(target=_bg_bulk_search, daemon=True).start()
-                        st.session_state[_bulk_search_flag] = True
-                        st.session_state.pop(_bulk_search_result, None)  # 前回結果をクリア
-                        st.success(
-                            f"{len(_targets)}件 の一括探索を開始しました。"
-                            f"数分後にページを更新すると候補が表示されます。"
-                        )
+                        if not _targets:
+                            st.warning("探索対象がありません (SKU 未設定の商品のみ)。")
+                        else:
+                            # board#19 修正 (2026-06-13): raw thread の st.session_state 書込は
+                            # ScriptRunContext 不在で global mock に fallback し実 session に
+                            # 届かない (= flag が永遠に下りず「実行中…」stuck) → ctx を移植。
+                            # HIGH-1: flag/result の準備は start() より前 (爆速完了 thread の
+                            # finally と race して flag を上書きしないため)。
+                            st.session_state[_bulk_search_flag] = True
+                            st.session_state.pop(_bulk_search_result, None)  # 前回結果をクリア
+                            _bulk_result = None  # ローカルも同期 (同 run 下部での stale 表示防止)
+                            _t_bulk = _th_bulk.Thread(target=_bg_bulk_search, daemon=True)
+                            _add_ctx_bulk(_t_bulk, _get_ctx_bulk())
+                            _t_bulk.start()
+                            st.success(
+                                f"{len(_targets)}件 の一括探索を開始しました。"
+                                f"数分後にページを更新すると結果が表示されます。"
+                            )
 
                 # 一括探索の結果表示
                 if _bulk_result is not None and not _bulk_in_progress:
+                    # board#19 MEDIUM-1 (2026-06-13): 「成功」= 探索完了であって候補保存ではない
+                    # → 新規保存件数を必ず併記 (0件でも「候補が出ない」と誤解させない)
+                    _bp = int(_bulk_result.get("persisted") or 0)
+                    _bp_alt = int(_bulk_result.get("persisted_alt") or 0)
+                    _bp_main = max(0, _bp - _bp_alt)
+                    _saved_txt = f"新規候補 {_bp_main}件"
+                    if _bp_alt:
+                        _saved_txt += f" + 別SKU出品機会 {_bp_alt}件"
                     if _bulk_result["ng"] == 0:
-                        st.success(
-                            f"一括探索完了: {_bulk_result['ok']}/{_bulk_result['total']} 件"
-                            f" 成功"
-                        )
+                        if _bp > 0:
+                            st.success(
+                                f"一括探索完了: {_bulk_result['ok']}/{_bulk_result['total']} 件"
+                                f"探索 — {_saved_txt} 保存"
+                            )
+                        else:
+                            st.info(
+                                f"一括探索完了: {_bulk_result['ok']}/{_bulk_result['total']} 件"
+                                f"探索 — 新規候補なし (基準未満・既存と同一・利益不足のみ)"
+                            )
                     else:
                         st.warning(
-                            f"一括探索完了: 成功 {_bulk_result['ok']}件 / "
+                            f"一括探索完了: 探索 {_bulk_result['ok']}件 ({_saved_txt}) / "
                             f"失敗 {_bulk_result['ng']}件 (詳細は下記)"
                         )
                         for _err in _bulk_result.get("errors", []):
@@ -778,8 +895,57 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             _flag_k = f"_oos_search_fired_{_eid_m}"
                             _result_k_display = f"_oos_search_result_{_eid_m}"
                             _last_result = st.session_state.get(_result_k_display)
+                            _name_m = f"{_title_m} ({_sku_m2})" if _title_m else _sku_m2
                             if st.session_state.get(_flag_k, False):
-                                st.caption(f"{_sku_m2}: 探索実行中…")
+                                st.caption(f"{_name_m}: 探索実行中…（1〜2分・終わったらページ更新）")
+                            elif _last_result is not None and _last_result.get("ok"):
+                                # board#19 (2026-06-13): 成功でも persisted=0 だと無反応に見えた
+                                # → 結果内訳を必ず表示 + 再探索ボタン併設
+                                # HIGH-2: alt_listing_possible=1 行はこのカード一覧に出ない
+                                # (alt=0 filter) ため、main/alt を区別して虚偽約束を防ぐ
+                                _p_cnt = int(_last_result.get("persisted") or 0)
+                                _alt_cnt = int(_last_result.get("alt") or 0)
+                                _main_cnt = max(0, _p_cnt - _alt_cnt)
+                                if _main_cnt > 0:
+                                    _alt_sfx = f"／別SKU出品機会 {_alt_cnt}件" if _alt_cnt else ""
+                                    st.caption(
+                                        f"{_name_m}: 探索完了 — 新規候補 {_main_cnt} 件保存"
+                                        f"（ページ更新で上に表示されます）{_alt_sfx}"
+                                    )
+                                elif _alt_cnt > 0:
+                                    st.caption(
+                                        f"{_name_m}: 探索完了 — 別SKU出品機会として {_alt_cnt} 件保存"
+                                        f"（このカードには出ません。仕入先候補タブで確認）"
+                                    )
+                                else:
+                                    _parts = []
+                                    if _last_result.get("low"):
+                                        _parts.append(f"類似度基準未満 {_last_result['low']}件")
+                                    if _last_result.get("existing"):
+                                        _parts.append(
+                                            f"既存/不採用済みと同一 {_last_result['existing']}件"
+                                        )
+                                    if _last_result.get("unprofitable"):
+                                        _parts.append(f"利益不足 {_last_result['unprofitable']}件")
+                                    _found_cnt = int(_last_result.get("found") or 0)
+                                    _detail = "・".join(_parts)
+                                    if _found_cnt == 0:
+                                        _summary = "市場で類似商品が見つかりませんでした"
+                                    elif _detail:
+                                        _summary = f"{_found_cnt}件 見つかりましたが {_detail}"
+                                    else:
+                                        _summary = f"{_found_cnt}件 見つかりましたが保存基準外"
+                                    st.caption(
+                                        f"{_name_m}: 探索完了 — 新規候補なし（{_summary}）"
+                                    )
+                                if st.button(
+                                    f"再探索 {_sku_m2}",
+                                    key=f"oos_search_again_{_eid_m}",
+                                    help=f"{_title_m}: 結果表示をクリアして「探索」ボタンを再表示します",
+                                    width="stretch",
+                                ):
+                                    st.session_state.pop(_result_k_display, None)
+                                    st.rerun()
                             elif _last_result is not None and not _last_result.get("ok"):
                                 # 直近の探索失敗を表示、再試行ボタン併設
                                 st.caption(
@@ -800,26 +966,38 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 help=f"{_title_m} の候補を即時探索（1〜2分・バックグラウンド）",
                                 width="stretch",
                             ):
-                                from tasks.task_supplier_candidate_search import (
-                                    run_supplier_candidate_search as _run_cs,
-                                )
                                 import threading as _th
+                                from streamlit.runtime.scriptrunner import (
+                                    add_script_run_ctx as _add_ctx,
+                                    get_script_run_ctx as _get_ctx,
+                                )
                                 _sku_tgt = _sku_m2
                                 _eid_tgt = _eid_m
                                 # 2026-04-20 修正 (HIGH-1): silent failure 対策
                                 # 旧: except Exception: pass + flag_k 残置 → 失敗 SKU が再試行不能
                                 # 新: 例外も結果も session_state に保存、flag_k は finally で必ず下ろす
+                                # board#19 (2026-06-13): 上記は ctx 無し thread のため mock 行きで
+                                # 機能していなかった → add_script_run_ctx で実 session に結線
                                 _result_k = f"_oos_search_result_{_eid_m}"
-                                def _bg_cs(eid=_eid_tgt, sku=_sku_tgt, cfg=_cfg,
+                                def _bg_cs(eid=_eid_tgt, sku=_sku_tgt,
                                            result_key=_result_k, flag_key=_flag_k):
                                     try:
-                                        r = _run_cs(
-                                            ebay_item_id=eid, sku=sku, config=cfg,
+                                        # board#19 (2026-06-13): 直接呼出は Streamlit
+                                        # プロセス内で Playwright 起動不可 → 偽 found=0。
+                                        # subprocess 経由で実探索する (helper docstring 参照)
+                                        r = _run_candidate_search_in_subprocess(
+                                            ebay_item_id=eid, sku=sku,
                                             discovered_via="ui_on_demand",
                                         )
                                         st.session_state[result_key] = {
                                             "ok": bool(r.get("success")),
                                             "msg": r.get("message") or "",
+                                            "found": int(r.get("found") or 0),
+                                            "persisted": int(r.get("persisted") or 0),
+                                            "alt": int(r.get("persisted_alt") or 0),
+                                            "low": int(r.get("skipped_low_score") or 0),
+                                            "existing": int(r.get("skipped_existing") or 0),
+                                            "unprofitable": int(r.get("skipped_unprofitable") or 0),
                                         }
                                     except Exception as e:
                                         st.session_state[result_key] = {
@@ -827,8 +1005,13 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                         }
                                     finally:
                                         st.session_state[flag_key] = False
-                                _th.Thread(target=_bg_cs, daemon=True).start()
+                                # HIGH-1 (2026-06-13): flag は start() より前に立てる
+                                # (爆速完了 thread の finally: flag=False を後から True で
+                                # 上書きすると恒久 stuck になる race 防止)
                                 st.session_state[_flag_k] = True
+                                _t_cs = _th.Thread(target=_bg_cs, daemon=True)
+                                _add_ctx(_t_cs, _get_ctx())
+                                _t_cs.start()
                                 st.success(f"{_sku_m2}: 探索開始。数分後にページ更新してください。")
 
         else:
