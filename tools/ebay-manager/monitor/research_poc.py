@@ -372,6 +372,98 @@ def compute_profit_true_for_research(
     return int(profit_jpy), profit_usd, None, float(result.revenue)
 
 
+def compute_max_purchase_jpy(
+    *,
+    terapeak_avg_price_usd: Optional[float],
+    manual_weight_g: Optional[float],
+    length_cm: Optional[float] = None,
+    width_cm: Optional[float] = None,
+    height_cm: Optional[float] = None,
+    settings: Optional[dict] = None,
+) -> tuple[Optional[int], Optional[str]]:
+    """W262: けいすけ基準 PASS が成立する上限仕入価格 (損益分岐仕入価格、円) を逆算.
+
+    用途 (board #1 / W262):
+      仕入先未発見の監視候補について「同等品が ¥X 以下で出品されれば利益が取れる」
+      目標仕入価格を Terapeak 平均売値 + 推定重量から逆算する。
+      この値を keyword watch の price_max_jpy に渡すことで、in_price_range 通知が
+      そのまま「利益が出る価格で出品された」通知になる。
+
+    アルゴリズム:
+      利益は仕入価格に対して単調減少 (calculator.calculate は仕入を線形コスト計上)
+      のため、けいすけ基準の PASS/FAIL 境界は一意。¥1 で PASS を確認した後、
+      hi を FAIL になるまで倍々拡張し、二分探索で境界を求める (~25 回の calculate)。
+
+    Returns:
+        (max_purchase_jpy, None)  — 逆算成功 (この価格以下の仕入で基準 PASS)
+        (None, reason)            — 逆算不能 (terapeak/weight 欠落、¥1 でも不達 等)
+    """
+    if not terapeak_avg_price_usd or terapeak_avg_price_usd <= 0:
+        return None, "terapeak_avg_price_usd 未入力 (逆算不可)"
+    if not manual_weight_g or manual_weight_g <= 0:
+        # P1-1 と同根: weight 0 clip で偽の上限価格を作らない
+        return None, "manual_weight_g 未入力 (送料計算不能のため逆算不可)"
+
+    if settings is None:
+        from calculator import load_settings as _load_settings
+        try:
+            settings = _load_settings()
+        except Exception as e:
+            return None, f"settings load 失敗: {e}"
+
+    def _probe(purchase_yen: int) -> tuple[Optional[bool], Optional[str]]:
+        """指定仕入価格でのけいすけ基準合否。(None, reason) = 計算不能."""
+        profit_jpy, _usd, reason, revenue_jpy = compute_profit_true_for_research(
+            terapeak_avg_price_usd=terapeak_avg_price_usd,
+            purchase_yen=purchase_yen,
+            manual_weight_g=manual_weight_g,
+            length_cm=length_cm,
+            width_cm=width_cm,
+            height_cm=height_cm,
+            settings=settings,
+        )
+        if profit_jpy is None:
+            return None, reason
+        kc = keisuke_check(float(profit_jpy), float(revenue_jpy or 0))
+        return bool(kc["pass"]), None
+
+    ok, reason = _probe(1)
+    if ok is None:
+        return None, reason
+    if not ok:
+        return None, "¥1 仕入でも けいすけ基準 不達 (Terapeak 売値が低すぎ or 送料負け)"
+
+    _CAP = 10_000_000
+    fx = settings.get("exchange_rate", 150) or 150
+    lo = 1  # PASS 確認済
+    hi = max(2, int(float(terapeak_avg_price_usd) * float(fx)))
+
+    # hi を FAIL になるまで倍々拡張 (売値全額相当の仕入なら通常 FAIL のはず)
+    while True:
+        ok_hi, reason_hi = _probe(hi)
+        if ok_hi is None:
+            return None, reason_hi
+        if not ok_hi:
+            break
+        lo = hi
+        if hi >= _CAP:
+            return None, f"仕入 ¥{_CAP:,} でも基準成立 (入力異常の疑い)"
+        hi = min(hi * 2, _CAP)
+
+    # 二分探索: 不変条件 lo=PASS / hi=FAIL
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        ok_mid, reason_mid = _probe(mid)
+        if ok_mid is None:
+            return None, reason_mid
+        if ok_mid:
+            lo = mid
+        else:
+            hi = mid
+
+    return lo, None
+
+
 # ============================================================================
 # FIX-3: needs_review (技術失敗) 候補の再探索経路
 # ============================================================================

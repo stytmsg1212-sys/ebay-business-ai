@@ -491,7 +491,7 @@ def test_watch_only_approval_registers_watch_without_draft():
     assert result['needs_review_fallen'] is False
     # 汚染防衛線: description パイプラインは一切呼ばれない
     assert _p_gen.call_count == 0, 'found_url 無しで description 生成が呼ばれた'
-    # price_max_jpy は found_price_jpy=None を引き継ぐ (上限は手動設定)
+    # W262: rc に terapeak 無し → 損益分岐逆算不可 → found_price_jpy=None に fallback
     assert all(c['price_max_jpy'] is None for c in calls)
 
     updated_rc = get_research_candidate(rc_id)

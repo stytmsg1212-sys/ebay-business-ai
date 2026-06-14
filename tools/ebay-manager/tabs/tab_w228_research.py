@@ -885,12 +885,56 @@ def _load_max_oos_limit() -> int:
         return 20
 
 
+def _compute_target_buy_jpy(rc: Optional[dict]) -> tuple[Optional[int], Optional[str]]:
+    """W262: rc 行から損益分岐仕入価格 (けいすけ基準 PASS 上限、円) を逆算.
+
+    例外は (None, reason) に握って caller の fallback (found_price_jpy) に倒す
+    (watch 登録自体を逆算失敗で止めない)。
+    """
+    if not rc:
+        return None, 'rc 未提供'
+    try:
+        from monitor.research_poc import compute_max_purchase_jpy
+        return compute_max_purchase_jpy(
+            terapeak_avg_price_usd=rc.get('terapeak_avg_price_usd'),
+            manual_weight_g=rc.get('manual_weight_g'),
+            length_cm=rc.get('length_cm'),
+            width_cm=rc.get('width_cm'),
+            height_cm=rc.get('height_cm'),
+        )
+    except Exception as e:
+        logger.warning(
+            '[w228_sec_d] 損益分岐仕入価格 逆算失敗 rc_id=%s: %s', rc.get('rc_id'), e
+        )
+        return None, f'逆算例外: {type(e).__name__}: {e}'
+
+
+def _get_max_purchase_for_rc(rc: dict) -> tuple[Optional[int], Optional[str]]:
+    """W262: Section D 表示用の損益分岐仕入価格 (session_state cache 付き).
+
+    逆算は calculator.calculate を ~25 回呼ぶため、rerun 毎の再計算を避ける。
+    cache key に入力値 (terapeak/weight) を含め、値の更新時は自動で再計算する。
+    """
+    cache_key = (
+        f'_w228_max_buy_{rc.get("rc_id")}'
+        f'_{rc.get("terapeak_avg_price_usd")}_{rc.get("manual_weight_g")}'
+        f'_{rc.get("length_cm")}_{rc.get("width_cm")}_{rc.get("height_cm")}'
+    )
+    cached = st.session_state.get(cache_key)
+    if cached is not None:
+        return cached
+    res = _compute_target_buy_jpy(rc)
+    st.session_state[cache_key] = res
+    return res
+
+
 def _run_watch_only_approval(
     rc_id: int,
     title_ja: str,
     found_price_jpy: Optional[int],
     max_oos: int,
     result: dict,
+    rc: Optional[dict] = None,
 ) -> dict:
     """found_url 無し (監視候補) の承認: keyword watch 登録のみ実施.
 
@@ -899,6 +943,10 @@ def _run_watch_only_approval(
     description / draft 生成は不可能かつ不要のため跳ばし、watch 登録成功で
     watch_registered 終端に遷移する。watch 登録が唯一の目的のため、失敗・上限超過は
     needs_review に戻して可視化する (silent 終端禁止 / Q0)。
+
+    W262: price_max_jpy は誤マッチ品の found_price_jpy ではなく、けいすけ基準 PASS が
+    成立する損益分岐仕入価格 (rc から逆算) を優先する。逆算不能時のみ found_price_jpy
+    に fallback。
     """
     # 在庫0上限ガード (P0-3、通常経路と同一基準)
     try:
@@ -924,6 +972,25 @@ def _run_watch_only_approval(
         result['message'] = f'監視候補ですが{reason}。needs_review に戻しました。'
         return result
 
+    # ── W262: 損益分岐仕入価格を watch 上限価格に採用 ────────────────────
+    target_buy_jpy, _target_reason = _compute_target_buy_jpy(rc)
+    # H-1: Section232 該当は逆算に実関税が未反映 (calculator legacy washing) のため
+    # 上限が過大になり得る → memo/message に注記伝播 (自動 BLOCK はしない = 規約準拠)
+    _s232 = bool(rc.get('section232_flag')) if rc else False
+    price_max = target_buy_jpy if target_buy_jpy is not None else found_price_jpy
+    if target_buy_jpy is not None:
+        memo_price = f' 上限¥{target_buy_jpy:,}=損益分岐仕入価格'
+        if _s232:
+            memo_price += ' (Section232関税未反映・実際の上限はこれより低い)'
+    elif found_price_jpy is not None:
+        # M-2: 由来の正のラベル (損益分岐とは書かない = 虚偽ラベル禁止)
+        memo_price = f' 上限¥{found_price_jpy:,}=候補品価格(参考)'
+        if _s232:
+            memo_price += ' (Section232該当候補・関税注意)'
+    else:
+        memo_price = ''
+    result['price_max_jpy'] = price_max
+
     from monitor.keyword_watch_db import add_watch
     keyword = title_ja.strip()
     sites = [
@@ -937,8 +1004,8 @@ def _run_watch_only_approval(
                 site=site,
                 search_url=search_url,
                 keyword=keyword,
-                price_max_jpy=found_price_jpy,
-                memo=f'W228 research rc_id={rc_id} (監視候補承認)',
+                price_max_jpy=price_max,
+                memo=f'W228 research rc_id={rc_id} (監視候補承認){memo_price}',
                 source='w228_research',
             )
             watch_ids_registered.append(watch_id)
@@ -986,8 +1053,24 @@ def _run_watch_only_approval(
     result['success'] = True
     result['watch_registered'] = True
     result['watch_ids'] = watch_ids_registered
+    if target_buy_jpy is not None:
+        price_note = (
+            f'上限価格 ¥{target_buy_jpy:,} (損益分岐仕入価格 = この価格以下で出品されれば'
+            'けいすけ基準 PASS) で'
+        )
+        if _s232:
+            price_note += (
+                '【注意: Section232 関税は逆算に未反映 — 実際の上限はこれより低い】'
+            )
+    elif price_max is not None:
+        price_note = f'上限価格 ¥{price_max:,} (候補品価格・参考) で'
+        if _s232:
+            price_note += '【Section232該当候補・関税注意】'
+    else:
+        price_note = '上限価格なしで'
     result['message'] = (
-        f'監視候補として keyword watch を {len(watch_ids_registered)} サイトに登録しました '
+        f'監視候補として keyword watch を {len(watch_ids_registered)} サイトに'
+        f'{price_note}登録しました '
         '(仕入先未発見のため下書きは生成していません。新着検知をお待ちください)。'
     )
     return result
@@ -1060,7 +1143,7 @@ def _run_approval_logic(
     # ため、ここで分岐する (2026-06-12 code-review H-1)。
     if not found_url:
         return _run_watch_only_approval(
-            rc_id, title_ja, found_price_jpy, max_oos, result
+            rc_id, title_ja, found_price_jpy, max_oos, result, rc=rc
         )
 
     # ── Step 2: W226 description 生成 ────────────────────────────────────
@@ -1369,6 +1452,26 @@ def _render_section_d(config: dict) -> None:
                 st.caption('【利益額 (真値)】')
                 if profit_jpy is None:
                     st.warning('利益未計算 (監視候補)')
+                    # ── W262: 損益分岐仕入価格 (目標仕入価格) を併記 ──────
+                    _target_buy, _target_reason = _get_max_purchase_for_rc(rc)
+                    if _target_buy is not None:
+                        st.markdown(
+                            f'目標仕入価格: **¥{_target_buy:,} 以下**'
+                        )
+                        st.caption(
+                            'この価格以下で出品されれば けいすけ基準 PASS '
+                            '(Terapeak 平均売値 + 推定重量から逆算)。'
+                            '承認すると watch 上限価格にこの値を使います。'
+                        )
+                        if rc.get('section232_flag'):
+                            st.caption(
+                                ':red[Section232 関税は逆算に未反映 — '
+                                '実際の上限はこれより低い]'
+                            )
+                    else:
+                        st.caption(
+                            f'目標仕入価格: 算出不可 ({_target_reason or "理由不明"})'
+                        )
                 else:
                     profit_jpy_int = int(profit_jpy)
                     profit_usd_f = float(profit_usd) if profit_usd is not None else 0.0
