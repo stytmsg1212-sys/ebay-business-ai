@@ -4366,6 +4366,13 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
     - status_unknown: 上記以外 ('不明' / 'エラー' 等) — 従来は silent drop
       されて UI のどこにも出なかった (Q0)。read-only 一覧で可視化する。
 
+    各 item dict には依頼ボード#20 (2026-06-14) で `auction_ended_grace` フラグを追加:
+    - 1 = ヤフオク「落札者なし終了」で yahoo_grace_until が未来 (= 再出品待ちの
+      24h 猶予中)。UI で「オークション終了（落札者なし・再出品待ち）」と区別表示する。
+      売り切れ(落札済)は grace を張らず即時再検索のため 0。
+    - source_status は '在庫無' のまま (grace は status を変えない) なので
+      out_of_stock バケツ内でこのフラグにより細分表示する。
+
     フィルタ条件 (2026-04-30 改訂、user 公認 Q1-A + Q3):
     - quantity_ebay >= 1: 在庫 0 化されたら一覧から即消す (不具合 1 修正)
     - is_ended = 0: daily_relist で退役した旧 ItemID は除外 (不具合 3 修正)
@@ -4384,7 +4391,11 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
             SELECT ebay_item_id, sku, title, quantity_ebay, source_status,
                    source, current_price, rank, source_url, source_last_checked,
                    COALESCE(risk_confirmed, 0) as risk_confirmed,
-                   ebay_image_url
+                   ebay_image_url,
+                   yahoo_grace_until,
+                   CASE WHEN yahoo_grace_until IS NOT NULL
+                             AND yahoo_grace_until > datetime('now')
+                        THEN 1 ELSE 0 END AS auction_ended_grace
             FROM ebay_listings
             WHERE quantity_ebay >= 1
               AND COALESCE(is_ended, 0) = 0

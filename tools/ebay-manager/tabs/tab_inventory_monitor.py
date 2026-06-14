@@ -241,8 +241,11 @@ def render_inventory_monitor_tab(s: dict) -> None:
         for _kind, _msg in st.session_state.pop("_inv_action_notice", []):
             {"success": st.success, "error": st.error, "info": st.info}.get(_kind, st.info)(_msg)
 
-        # 2026-06-05 user 要望: Yahoo 24h 再出品猶予 (W100 grace) 撤廃により
-        # 「再出品待ち」表示セクションを削除。Yahoo 終了/売切も即 OOS 扱い (要対応/確認不可に出る)。
+        # 2026-06-05 user 要望: Yahoo 24h 再出品猶予 (W100 grace) の独立「再出品待ち」
+        # 表示セクションを削除。Yahoo 終了/売切も要対応/確認不可の一覧に出す。
+        # 依頼ボード#20 (2026-06-14): grace 自体は撤廃されておらず検索タイミングは健在
+        # (落札なし終了=24h猶予 / 売切=即時)。独立セクションは作らず、要対応一覧の各カード内に
+        # 「オークション終了（落札者なし）」バナーとして区別表示する (_render_oos_block 内)。
 
         def _notice(kind: str, msg: str) -> None:
             """rerun を跨いで表示する通知 queue (タブ冒頭で pop して表示)."""
@@ -411,6 +414,31 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             f'style="color:#156a63;font-size:12px;">仕入先URLを開く</a></div>',
                             unsafe_allow_html=True,
                         )
+
+                # --- 依頼ボード#20 (2026-06-14): ヤフオク「落札者なし終了」は
+                # 売り切れと区別して「オークション終了（再出品待ち）」と明示。
+                # 24h 猶予中 (yahoo_grace_until 未来) = 再出品の可能性を待って
+                # 仕入先探索を保留中であることを user に伝える。売り切れ(落札済)は
+                # grace を張らず即時再検索のため、このバナーは出ない。
+                if item.get("auction_ended_grace"):
+                    _grace_disp = item.get("yahoo_grace_until") or ""
+                    try:
+                        from datetime import datetime as _dtg, timedelta as _tdg
+                        _g = _dtg.strptime(_grace_disp, "%Y-%m-%d %H:%M:%S") + _tdg(hours=9)
+                        _grace_disp = _g.strftime("%Y-%m-%d %H:%M") + " (JST)"
+                    except Exception:
+                        pass
+                    st.markdown(
+                        f'<div style="border-left:4px solid #b8860b;'
+                        f'background:rgba(184,134,11,0.08);padding:8px 12px;'
+                        f'margin:4px 0;border-radius:4px;font-size:12px;color:#7a5a0a;">'
+                        f'🔔 <b>オークション終了（落札者なし）</b> — 再出品される可能性が'
+                        f'あるため、{html.escape(_grace_disp)} 以降に自動で仕入先を'
+                        f'再確認します。今すぐ販売停止するなら下の「在庫を0にする」を'
+                        f'押してください。'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 st.markdown("---")
 
@@ -599,6 +627,15 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 f"すべて『別商品の出品候補』として分類されており、この出品の"
                                 f"置き換えには使えません）。別商品として出品する検討は"
                                 f"『別SKU出品機会』タブで行ってください。"
+                            )
+                        elif item.get("auction_ended_grace"):
+                            # 依頼ボード#20 (2026-06-14): 落札なし終了は再出品待ちで
+                            # 探索を 24h 猶予中。「候補未探索」と誤表示すると user が
+                            # 探索漏れと誤解するため grace 中である旨を明示する。
+                            st.caption(
+                                "オークション終了（落札者なし）のため仕入先探索は"
+                                "再出品待ちで 24h 猶予中。上記の予定時刻以降に自動で"
+                                "再探索されます（在庫が復活すれば候補に表示）。"
                             )
                         else:
                             st.caption(
