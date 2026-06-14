@@ -66,6 +66,46 @@ def inject_webhook_into_config(config: dict) -> dict:
     return config
 
 
+# 依頼ボード#22 (2026-06-14): 通知カテゴリ別 Discord チャンネル ルーティング。
+# 「あらゆる投稿が #notifications に集約」を解消し、種別ごとに専用チャンネルへ振り分ける。
+# 各カテゴリは専用 env webhook を持ち、未設定なら DISCORD_WEBHOOK_URL (既定 ch) に fallback。
+# → user は分けたいチャンネルだけ作成して env を設定すればよい (残りは自動で既定 ch)。
+WEBHOOK_CATEGORY_ENV = {
+    'inventory': 'DISCORD_INVENTORY_WEBHOOK_URL',  # 在庫アラート / OOS / 状態不明
+    'order':     'DISCORD_ORDER_WEBHOOK_URL',      # 売れた / 注文 / payout
+    'rival':     'DISCORD_RIVAL_WEBHOOK_URL',       # ライバルセラー検知 / 価格
+    'keyword':   'DISCORD_KEYWORD_WEBHOOK_URL',     # キーワード新着監視
+    'research':  'DISCORD_RESEARCH_WEBHOOK_URL',    # harvest / sourcing / 朝brief / 発掘
+    'pricing':   'DISCORD_PRICING_WEBHOOK_URL',     # 価格改定 / 燃料サーチャージ
+    'system':    'DISCORD_SYSTEM_WEBHOOK_URL',      # ヘルス / エラー / 予算 / lint / 日次レポート
+}
+
+
+def resolve_webhook(category: str = 'default') -> str:
+    """通知カテゴリ → webhook URL を解決。
+
+    専用 env (WEBHOOK_CATEGORY_ENV) が設定されていればそれを、未設定なら
+    DISCORD_WEBHOOK_URL (既定 ch) に fallback する。category 不明時も既定にfallback。
+    → user が一部チャンネルだけ作成しても残りは既定 ch に届き silent drop しない (Q0)。
+    """
+    env_name = WEBHOOK_CATEGORY_ENV.get(category)
+    if env_name:
+        url = (os.environ.get(env_name) or '').strip()
+        if url:
+            return url
+    return (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
+
+
+def notifier_for(category: str = 'default') -> 'DiscordNotifier':
+    """カテゴリ別 DiscordNotifier を返す (依頼ボード#22)。
+
+    resolve_webhook の結果を bypass_env=True で直接使う = env DISCORD_WEBHOOK_URL に
+    よる上書きを避け、カテゴリ専用 webhook を確実に使用する。専用 env 未設定時は
+    resolve_webhook が DISCORD_WEBHOOK_URL を返すため従来と同一の既定 ch に届く。
+    """
+    return DiscordNotifier(resolve_webhook(category), bypass_env=True)
+
+
 class DiscordNotifier:
     """Discord Webhook 通知クラス"""
 
