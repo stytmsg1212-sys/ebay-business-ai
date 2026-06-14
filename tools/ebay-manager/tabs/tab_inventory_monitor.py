@@ -1124,26 +1124,68 @@ def render_inventory_monitor_tab(s: dict) -> None:
             st.markdown(f"### 状態不明 ({len(unk_items)}件)")
             st.caption(
                 "仕入先ページの在庫状態を自動判定できなかった商品です。"
-                "仕入先URLを開いて実状態を確認してください "
+                "仕入先URLを開いて実状態を確認し、右の欄に結果を記載して「保存」してください。"
+                "保存すると要対応一覧へ正しく振り分けられます "
                 "(ページ形式が変わった場合はサイト設定の見直しが必要です)。"
             )
-            import pandas as pd
-            _unk_df = pd.DataFrame([
-                {
-                    "タイトル": (it.get("title") or "")[:60],
-                    "状態": it.get("source_status") or "",
-                    "eBay在庫": it.get("quantity_ebay"),
-                    "仕入先URL": it.get("source_url") or "",
-                    "最終チェック": it.get("source_last_checked") or "",
-                }
-                for it in unk_items
-            ])
-            st.dataframe(
-                _unk_df, hide_index=True, width="stretch",
-                column_config={
-                    "仕入先URL": st.column_config.LinkColumn("仕入先URL"),
-                },
-            )
+            # 依頼ボード#21 (2026-06-14): 状態不明を read-only 表 → 手動判定入力欄に変更。
+            # user が仕入先を実見した結果 (在庫有/在庫無/ページなし) を記載 → 保存で
+            # source_status に反映 (update_ebay_listing_status が在庫有時の risk_confirmed
+            # リセットも処理)。在庫有→要対応から解消 / 在庫無→在庫切れ / ページなし→確認不可。
+            from monitor.database import update_ebay_listing_status as _upd_unk_status
+            _UNK_PLACEHOLDER = "（選択してください）"
+            _UNK_CHOICES = [_UNK_PLACEHOLDER, "在庫有", "在庫無", "ページなし"]
+            for _u in unk_items:
+                _u_eid = _u.get("ebay_item_id") or ""
+                _u_title = (_u.get("title") or "")[:70]
+                _u_url = _u.get("source_url") or ""
+                _u_last = str(_u.get("source_last_checked") or "")[:16]
+                with st.container(border=True):
+                    _uc1, _uc2, _uc3 = st.columns([4.2, 2.0, 2.0])
+                    with _uc1:
+                        st.markdown(
+                            f'<div style="font-size:12px;color:#2a2e2a;">'
+                            f'{html.escape(_u_title)}</div>'
+                            f'<div style="font-size:11px;color:#8d927f;">'
+                            f'現状態: {html.escape(_u.get("source_status") or "不明")}'
+                            f' ・ eBay在庫 {_u.get("quantity_ebay")}'
+                            f' ・ 最終チェック {html.escape(_u_last)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if _u_url:
+                            st.markdown(
+                                f'<a href="{html.escape(_u_url, quote=True)}" target="_blank" '
+                                f'style="color:#156a63;font-size:12px;">仕入先URLを開いて確認</a>',
+                                unsafe_allow_html=True,
+                            )
+                    with _uc2:
+                        _u_choice = st.selectbox(
+                            "実状態を記載",
+                            _UNK_CHOICES,
+                            key=f"unk_status_{_u_eid}",
+                            label_visibility="collapsed",
+                        )
+                    with _uc3:
+                        if st.button(
+                            "保存", key=f"unk_save_{_u_eid}",
+                            type="primary", width="stretch",
+                            help="記載した実状態を保存して要対応一覧へ振り分けます",
+                        ):
+                            if _u_choice == _UNK_PLACEHOLDER:
+                                _notice("error",
+                                        f"{_u_title}: 実状態を選択してください")
+                            else:
+                                try:
+                                    _upd_unk_status(_u_eid, _u_choice)
+                                    bump_db_version()  # 状態変更後 read-cache 無効化
+                                    _notice("success",
+                                            f"{_u_title}: 状態を「{_u_choice}」として保存しました")
+                                except Exception as _ue:
+                                    logger.exception(
+                                        "状態不明 手動保存失敗 eid=%s", _u_eid)
+                                    _notice("error",
+                                            f"{_u_title}: 保存に失敗しました — {_ue}")
+                            st.rerun(scope="app")
 
     # ---------- 監視リスト ----------
     with monitor_tab1:
