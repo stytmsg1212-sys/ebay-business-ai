@@ -36,6 +36,7 @@ import streamlit as st
 
 from monitor.research_gate import (
     DECISION_REJECT_DEADSTOCK,
+    DECISION_REJECT_GLOBAL_GLUT,
     DECISION_REJECT_NO_DEMAND,
     DECISION_SKIP_TOO_NEW,
     DECISION_TARGET_INSTOCK,
@@ -229,6 +230,9 @@ def _show_gate_result(decision: str, reason: str) -> None:
         st.warning(f"判定: **スキップ (出品新しすぎ)**\n\n{reason}")
     elif decision == DECISION_REJECT_NO_DEMAND:
         st.error(f"判定: **除外 (需要なし)**\n\n{reason}")
+    elif decision == DECISION_REJECT_GLOBAL_GLUT:
+        # 依頼ボード#23 (2026-06-15): 全世界グラット除外
+        st.error(f"判定: **除外 (全世界で出品過多・売れていない)**\n\n{reason}")
     else:
         st.error(f"判定: **不明 ({decision})**\n\n{reason}")
 
@@ -1488,6 +1492,16 @@ def _render_section_d(config: dict) -> None:
                     st.success('けいすけ基準: PASS')
                 else:
                     st.error('けいすけ基準: 不合格')
+
+                # ── W265: 状態整合 (中古は売値減額) の明示 ─────────────
+                _cond_note = rc.get('condition_match_note')
+                _cond_used = rc.get('condition_is_used')
+                if _cond_note:
+                    if _cond_used == 1:
+                        # 中古減額は利益に直結するので警告色で明示
+                        st.markdown(f':orange[🏷️ {_cond_note}]')
+                    else:
+                        st.caption(f'🏷️ 状態整合: {_cond_note}')
 
             with col_p2:
                 # Section 232 赤バッジ

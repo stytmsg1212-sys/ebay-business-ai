@@ -34,6 +34,24 @@ from monitor.research_gate import (
     DECISION_TARGET_INSTOCK,
     DECISION_TARGET_OOS_WATCH,
 )
+from types import SimpleNamespace
+
+
+@pytest.fixture(autouse=True)
+def _stub_w265_resolve(monkeypatch):
+    """W265: evaluate_product が仕入先ページを実 scrape しないよう stub (hermetic)。
+
+    scrape_error 付き = _decide_condition_pricing が untrusted → 売値無補正 = 既存
+    テストの期待値を変えない。実 scrape の検証は Q1 実機で別途行う。
+    """
+    monkeypatch.setattr(
+        "monitor.product_resolver.resolve_product_from_url",
+        lambda url, **kw: SimpleNamespace(
+            scrape_error="test-stub", condition_ja=None,
+            description_ja=None, title_ja=None,
+        ),
+        raising=False,
+    )
 
 
 # ---- 共通セットアップ -------------------------------------------------------

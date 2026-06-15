@@ -277,7 +277,12 @@ def _build_discord_message(
             title = (item.get("title_ja") or "")[:30]
             profit = item.get("profit_jpy_true")
             profit_str = f"¥{profit:,}" if profit is not None else "利益未計算"
-            lines.append(f"  ・{title} {profit_str}")
+            # W265: 中古候補は売値減額済み = 利益が状態整合済みであることを明示
+            cond_tag = ""
+            if item.get("condition_is_used") == 1:
+                cond = (item.get("found_condition_ja") or "中古")[:16]
+                cond_tag = f" [中古:{cond}]"
+            lines.append(f"  ・{title} {profit_str}{cond_tag}")
         if len(awaiting_items) > 10:
             lines.append(f"  他 {len(awaiting_items) - 10} 件")
 

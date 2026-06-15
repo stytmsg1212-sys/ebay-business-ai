@@ -99,6 +99,145 @@ def _infer_condition_ja(title: str) -> Optional[str]:
     return None
 
 
+# `_infer_condition_ja` が返すラベルのうち「中古」扱いするもの。
+# 「新品」「新品同様/未使用」は新品経路 (= 全 condition 混在の Terapeak 相場で計算)。
+# 理由: 全 condition avg は中古も含むため新品候補に対しては保守的 (= 売値を過小評価)
+#       であり偽黒字を生まない。一方それ以外 (美品〜ジャンク) は中古として
+#       Terapeak の Used 絞り込み相場で再計算する (依頼ボード#3 / W265)。
+_USED_CONDITION_LABELS: frozenset[str] = frozenset({
+    "美品",
+    "良品/並品",
+    "使用感あり",
+    "難あり",
+    "通電のみ",
+    "ジャンク/動作未確認",
+})
+
+
+def _condition_is_used(condition_ja: Optional[str]) -> Optional[bool]:
+    """コンディション文字列を 新品/中古/不明 の 3 値で分類する (純関数).
+
+    `_infer_condition_ja` の戻り値ラベルを前提とする (scrape 失敗時の fallback 用)。
+
+    Returns:
+        True  = 中古 (売値を減額補正すべき)
+        False = 新品/新品同様 (全 condition 相場のままでよい = 保守的)
+        None  = 不明 (推定不能 → 状態整合を適用せず現行挙動を維持)
+    """
+    if not condition_ja:
+        return None
+    if condition_ja in _USED_CONDITION_LABELS:
+        return True
+    # "新品" / "新品同様/未使用" は新品経路。
+    return False
+
+
+# 8 段階ランク → 想定売値の係数 (依頼ボード#3 / W265 叩き台、2026-06-15)。
+# Terapeak の全 condition 混在相場 (= 新品寄り) に対し、中古候補の売値を状態に
+# 応じて減額する。新品 (N/S) は 1.00 = 無補正 (全 condition avg は中古込みで
+# 既に保守的なため二重減額しない / 現行挙動維持 = 回帰なし)。
+# 値は初期値であり、運用で settings 経由に昇格して調整可能 (K1: まず定数で確定)。
+_RANK_SALE_COEFF: dict[str, float] = {
+    "N":     1.00,
+    "S":     1.00,
+    "A":     0.85,
+    "B":     0.75,
+    "C":     0.65,
+    "D":     0.50,
+    "PO":    0.45,
+    "As-Is": 0.35,
+}
+
+
+def condition_sale_coeff(rank_code: Optional[str]) -> float:
+    """8 段階ランクコードから想定売値の係数を返す (純関数).
+
+    未知ランク / None は 1.00 (無補正 = 現行挙動) を返す。呼出側は係数 < 1.0 を
+    「中古として減額した」signal として扱える。
+
+    Args:
+        rank_code: 'N'/'S'/'A'/'B'/'C'/'D'/'PO'/'As-Is' または None。
+
+    Returns:
+        売値係数 (0 < coeff <= 1.0)。
+    """
+    if not rank_code:
+        return 1.0
+    return _RANK_SALE_COEFF.get(rank_code, 1.0)
+
+
+# classify_rank は API 失敗時に "As-Is" + confidence=0.3 の fallback を返す
+# (rank_classifier docstring)。これを真に受けると新品候補を 0.35 で誤減額し
+# 利益を過小評価 = 機会損失方向の誤り。confidence がこの floor 未満なら減額しない。
+_RANK_CONFIDENCE_FLOOR = 0.5
+
+
+def _decide_condition_pricing(
+    *,
+    rank_code: Optional[str],
+    rank_confidence: Optional[float],
+    terapeak_avg_price_usd: Optional[float],
+    scraped_condition_ja: Optional[str],
+    fallback_condition_ja: Optional[str],
+) -> dict:
+    """状態整合の価格判断 (純関数、副作用なし。scrape/AI 呼出は呼出側が行う).
+
+    依頼ボード#3 / W265。確信度ゲートで API 失敗時の誤減額を防ぐ:
+      - 信頼できるランク (confidence >= floor) のみ係数を適用。
+      - 中古 (係数 < 1.0) は売値を減額、新品 (N/S=1.0) は無補正。
+      - 低信頼/取得失敗は無補正 + note で可視化 (Q0: 偽黒字も偽赤字も作らない)。
+
+    Returns dict:
+      condition_is_used: 1=中古 / 0=新品 / None=不明 (DB 列 condition_is_used)
+      effective_sale_price_usd: 減額後売値 (None=無補正=terapeak_avg そのまま)
+      condition_match_note: UI/Discord 明示用の根拠文 (DB 列 condition_match_note)
+      found_condition_ja: 確定した状態文字列 (scrape 由来優先、DB 保存用)
+    """
+    found_cond = scraped_condition_ja or fallback_condition_ja
+    trusted = (
+        bool(rank_code)
+        and rank_confidence is not None
+        and rank_confidence >= _RANK_CONFIDENCE_FLOOR
+    )
+    if not trusted:
+        return {
+            "condition_is_used": None,
+            "effective_sale_price_usd": None,
+            "condition_match_note": "状態判定 低信頼/取得失敗 → 無補正 (要確認)",
+            "found_condition_ja": found_cond,
+        }
+
+    coeff = condition_sale_coeff(rank_code)
+    if coeff >= 1.0:
+        return {
+            "condition_is_used": 0,
+            "effective_sale_price_usd": None,
+            "condition_match_note": f"新品({rank_code}) 無補正",
+            "found_condition_ja": found_cond,
+        }
+
+    # 中古: 売値を減額。相場が無ければ金額は出せないが中古フラグ + note は残す。
+    if not terapeak_avg_price_usd or terapeak_avg_price_usd <= 0:
+        return {
+            "condition_is_used": 1,
+            "effective_sale_price_usd": None,
+            "condition_match_note": (
+                f"中古({rank_code}) 売値{int(coeff * 100)}%補正 (相場欠落で金額未算出)"
+            ),
+            "found_condition_ja": found_cond,
+        }
+    avg = float(terapeak_avg_price_usd)
+    eff = round(avg * coeff, 2)
+    return {
+        "condition_is_used": 1,
+        "effective_sale_price_usd": eff,
+        "condition_match_note": (
+            f"中古({rank_code}) 売値{int(coeff * 100)}%補正: ${avg:.0f}→${eff:.0f}"
+        ),
+        "found_condition_ja": found_cond,
+    }
+
+
 # ============================================================================
 # FIX-2: けいすけ基準 純関数 (設計書 §14-Q1)
 # ============================================================================
@@ -308,6 +447,7 @@ def compute_profit_true_for_research(
     width_cm: Optional[float] = None,
     height_cm: Optional[float] = None,
     settings: Optional[dict] = None,
+    effective_sale_price_usd: Optional[float] = None,
 ) -> tuple[Optional[int], Optional[float], Optional[str], Optional[float]]:
     """FIX-2: calculator.calculate を使った真値利益計算.
 
@@ -322,6 +462,9 @@ def compute_profit_true_for_research(
         manual_weight_g: 重量 (g)。None または 0 以下 = 計算不能 → needs_review。
         length_cm / width_cm / height_cm: 寸法 (cm)。省略可 (0 扱い)。
         settings: calculator の settings dict。None = load_settings() 呼び出し。
+        effective_sale_price_usd: 状態整合した想定売値 (USD)。指定時はこちらを売値に
+            使う (依頼ボード#3 / W265: 中古候補はランク係数で減額した値)。None なら
+            従来通り terapeak_avg_price_usd を売値に使う (新品 / 状態不明)。
 
     Returns:
         (profit_jpy_true, profit_usd_true, None, revenue_jpy)  — 計算成功
@@ -347,9 +490,16 @@ def compute_profit_true_for_research(
     # calculator.calculate を呼ぶ (CalcInput を構築)
     try:
         from calculator import calculate, CalcInput
+        # 依頼ボード#3 / W265: 状態整合した売値があればそれを使う (中古は減額後の
+        # 値)。未指定なら従来通り terapeak_avg をそのまま売値に使う (新品 / 状態不明)。
+        _sale_price_usd = (
+            float(effective_sale_price_usd)
+            if effective_sale_price_usd is not None and effective_sale_price_usd > 0
+            else float(terapeak_avg_price_usd)
+        )
         inp = CalcInput(
             purchase_yen=float(purchase_yen),
-            item_price_usd=float(terapeak_avg_price_usd),
+            item_price_usd=_sale_price_usd,
             weight_g=float(manual_weight_g),
             length_cm=float(length_cm or 0),
             width_cm=float(width_cm or 0),
@@ -627,6 +777,12 @@ def evaluate_product(
             rc_id,
             new_status=rc_db.STATUS_NEEDS_REVIEW,
             needs_review_reason=reason,
+            # W265: 再評価で needs_review に落ちた時、前回の状態整合ラベル
+            # (中古フラグ/減額売値/note) を消す。今回は状態整合していないため、
+            # UI/Discord に stale バッジが偽装表示されるのを防ぐ (Q0)。
+            condition_is_used=None,
+            condition_matched_price_usd=None,
+            condition_match_note="今回評価は探索失敗のため状態整合せず (前回値クリア)",
         )
         return {
             "rc_id": rc_id,
@@ -657,6 +813,11 @@ def evaluate_product(
                 rc_id,
                 new_status=rc_db.STATUS_NEEDS_REVIEW,
                 needs_review_reason=reason,
+                # W265: 再評価で needs_review に落ちた時、前回の状態整合ラベルを消す
+                # (stale バッジの偽装表示防止 / Q0)。
+                condition_is_used=None,
+                condition_matched_price_usd=None,
+                condition_match_note="今回評価は価格取得不完全のため状態整合せず (前回値クリア)",
             )
             return {
                 "rc_id": rc_id,
@@ -671,7 +832,15 @@ def evaluate_product(
                 "search_errors": [],
                 "hits_count_total": len(all_hits),
             }
-        rc_db.update_status(rc_id, rc_db.STATUS_NOT_FOUND)
+        # W265: 再評価で not_found に落ちた時も前回の状態整合ラベルを消す
+        # (在庫なし行に stale な「中古補正」バッジが残るのを防ぐ / Q0)。
+        rc_db.update_research_candidate_result(
+            rc_id,
+            new_status=rc_db.STATUS_NOT_FOUND,
+            condition_is_used=None,
+            condition_matched_price_usd=None,
+            condition_match_note="今回評価は在庫なし(not_found)のため状態整合せず (前回値クリア)",
+        )
         return {
             "rc_id": rc_id,
             "status": rc_db.STATUS_NOT_FOUND,
@@ -708,10 +877,52 @@ def evaluate_product(
     )
 
     # HIGH-1 (FIX-4): claude_evaluator.EvaluationResult に condition 属性は存在しないため
-    # getattr では常に None になる。代わりに仕入先タイトルのキーワード辞書で推定する。
+    # getattr では常に None になる。タイトルのキーワード辞書で推定する (fallback)。
     found_condition_ja: Optional[str] = _infer_condition_ja(best.title or "")
 
+    # 依頼ボード#3 / W265 (2026-06-15): 状態整合。タイトル推定は当たらないことが多い
+    # (実データ 52 件中 1 件しか取れていなかった) ため、仕入先ページを resolve して
+    # 構造化「商品の状態」+ AI ランク判定を主信号にする。中古候補はランク係数で売値を
+    # 減額し、Terapeak 全 condition 相場 (新品寄り) による利益過大評価を防ぐ。
+    # 取得/判定失敗は無補正 + note で可視化 (Q0: silent に黒字化しない)。
+    _rank_code: Optional[str] = None
+    _rank_confidence: Optional[float] = None
+    _scraped_condition_ja: Optional[str] = None
+    try:
+        from .product_resolver import resolve_product_from_url
+        from .rank_classifier import classify_rank
+        _prod = resolve_product_from_url(best.url)
+        if _prod is not None and not _prod.scrape_error:
+            _scraped_condition_ja = _prod.condition_ja
+            _rank = classify_rank(
+                supplier_condition_ja=_prod.condition_ja or "",
+                supplier_description_ja=_prod.description_ja,
+                supplier_title_ja=_prod.title_ja or best.title or "",
+            )
+            _rank_code = _rank.rank_code
+            _rank_confidence = _rank.confidence
+        else:
+            logger.info(
+                "[W265] 仕入先ページ resolve 失敗 rc_id=%s: %s",
+                rc_id, getattr(_prod, "scrape_error", None),
+            )
+    except Exception as e:  # noqa: BLE001 — 状態取得失敗で利益計算全体を止めない (Q0: 痕跡を残す)
+        logger.warning("[W265] 状態 resolve/classify 失敗 rc_id=%s: %s", rc_id, e)
+
+    _cond = _decide_condition_pricing(
+        rank_code=_rank_code,
+        rank_confidence=_rank_confidence,
+        terapeak_avg_price_usd=terapeak_avg_price_usd,
+        scraped_condition_ja=_scraped_condition_ja,
+        fallback_condition_ja=found_condition_ja,
+    )
+    found_condition_ja = _cond["found_condition_ja"] or found_condition_ja
+    condition_is_used: Optional[int] = _cond["condition_is_used"]
+    condition_matched_price_usd: Optional[float] = _cond["effective_sale_price_usd"]
+    condition_match_note: Optional[str] = _cond["condition_match_note"]
+
     # Step 6: 利益計算 (FIX-2: calculator.calculate 真値に差し替え / P1-1)
+    # W265: 中古は状態整合した減額後売値 (condition_matched_price_usd) で計算する。
     purchase_yen = int(best.price_jpy) if best.price_jpy else 0
     profit_jpy_true, profit_usd_true, profit_reason, revenue_jpy_true = compute_profit_true_for_research(
         terapeak_avg_price_usd=terapeak_avg_price_usd,
@@ -721,6 +932,7 @@ def evaluate_product(
         width_cm=width_cm,
         height_cm=height_cm,
         settings=settings,
+        effective_sale_price_usd=condition_matched_price_usd,
     )
 
     # 後方互換: estimated_profit_usd は profit_usd_true で埋める
@@ -782,6 +994,9 @@ def evaluate_product(
         estimated_profit_usd=profit_usd,
         new_status=final_status,
         needs_review_reason=needs_review_reason,
+        condition_is_used=condition_is_used,                       # W265
+        condition_matched_price_usd=condition_matched_price_usd,   # W265
+        condition_match_note=condition_match_note,                 # W265
     )
 
     return {
@@ -798,6 +1013,9 @@ def evaluate_product(
         "found_url": best.url,
         "found_price_jpy": best.price_jpy,
         "found_condition_ja": found_condition_ja,  # FIX-4
+        "condition_is_used": condition_is_used,                    # W265
+        "condition_matched_price_usd": condition_matched_price_usd,  # W265
+        "condition_match_note": condition_match_note,              # W265
         "source_platform": best.source_platform,
         "search_errors": [],
         "hits_count_total": len(all_hits),

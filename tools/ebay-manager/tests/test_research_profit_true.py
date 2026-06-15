@@ -19,8 +19,26 @@ from __future__ import annotations
 
 import json
 import pytest
+from types import SimpleNamespace
 
 from monitor.research_poc import keisuke_check, compute_profit_true_for_research
+
+
+@pytest.fixture(autouse=True)
+def _stub_w265_resolve(monkeypatch):
+    """W265: evaluate_product が仕入先ページを実 scrape しないよう stub (hermetic)。
+
+    scrape_error 付き = _decide_condition_pricing が untrusted → 売値無補正 = 既存
+    テストの利益期待値を変えない。実 scrape の検証は Q1 実機で別途行う。
+    """
+    monkeypatch.setattr(
+        "monitor.product_resolver.resolve_product_from_url",
+        lambda url, **kw: SimpleNamespace(
+            scrape_error="test-stub", condition_ja=None,
+            description_ja=None, title_ja=None,
+        ),
+        raising=False,
+    )
 
 
 # ============================================================================

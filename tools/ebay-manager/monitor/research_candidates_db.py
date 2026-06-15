@@ -356,6 +356,9 @@ def update_research_candidate_result(
     estimated_profit_usd: Optional[float] = None,
     new_status: Optional[str] = None,
     needs_review_reason: Optional[str] = None,
+    condition_is_used: Optional[int] = None,
+    condition_matched_price_usd: Optional[float] = None,
+    condition_match_note: Optional[str] = None,
 ) -> bool:
     """探索結果を一括書き込み + 必要なら status 遷移.
 
@@ -385,6 +388,20 @@ def update_research_candidate_result(
     if estimated_profit_usd is not None:
         sets.append("estimated_profit_usd=?")
         params.append(float(estimated_profit_usd))
+    # 依頼ボード#3 / W265: 状態整合の 3 列。note を「W265 計算済み」signal とし、
+    # 3 列をセットで書く (NULL も明示書込 = 再評価で古い補正値を残さない)。
+    if condition_match_note is not None:
+        sets.append("condition_match_note=?")
+        params.append(condition_match_note)
+        sets.append("condition_is_used=?")
+        params.append(
+            int(condition_is_used) if condition_is_used is not None else None
+        )
+        sets.append("condition_matched_price_usd=?")
+        params.append(
+            float(condition_matched_price_usd)
+            if condition_matched_price_usd is not None else None
+        )
 
     if not sets and new_status is None:
         # 何も書かないなら no-op (caller のロジックバグ可能性を Q0 で表面化)。
@@ -619,6 +636,11 @@ def clear_profit_fields(rc_id: int) -> bool:
             "UPDATE research_candidates "
             "SET profit_jpy_true=NULL, profit_usd_true=NULL, keisuke_pass=0, "
             "    keisuke_detail_json='{}', estimated_profit_usd=NULL, "
+            # W265: 誤マッチ候補の利益は虚偽 → 状態整合(中古減額)も誤マッチ品基準で
+            # 虚偽。condition 3列も同時に NULL 化し、降格後に stale な「中古補正」
+            # バッジが残るのを防ぐ (Q0 偽装表示防止)。
+            "    condition_is_used=NULL, condition_matched_price_usd=NULL, "
+            "    condition_match_note=NULL, "
             "    updated_at=CURRENT_TIMESTAMP "
             "WHERE rc_id=?",
             (rc_id,),
@@ -648,6 +670,11 @@ def clear_found_fields(rc_id: int) -> bool:
         conn.execute(
             "UPDATE research_candidates "
             "SET found_url=NULL, found_price_jpy=NULL, found_condition_ja=NULL, "
+            # W265: 仕入先情報を消して監視候補に戻す行は、その仕入先の状態整合
+            # (中古減額) ラベルも消す。残すと仕入先 URL 無しの監視候補に誤商品の
+            # 「中古補正」バッジが表示される (Q0 偽装表示防止)。
+            "    condition_is_used=NULL, condition_matched_price_usd=NULL, "
+            "    condition_match_note=NULL, "
             "    updated_at=CURRENT_TIMESTAMP "
             "WHERE rc_id=?",
             (rc_id,),

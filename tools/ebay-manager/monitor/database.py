@@ -3536,6 +3536,48 @@ def init_db():
             conn.execute("PRAGMA user_version = 75")
             logger.info("[init_db v75] ebaymag_products created, schema_ver 75")
 
+        # ---- v76 (依頼ボード#3 / W265, 2026-06-15): リサーチ状態整合 ----
+        # Terapeak 相場 (全 condition 混在 = 新品寄り) と仕入候補のコンディションを
+        # 整合させる。中古候補は 8 段階ランクの係数で売値を減額して利益過大評価を
+        # 防ぐ (rc_id=65 で発覚)。当初案の「Terapeak Used 絞り込み相場の別取得」は
+        # probe で URL 指定不可・UI 自動操作 fragile と判明したため係数方式を採用
+        # (2026-06-15、_RANK_SALE_COEFF / research_poc.py)。
+        #   - condition_is_used: 0=新品(N/S)/1=中古/NULL=不明 (found_condition_ja 由来)
+        #   - condition_matched_price_usd: 中古経路で売値採用した減額後 USD
+        #     (= Terapeak相場 × ランク係数。NULL=新品経路 or 取得不能)
+        #   - condition_match_note: UI/Discord 明示用の根拠文
+        #     (例「中古(B) 売値75%補正: $200→$150」)
+        # 識別キーは rc_id (sku-rules.md 準拠、SKU 主キー化しない)。
+        # 冪等: 各 ALTER は try/except sqlite3.OperationalError (v69 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 75:
+            _V76_COLS: dict[str, str] = {
+                "condition_is_used": "INTEGER",
+                "condition_matched_price_usd": "REAL",
+                "condition_match_note": "TEXT",
+            }
+            for _col, _typ in _V76_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE research_candidates ADD COLUMN {_col} {_typ}"
+                    )
+                    logger.info(f"[init_db v76] research_candidates.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 既存列 (重複適用) = OK、冪等
+            _v76_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(research_candidates)"
+                ).fetchall()
+            }
+            if set(_V76_COLS) <= _v76_cols:
+                conn.execute("PRAGMA user_version = 76")
+                logger.info("[init_db v76] schema_ver bumped to 76")
+            else:
+                _v76_missing = set(_V76_COLS) - _v76_cols
+                logger.warning(
+                    f"[init_db v76] 部分適用: 列未追加 {_v76_missing}。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4373,6 +4415,16 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
     - source_status は '在庫無' のまま (grace は status を変えない) なので
       out_of_stock バケツ内でこのフラグにより細分表示する。
 
+    依頼ボード#20 再対応 (2026-06-15) で「採用→再OOS」区別フィールドを追加:
+    - prev_adopted_at: 過去に採用 (supplier_candidates.status='applied') した最新の
+      user_action_at (UTC)。非 NULL = 一度仕入先を採用済みだが現在 OOS = 採用した
+      仕入先 (1 点物の多い yahoo/mercari) が再び売切れた『正当な再OOS』。UI で
+      「採用済みでしたが再び在庫切れ」バナーとして区別表示し、次の仕入先候補の
+      再探索を促す。1 点物マーケット監視では採用→再売切が構造的に繰り返すため、
+      システム不具合ではなく新規イベントだと user に伝えるのが目的。
+    - prev_adopted_platform: その採用候補の source_platform (yahoo_auctions 等)。
+    - source_out_of_stock_since: 在庫切れ開始日時 (UTC)。バナーに再OOS日を表示。
+
     フィルタ条件 (2026-04-30 改訂、user 公認 Q1-A + Q3):
     - quantity_ebay >= 1: 在庫 0 化されたら一覧から即消す (不具合 1 修正)
     - is_ended = 0: daily_relist で退役した旧 ItemID は除外 (不具合 3 修正)
@@ -4393,6 +4445,7 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
                    COALESCE(risk_confirmed, 0) as risk_confirmed,
                    ebay_image_url,
                    yahoo_grace_until,
+                   source_out_of_stock_since,
                    CASE WHEN yahoo_grace_until IS NOT NULL
                              AND yahoo_grace_until > datetime('now')
                         THEN 1 ELSE 0 END AS auction_ended_grace
@@ -4408,11 +4461,34 @@ def get_ebay_listings_supply_risk() -> dict[str, list[dict]]:
                 WHEN 'C' THEN 3 WHEN 'D' THEN 4 WHEN 'E' THEN 5
                 ELSE 6 END ASC, current_price DESC
         """).fetchall()
+        # 依頼ボード#20 再対応 (2026-06-15): 「採用→再OOS」区別用に過去の採用
+        # (supplier_candidates.status='applied') を引く。listing 識別は ebay_item_id
+        # (sku-rules)。最小テストDB (ebay_listings のみ) でテーブル不在でも壊さない
+        # よう OperationalError を握る。ASC 走査で最新 applied を後勝ちで採用。
+        _risk_eids = [r["ebay_item_id"] for r in rows]
+        adopted: dict[str, tuple] = {}
+        if _risk_eids:
+            try:
+                _ph = ",".join("?" * len(_risk_eids))
+                for _ar in conn.execute(
+                    f"""SELECT ebay_item_id, user_action_at, source_platform
+                        FROM supplier_candidates
+                        WHERE status='applied' AND ebay_item_id IN ({_ph})
+                        ORDER BY user_action_at ASC""",
+                    _risk_eids,
+                ):
+                    adopted[_ar["ebay_item_id"]] = (
+                        _ar["user_action_at"], _ar["source_platform"])
+            except sqlite3.OperationalError:
+                pass
     out_of_stock = []
     page_not_found = []
     status_unknown = []
     for r in rows:
         item = dict(r)
+        _ad = adopted.get(item["ebay_item_id"])
+        item["prev_adopted_at"] = _ad[0] if _ad else None
+        item["prev_adopted_platform"] = _ad[1] if _ad else None
         if item["source_status"] == "在庫無":
             out_of_stock.append(item)
         elif item["source_status"] == "ページなし":
