@@ -643,7 +643,21 @@ def _render_candidate_actions(row: dict) -> None:
                     )
 
         elif status == STATUS_WATCH_REGISTERED:
-            st.caption("監視登録済")
+            # 依頼ボード#24: 登録した監視 ID を示し、キーワード監視タブ(リサーチ由来
+            # で区別表示)で確認・編集できることを案内する (結線)。
+            _wids: list = []
+            try:
+                _wids = json.loads(row.get('watch_ids_json') or '[]')
+            except (json.JSONDecodeError, TypeError):
+                _wids = []
+            if _wids:
+                _ids_str = ', '.join(f'#{w}' for w in _wids)
+                st.caption(
+                    f'🔔 監視登録済 ({_ids_str}) — '
+                    'キーワード監視タブの「🔬リサーチ由来」で確認・編集できます'
+                )
+            else:
+                st.caption('🔔 監視登録済 — キーワード監視タブで確認・編集できます')
 
 
 def _register_keyword_watch(

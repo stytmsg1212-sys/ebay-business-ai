@@ -211,6 +211,23 @@ def _render_watch_list() -> None:
         st.info("まだ登録がありません。下の「新規追加」または「AlertCrawler 取込」を使ってください。")
         return
 
+    # 依頼ボード#24: リサーチ承認で自動登録された監視を区別表示する。
+    # research_candidates.watch_ids_json から由来を導出 (スキーマ変更なし)。
+    try:
+        from monitor.research_candidates_db import get_research_watch_ids
+        research_ids = get_research_watch_ids()
+    except Exception as e:  # noqa: BLE001 — 由来表示は付加情報、失敗で一覧を止めない
+        logger.warning("get_research_watch_ids 失敗: %s", e)
+        research_ids = set()
+
+    if research_ids:
+        only_research = st.checkbox(
+            f"🔬 リサーチ由来のみ表示 ({len(research_ids)} 件)",
+            value=False, key="kw_filter_research_only",
+        )
+        if only_research:
+            watches = [w for w in watches if w["id"] in research_ids]
+
     # 簡易表示 (st.dataframe)
     rows = []
     for w in watches:
@@ -224,6 +241,7 @@ def _render_watch_list() -> None:
             price_str = f"{lo} 〜 {hi}"
         rows.append({
             "id": w["id"],
+            "由来": "🔬リサーチ" if w["id"] in research_ids else "手動",
             "site": w["site"],
             "keyword": w["keyword"],
             "price": price_str,

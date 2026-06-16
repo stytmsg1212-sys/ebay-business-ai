@@ -616,6 +616,34 @@ def record_watch_ids(rc_id: int, watch_ids: list[int]) -> bool:
     return True
 
 
+def get_research_watch_ids() -> set[int]:
+    """research_candidates.watch_ids_json に記録された全 watch_id の集合を返す.
+
+    依頼ボード#24: キーワード監視 UI で「リサーチ承認由来」の監視を区別表示する
+    ため、リサーチ経由で登録された keyword_watch の id 集合を導出する
+    (keyword_watches に source 列を持たせず研究台帳側から導出 = 既存登録済みも
+    自動カバー、スキーマ変更不要)。
+    """
+    out: set[int] = set()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT watch_ids_json FROM research_candidates "
+            "WHERE watch_ids_json IS NOT NULL AND watch_ids_json != ''"
+        ).fetchall()
+    for r in rows:
+        try:
+            ids = json.loads(r[0])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(ids, list):
+            for x in ids:
+                try:
+                    out.add(int(x))
+                except (ValueError, TypeError):
+                    continue
+    return out
+
+
 def clear_profit_fields(rc_id: int) -> bool:
     """利益関連カラムを NULL に戻す (match_score < floor の別商品判定時).
 

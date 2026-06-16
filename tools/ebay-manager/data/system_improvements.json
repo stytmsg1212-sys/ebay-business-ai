@@ -2513,5 +2513,17 @@
     "created": "2026-06-15",
     "completed": false,
     "completed_date": null
+  },
+  {
+    "id": 343,
+    "title": "W275 リサーチ由来のキーワード新着監視を区別表示+承認キューから結線(依頼ボード#24)",
+    "description": "W228承認で自動登録されたキーワード監視を、キーワード監視タブで「🔬リサーチ由来」バッジ+フィルタで区別表示し、承認キュー(セクションD)から監視IDを示して編集導線を案内。research_candidates.watch_ids_jsonから由来導出(get_research_watch_ids、スキーマ変更なし=既存登録済みも自動カバー)。Q1実機(Playwright)で由来列🔬リサーチ4セル実視認、code-reviewer HIGH=0。",
+    "category": "ui",
+    "priority": "normal",
+    "status": "completed",
+    "tag": "W275",
+    "created": "2026-06-16",
+    "completed": true,
+    "completed_date": "2026-06-16"
   }
 ]
