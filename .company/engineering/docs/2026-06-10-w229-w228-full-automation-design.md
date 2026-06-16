@@ -65,7 +65,7 @@
 
 ```sql
 -- FIX-1: ゲート判定の永続化 (§8 P0-2 違反の修正)。skip/reject 含む全判定を保存。
-ALTER TABLE research_candidates ADD COLUMN gate_decision TEXT;       -- target_instock/target_oos_watch/reject_deadstock/skip_too_new/reject_no_demand
+ALTER TABLE research_candidates ADD COLUMN gate_decision TEXT;       -- target_instock/target_oos_watch/reject_deadstock/skip_too_new/reject_no_demand/reject_global_glut(依頼ボード#23 2026-06-15)
 ALTER TABLE research_candidates ADD COLUMN gate_reason TEXT;         -- 人間可読の根拠 (evaluate_sourcing_gate の reason)
 ALTER TABLE research_candidates ADD COLUMN gate_inputs_json TEXT;    -- {sold_90d, has_active_listing, listing_start_date, sold_1_2yr} スナップショット
 ALTER TABLE research_candidates ADD COLUMN gated_at TIMESTAMP;       -- ゲート判定日時 (UTC)

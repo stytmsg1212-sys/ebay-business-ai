@@ -1,12 +1,10 @@
-# 仕入先候補レポート - 2026-06-11
+# 仕入先候補レポート - 2026-06-16
 
-## 仕入先候補 (05:20)
+## 仕入先候補 (04:28)
 
 対象商品: 50件
 
 ### ebayyh_s1221830158 (Yahoo Auctions)
-
-### ebayyh_x1222161720 (Yahoo Auctions)
 
 ### ebayyh_1205669690 (Yahoo Auctions)
 
@@ -23,16 +21,16 @@
 ### ebayyh_s1217600007 (Yahoo Auctions)
 
 ### ebayyh_l1215887265 (Yahoo Auctions)
+
+### ebayyh_s1222017513 (Yahoo Auctions)
 
 
 ---
-## 仕入先候補 (12:09)
+## 仕入先候補 (11:46)
 
 対象商品: 50件
 
 ### ebayyh_s1221830158 (Yahoo Auctions)
-
-### ebayyh_x1222161720 (Yahoo Auctions)
 
 ### ebayyh_1205669690 (Yahoo Auctions)
 
@@ -49,16 +47,16 @@
 ### ebayyh_s1217600007 (Yahoo Auctions)
 
 ### ebayyh_l1215887265 (Yahoo Auctions)
+
+### ebayyh_s1222017513 (Yahoo Auctions)
 
 
 ---
-## 仕入先候補 (15:51)
+## 仕入先候補 (15:48)
 
 対象商品: 50件
 
 ### ebayyh_s1221830158 (Yahoo Auctions)
-
-### ebayyh_x1222161720 (Yahoo Auctions)
 
 ### ebayyh_1205669690 (Yahoo Auctions)
 
@@ -75,16 +73,16 @@
 ### ebayyh_s1217600007 (Yahoo Auctions)
 
 ### ebayyh_l1215887265 (Yahoo Auctions)
+
+### ebayyh_s1222017513 (Yahoo Auctions)
 
 
 ---
-## 仕入先候補 (18:53)
+## 仕入先候補 (18:44)
 
 対象商品: 50件
 
 ### ebayyh_s1221830158 (Yahoo Auctions)
-
-### ebayyh_x1222161720 (Yahoo Auctions)
 
 ### ebayyh_1205669690 (Yahoo Auctions)
 
@@ -101,16 +99,16 @@
 ### ebayyh_s1217600007 (Yahoo Auctions)
 
 ### ebayyh_l1215887265 (Yahoo Auctions)
+
+### ebayyh_s1222017513 (Yahoo Auctions)
 
 
 ---
-## 仕入先候補 (22:49)
+## 仕入先候補 (21:14)
 
 対象商品: 50件
 
 ### ebayyh_s1221830158 (Yahoo Auctions)
-
-### ebayyh_x1222161720 (Yahoo Auctions)
 
 ### ebayyh_1205669690 (Yahoo Auctions)
 
@@ -127,4 +125,6 @@
 ### ebayyh_s1217600007 (Yahoo Auctions)
 
 ### ebayyh_l1215887265 (Yahoo Auctions)
+
+### ebayyh_s1222017513 (Yahoo Auctions)
 

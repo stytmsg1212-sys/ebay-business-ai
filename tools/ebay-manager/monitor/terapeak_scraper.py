@@ -439,7 +439,9 @@ def _extract_plugin_aggregation(html: str) -> Optional[dict]:
     }
 
 
-def _build_terapeak_search_url(keyword: str, day_range: int = 365, *, now_ms: Optional[int] = None) -> str:
+def _build_terapeak_search_url(keyword: str, day_range: int = 365, *,
+                               now_ms: Optional[int] = None,
+                               seller_jp: bool = True) -> str:
     """Terapeak Research SOLD タブの直接 URL を構築.
 
     背景 (2026-05-05): `dayRange=N` だけだと eBay 内部 state が 30 days default に
@@ -450,6 +452,9 @@ def _build_terapeak_search_url(keyword: str, day_range: int = 365, *, now_ms: Op
         keyword: 検索キーワード (URL encoding 内部実施)
         day_range: 集計期間 (日数). startDate = endDate - day_range * 86400_000 ms.
         now_ms: テスト用にエポックミリ秒を注入可能. None なら time.time() 利用.
+        seller_jp: True (既定) = sellerCountry=JP を強制 (日本セラー基準、通常の harvest).
+            False = sellerCountry を付けず全世界 (依頼ボード#23 / 2026-06-15 の
+            グラット除外チェック用。非日本セラーの出品/販売状況を見る場合のみ).
 
     Returns:
         Terapeak Research SOLD タブ URL (絶対 URL).
@@ -462,15 +467,17 @@ def _build_terapeak_search_url(keyword: str, day_range: int = 365, *, now_ms: Op
     # 旧: user が Chrome UI で 1 度設定した seller=Japan が session state に保持される
     #     前提だったが、Chrome OOM 後のタブ再読み込みで filter が消失するケースを観測.
     # 新: 全 scrape navigation で sellerCountry=JP を URL parameter として強制 (session
-    #     state 非依存).
-    return (
+    #     state 非依存). seller_jp=False のときのみ全世界集計のため省略する。
+    base = (
         f"https://www.ebay.com/sh/research?marketplace=EBAY-US"
         f"&keywords={quote(keyword)}"
         f"&dayRange={day_range}"
         f"&endDate={now_ms}&startDate={start_ms}"
         f"&categoryId=0&offset=0&limit=50&tabName=SOLD"
-        f"&sellerCountry={quote('SellerLocation:::JP')}"
     )
+    if seller_jp:
+        base += f"&sellerCountry={quote('SellerLocation:::JP')}"
+    return base
 
 
 def _is_ebay_error_redirect(url: str) -> bool:
@@ -1452,6 +1459,10 @@ def propose_market_change_for_listing(
 import datetime as _dt
 import html as _html_mod
 import time as _time
+# 依頼ボード#23 (2026-06-15): _scrape_worldwide_glut_signals が module-level で
+# _random を参照する (jitter)。既存の _random は関数ローカル import (L1891/L2526) のみ
+# だったため module-level に昇格 (helper の NameError → glut 判定 silent 無効化を防ぐ)。
+import random as _random
 
 # JST 固定 offset (Windows tzdata 不在リスク回避 / DST 無し)
 _JST = _dt.timezone(_dt.timedelta(hours=9), name="JST")
@@ -2227,6 +2238,15 @@ class ProductGateData:
     listing_start_date: "str | None" = None   # "YYYY-MM" 形式 (_parse_listing_start_date 互換)
     sold_1_2yr: int = 0
     avg_sold_price_usd: "float | None" = None
+    # 依頼ボード#23 (2026-06-15): 全世界グラット除外用シグナル。
+    # -1 = 未チェック (target_oos_watch 予定の候補のみ取得)。
+    # worldwide_active_count: sellerCountry フィルタ無しの ACTIVE 出品行数
+    #   (JP active=0 が前提なので >0 は非日本セラーが出品中の意)。
+    # worldwide_sold_90d: sellerCountry フィルタ無しの直近 90 日 sold 件数。
+    # 「全世界で出ているのに売れていない (worldwide_active>0 かつ worldwide_sold_90d=0)」
+    # = 需要消失 (死に筋) を gate で reject_global_glut に落とす根拠。
+    worldwide_active_count: int = -1
+    worldwide_sold_90d: int = -1
     success: bool = False
     error: "str | None" = None
     # H-2: 実際に消費した navigate 回数 (クォータ合算に使用).
@@ -2343,6 +2363,90 @@ def _poll_active_rows(page: object, timeout_s: float = 30.0) -> bool:
     return False
 
 
+def _scrape_worldwide_glut_signals(
+    page: object, keyword: str, navs_used: int, sleep_seconds: float,
+) -> "tuple[int, int, int]":
+    """依頼ボード#23 (2026-06-15): 全世界 (sellerCountry フィルタ無し) の
+    ACTIVE 出品行数 / 直近 90 日 sold 件数を追加取得する。
+
+    呼出条件 (scrape_product_detail 側): JP active=0 かつ JP sold_1_2yr>=2
+    (= target_oos_watch 予定の候補) のみ。非日本セラーが出品しているのに
+    全世界でも売れていない『需要消失 (死に筋)』を gate で除外するための根拠。
+
+    Q0 (サイレントスキップ防止 / 捏造しない): scrape 失敗時は (-1, -1) を返し
+    「未チェック」を明示する。gate は -1 を「判定材料なし」として扱い、
+    保守的に target_oos_watch を維持する (誤除外しない)。
+
+    Returns:
+        (worldwide_active_count, worldwide_sold_90d, navs_used)
+        失敗時は active/sold が -1。navs_used は実消費分を加算して返す。
+    """
+    ww_active = -1
+    ww_sold_90d = -1
+    try:
+        # ── 全世界 ACTIVE 出品行数 ──
+        jitter = _random.uniform(0.7, 1.5)
+        _time.sleep(sleep_seconds * jitter)
+        now_ms_a = int(_time.time() * 1000)
+        url_ww_active = _build_terapeak_search_url(
+            keyword, 90, now_ms=now_ms_a, seller_jp=False,
+        ).replace("tabName=SOLD", "tabName=ACTIVE")
+        logger.info(
+            f"_scrape_worldwide_glut_signals: navigate WW ACTIVE "
+            f"url={url_ww_active[:120]}"
+        )
+        page.goto(url_ww_active, wait_until="domcontentloaded", timeout=30000)
+        navs_used += 1
+        if _is_ebay_error_redirect(getattr(page, "url", "") or ""):
+            logger.warning("_scrape_worldwide_glut_signals: WW ACTIVE error redirect")
+            return (-1, -1, navs_used)
+        appeared = _poll_active_rows(page, timeout_s=30.0)
+        if not appeared:
+            _time.sleep(2.0)
+        try:
+            ww_active = int(page.evaluate(
+                "() => document.querySelectorAll('tr.active-listing-row').length"
+            ))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"_scrape_worldwide_glut_signals: WW ACTIVE count 失敗 ({e})")
+            return (-1, -1, navs_used)
+
+        # ── 全世界 SOLD 直近 90 日 ──
+        jitter = _random.uniform(0.7, 1.5)
+        _time.sleep(sleep_seconds * jitter)
+        now_ms_s = int(_time.time() * 1000)
+        url_ww_sold = _build_terapeak_search_url(
+            keyword, 90, now_ms=now_ms_s, seller_jp=False,
+        )
+        logger.info(
+            f"_scrape_worldwide_glut_signals: navigate WW SOLD 90d "
+            f"url={url_ww_sold[:120]}"
+        )
+        page.goto(url_ww_sold, wait_until="domcontentloaded", timeout=30000)
+        navs_used += 1
+        if _is_ebay_error_redirect(getattr(page, "url", "") or ""):
+            logger.warning("_scrape_worldwide_glut_signals: WW SOLD error redirect")
+            return (ww_active, -1, navs_used)
+        appeared_s = _poll_harvest_rows(page, timeout_s=30.0)
+        if not appeared_s:
+            _time.sleep(2.0)
+        try:
+            html_ww = page.evaluate("() => document.documentElement.outerHTML")
+            ww_sold_90d = _extract_sold_count(html_ww, 90)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"_scrape_worldwide_glut_signals: WW SOLD parse 失敗 ({e})")
+            return (ww_active, -1, navs_used)
+
+        logger.info(
+            f"_scrape_worldwide_glut_signals: WW active={ww_active} "
+            f"sold_90d={ww_sold_90d}"
+        )
+        return (ww_active, ww_sold_90d, navs_used)
+    except (PWTimeout, Exception) as e:  # noqa: BLE001
+        logger.warning(f"_scrape_worldwide_glut_signals: 失敗 ({e})")
+        return (ww_active, ww_sold_90d, navs_used)
+
+
 def scrape_product_detail(
     keyword: str,
     *,
@@ -2390,14 +2494,22 @@ def scrape_product_detail(
 
     t = threading.Thread(target=_runner, daemon=True)
     t.start()
-    # LOW: thread join に timeout=120s を設定。CDP hang で 03:30 バッチが無期限待ちになるのを防ぐ。
-    t.join(timeout=120)
+    # thread join timeout。CDP hang で 03:30 バッチが無期限待ちになるのを防ぐ hang-guard。
+    # 依頼ボード#23 (2026-06-15): target_oos_watch 予定候補のみ全世界 active/sold の
+    # 追加 2 navigate が走る (_scrape_worldwide_glut_signals)。基本経路 3 nav (~80s 実測)
+    # + 全世界 2 nav (各最大 ~40s) = worst case ~200s。旧 120s だと oos 候補で全体が
+    # timeout=success=False に倒れ、本来 target_oos_watch / reject_global_glut にすべき
+    # 候補が needs_review に落ちる改悪になるため、上限を 240s へ拡張 (hang-guard は維持)。
+    _SCRAPE_JOIN_TIMEOUT_S = 240
+    t.join(timeout=_SCRAPE_JOIN_TIMEOUT_S)
     if t.is_alive():
-        logger.error("scrape_product_detail: thread join timeout (120s)")
+        logger.error(
+            "scrape_product_detail: thread join timeout (%ss)", _SCRAPE_JOIN_TIMEOUT_S
+        )
         return ProductGateData(
             keyword=keyword,
             success=False,
-            error="thread join timeout (120s)",
+            error=f"thread join timeout ({_SCRAPE_JOIN_TIMEOUT_S}s)",
         )
 
     if error_holder[0] is not None:
@@ -2705,6 +2817,21 @@ def _scrape_product_detail_impl(
                 f"sold_1_2yr={sold_1_2yr}"
             )
 
+            # ── 依頼ボード#23 (2026-06-15): 全世界グラット除外シグナル ──
+            # JP active=0 かつ JP sold_1_2yr>=2 (= target_oos_watch 予定) の候補のみ、
+            # 全世界 (sellerCountry 無し) の active 出品 / 直近90日 sold を追加取得。
+            # 非日本セラーが出品しているのに全世界でも売れていない品 (需要消失) を
+            # gate 側で reject_global_glut に落とすため。条件外候補には navigate しない
+            # (anti-bot / クォータ節約)。失敗時は (-1,-1) = 未チェックで保守的に維持。
+            ww_active_count = -1
+            ww_sold_90d = -1
+            if (not has_active_listing) and sold_1_2yr >= 2:
+                ww_active_count, ww_sold_90d, _navs_used = (
+                    _scrape_worldwide_glut_signals(
+                        new_tab, keyword, _navs_used, sleep_seconds,
+                    )
+                )
+
             return ProductGateData(
                 keyword=keyword,
                 sold_90d=sold_90d,
@@ -2712,6 +2839,8 @@ def _scrape_product_detail_impl(
                 listing_start_date=listing_start_date,
                 sold_1_2yr=sold_1_2yr,
                 avg_sold_price_usd=avg_price,
+                worldwide_active_count=ww_active_count,
+                worldwide_sold_90d=ww_sold_90d,
                 success=True,
                 error=None,
                 navigates_used=_navs_used,

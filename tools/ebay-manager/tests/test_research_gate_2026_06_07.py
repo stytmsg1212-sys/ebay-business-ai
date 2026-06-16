@@ -18,6 +18,7 @@ import pytest
 
 from monitor.research_gate import (
     DECISION_REJECT_DEADSTOCK,
+    DECISION_REJECT_GLOBAL_GLUT,
     DECISION_REJECT_NO_DEMAND,
     DECISION_SKIP_TOO_NEW,
     DECISION_TARGET_INSTOCK,
@@ -346,6 +347,54 @@ class TestBoundary:
 # ============================================================================
 # 返値の型チェック
 # ============================================================================
+
+class TestGlobalGlutExclusion:
+    """依頼ボード#23 (2026-06-15): 全世界グラット除外 (分岐 4 の拡張)。
+
+    日本セラー出品ゼロ + 1〜2 年 sold>=2 (= target_oos_watch 予定) のとき、
+    全世界では非日本セラーが出品中 (worldwide_active>0) なのに直近 90 日
+    全世界 sold=0 → 需要消失で reject_global_glut。
+    """
+
+    def test_glut_excluded(self):
+        """全世界出品あり + 全世界直近90日 sold 0 → reject_global_glut。"""
+        d, r = evaluate_sourcing_gate(
+            sold_90d=0, has_active_listing=False, sold_1_2yr=2,
+            worldwide_active_count=12, worldwide_sold_90d=0, today=_TODAY,
+        )
+        assert d == DECISION_REJECT_GLOBAL_GLUT, (d, r)
+
+    def test_scarce_kept_when_no_worldwide_listing(self):
+        """全世界でも誰も出していない (active=0) → 真の希少品で target_oos_watch 維持。"""
+        d, _ = evaluate_sourcing_gate(
+            sold_90d=0, has_active_listing=False, sold_1_2yr=2,
+            worldwide_active_count=0, worldwide_sold_90d=0, today=_TODAY,
+        )
+        assert d == DECISION_TARGET_OOS_WATCH, d
+
+    def test_selling_worldwide_kept(self):
+        """全世界で売れている (sold_90d>0) → 需要あり、target_oos_watch 維持。"""
+        d, _ = evaluate_sourcing_gate(
+            sold_90d=0, has_active_listing=False, sold_1_2yr=2,
+            worldwide_active_count=12, worldwide_sold_90d=3, today=_TODAY,
+        )
+        assert d == DECISION_TARGET_OOS_WATCH, d
+
+    def test_unchecked_defaults_keep_oos_watch(self):
+        """worldwide シグナル未取得 (-1) → 除外根拠を捏造せず target_oos_watch 維持 (Q0)。"""
+        d, _ = evaluate_sourcing_gate(
+            sold_90d=0, has_active_listing=False, sold_1_2yr=2, today=_TODAY,
+        )
+        assert d == DECISION_TARGET_OOS_WATCH, d
+
+    def test_glut_only_active_unknown_sold_kept(self):
+        """全世界出品ありだが sold 未取得 (-1) → 除外しない (Q0 捏造防止)。"""
+        d, _ = evaluate_sourcing_gate(
+            sold_90d=0, has_active_listing=False, sold_1_2yr=2,
+            worldwide_active_count=12, worldwide_sold_90d=-1, today=_TODAY,
+        )
+        assert d == DECISION_TARGET_OOS_WATCH, d
+
 
 class TestReturnTypes:
     """evaluate_sourcing_gate の返値は常に (str, str) のタプル。"""

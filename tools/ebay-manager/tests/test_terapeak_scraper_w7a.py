@@ -286,6 +286,30 @@ def test_build_terapeak_search_url_basic():
     assert qs["categoryId"] == ["0"]
 
 
+def test_build_terapeak_search_url_seller_jp_default_includes_jp():
+    """既定 (seller_jp=True) は sellerCountry=JP を含む (日本セラー基準)。"""
+    from urllib.parse import urlparse, parse_qs
+
+    url = _build_terapeak_search_url("foo", day_range=90, now_ms=1_777_929_324_476)
+    qs = parse_qs(urlparse(url).query)
+    assert "sellerCountry" in qs
+    assert "JP" in qs["sellerCountry"][0]
+
+
+def test_build_terapeak_search_url_seller_jp_false_omits_jp():
+    """依頼ボード#23: seller_jp=False は sellerCountry を付けない (全世界集計)。"""
+    from urllib.parse import urlparse, parse_qs
+
+    url = _build_terapeak_search_url(
+        "foo", day_range=90, now_ms=1_777_929_324_476, seller_jp=False
+    )
+    qs = parse_qs(urlparse(url).query)
+    assert "sellerCountry" not in qs
+    # 他の必須パラメータは維持
+    assert qs["tabName"] == ["SOLD"]
+    assert qs["dayRange"] == ["90"]
+
+
 def test_build_terapeak_search_url_keyword_url_encoding():
     """空白 / 特殊文字を含む keyword が正しく URL encoding されること."""
     from urllib.parse import urlparse, parse_qs
@@ -373,3 +397,64 @@ def test_condition_filter_labels_does_not_include_seller_country():
     """Seller Country (Japan) 等の必須 filter が誤って解除対象に入っていないこと."""
     must_not_include = {"Japan", "United States", "Germany", "Seller Country - Japan"}
     assert must_not_include.isdisjoint(CONDITION_FILTER_LABELS)
+
+
+# ── 依頼ボード#23 (2026-06-15): _scrape_worldwide_glut_signals 回帰 ──────────
+# code-reviewer HIGH-1 (2026-06-15): helper が module-level に無い _random を参照し
+# NameError → broad except で (-1,-1) に倒れ glut 判定が silent 無効化していた。
+# 純関数 gate テストでは helper を実行せず検出不能だったため、helper を直接呼ぶ
+# テストで NameError 再発と navs 計上を固定する。
+class _FakeTerapeakPage:
+    """_scrape_worldwide_glut_signals 用の最小 fake page。"""
+
+    def __init__(self, active_count: int, sold_html: str):
+        self._active_count = active_count
+        self._sold_html = sold_html
+        self.url = "https://www.ebay.com/sh/research?marketplace=EBAY-US&tabName=ACTIVE"
+
+    def goto(self, *a, **k):
+        return None
+
+    def evaluate(self, script: str):
+        if "active-listing-row" in script:
+            return self._active_count
+        return self._sold_html  # outerHTML 相当
+
+
+def _patch_polls(monkeypatch):
+    from monitor import terapeak_scraper as ts
+    monkeypatch.setattr(ts, "_poll_active_rows", lambda *a, **k: True)
+    monkeypatch.setattr(ts, "_poll_harvest_rows", lambda *a, **k: True)
+    monkeypatch.setattr(ts._time, "sleep", lambda *a, **k: None)
+    return ts
+
+
+def test_worldwide_glut_signals_no_nameerror_returns_counts(monkeypatch):
+    """helper が NameError なく (active, sold, navs) を返すこと (HIGH-1 回帰)。"""
+    ts = _patch_polls(monkeypatch)
+    sold_html = '<tr class="research-table-row">x</tr>'  # 1 行
+    page = _FakeTerapeakPage(active_count=12, sold_html=sold_html)
+    ww_active, ww_sold, navs = ts._scrape_worldwide_glut_signals(
+        page, "Test Keyword", navs_used=3, sleep_seconds=0.0,
+    )
+    assert ww_active == 12
+    assert ww_sold == 1
+    assert navs == 5  # 3 + ACTIVE 1 + SOLD 1
+
+
+def test_worldwide_glut_signals_zero_sold_is_glut_input(monkeypatch):
+    """全世界出品あり + 全世界 sold 0 → (12, 0) を返し gate の glut 入力になること。"""
+    ts = _patch_polls(monkeypatch)
+    page = _FakeTerapeakPage(active_count=12, sold_html="<div>no rows</div>")
+    ww_active, ww_sold, navs = ts._scrape_worldwide_glut_signals(
+        page, "Test Keyword", navs_used=3, sleep_seconds=0.0,
+    )
+    assert ww_active == 12
+    assert ww_sold == 0
+    # この (active>0, sold==0) が evaluate_sourcing_gate で reject_global_glut を導く
+    from monitor.research_gate import evaluate_sourcing_gate, DECISION_REJECT_GLOBAL_GLUT
+    decision, _ = evaluate_sourcing_gate(
+        sold_90d=0, has_active_listing=False, sold_1_2yr=2,
+        worldwide_active_count=ww_active, worldwide_sold_90d=ww_sold,
+    )
+    assert decision == DECISION_REJECT_GLOBAL_GLUT

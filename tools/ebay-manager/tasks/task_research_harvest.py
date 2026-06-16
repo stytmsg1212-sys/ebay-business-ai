@@ -548,11 +548,15 @@ def run_research_harvest(config: Optional[dict] = None) -> dict:
         consecutive_failures = 0  # 成功でリセット
 
         # evaluate_sourcing_gate
+        # 依頼ボード#23 (2026-06-15): 全世界グラット除外シグナルも渡す
+        # (target_oos_watch 予定の候補のみ scrape 済、それ以外は -1=未取得)。
         decision, reason = evaluate_sourcing_gate(
             sold_90d=gate_data.sold_90d,
             has_active_listing=gate_data.has_active_listing,
             listing_start_date=gate_data.listing_start_date,
             sold_1_2yr=gate_data.sold_1_2yr,
+            worldwide_active_count=gate_data.worldwide_active_count,
+            worldwide_sold_90d=gate_data.worldwide_sold_90d,
         )
         inputs_dict = {
             "sold_90d": gate_data.sold_90d,
@@ -560,6 +564,8 @@ def run_research_harvest(config: Optional[dict] = None) -> dict:
             "listing_start_date": gate_data.listing_start_date,
             "sold_1_2yr": gate_data.sold_1_2yr,
             "avg_sold_price_usd": gate_data.avg_sold_price_usd,
+            "worldwide_active_count": gate_data.worldwide_active_count,
+            "worldwide_sold_90d": gate_data.worldwide_sold_90d,
         }
 
         logger.info(

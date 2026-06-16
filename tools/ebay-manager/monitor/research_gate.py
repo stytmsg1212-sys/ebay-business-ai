@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""W228 売れ行きゲート — 5 分岐判定ロジック (pure 関数、UI 非依存).
+"""W228 売れ行きゲート — 6 分岐判定ロジック (pure 関数、UI 非依存).
 
 仕様書: .company/engineering/docs/2026-06-07-product-research-automation-spec.md §2-A
 ロック済み決定 (§7 / §8 P1-2):
-  - ゲート入力は当面すべて手入力 (Terapeak scraper は W229 以降)。
-  - 5 分岐の優先順:
+  - ゲート入力は手入力 or Terapeak scraper (W229 以降)。
+  - 分岐の優先順 (has_active_listing / sold は日本セラー基準):
     1. sold_90d >= 2 → target_instock
     2. has_active_listing かつ sold_90d < 2 かつ 出品開始から 90 日以上 → reject_deadstock
     3. has_active_listing かつ sold_90d < 2 かつ 出品開始 90 日未満 → skip_too_new
-    4. has_active_listing なし かつ sold_1_2yr >= 2 → target_oos_watch
+    4. has_active_listing なし かつ sold_1_2yr >= 2:
+       4a. 全世界 active>0 かつ 全世界 sold_90d==0 → reject_global_glut
+           (依頼ボード#23 / 2026-06-15: 非日本セラーが出品中だが全世界で売れて
+            いない=需要消失。worldwide_active/sold が -1=未取得なら 4b へ)
+       4b. それ以外 → target_oos_watch
     5. それ以外 → reject_no_demand
 
 Q0 / K0 (サイレントスキップ禁止 / 仮定を捏造しない):
@@ -23,12 +27,16 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-# ---- 決定値 (decision の取りうる 5 値) ----------------------------------------
+# ---- 決定値 (decision の取りうる 6 値) ----------------------------------------
 DECISION_TARGET_INSTOCK = "target_instock"
 DECISION_TARGET_OOS_WATCH = "target_oos_watch"
 DECISION_REJECT_DEADSTOCK = "reject_deadstock"
 DECISION_SKIP_TOO_NEW = "skip_too_new"
 DECISION_REJECT_NO_DEMAND = "reject_no_demand"
+# 依頼ボード#23 (2026-06-15): 全世界グラット除外。日本セラーは出していない (active=0)
+# が、全世界では非日本セラーが出品中なのに直近 90 日で 1 件も売れていない = 需要消失。
+# 「日本以外の人が出品しているのに売れていない物を出しても売れない」(user 指示)。
+DECISION_REJECT_GLOBAL_GLUT = "reject_global_glut"
 
 _VALID_DECISIONS: frozenset[str] = frozenset({
     DECISION_TARGET_INSTOCK,
@@ -36,6 +44,7 @@ _VALID_DECISIONS: frozenset[str] = frozenset({
     DECISION_REJECT_DEADSTOCK,
     DECISION_SKIP_TOO_NEW,
     DECISION_REJECT_NO_DEMAND,
+    DECISION_REJECT_GLOBAL_GLUT,
 })
 
 # 出品期間の判定閾値 (仕様書 §2-A: 「出品開始 90 日以上で売れてない = 死に筋」)
@@ -78,17 +87,23 @@ def evaluate_sourcing_gate(
     has_active_listing: bool,
     listing_start_date: Optional[str] = None,
     sold_1_2yr: int,
+    worldwide_active_count: int = -1,
+    worldwide_sold_90d: int = -1,
     today: Optional[date] = None,
 ) -> tuple[str, str]:
-    """売れ行きゲート 5 分岐判定.
+    """売れ行きゲート 6 分岐判定.
 
     Args:
-        sold_90d: 直近 90 日の sold 数 (Terapeak 手入力)。
-        has_active_listing: 現在 active な競合出品が存在するか (Terapeak 手入力)。
+        sold_90d: 直近 90 日の sold 数 (日本セラー基準、Terapeak)。
+        has_active_listing: 現在 active な日本セラー競合出品が存在するか。
         listing_start_date: 最古の競合出品の開始年月 (任意)。例: "2025-03" / "2025-03-15"。
             has_active_listing=False の場合は無視される。
             has_active_listing=True かつ None の場合 → 保守的に skip_too_new 扱い。
-        sold_1_2yr: 1〜2 年の sold 数 (Terapeak 手入力)。
+        sold_1_2yr: 1〜2 年の sold 数 (日本セラー基準)。
+        worldwide_active_count: 全世界 (sellerCountry フィルタ無し) の active 出品数。
+            依頼ボード#23 (2026-06-15)。-1 = 未取得 (グラット判定をスキップ)。
+            JP active=0 が前提なので >0 は非日本セラーが出品中の意。
+        worldwide_sold_90d: 全世界の直近 90 日 sold 数。-1 = 未取得。
         today: テスト用に日付を固定する場合に渡す。省略時は date.today()。
 
     Returns:
@@ -140,11 +155,24 @@ def evaluate_sourcing_gate(
 
     # ── has_active_listing = False (出品ゼロ) ────────────────────────────
 
-    # ── 分岐 4: 出品ゼロ + 1〜2 年で 2 件以上 → 在庫0+監視 ─────────────
+    # ── 分岐 4: 出品ゼロ (日本セラー) + 1〜2 年で 2 件以上 → 在庫0+監視 ──
     if sold_1_2yr >= 2:
+        # 依頼ボード#23 (2026-06-15): 全世界グラット除外。
+        # 日本セラーは出していないが、全世界では非日本セラーが出品中
+        # (worldwide_active_count > 0) なのに直近 90 日で 1 件も売れていない
+        # (worldwide_sold_90d == 0) = 需要消失 (死に筋)。出しても売れないため除外。
+        # 値が -1 (未取得) のときは判定材料がないので従来通り target_oos_watch を維持
+        # (Q0: scrape 未実施を除外根拠に捏造しない)。
+        if worldwide_active_count > 0 and worldwide_sold_90d == 0:
+            return (
+                DECISION_REJECT_GLOBAL_GLUT,
+                f"日本セラー出品ゼロだが全世界では {worldwide_active_count} 件出品中 + "
+                f"直近 90 日 全世界 sold 0 件 → 非日本セラーが出しても売れていない需要消失品。"
+                "出品しても売れないため除外。",
+            )
         return (
             DECISION_TARGET_OOS_WATCH,
-            f"現在出品ゼロ・1〜2 年 sold {sold_1_2yr} 件 → 過去需要あり。"
+            f"現在 日本セラー出品ゼロ・1〜2 年 sold {sold_1_2yr} 件 → 過去需要あり。"
             "在庫 0 + キーワード監視で仕入チャンスを待つ候補。",
         )
 

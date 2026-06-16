@@ -440,6 +440,116 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         unsafe_allow_html=True,
                     )
 
+                # 依頼ボード#20 再対応 (2026-06-15): 「採用→再OOS」区別バナー。
+                # 過去に採用した仕入先 (1 点物の多い yahoo/mercari) が再び売切れた
+                # 正当な再OOS。システム不具合ではなく新規イベントである旨を伝え、
+                # 「次の仕入先を探索」で別候補をワンクリック再探索できるようにする。
+                if item.get("prev_adopted_at"):
+                    _PLAT_JP = {"yahoo_auctions": "ヤフオク", "mercari": "メルカリ",
+                                "paypay_furima": "PayPayフリマ"}
+                    _plat_disp = _PLAT_JP.get(
+                        item.get("prev_adopted_platform") or "",
+                        item.get("prev_adopted_platform") or "仕入先")
+
+                    def _jst_date(_raw: str) -> str:
+                        # user_action_at / source_out_of_stock_since は UTC 保存
+                        # (CURRENT_TIMESTAMP)。JST 日付 (MM-DD) へ変換して表示。
+                        try:
+                            from datetime import datetime as _dd, timedelta as _td2
+                            return (_dd.strptime(_raw[:19], "%Y-%m-%d %H:%M:%S")
+                                    + _td2(hours=9)).strftime("%m-%d")
+                        except Exception:
+                            return (_raw or "")[:10]
+
+                    _adopt_d = _jst_date(item.get("prev_adopted_at") or "")
+                    _oos_raw = item.get("source_out_of_stock_since")
+                    _oos_d = _jst_date(_oos_raw) if _oos_raw else "?"
+                    st.markdown(
+                        f'<div style="border-left:4px solid #2e7d5b;'
+                        f'background:rgba(46,125,91,0.08);padding:8px 12px;margin:4px 0;'
+                        f'border-radius:4px;font-size:12px;color:#1f5a3f;">'
+                        f'🔁 <b>採用済みでしたが再び在庫切れ</b> — '
+                        f'採用 {html.escape(_adopt_d)} → 在庫切れ {html.escape(_oos_d)}'
+                        f'（{html.escape(_plat_disp)}）。採用した仕入先がまた売り切れ'
+                        f'ました。下の「次の仕入先を探索」で別候補を探すか、販売停止'
+                        f'できます。'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    def _do_resrch() -> None:
+                        """『次の仕入先を探索』: 採用先が再OOSした商品の次候補を即時
+                        再探索 (board#20)。既存 per-card 探索と同じ subprocess 経路。
+                        結果/進行は _inv_resrch_* キーで本バナー内に表示する。"""
+                        import threading as _th_r
+                        from streamlit.runtime.scriptrunner import (
+                            add_script_run_ctx as _ax_r,
+                            get_script_run_ctx as _gx_r,
+                        )
+                        _fk = f"_inv_resrch_fired_{eid}"
+                        _rk = f"_inv_resrch_result_{eid}"
+
+                        def _bg(eid=eid, sku=sku_orig, fk=_fk, rk=_rk):
+                            try:
+                                r = _run_candidate_search_in_subprocess(
+                                    ebay_item_id=eid, sku=sku,
+                                    discovered_via="ui_reoos_resrch")
+                                st.session_state[rk] = {
+                                    "ok": bool(r.get("success")),
+                                    "msg": r.get("message") or "",
+                                    "persisted": int(r.get("persisted") or 0),
+                                    "alt": int(r.get("persisted_alt") or 0),
+                                }
+                            except Exception as _e:
+                                st.session_state[rk] = {"ok": False, "msg": f"例外: {_e}"}
+                            finally:
+                                st.session_state[fk] = False
+
+                        # flag は start() より前に立てる (爆速完了 thread の finally で
+                        # 先に False になる race 防止、既存 HIGH-1 と同パターン)
+                        st.session_state[_fk] = True
+                        st.session_state.pop(_rk, None)
+                        _t = _th_r.Thread(target=_bg, daemon=True)
+                        _ax_r(_t, _gx_r())
+                        _t.start()
+
+                    _rs_fired = st.session_state.get(f"_inv_resrch_fired_{eid}", False)
+                    _rs_result = st.session_state.get(f"_inv_resrch_result_{eid}")
+                    if _rs_fired:
+                        st.caption("次の仕入先を探索中…（1〜2分・終わったらページ更新）")
+                    else:
+                        _rb1, _rb2 = st.columns([2, 4])
+                        with _rb1:
+                            if sku_orig and st.button(
+                                "次の仕入先を探索",
+                                key=f"{section_key}_resrch_{eid}",
+                                width="stretch",
+                                help="この出品の別の仕入先候補を今すぐ探索します"
+                                     "（1〜2分・バックグラウンド）",
+                            ):
+                                _do_resrch()
+                                st.rerun(scope="app")
+                        if _rs_result is not None:
+                            if _rs_result.get("ok"):
+                                _rp = int(_rs_result.get("persisted") or 0)
+                                _ra = int(_rs_result.get("alt") or 0)
+                                _rmain = max(0, _rp - _ra)
+                                if _rmain > 0:
+                                    st.caption(
+                                        f"探索完了 — 新規候補 {_rmain}件"
+                                        f"（ページ更新で上に表示されます）")
+                                elif _ra > 0:
+                                    st.caption(
+                                        f"探索完了 — 別SKU出品機会 {_ra}件のみ"
+                                        f"（このカードには出ません。仕入先候補タブで確認）")
+                                else:
+                                    st.caption(
+                                        "探索完了 — 新規候補なし"
+                                        "（基準未満／既存と同一／利益不足）")
+                            else:
+                                st.caption(
+                                    f"探索失敗 — {(_rs_result.get('msg') or '')[:60]}")
+
                 st.markdown("---")
 
                 # --- 候補部 (依頼ボード#18: 採用/不採用 1 クリック即実行) ---
@@ -450,6 +560,15 @@ def render_inventory_monitor_tab(s: dict) -> None:
                     if not st.session_state.get(f"_inv_rejected_{_c['id']}", False)
                 ]
                 _had_rejected_now = len(_visible_cands) < len(cands)
+                # 採用/反映できる候補 (pending=採用可 / accepted=反映可)。
+                # applied のみ (= 採用済みだが採用先が再OOS) は actionable 0 件 →
+                # 候補ゼロと同様に終端アクション (在庫0/様子見) を出して操作可能にする
+                # (依頼ボード#20 再対応: 旧実装は applied 行で _visible_cands 非空となり
+                #  終端ボタンが出ず、再OOS商品がカード上で操作不能に詰まっていた)。
+                _actionable_cands = [
+                    _c for _c in _visible_cands
+                    if (_c.get("status") or "pending") in ("pending", "accepted")
+                ]
                 if _visible_cands:
                     st.markdown(
                         f'<div style="font-size:11px;color:#8d927f;margin-bottom:4px;">'
@@ -610,38 +729,43 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                     st.rerun(scope="app")
                             elif _status == "applied":
                                 st.caption("✓ 反映済み")
-                else:
-                    # 候補なし (または表示中の候補をすべて不採用にした直後)。
-                    if _had_rejected_now:
-                        st.caption("表示中の候補はすべて不採用にしました。")
-                    else:
-                        # 候補0件 (置換用) → ただし alt-only 候補があれば「探索済」と区別表示.
-                        # 2026-05-05 修正: Baccarat case (探索済 7 件すべて alt のみ) で
-                        # 「候補未探索」と誤表示してた事象の修正. user 認識ミスを防ぐ.
-                        # 2026-06-13 reviewer HIGH-1 fix: OOS/PNF 両経路とも eid キー統一
-                        # (旧 sku fallback は dead code 化したため撤去)。
-                        _alt_n = alt_only_count_by_eid.get(eid, 0)
-                        if _alt_n > 0:
-                            st.caption(
-                                f"仕入先候補は探索済みです（{_alt_n} 件見つかりましたが、"
-                                f"すべて『別商品の出品候補』として分類されており、この出品の"
-                                f"置き換えには使えません）。別商品として出品する検討は"
-                                f"『別SKU出品機会』タブで行ってください。"
-                            )
-                        elif item.get("auction_ended_grace"):
-                            # 依頼ボード#20 (2026-06-14): 落札なし終了は再出品待ちで
-                            # 探索を 24h 猶予中。「候補未探索」と誤表示すると user が
-                            # 探索漏れと誤解するため grace 中である旨を明示する。
-                            st.caption(
-                                "オークション終了（落札者なし）のため仕入先探索は"
-                                "再出品待ちで 24h 猶予中。上記の予定時刻以降に自動で"
-                                "再探索されます（在庫が復活すれば候補に表示）。"
-                            )
+                # 終端アクション: 採用/反映できる候補が無い (候補ゼロ or applied-only
+                # 再OOS) 商品は 在庫0/様子見 を出して操作可能にする (依頼ボード#20 再対応:
+                # 旧実装は applied 行で _visible_cands 非空 → else に入らず終端ボタンが出ず、
+                # 採用先が再OOSした商品がカード上で操作不能に詰まっていた)。
+                if not _actionable_cands:
+                    # 状況 caption は候補ゼロのときのみ (applied-only は上の再OOSバナーで説明済)。
+                    if not _visible_cands:
+                        if _had_rejected_now:
+                            st.caption("表示中の候補はすべて不採用にしました。")
                         else:
-                            st.caption(
-                                "候補未探索（次回02:30 Pattern 2バッチで自動探索、"
-                                "または下部の探索ボタンで個別起動）"
-                            )
+                            # 候補0件 (置換用) → ただし alt-only 候補があれば「探索済」と区別表示.
+                            # 2026-05-05 修正: Baccarat case (探索済 7 件すべて alt のみ) で
+                            # 「候補未探索」と誤表示してた事象の修正. user 認識ミスを防ぐ.
+                            # 2026-06-13 reviewer HIGH-1 fix: OOS/PNF 両経路とも eid キー統一
+                            # (旧 sku fallback は dead code 化したため撤去)。
+                            _alt_n = alt_only_count_by_eid.get(eid, 0)
+                            if _alt_n > 0:
+                                st.caption(
+                                    f"仕入先候補は探索済みです（{_alt_n} 件見つかりましたが、"
+                                    f"すべて『別商品の出品候補』として分類されており、この出品の"
+                                    f"置き換えには使えません）。別商品として出品する検討は"
+                                    f"『別SKU出品機会』タブで行ってください。"
+                                )
+                            elif item.get("auction_ended_grace"):
+                                # 依頼ボード#20 (2026-06-14): 落札なし終了は再出品待ちで
+                                # 探索を 24h 猶予中。「候補未探索」と誤表示すると user が
+                                # 探索漏れと誤解するため grace 中である旨を明示する。
+                                st.caption(
+                                    "オークション終了（落札者なし）のため仕入先探索は"
+                                    "再出品待ちで 24h 猶予中。上記の予定時刻以降に自動で"
+                                    "再探索されます（在庫が復活すれば候補に表示）。"
+                                )
+                            else:
+                                st.caption(
+                                    "候補未探索（次回02:30 Pattern 2バッチで自動探索、"
+                                    "または下部の探索ボタンで個別起動）"
+                                )
 
                     # --- 依頼ボード#18: 候補がない場合は 在庫0化 はい/いいえ 2 ボタン ---
                     st.markdown(

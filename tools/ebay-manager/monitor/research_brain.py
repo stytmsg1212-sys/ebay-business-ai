@@ -1,11 +1,16 @@
 """W23 Research 脳 中核 — Opus 4.8 ベース相談役エンドポイント.
 
-設計 (Method A): Claude Code subagent + subprocess 呼出
-  - `.claude/agents/research-brain.md` を Opus 4.8 subagent として登録
-  - Streamlit / 他モジュールから ask() を呼ぶ
-  - 内部で `claude -p --agent research-brain --model opus -p "<query>" ...`
-  - Max plan で完結 → API 追加課金 $0
-  - subprocess env から ANTHROPIC_API_KEY を除外して Max 認証強制
+設計 (Method B / 2026-06-11 切替): Anthropic API 直接呼出
+  - 過去 (〜2026-06-11 Method A): `claude -p --agent research-brain` subprocess +
+    env から ANTHROPIC_API_KEY を除外して Max plan 認証強制 (実課金 $0)
+  - 変更理由: 2026-06-15 Claude 課金改定で `claude -p` / サブスク認証の
+    headless 利用が別枠クレジット制になるため (reference_claude_code_billing_change_2026_06_15.md)
+  - 現状 (Method B): anthropic SDK で messages.create を直接呼ぶ。
+    system prompt は `.claude/agents/research-brain.md` 本文 (frontmatter 除去) を流用。
+    モデルは Opus 4.8 のまま (Fable 5 は API 使用禁止 = user 指示 2026-06-10)。
+    実課金が発生するため usage から実コストを research_qa.cost_usd に記録。
+  - 機能差分: CLI subagent が持っていた Read/Glob/Grep/WebSearch tool は API 直呼びでは
+    使えない。STABLE+DYNAMIC コンテキストをプロンプトに埋め込む既存設計で代替。
 
 入出力:
   ask(query, source, ...) → ResearchAnswer(answer_md, citations, model_used, ...)
@@ -18,19 +23,35 @@ import logging
 import os
 import re
 import sqlite3
-import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
+import anthropic
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "monitor.db"
 
+# ebay-manager root の .env を明示ロード (claude_evaluator と同パターン)
+_ENV_PATH = PROJECT_ROOT / ".env"
+if _ENV_PATH.exists():
+    load_dotenv(_ENV_PATH)
+
 CLAUDE_CLI_DEFAULT_TIMEOUT = 120  # seconds. extended thinking で 60s+ 想定
+
+# repo root の subagent 定義 (system prompt として流用)
+AGENT_MD_PATH = PROJECT_ROOT.parent.parent / ".claude" / "agents" / "research-brain.md"
+
+# USD per 1M tokens (input, output)。出典: feedback_opus_price_watch.md (Opus $5/$25)
+_PRICING = {
+    "opus": (5.0, 25.0),
+    "haiku": (1.0, 5.0),
+}
 
 
 @dataclass
@@ -45,7 +66,7 @@ class ResearchAnswer:
     cost_usd: float = 0.0
     duration_ms: int = 0
     error: Optional[str] = None
-    via: str = "subagent"  # 'subagent' | 'haiku_fallback' | 'error'
+    via: str = "api"  # 'api' (2026-06-11〜) | 'subagent' (旧 Method A 履歴) | 'error'
 
 
 def _conn() -> sqlite3.Connection:
@@ -133,109 +154,110 @@ def _build_full_prompt(query: str, hints: Optional[dict] = None) -> str:
     )
 
 
-def _invoke_subagent(
+_agent_system_prompt_cache: Optional[str] = None
+
+
+def _load_agent_system_prompt() -> str:
+    """`.claude/agents/research-brain.md` 本文を system prompt として読む.
+
+    YAML frontmatter (--- ... ---) は CLI subagent 登録用メタデータなので除去。
+    読めない場合も Q0 silent skip せず最小限の役割宣言で続行する。
+    """
+    global _agent_system_prompt_cache
+    if _agent_system_prompt_cache is not None:
+        return _agent_system_prompt_cache
+    try:
+        text = AGENT_MD_PATH.read_text(encoding="utf-8")
+        m = re.match(r"\A---\n.*?\n---\n", text, flags=re.DOTALL)
+        if m:
+            text = text[m.end():]
+        _agent_system_prompt_cache = text.strip()
+    except OSError as e:
+        logger.warning(f"research-brain.md 読込失敗 ({e}) — 最小 system prompt で続行")
+        _agent_system_prompt_cache = (
+            "あなたは MonoHonpo (eBay 越境EC セラー) の Research 脳です。"
+            "必ず日本語で、核心→根拠→適用案 の構造で回答してください。"
+        )
+    return _agent_system_prompt_cache
+
+
+def _estimate_cost_usd(model: str, in_tok: int, out_tok: int) -> float:
+    """usage から実コスト概算 (USD)。pricing は _PRICING 参照."""
+    key = "opus" if "opus" in model.lower() else "haiku"
+    price_in, price_out = _PRICING[key]
+    return (in_tok * price_in + out_tok * price_out) / 1_000_000
+
+
+def _invoke_api(
     prompt: str,
     model: str,
     timeout: int = CLAUDE_CLI_DEFAULT_TIMEOUT,
     max_budget_usd: float = 0.50,
+    use_thinking: bool = False,
 ) -> tuple[str, dict]:
-    """claude CLI を subprocess で呼び、subagent 経由で回答を得る (Method A).
+    """Anthropic API を直接呼び回答を得る (Method B / 2026-06-11〜).
 
-    Max plan 認証を強制するため env から ANTHROPIC_API_KEY を除外.
-    長大プロンプト (20KB+) は **stdin 経由** で渡す (Windows CLI 引数長制限回避).
+    model は choose_model が返すフル model ID (claude-opus-4-8 等) をそのまま使う。
+    use_thinking=True なら extended thinking 有効 (thinking block は meta["thinking_md"])。
     Returns: (answer_text, metadata_dict)
     """
-    # Max 認証強制: ANTHROPIC_API_KEY だけ除外、他の env は維持 (Windows Node.js が
-    # USERPROFILE / APPDATA / LOCALAPPDATA / NODE_PATH 等を必要とするため).
-    env = os.environ.copy()
-    env.pop("ANTHROPIC_API_KEY", None)
-    env.pop("CLAUDECODE", None)  # 親 Claude Code session の環境フラグ除外
-    env.pop("CLAUDE_CODE_SSE_PORT", None)
-    env.pop("CLAUDE_CODE_ENTRYPOINT", None)
-    env.pop("CLAUDE_CODE_EXECPATH", None)
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "", {"error": "ANTHROPIC_API_KEY 未設定 (.env 確認)", "duration_ms": 0}
 
-    cmd = [
-        "claude", "-p",  # -p without arg = stdin から読む
-        "--agent", "research-brain",
-        "--model", "opus" if "opus" in model.lower() else "haiku",
-        "--output-format", "json",
-        "--no-session-persistence",
-        "--permission-mode", "default",
-        "--max-budget-usd", f"{max_budget_usd:.2f}",
-    ]
-
+    # max_retries=1 明示: SDK デフォルト 2 だと timeout×3 試行で wall time が読めない
+    client = anthropic.Anthropic(api_key=api_key, timeout=float(timeout), max_retries=1)
+    kwargs: dict = {"max_tokens": 8000}
+    if use_thinking:
+        # thinking tokens は max_tokens に内数 → 回答分を確保するため引上げ。
+        # Opus 4.8 は adaptive thinking のみ対応 ("enabled"+budget_tokens は 400 エラー、
+        # 2026-06-11 実機確認)。思考量はモデルが質問の複雑さに応じて自動配分する。
+        kwargs["max_tokens"] = 12000
+        kwargs["thinking"] = {"type": "adaptive"}
     started = time.time()
     try:
-        result = subprocess.run(
-            cmd, input=prompt,  # stdin pipe で長大プロンプトも OK
-            capture_output=True, text=True, encoding="utf-8",
-            timeout=timeout, env=env,
+        resp = client.messages.create(
+            model=model,
+            system=_load_agent_system_prompt(),
+            messages=[{"role": "user", "content": prompt}],
+            **kwargs,
         )
-    except subprocess.TimeoutExpired:
+    except anthropic.APIError as e:
+        # WARNING: error 文字列は task_execution_log → Discord に流れる経路あり。
+        # API key の値を **絶対に含めない** (型名 + message のみ)。
         return "", {
-            "error": f"timeout ({timeout}s)", "duration_ms": int((time.time() - started) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:300]}",
+            "duration_ms": int((time.time() - started) * 1000),
         }
-    except FileNotFoundError:
-        return "", {"error": "claude CLI not found in PATH", "duration_ms": 0}
 
     duration_ms = int((time.time() - started) * 1000)
+    answer = "".join(b.text for b in resp.content if b.type == "text")
+    thinking_md = "".join(
+        b.thinking for b in resp.content if b.type == "thinking") or None
 
-    if result.returncode != 0:
-        # 2026-05-25 強化: 5/19-5/25 で 5 日連続 "claude exit 1: " (stderr 空) が
-        # 発生し原因不明だった. stderr だけでなく stdout / 解決 PATH / 実コマンドも
-        # 保存して診断材料を増やす. ANTHROPIC_API_KEY を意図的に剥がしている点
-        # (Max plan 強制) の影響可視化も目的.
-        import shutil
-        # WARNING: ここに API key の値 prefix を **絶対に追加しない**.
-        # diag は task_execution_log.message → Discord 通知に流れるため漏洩リスク.
-        # claude PATH は Windows ユーザー名 (PII) を含むため basename だけに削る.
-        resolved = shutil.which("claude")
-        claude_basename = Path(resolved).name if resolved else "NOT_FOUND_IN_PATH"
-        api_key_present = bool(os.environ.get("ANTHROPIC_API_KEY"))  # 親 process 側
-        diag = (
-            f"claude exit {result.returncode} | "
-            f"stderr={(result.stderr or '')[:300]!r} | "
-            f"stdout={(result.stdout or '')[:300]!r} | "
-            f"claude_basename={claude_basename} | "
-            f"parent_api_key_set={api_key_present}"
-        )
-        return "", {"error": diag, "duration_ms": duration_ms}
+    # 出力上限到達 = 回答が途中で切れている (silent truncation 防止 / Q0)
+    truncated = resp.stop_reason == "max_tokens"
+    if truncated:
+        logger.warning(
+            f"research_brain 回答が max_tokens={kwargs['max_tokens']} で途中打切り "
+            f"(model={model})。回答は不完全な可能性")
+        answer += "\n\n---\n[警告] 回答が出力上限で途中打切りされています。"
 
-    # output-format=json should give us a JSON object with result text
-    try:
-        out = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        # フォールバック: stdout 全部を回答とみなす
-        return result.stdout.strip(), {"duration_ms": duration_ms, "raw": True}
+    in_tok = int(resp.usage.input_tokens or 0)
+    out_tok = int(resp.usage.output_tokens or 0)
+    cost_usd = _estimate_cost_usd(model, in_tok, out_tok)
+    if cost_usd > max_budget_usd:
+        logger.warning(
+            f"research_brain 1 call が予算超過: ${cost_usd:.3f} > ${max_budget_usd:.2f} "
+            f"(in={in_tok} out={out_tok} tok)")
 
-    # Claude Code CLI JSON shape: {"type":"result", "result":"...", "total_cost_usd":..., "modelUsage":{...}}
-    answer = (
-        out.get("result")
-        or out.get("text")
-        or out.get("response")
-        or out.get("message", {}).get("content")
-        or ""
-    )
-    if isinstance(answer, list):
-        # content blocks
-        answer = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in answer)
-
-    # cost / token usage (Max 内でも参考値として記録)
-    cost_usd = float(out.get("total_cost_usd") or 0.0)
-    usage = out.get("usage") or {}
-    in_tok = int(usage.get("input_tokens") or 0)
-    out_tok = int(usage.get("output_tokens") or 0)
-    cache_r = int(usage.get("cache_read_input_tokens") or 0)
-    cache_w = int(usage.get("cache_creation_input_tokens") or 0)
-
-    return str(answer).strip(), {
-        "duration_ms": int(out.get("duration_ms") or duration_ms),
+    return answer.strip(), {
+        "duration_ms": duration_ms,
         "cost_usd": cost_usd,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
-        "cache_read_tokens": cache_r,
-        "cache_write_tokens": cache_w,
-        "raw_json": out,
+        "thinking_md": thinking_md,
+        "truncated": truncated,
     }
 
 
@@ -261,7 +283,7 @@ def ask(
         force_model: 'opus' / 'haiku' / 'auto' (default)
         enable_thinking: 真なら Opus extended thinking. UI 非表示でも DB に保存
         save_history: research_qa に履歴保存
-        timeout: claude CLI timeout 秒
+        timeout: Anthropic API timeout 秒
 
     Returns:
         ResearchAnswer
@@ -292,19 +314,21 @@ def ask(
     full_prompt = _build_full_prompt(query, hints=context_hints)
     context_keys = []  # TODO: build_dynamic_context が返す video_ids を保存
 
-    # subagent 呼出 (Method A)
+    # API 直接呼出 (Method B / 2026-06-11〜)
     started = time.time()
-    answer_text, meta = _invoke_subagent(
+    answer_text, meta = _invoke_api(
         full_prompt, model=model, timeout=timeout,
-        max_budget_usd=max_budget_usd,
+        max_budget_usd=max_budget_usd, use_thinking=use_thinking,
     )
     duration_ms = meta.get("duration_ms", int((time.time() - started) * 1000))
 
     if "error" in meta or not answer_text:
         err = meta.get("error", "empty answer")
-        logger.error(f"subagent failed: {err}")
-        qa_id = (_record_qa(source, query, model, f"[ERROR] {err}", [], None,
-                            duration_ms, 0.0, "error")
+        logger.error(f"research_brain API call failed: {err}")
+        # 空回答でも API 呼出が成功していれば課金は発生済 → 実コストを記録
+        qa_id = (_record_qa(source, query, model, f"[ERROR] {err}", [],
+                            meta.get("thinking_md"),
+                            duration_ms, float(meta.get("cost_usd") or 0.0), "error")
                  if save_history else 0)
         return ResearchAnswer(
             answer_md=f"研究脳の呼出に失敗しました: {err}",
@@ -315,15 +339,14 @@ def ask(
     # citations は答えから簡易抽出 (動画 ID パターン)
     citations = _extract_citations(answer_text)
 
-    # Method A subagent: **Max plan 内で完結**, 実課金 $0.
-    # CLI が返す total_cost_usd は「もし API 経由だった場合の理論値」(参考値).
-    # 2026-04-26 検証済: Console 表示と CLI 報告値が乖離、CLI 値は不採用.
-    # research_qa.cost_usd には 0.0 を保存し、運用 visibility のため別カラム
-    # (将来追加) で参考値を分離する案あり.
-    cost_usd = 0.0  # Max 内で実課金されないため
+    # Method B (2026-06-11〜): API 直呼びは **実課金** が発生する。
+    # usage から概算した実コストを記録 (過去 Method A は Max 内 $0 固定だった)。
+    # research_brain_quota の opus_cost_usd / haiku_cost_usd が実金額の監視窓になる。
+    cost_usd = float(meta.get("cost_usd") or 0.0)
+    thinking_md = meta.get("thinking_md")
 
-    qa_id = (_record_qa(source, query, model, answer_text, citations, None,
-                        duration_ms, cost_usd, "subagent", context_keys)
+    qa_id = (_record_qa(source, query, model, answer_text, citations, thinking_md,
+                        duration_ms, cost_usd, "api", context_keys)
              if save_history else 0)
 
     return ResearchAnswer(
@@ -332,10 +355,10 @@ def ask(
         source=source,
         qa_id=qa_id,
         citations=citations,
-        thinking_md=None,  # Method A では取得不能
+        thinking_md=thinking_md,
         cost_usd=cost_usd,
         duration_ms=duration_ms,
-        via="subagent",
+        via="api",
     )
 
 

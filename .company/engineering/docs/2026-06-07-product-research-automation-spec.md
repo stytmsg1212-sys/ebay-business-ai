@@ -120,6 +120,7 @@ Q3構造化フローで実装（設計→code-reviewer+Codex 2段→Q1検証）�
 ## 7. 確定した決定（ロック・チャット由来 2026-06-07）
 
 1. 売れ行きゲート5分岐（上記2-A）。境目90日。保留はせず再出現時再判定。
+   - **追補 (依頼ボード#23 / 2026-06-15)**: 分岐4 (日本セラー出品ゼロ + 過去販売あり → target_oos_watch) に**全世界グラット除外**を追加し**6分岐化**。全世界 (sellerCountry フィルタ無し) で active 出品あり (>0) かつ直近90日 sold=0 のとき `reject_global_glut` で除外（「日本以外の人が出品しているのに売れていない物は出しても売れない」user 指示）。実装: `monitor/research_gate.py` (DECISION_REJECT_GLOBAL_GLUT) / `monitor/terapeak_scraper.py` (`_scrape_worldwide_glut_signals`, target_oos_watch 予定候補のみ追加scrape)。
 2. 仕入探索はフリマ(メルカリ/ヤフオク/PayPay)のみ、Amazon/楽天EC対象外。
 3. 同一商品＋同状態の最終一致は人間確認（AIは候補提示）。
 4. 利益基準=けいすけ基準（率6% **または** 額600円、どちらか片方）、**還付抜き**。

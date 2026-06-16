@@ -451,9 +451,11 @@ def run_supplier_candidate_search(
     _alt1_threshold = _get_threshold(settings, "supplier_alt1_score_threshold", ALT_LISTING_SCORE_THRESHOLD)
 
     persisted = 0
+    persisted_alt = 0  # board#19 HIGH-2: alt_listing_possible=1 で persist された行数
     alt_listed = 0
     skipped_unprofitable = 0
     skipped_low_score = 0
+    skipped_existing = 0  # board#19 (2026-06-13): 既存候補と同一 URL (不採用済含む) の dedup 計数
     for sc in all_scored:
         # 保存条件: 仕入先として閾値越え、または別SKU出品機会として拾える
         if sc.match_score < _alt0_threshold and not sc.alt_listing_possible:
@@ -524,13 +526,23 @@ def run_supplier_candidate_search(
         )
         if row_id:
             persisted += 1
+            if sc.alt_listing_possible:
+                # board#19 HIGH-2 (2026-06-13): alt=1 行は在庫監視カード一覧
+                # (alt_listing_possible=0 filter) に出ないため別計数 (score 条件なし)
+                persisted_alt += 1
             if sc.match_score < MATCH_SCORE_THRESHOLD and sc.alt_listing_possible:
                 alt_listed += 1
+        else:
+            # board#19 (2026-06-13): INSERT OR IGNORE dedup — 同一 (ebay_item_id, candidate_url)
+            # が既に存在 (rejected 含む)。無音だと「探索したのに候補が出ない」ように見えるため計数。
+            skipped_existing += 1
 
     logger.info(
         f"仕入先候補探索: sku={sku} found={len(all_scored)} persisted={persisted} "
+        f"persisted_alt={persisted_alt} "
         f"alt_listed={alt_listed} skipped_unprofitable={skipped_unprofitable} "
-        f"skipped_low_score={skipped_low_score} excluded_self={excluded_self} "
+        f"skipped_low_score={skipped_low_score} skipped_existing={skipped_existing} "
+        f"excluded_self={excluded_self} "
         f"excluded_unavailable={excluded_unavailable} reused_eval={reused_eval} "
         f"ranked_out={ranked_out}"
     )
@@ -550,9 +562,11 @@ def run_supplier_candidate_search(
         'success': True,
         'found': len(all_scored),
         'persisted': persisted,
+        'persisted_alt': persisted_alt,
         'alt_listed': alt_listed,
         'skipped_unprofitable': skipped_unprofitable,
         'skipped_low_score': skipped_low_score,
+        'skipped_existing': skipped_existing,
         'excluded_self': excluded_self,
         'excluded_unavailable': excluded_unavailable,
         'reused_eval': reused_eval,
@@ -562,6 +576,7 @@ def run_supplier_candidate_search(
             f'(alt0>={_alt0_threshold}, alt1>={_alt1_threshold}, '
             f'alt_listing={alt_listed}, skipped_low_score={skipped_low_score}, '
             f'skipped_unprofitable={skipped_unprofitable}, '
+            f'skipped_existing={skipped_existing}, '
             f'excluded_self={excluded_self})'
         ),
     }

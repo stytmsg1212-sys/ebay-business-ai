@@ -401,6 +401,40 @@ Remove-Item C:\Users\gucch\projects\claude\tools\ebay-manager\.watchdog_lock -Er
 
 ---
 
+## 9. W228 リサーチ承認キュー (Phase 4)
+
+### 9-1. 通常フロー
+
+1. MonoDeck 「商品リサーチ (W228)」タブを開く
+2. セクション D「承認キュー」に夜間バッチ (04:30) 後に候補が表示される
+3. 各候補の【Terapeak 売れ行き】【仕入先候補】【利益額】を確認
+4. 「承認 → 下書き生成」または「見送り」を選択
+5. 承認後 → 「個別出品」タブに仕入先 URL / 重量 / ランクが pre-fill 済み → 追加確認して出品
+
+### 9-2. 在庫0上限超過の警告が出た場合 (P0-3)
+
+**警告文**: 「在庫0上限 N 件超過のため watch 未登録 — 手動登録要 (現在 M 件アクティブ)」
+
+| 状況 | 対処 |
+|---|---|
+| 承認はしたい (下書き生成済) | 「商品リサーチ」タブ → セクション C で rc_id を選択 → 手動で「キーワード新着監視に登録」ボタン |
+| 在庫0上限を引き上げたい | `config/schedule_config.json` の `tasks_enabled.research_harvest.max_oos_active_listings` を変更 → scheduler 再起動 |
+| 既存の在庫0 listing を減らしてから承認 | MonoDeck 「商品管理」タブで無在庫出品 (SKU が `ebay` 始まり) を確認し、売れていないものを取り下げ |
+
+### 9-3. 承認ラグ中に売れた場合の緊急手順 (在庫0 listing / 履行不能)
+
+承認後〜出品公開の間、または keyword watch で仕入れを実行する前に eBay で sold になった場合:
+
+1. **即 eBay 出品を取り下げ** (eBay Seller Hub → Listings → End listing)
+2. **buyer に謝罪メッセージ** + Full refund (Cancel order)
+3. **MonoDeck** → 「商品管理」タブ → 該当 listing の `is_ended` が 0 のまま残っている場合は assistant に「listings cleanup」を依頼
+4. **research_candidates の status** を needs_review に戻す (assistant に rc_id を伝えて依頼)
+5. `config/schedule_config.json` の `max_oos_active_listings` を見直し
+
+Defect 発生を防ぐため、在庫0出品は **handling time を最大 (30 business days)** に設定してから公開すること (個別出品タブの Handling Time 欄)。
+
+---
+
 ## 8. slash command 早見表
 
 skill 系 (assistant が紹介してくれるもの含む):

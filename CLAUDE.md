@@ -98,6 +98,7 @@ PostToolUse 警告: `success: True in except` / `INSERT OR IGNORE without rowcou
 - **同日 1 ファイル**: 既存なら追記
 - **TODO 形式**: `- [ ] タスク | 優先度: 高/通常/低 | 期限: YYYY-MM-DD`
 - **ROADMAP 自動登録**: 新機能口頭依頼即 `data/system_improvements.json` に W 番号登録。詳細: `feedback_roadmap_auto_add.md`
+- **依頼ボード恒久運用 (W266、2026-06-12 制定)**: user 発の不具合報告/実装依頼は MonoDeck「依頼ボード」(`user_requests` v72) で管理。毎セッション吸い上げ → status 随時更新 → 完了は verify_steps 付き `awaiting_check` → **done は user の確認完了ボタン専用** (DB ガードで強制)。ROADMAP = assistant 発タスクとは別軸 (related_w で紐付けのみ)。詳細: memory `feedback_request_board_operations.md`
 
 ## Path-scoped 固有ルール (subdir CLAUDE.md @import)
 

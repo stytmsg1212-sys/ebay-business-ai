@@ -90,6 +90,8 @@ def _make_gate_data(
     success: bool = True,
     error: Optional[str] = None,
     navigates_used: int = 1,
+    worldwide_active_count: int = -1,
+    worldwide_sold_90d: int = -1,
 ) -> MagicMock:
     """ProductGateData のモックを作る."""
     gd = MagicMock()
@@ -102,6 +104,10 @@ def _make_gate_data(
     gd.error = error
     # H-2: navigates_used は実消費 navigate 回数 (Q6 skip=1, フル=3)
     gd.navigates_used = navigates_used
+    # 依頼ボード#23 (2026-06-15): 全世界グラット除外シグナル (既定 -1=未取得)。
+    # MagicMock の属性は JSON 非直列化のため、明示的に int を set する。
+    gd.worldwide_active_count = worldwide_active_count
+    gd.worldwide_sold_90d = worldwide_sold_90d
     return gd
 
 

@@ -290,6 +290,49 @@ except Exception as e:
     claude_loop_warning = f'[CLAUDE-LOOP] CHECK FAILED: {type(e).__name__}: {e}\n\n'
     _log_debug(f'claude-loop: check exception {type(e).__name__}: {e}')
 
+# Step 4.7 (W266 2026-06-12): 依頼ボード (user_requests) 未完了件数を注入
+# read-only URI で開く (本番 DB を hook から絶対に変更しない)。
+# 失敗時も silent 化せず明示 (Q0)。旧 DB (v72 未適用) は no such table → 明示 skip 文言。
+request_board_info = ''
+try:
+    import sqlite3
+    _urq_db = root_dir / 'tools' / 'ebay-manager' / 'data' / 'monitor.db'
+    if _urq_db.exists():
+        _uri = 'file:' + _urq_db.as_posix() + '?mode=ro'
+        _conn = sqlite3.connect(_uri, uri=True, timeout=3)
+        try:
+            _rows = _conn.execute(
+                "SELECT status, COUNT(*) FROM user_requests "
+                "WHERE status != 'done' GROUP BY status"
+            ).fetchall()
+            _cnt = dict(_rows)
+            _open_n = _cnt.get('open', 0) + _cnt.get('on_hold', 0)
+            _wip_n = _cnt.get('in_progress', 0)
+            _wait_n = _cnt.get('waiting_user', 0)
+            _chk_n = _cnt.get('awaiting_check', 0)
+            _total = _open_n + _wip_n + _wait_n + _chk_n
+            if _total:
+                _titles = _conn.execute(
+                    "SELECT id, status, title FROM user_requests "
+                    "WHERE status IN ('open','in_progress','waiting_user') "
+                    "ORDER BY id DESC LIMIT 5"
+                ).fetchall()
+                _lines = ''.join(f'\n  #{i} [{s}] {t[:40]}' for i, s, t in _titles)
+                request_board_info = (
+                    f'[依頼ボード W266] 未完了 {_total} 件 (受付{_open_n}/対応中{_wip_n}/'
+                    f'回答待ち{_wait_n}/user確認待ち{_chk_n}) — MonoDeck「依頼ボード」タブから吸い上げ対応せよ'
+                    f'{_lines}\n\n'
+                )
+            else:
+                request_board_info = '[依頼ボード W266] 未完了 0 件\n\n'
+        finally:
+            _conn.close()
+    else:
+        request_board_info = '[依頼ボード W266] monitor.db 不在で読込 skip\n\n'
+except Exception as e:
+    request_board_info = f'[依頼ボード W266] 読込失敗 ({type(e).__name__}: {e}) — 手動で確認要\n\n'
+    _log_debug(f'request_board: check exception {type(e).__name__}: {e}')
+
 # Step 5: silent_skip_ongoing 配列読出 (frontmatter YAML 配列パース簡易版)
 # HIGH-4 (code-reviewer 2026-04-30): 空配列 [] でも明示通知 (= 0 件確定 vs 検査壊れたを区別)
 silent_skip_warning = ''
@@ -304,7 +347,7 @@ if ss_block:
             silent_skip_warning = f'🚨 機会損失中 ({len(tasks)} task silent skip 継続): ' + ', '.join(tasks) + '\n\n'
 
 # 全文構築 (W127 #3: debug_header を冒頭、#4: sanity_warning を直後)
-full_context = f'{debug_header}\n\n' + sanity_warning + stale_prefix + md5_warning + sched_warning + claude_loop_warning + silent_skip_warning + content
+full_context = f'{debug_header}\n\n' + sanity_warning + stale_prefix + md5_warning + sched_warning + claude_loop_warning + request_board_info + silent_skip_warning + content
 
 # 7000 char strict 上限 enforce (defensive、公式 char 制限は未確認)
 # HIGH-3 (code-reviewer 2026-04-30): 「公式 10000 char」と書いていたが一次情報未照合のため
