@@ -1656,7 +1656,10 @@ def _render_url_direct_description_section(p: dict) -> None:
                     )
                     return
                 product = prefetch.get("product")
-                st.session_state[product_cache_key] = product  # ② で再利用 (再 scrape 回避)
+                # 2026-06-17 regression fix: cache に URL を紐付ける。eid だけのキーだと
+                # URL 変更を検知できず、古い引用元の product で description を生成する事故
+                # (item 358046729862 で発覚)。② は URL 一致時のみ再利用する。
+                st.session_state[product_cache_key] = {"url": _url, "product": product}
                 res = _existing_result()
                 res["image_urls"] = list(getattr(product, "image_urls", []) or [])
                 if not res.get("title_ja"):
@@ -1678,7 +1681,15 @@ def _render_url_direct_description_section(p: dict) -> None:
                     rank_reasoning = "title-only 生成 (ランクは手動指定)"
                 else:
                     # ① 画像生成で取得済みの product があれば再利用 (再 scrape 回避)。
-                    product = st.session_state.get(product_cache_key)
+                    # 2026-06-17 regression fix: URL が一致する cache のみ再利用する。
+                    # URL を変更した場合は古い product を捨てて新 URL で再 scrape する
+                    # (eid だけのキーだと古い引用元で生成される事故 = item 358046729862)。
+                    _cached = st.session_state.get(product_cache_key)
+                    product = (
+                        _cached.get("product")
+                        if isinstance(_cached, dict) and _cached.get("url") == _url
+                        else None
+                    )
                     if product is None:
                         prefetch = prefetch_supplier_product_and_rank(0, _url)
                         if not prefetch.get("success"):
@@ -1689,7 +1700,7 @@ def _render_url_direct_description_section(p: dict) -> None:
                             )
                             return
                         product = prefetch.get("product")
-                        st.session_state[product_cache_key] = product
+                        st.session_state[product_cache_key] = {"url": _url, "product": product}
                         _auto_reasoning = prefetch.get("rank_reasoning") or ""
                     else:
                         _auto_reasoning = ""
