@@ -1608,67 +1608,124 @@ def _render_url_direct_description_section(p: dict) -> None:
                  "（原産国/製造国/Manufacturer の記載は eBay ポリシー上、入れても無視されます）",
         )
 
-        if st.button(
-            "① 画像 + description 生成 (eBay 反映はまだ)",
-            key=f"pm_url_direct_gen_{eid}",
-            disabled=(_is_title_only and not product_title),
-        ):
-            with st.spinner("scrape/AI 解析 + Claude rank 推定 + description 生成中..."):
+        # 依頼ボード#26 (2026-06-17): 旧「① 画像 + description 生成」統合 button を
+        # 「① 画像生成」「② description 生成」の 2 button に分割。
+        # 画像はそのままで description だけ作り直したい (またはその逆) のニーズに対応。
+        # 結果は従来どおり単一 result_key dict を source of truth とし、各 button は
+        # 自分が担当する key (image_urls / description_html 等) のみ更新 = 片方再生成で
+        # もう片方を破壊しない (後方互換: preview/編集/画像加工セクションは無改変)。
+        product_cache_key = f"pm_url_direct_product_{eid}"
+
+        def _existing_result() -> dict:
+            cur = st.session_state.get(result_key)
+            if isinstance(cur, dict) and cur.get("url") == _url:
+                return dict(cur)
+            return {
+                "url": _url, "title_only": _is_title_only,
+                "title_ja": "", "title_en": "", "rank_code": "",
+                "rank_reasoning": "", "image_urls": [],
+                "description_html": "", "message": "",
+            }
+
+        b1, b2 = st.columns(2)
+        with b1:
+            _gen_img = st.button(
+                "① 画像生成",
+                key=f"pm_url_direct_gen_img_{eid}",
+                disabled=_is_title_only,  # title-only は URL fetch しない = 画像なし
+                help="引用元 URL を scrape して商品画像を取得 (description は変更しません)。"
+                     if not _is_title_only
+                     else "title-only (URL 空欄) では画像を取得できません。",
+            )
+        with b2:
+            _gen_desc = st.button(
+                "② description 生成",
+                key=f"pm_url_direct_gen_desc_{eid}",
+                disabled=(_is_title_only and not product_title),
+                help="description HTML を (再) 生成 (画像はそのまま保持)。",
+            )
+
+        if _gen_img:
+            with st.spinner("scrape/AI 解析 + Claude rank 推定中 (画像取得)..."):
+                prefetch = prefetch_supplier_product_and_rank(0, _url)
+                if not prefetch.get("success"):
+                    # Q0: URL 取得失敗は明示エラー (silent skip 禁止)
+                    st.error(
+                        f"❌ 画像取得失敗: {prefetch.get('message') or '(原因不明)'}\n\n"
+                        f"→ URL を再確認してください。"
+                    )
+                    return
+                product = prefetch.get("product")
+                st.session_state[product_cache_key] = product  # ② で再利用 (再 scrape 回避)
+                res = _existing_result()
+                res["image_urls"] = list(getattr(product, "image_urls", []) or [])
+                if not res.get("title_ja"):
+                    res["title_ja"] = getattr(product, "title_ja", "") or ""
+                res["message"] = (
+                    f"画像 {len(res['image_urls'])} 件取得完了"
+                    + ("（description は前回の生成結果を保持）" if res.get("description_html") else "")
+                )
+                st.session_state[result_key] = res
+                st.rerun()
+
+        if _gen_desc:
+            with st.spinner("Claude rank 推定 + description 生成中..."):
                 rank_reasoning = ""
                 if _is_title_only:
                     # title-only: URL fetch せず商品タイトルだけで生成 (捏造しない)
                     from monitor.product_resolver import build_title_only_product
                     product = build_title_only_product(product_title)
                     rank_reasoning = "title-only 生成 (ランクは手動指定)"
-                    gen = generate_supplier_description(
-                        candidate_id=0,
-                        candidate_url="",
-                        in_stock=is_in_stock,
-                        prefetched_product=product,
-                        rank_override_code=_rank_override,
-                        extra_instructions=(_extra_instructions or None),
-                    )
                 else:
-                    prefetch = prefetch_supplier_product_and_rank(0, _url)
-                    if not prefetch.get("success"):
-                        # Q0: URL 取得失敗は明示エラー + title-only フォールバック誘導
-                        st.error(
-                            f"❌ 取得失敗: {prefetch.get('message') or '(原因不明)'}\n\n"
-                            f"→ URL 欄を空にすると、この商品のタイトルから title-only で生成できます。"
-                        )
-                        st.session_state.pop(result_key, None)
-                        return
-                    product = prefetch.get("product")
+                    # ① 画像生成で取得済みの product があれば再利用 (再 scrape 回避)。
+                    product = st.session_state.get(product_cache_key)
+                    if product is None:
+                        prefetch = prefetch_supplier_product_and_rank(0, _url)
+                        if not prefetch.get("success"):
+                            # Q0: URL 取得失敗は明示エラー + title-only フォールバック誘導
+                            st.error(
+                                f"❌ 取得失敗: {prefetch.get('message') or '(原因不明)'}\n\n"
+                                f"→ URL 欄を空にすると、この商品のタイトルから title-only で生成できます。"
+                            )
+                            return
+                        product = prefetch.get("product")
+                        st.session_state[product_cache_key] = product
+                        _auto_reasoning = prefetch.get("rank_reasoning") or ""
+                    else:
+                        _auto_reasoning = ""
                     # 2026-06-07 fix: listing 設定ランク(or user 選択)を尊重。
                     # _rank_override=None の時のみ引用元から AI 自動判定にフォールバック。
                     rank_reasoning = (
                         f"商品エディタ『状態』/手動選択のランク {_rank_override} を使用"
                         if _rank_override
-                        else (prefetch.get("rank_reasoning") or "")
+                        else _auto_reasoning
                     )
-                    gen = generate_supplier_description(
-                        candidate_id=0,
-                        candidate_url=_url,
-                        in_stock=is_in_stock,
-                        prefetched_product=product,
-                        rank_override_code=_rank_override,
-                        extra_instructions=(_extra_instructions or None),
-                    )
+                gen = generate_supplier_description(
+                    candidate_id=0,
+                    candidate_url=("" if _is_title_only else _url),
+                    in_stock=is_in_stock,
+                    prefetched_product=product,
+                    rank_override_code=_rank_override,
+                    extra_instructions=(_extra_instructions or None),
+                )
                 if not gen.get("success"):
                     st.error(f"❌ description 生成失敗: {gen.get('message') or '(原因不明)'}")
-                    st.session_state.pop(result_key, None)
                     return
-                st.session_state[result_key] = {
-                    "url": _url,
-                    "title_only": _is_title_only,
-                    "title_ja": getattr(product, "title_ja", "") or "",
-                    "title_en": gen.get("title_en") or "",
-                    "rank_code": gen.get("rank_code") or "",
-                    "rank_reasoning": rank_reasoning,
-                    "image_urls": list(getattr(product, "image_urls", []) or []),
-                    "description_html": gen.get("description_html") or "",
-                    "message": gen.get("message") or "",
-                }
+                res = _existing_result()
+                res["title_only"] = _is_title_only
+                res["title_ja"] = getattr(product, "title_ja", "") or res.get("title_ja") or ""
+                res["title_en"] = gen.get("title_en") or ""
+                res["rank_code"] = gen.get("rank_code") or ""
+                res["rank_reasoning"] = rank_reasoning
+                res["description_html"] = gen.get("description_html") or ""
+                # ① 画像生成をまだ押していない場合、生成 product の画像で埋める (後方互換)。
+                if not res.get("image_urls"):
+                    res["image_urls"] = list(getattr(product, "image_urls", []) or [])
+                res["message"] = (
+                    (gen.get("message") or "description 生成完了")
+                    + ("（画像は前回取得分を保持）" if st.session_state.get(result_key, {}).get("image_urls") else "")
+                )
+                st.session_state[result_key] = res
                 st.rerun()
 
         # 結果 preview
@@ -1719,11 +1776,38 @@ def _render_url_direct_description_section(p: dict) -> None:
                     f"✏️ 編集済み ({len(edited_desc)} 文字) — この内容で eBay 反映されます"
                 )
 
+            from tabs._supplier_description_pipeline import apply_listing_update_to_ebay
+
+            # 依頼ボード#26 (2026-06-17): description 単独で eBay へ反映する button。
+            # 画像は触らず description だけアップロード (money-direct = 対象 item_id 明示)。
+            # 画像も含めた一括反映は下の W158 画像加工セクションの 3 反映 button を使う。
+            if edited_desc.strip():
+                st.markdown(f"**反映対象**: `{eid}` (Description のみ / 画像は変更なし)")
+                if st.button(
+                    "✅ Description を eBay に反映",
+                    key=f"pm_url_direct_apply_desc_{eid}",
+                    type="primary",
+                ):
+                    with st.spinner(f"ReviseItem (description) 反映中... item={eid}"):
+                        _ap = apply_listing_update_to_ebay(
+                            eid, description_html=edited_desc,
+                        )
+                    if _ap.get("success"):
+                        st.success(
+                            f"✅ Description を eBay に反映しました (item={eid}, "
+                            f"{_ap.get('description_len', len(edited_desc))} 文字)"
+                        )
+                    else:
+                        # Q0: 失敗は必ず痕跡表示 (silent skip 禁止)
+                        st.error(
+                            f"❌ Description 反映失敗 (item={eid}): "
+                            f"{_ap.get('message') or '(原因不明)'}"
+                        )
+
             # ── W158 (2026-05-23): 画像加工 + 3 反映 button (個別出品同等) ──
             from tabs._image_pipeline_ui import (
                 render_image_pipeline_section, clear_pipeline_keys,
             )
-            from tabs._supplier_description_pipeline import apply_listing_update_to_ebay
 
             w158_prefix = f"pm_url_direct_{eid}_w158_"
 
