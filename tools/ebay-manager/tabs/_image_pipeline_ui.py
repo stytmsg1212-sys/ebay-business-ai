@@ -443,6 +443,10 @@ def _do_hero_compose(
     if not _acquire_lock(prefix, STAGE_HERO):
         st.warning("hero 合成は実行中です. 完了をお待ちください.")
         return
+    # 依頼ボード (2026-06-18): 失敗 error を st.status(expanded=False) の中で出すと
+    # collapsed 内に隠れて user に見えない (= 「合成されないがエラーも出ない」Q0)。
+    # 失敗有無を flag で持ち帰り、status の外で必ず st.error する。
+    compose_failed = False
     try:
         with st.status(
             "Photoroom + Gemini で 3 候補生成中 (~40 秒)..." if force_regenerate
@@ -453,18 +457,28 @@ def _do_hero_compose(
                 position=position, model=model,
             )
             if not candidates:
-                _s.update(label="hero 合成失敗 (logger 参照)", state="error")
-                st.error("hero 合成失敗. PHOTOROOM_API_KEY / FAL_KEY / GOOGLE_API_KEY 設定を確認.")
-                return
-            st.session_state[f"{prefix}{_SUFFIX_HERO_CANDIDATES}"] = [c.to_dict() for c in candidates]
-            st.session_state[f"{prefix}{_SUFFIX_HERO_SOURCE}"] = source_url
-            st.session_state[f"{prefix}{_SUFFIX_HERO_OPTS}"] = {"position": position, "model": model}
-            if studio:
-                st.session_state[f"{prefix}{_SUFFIX_HERO_STUDIO}"] = str(studio)
-            st.session_state.pop(f"{prefix}{_SUFFIX_HERO_SELECTED}", None)
-            _s.update(label=f"完了: {len(candidates)} 候補生成", state="complete")
+                _s.update(label="hero 合成失敗 (候補0件)", state="error")
+                compose_failed = True
+            else:
+                st.session_state[f"{prefix}{_SUFFIX_HERO_CANDIDATES}"] = [c.to_dict() for c in candidates]
+                st.session_state[f"{prefix}{_SUFFIX_HERO_SOURCE}"] = source_url
+                st.session_state[f"{prefix}{_SUFFIX_HERO_OPTS}"] = {"position": position, "model": model}
+                if studio:
+                    st.session_state[f"{prefix}{_SUFFIX_HERO_STUDIO}"] = str(studio)
+                st.session_state.pop(f"{prefix}{_SUFFIX_HERO_SELECTED}", None)
+                _s.update(label=f"完了: {len(candidates)} 候補生成", state="complete")
     finally:
         _release_lock(prefix, STAGE_HERO)
+    if compose_failed:
+        # status の外 = 常時表示。実原因は残高/クォータ切れが最多 (fal.ai 403 等) のため
+        # API キー未設定と並べて両方を案内する (誤誘導防止 / Q0)。
+        st.error(
+            "プレート合成に失敗しました (候補0件)。考えられる原因:\n"
+            "1. 画像生成 API の残高/クォータ切れ — fal.ai dashboard (fal.ai/dashboard/billing) "
+            "で残高を確認してください (403 / 'Exhausted balance' の頻出原因)\n"
+            "2. PHOTOROOM_API_KEY / FAL_KEY / GOOGLE_API_KEY が未設定\n"
+            "詳細な失敗理由は scheduler/streamlit ログを参照してください。"
+        )
 
 
 # ─────────────────────────────────────────────

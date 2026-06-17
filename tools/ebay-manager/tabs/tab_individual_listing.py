@@ -1128,6 +1128,10 @@ def _do_hero_compose(
     sku = st.session_state.get(f"{_SS}sku") or f"temp_{int(time.time())}"
     out_base = _Path(f"data/hero_candidates/{sku}")
 
+    # 依頼ボード (2026-06-18): 失敗 st.error を st.status(expanded=False) の中で出すと
+    # collapsed に隠れて user に見えない (=「合成されないがエラーも出ない」Q0)。
+    # 失敗 flag を持ち帰り status の外で必ず表示し、実原因 (残高/クォータ切れ) を案内する。
+    compose_failed = False
     with st.status(
         "Photoroom + Gemini で 3 候補生成中 (~40 秒)..." if force_regenerate
         else "既存合成結果を確認中...",
@@ -1140,25 +1144,32 @@ def _do_hero_compose(
             position=position, model=model,
         )
         if not candidates:
-            _s.update(label="hero 合成失敗 (logger 参照)", state="error")
-            st.error("hero 合成失敗. PHOTOROOM_API_KEY / FAL_KEY / GOOGLE_API_KEY 設定 + logs/scheduler.log を確認.")
-            return
-
-        # session_state 互換維持: 旧 dict 形 (plate_id / score / path / reasoning) で書込
-        st.session_state[f"{_SS}hero_candidates"] = [c.to_dict() for c in candidates]
-        st.session_state[f"{_SS}hero_source_url"] = source_url
-        st.session_state[f"{_SS}hero_compose_opts"] = {"position": position, "model": model}
-        if studio_path:
-            st.session_state[f"{_SS}hero_studio_path"] = str(studio_path)
-        # cache restored vs fresh で hero_selected_path の扱いを分岐 (旧挙動互換)
-        # cache restored 時は旧 hero_selected_path を残す (user 採用済を保持)
-        # fresh generation 時は None リセット (新候補から再選択促す)
-        if force_regenerate:
-            st.session_state[f"{_SS}hero_selected_path"] = None
-
-        _s.update(
-            label=f"完了: {len(candidates)} 候補 (cache hit or API 実行)",
-            state="complete",
+            _s.update(label="hero 合成失敗 (候補0件)", state="error")
+            compose_failed = True
+        else:
+            # session_state 互換維持: 旧 dict 形 (plate_id / score / path / reasoning) で書込
+            st.session_state[f"{_SS}hero_candidates"] = [c.to_dict() for c in candidates]
+            st.session_state[f"{_SS}hero_source_url"] = source_url
+            st.session_state[f"{_SS}hero_compose_opts"] = {"position": position, "model": model}
+            if studio_path:
+                st.session_state[f"{_SS}hero_studio_path"] = str(studio_path)
+            # cache restored vs fresh で hero_selected_path の扱いを分岐 (旧挙動互換)
+            # cache restored 時は旧 hero_selected_path を残す (user 採用済を保持)
+            # fresh generation 時は None リセット (新候補から再選択促す)
+            if force_regenerate:
+                st.session_state[f"{_SS}hero_selected_path"] = None
+            _s.update(
+                label=f"完了: {len(candidates)} 候補 (cache hit or API 実行)",
+                state="complete",
+            )
+    if compose_failed:
+        # status の外 = 常時表示。実原因は残高/クォータ切れが最多 (fal.ai 403) のため明示。
+        st.error(
+            "プレート合成に失敗しました (候補0件)。考えられる原因:\n"
+            "1. 画像生成 API の残高/クォータ切れ — fal.ai dashboard (fal.ai/dashboard/billing) "
+            "で残高を確認 (403 / 'Exhausted balance' の頻出原因)\n"
+            "2. PHOTOROOM_API_KEY / FAL_KEY / GOOGLE_API_KEY が未設定\n"
+            "詳細は logs/scheduler.log を参照してください。"
         )
 
 

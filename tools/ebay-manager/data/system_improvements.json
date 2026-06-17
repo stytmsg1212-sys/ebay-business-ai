@@ -2573,5 +2573,29 @@
     "created": "2026-06-17",
     "completed": false,
     "completed_date": null
+  },
+  {
+    "id": 348,
+    "title": "W280 プレート合成の失敗エラーがcollapsed status内に隠れる(サイレント化)Q0修正",
+    "description": "個別出品・商品管理のプレート合成で、失敗時のst.errorがst.status(expanded=False)の中で呼ばれ隠れていた→「合成されないがエラーも出ない」(真因はfal.ai残高切れ403だが見えない+文言がAPIキー確認で誤誘導)。両タブでerrorをstatus外に出し常時表示+実原因(残高/クォータ切れfal.ai dashboard)を明示。",
+    "category": "bug",
+    "priority": "high",
+    "status": "completed",
+    "tag": "W280",
+    "created": "2026-06-18",
+    "completed": true,
+    "completed_date": "2026-06-18"
+  },
+  {
+    "id": 349,
+    "title": "W281 プレート合成: 失敗理由のUI伝播 + 再生成前のstale削除で旧候補喪失の改善",
+    "description": "(1)compose_hero_candidates_cachedはfal 403等の実理由をloggerにしか出さず(candidates,studio)しか返さない→UIに実理由を伝播する。(2)image_pipeline_shared L321が再生成直前に旧hero_W*.pngを削除するため、再生成がfal残高切れ等で失敗すると旧成功候補も失う(force_regenerate時)。失敗時は旧候補を温存する設計に。board#9由来。",
+    "category": "enhancement",
+    "priority": "normal",
+    "status": "pending",
+    "tag": "W281",
+    "created": "2026-06-18",
+    "completed": false,
+    "completed_date": null
   }
 ]
