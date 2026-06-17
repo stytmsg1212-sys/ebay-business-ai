@@ -2549,5 +2549,29 @@
     "created": "2026-06-17",
     "completed": false,
     "completed_date": null
+  },
+  {
+    "id": 346,
+    "title": "W278 Yahoo!ショッピング在庫判定をschema.org併用で根治(候補登録経路)",
+    "description": "site_configにin_stockシグナルが無く在庫あり品がunknown化(user報告 store.shopping.yahoo.co.jp/zozo/90138527)。check_candidate_availabilityにshopping.yahoo.co.jp分岐+_detect_yahoo_shopping_signals(売切最優先=在庫がありません/OutOfStock→unavailable、在庫あり=InStock)追加。実機在庫あり15件検証、回帰テスト5件、code-reviewer HIGH=0。",
+    "category": "bug",
+    "priority": "high",
+    "status": "completed",
+    "tag": "W278",
+    "created": "2026-06-17",
+    "completed": true,
+    "completed_date": "2026-06-17"
+  },
+  {
+    "id": 347,
+    "title": "W279 Yahoo!ショッピングのschema.org在庫判定を定時在庫監視(_check_with_httpx)にも展開",
+    "description": "W278はcheck_candidate_availability(候補登録経路)のみ。定時在庫監視はW192設計でin_stock空=unknown(false-OOS防止意図)。schema.org InStock/OutOfStock併用で確定精度を上げる余地あり。ただしW192の「売切ページにもカートに入れる/数量が残る」懸念の実機検証が別途必要。code-reviewer(W278)のscope-out指摘。",
+    "category": "enhancement",
+    "priority": "low",
+    "status": "pending",
+    "tag": "W279",
+    "created": "2026-06-17",
+    "completed": false,
+    "completed_date": null
   }
 ]

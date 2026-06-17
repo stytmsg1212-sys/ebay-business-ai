@@ -673,6 +673,11 @@ def check_candidate_availability(url: str, timeout_sec: int = _AVAILABILITY_HTTP
         return _check_paypay_availability(url, timeout_sec, checked_at)
     if 'auctions.yahoo.co.jp' in url:
         return _check_yahoo_auctions_availability(url, timeout_sec, checked_at)
+    # 依頼ボード (2026-06-17): Yahoo!ショッピングは site_config に in_stock シグナルが
+    # 無く在庫あり品が unknown 化していた → schema.org 併用の専用判定に振り分け。
+    # paypay/auctions は上で処理済 = 'shopping.yahoo.co.jp' とは重複しない。
+    if 'shopping.yahoo.co.jp' in url:
+        return _check_yahoo_shopping_availability(url, timeout_sec, checked_at)
     # mercari / fril / 他は既存 site_configs ベース
     return _check_via_site_configs(url, timeout_sec, checked_at)
 
@@ -713,6 +718,46 @@ def _check_yahoo_auctions_availability(url: str, timeout_sec: int, checked_at: s
     if '入札する' in html or '今すぐ落札' in html:
         return {'status': 'available', 'signal': 'bid available', 'checked_at': checked_at}
     return {'status': 'unknown', 'signal': 'no signal matched', 'checked_at': checked_at}
+
+
+def _detect_yahoo_shopping_signals(html: str) -> tuple[Optional[str], str]:
+    """Yahoo!ショッピング (store.shopping.yahoo.co.jp) raw HTML から在庫判定。
+    (status|None, signal) を返す。
+
+    背景 (依頼ボード 2026-06-17): site_configs の Yahoo!ショッピング設定は
+    sold_out_text='在庫がありません' のみで in_stock シグナルが空 → 在庫あり品が
+    「どちらも不一致=unknown」で判定不能だった。schema.org availability を併用する。
+
+    実機検証 (2026-06-17、httpx raw HTML、在庫あり15件): 在庫あり →
+    `schema.org/InStock`(http/https 両形式) + 「カートに入れる」。売切判定は実績ある
+    site_config の '在庫がありません' を最優先に使い (オーバーセル/Defect 防止)、
+    schema.org/OutOfStock も併用する。
+    """
+    # 売切 (unavailable) を最優先で確定 — 誤『在庫あり』=オーバーセル防止。
+    if '在庫がありません' in html:
+        return 'unavailable', '在庫がありません'
+    if 'schema.org/OutOfStock' in html:
+        return 'unavailable', 'schema OutOfStock'
+    # 在庫あり (available) — 売切シグナルが無いことを確認した後にのみ判定。
+    if 'schema.org/InStock' in html:
+        return 'available', 'schema InStock'
+    return None, 'no signal matched'
+
+
+def _check_yahoo_shopping_availability(url: str, timeout_sec: int, checked_at: str) -> dict:
+    """Yahoo!ショッピング (store.shopping.yahoo.co.jp) raw HTML 判定 (依頼ボード 2026-06-17)。"""
+    try:
+        resp = httpx.get(url, headers=_avail_headers(), timeout=timeout_sec, follow_redirects=True)
+    except httpx.TimeoutException:
+        return {'status': 'unknown', 'signal': 'httpx timeout', 'checked_at': checked_at}
+    except httpx.HTTPError as e:
+        return {'status': 'unknown', 'signal': f'httpx error: {type(e).__name__}', 'checked_at': checked_at}
+    if resp.status_code == 404:
+        return {'status': 'not_found', 'signal': 'HTTP 404', 'checked_at': checked_at}
+    if resp.status_code != 200:
+        return {'status': 'unknown', 'signal': f'HTTP {resp.status_code}', 'checked_at': checked_at}
+    status, signal = _detect_yahoo_shopping_signals(resp.text)
+    return {'status': status or 'unknown', 'signal': signal, 'checked_at': checked_at}
 
 
 def _check_via_site_configs(url: str, timeout_sec: int, checked_at: str) -> dict:
