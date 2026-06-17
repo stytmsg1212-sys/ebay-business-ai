@@ -2525,5 +2525,29 @@
     "created": "2026-06-16",
     "completed": true,
     "completed_date": "2026-06-16"
+  },
+  {
+    "id": 344,
+    "title": "W276 PayPayフリマ在庫判定をschema.org/NEXT_DATA signalに更新(売切候補提示事故 根治)",
+    "description": "PayPayがHTML変更で旧server-sideシグナル消失→候補unknown化→売切提示。_detect_paypay_signalsをschema.org/OutOfStock+\"status\":\"SOLD\"(売切優先)/InStock+OPEN(在庫あり)に更新。実機7件検証(売切3/在庫あり4クリーン分離)、新規テスト8件、既存pending18件再判定で売切7件auto-reject。code-reviewer HIGH=0。",
+    "category": "bug",
+    "priority": "high",
+    "status": "completed",
+    "tag": "W276",
+    "created": "2026-06-17",
+    "completed": true,
+    "completed_date": "2026-06-17"
+  },
+  {
+    "id": 345,
+    "title": "W277 PayPay在庫判定を商品本体JSON-LDブロックにスコープ(関連商品SOLD誤マッチ堅牢化)",
+    "description": "code-reviewer MEDIUM(W276)。\"status\":\"SOLD\"/schema availability は__NEXT_DATA__の関連商品リストにも反応し得る→在庫あり本体が関連枠SOLDで誤OOS(機会損失)になる理論経路。実機未発生・安全側だがschema.org/Product近傍にスコープした抽出で堅牢化。",
+    "category": "bug",
+    "priority": "low",
+    "status": "pending",
+    "tag": "W277",
+    "created": "2026-06-17",
+    "completed": false,
+    "completed_date": null
   }
 ]

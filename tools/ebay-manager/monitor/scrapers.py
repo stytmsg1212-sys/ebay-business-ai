@@ -112,24 +112,46 @@ def _detect_paypay_signals(html: str) -> tuple[Optional[str], str]:
     W182 gate (`_check_paypay_availability`) と定時在庫監視 (`_check_with_httpx`) の
     共有判定 (依頼ボード#14 2026-06-12: 定時監視へ配線、シグナル 2 重管理を防ぐ)。
 
-    確実シグナル (Codex 2026-05-28 検証: raw HTML に server-side で必ず入る):
-      この商品は存在しません -> not_found / 購入日時・"SoldOut" -> unavailable
-    site_configs の『関連商品をアプリで探す』『購入手続きへ』は JS 描画後にしか
-    出ないことがあり httpx 段では拾えない — これが依頼ボード#14 (売切が 1 か月
-    以上「不明」のまま残存) の真因。
-    ⚠️ 売切ページにも別 JSON-LD で schema.org/InStock が残るため InStock は使わない。
+    確実シグナル (2026-06-17 実機検証で更新):
+      この商品は存在しません -> not_found
+      schema.org/OutOfStock または "status":"SOLD" -> unavailable
+      schema.org/InStock または "status":"OPEN"   -> available
+    実機比較 (売切3件 / 在庫あり4件): 売切=OutOfStock+SOLD、在庫あり=InStock+OPEN で
+    クリーンに分離。誤OOS(=オーバーセル/Defect)も誤在庫ありも出さない両側検証済。
+
+    背景 (2026-06-17 依頼ボード: 売切候補が次々提示される事故):
+      PayPay が HTML 構造を変更し、旧 server-side シグナル('購入日時'/'購入手続きへ'/
+      '"SoldOut"'/'関連商品をアプリで探す')が raw HTML から消失 → 全候補が
+      'no signal matched'=unknown 化 → 売切が検出されず提示され続けていた。
+      schema.org availability(JSON-LD)と __NEXT_DATA__ の "status" が新しい確実シグナル。
+    旧シグナルは消えても害は無いため fallback として残す(将来の HTML 揺れ対策)。
     """
     if 'この商品は存在しません' in html:
         return 'not_found', 'no_page_text'
-    # sold_out signals: 優先順 (購入日時 = 購入済の確定 signal)
+
+    # --- 新・確実シグナル (2026-06-17): 売切 (unavailable) を最優先で確定 ---
+    # 売切ページに stale InStock が混在しても OutOfStock/SOLD を先に見るため誤判定しない。
+    if 'schema.org/OutOfStock' in html:
+        return 'unavailable', 'schema OutOfStock'
+    if re.search(r'"status"\s*:\s*"SOLD"', html):
+        return 'unavailable', 'NEXT_DATA status SOLD'
+
+    # 旧 sold_out signals (HTML 揺れ対策の fallback)
     if '購入日時' in html:
         return 'unavailable', '購入日時 in HTML'
     if '"SoldOut"' in html or "'SoldOut'" in html:
         return 'unavailable', 'SoldOut JSON-LD'
     if '関連商品をアプリで探す' in html:
         return 'unavailable', 'related items text'
+
+    # --- 在庫あり (available): 売切シグナルが無いことを確認した後にのみ判定 ---
+    if 'schema.org/InStock' in html:
+        return 'available', 'schema InStock'
+    if re.search(r'"status"\s*:\s*"OPEN"', html):
+        return 'available', 'NEXT_DATA status OPEN'
     if '購入手続きへ' in html:
         return 'available', '購入手続きへ'
+
     return None, 'no signal matched'
 
 
