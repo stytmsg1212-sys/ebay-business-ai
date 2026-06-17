@@ -531,8 +531,13 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 if alt_only:
                     try:
                         update_supplier_candidate_status(cid, "accepted")
-                        # 個別出品タブの session_state key (tab_individual_listing.py _SS="il_")
-                        st.session_state["il_supplier_url"] = url
+                        # 個別出品タブの URL prefill (依頼ボード#28 修正 2026-06-17):
+                        # 個別出品タブ (_SS="il_") は widget 生成前に
+                        # `il_pending_supplier_url` (pending seed) を読んで input 欄へ
+                        # 反映する設計 (tab_individual_listing._render_step1_urls L464-469)。
+                        # 旧 `il_supplier_url` (pending_ 欠落) はどこからも読まれず prefill
+                        # が常にスキップされていた = 本依頼の真因。pending seed キーに統一。
+                        st.session_state["il_pending_supplier_url"] = url
                         st.session_state[f"_sup_il_prefilled_{cid}"] = True
                         st.toast(
                             f"「個別出品」タブに仕入先 URL を pre-fill しました "
