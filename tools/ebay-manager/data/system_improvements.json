@@ -2609,5 +2609,17 @@
     "created": "2026-06-19",
     "completed": false,
     "completed_date": null
+  },
+  {
+    "id": 351,
+    "title": "W283 送料 rate table 月次自動更新バッチ (Phase 9)",
+    "description": "DDP 送料 rate table の金額を FedEx/DHL 実費差額式へ毎月1日 03:00 自動追従させる月次バッチ。行構造(DHLゾーン9行)は不変で updateShippingCost 金額のみ更新。scripts/shipping_rate_batch/ に実装済。初期 mode=dry_run (適用せず diff を Discord/DB 記録)。Codex VERDICT B の F1-F6 (燃料専用キー/FX失敗時auto停止/全table preflight制/rollback堅牢化/ISO bijection/ハイブリッドガード/横断原則) 反映。code-reviewer HIGH=0 + Codex 実装2段 + pytest 2726+27 + dry-run diff=0 実証。残: 燃料源確定(FICP 41.5/45.25 vs CPaSS 49.5/47.75)を初月dry-run diffで確認しuser が settings rate_table_fuel_* 設定→mode=auto昇格。設計書=.company/engineering/docs/2026-06-19-shipping-rate-table-phase9-monthly-batch-design.md。",
+    "category": "enhancement",
+    "priority": "normal",
+    "status": "completed",
+    "tag": "W283",
+    "created": "2026-06-19",
+    "completed": true,
+    "completed_date": "2026-06-19"
   }
 ]

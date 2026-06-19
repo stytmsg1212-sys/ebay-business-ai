@@ -1,0 +1,175 @@
+{
+ "source": "phase6_manifest_1-2kg.json (Phase6 live-verified)",
+ "note": "DHL zone <-> country set <-> ISO3. band-independent (zone structure identical across all 10 bands).",
+ "zones": {
+  "1": {
+   "zone": 1,
+   "countries": [
+    "Korea, South",
+    "Taiwan"
+   ],
+   "iso": [
+    "KOR",
+    "TWN"
+   ]
+  },
+  "2": {
+   "zone": 2,
+   "countries": [
+    "China",
+    "Hong Kong",
+    "Macau"
+   ],
+   "iso": [
+    "CHN",
+    "HKG",
+    "MAC"
+   ]
+  },
+  "3": {
+   "zone": 3,
+   "countries": [
+    "Indonesia",
+    "Malaysia",
+    "Philippines",
+    "Singapore",
+    "Thailand"
+   ],
+   "iso": [
+    "IDN",
+    "MYS",
+    "PHL",
+    "SGP",
+    "THA"
+   ]
+  },
+  "4": {
+   "zone": 4,
+   "countries": [
+    "India"
+   ],
+   "iso": [
+    "IND"
+   ]
+  },
+  "6": {
+   "zone": 6,
+   "countries": [
+    "Andorra",
+    "Austria",
+    "Belgium",
+    "Bulgaria",
+    "Croatia, Republic of",
+    "Cyprus",
+    "Czech Republic",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Liechtenstein",
+    "Luxembourg",
+    "Malta",
+    "Monaco",
+    "Netherlands",
+    "Norway",
+    "Poland",
+    "Portugal",
+    "Romania",
+    "San Marino",
+    "Spain",
+    "Sweden",
+    "Switzerland",
+    "Turkey",
+    "United Kingdom"
+   ],
+   "iso": [
+    "AND",
+    "AUT",
+    "BEL",
+    "BGR",
+    "CHE",
+    "CYP",
+    "CZE",
+    "DEU",
+    "DNK",
+    "ESP",
+    "EST",
+    "FIN",
+    "FRA",
+    "GBR",
+    "GRC",
+    "HRV",
+    "HUN",
+    "IRL",
+    "ITA",
+    "LIE",
+    "LUX",
+    "LVA",
+    "MCO",
+    "MLT",
+    "NLD",
+    "NOR",
+    "POL",
+    "PRT",
+    "ROU",
+    "SMR",
+    "SWE",
+    "TUR"
+   ]
+  },
+  "7": {
+   "zone": 7,
+   "countries": [
+    "Albania",
+    "Armenia",
+    "Iceland"
+   ],
+   "iso": [
+    "ALB",
+    "ARM",
+    "ISL"
+   ]
+  },
+  "8": {
+   "zone": 8,
+   "countries": [
+    "Israel"
+   ],
+   "iso": [
+    "ISR"
+   ]
+  },
+  "9": {
+   "zone": 9,
+   "countries": [
+    "Kazakhstan",
+    "Nepal",
+    "Oman",
+    "Pakistan",
+    "Qatar"
+   ],
+   "iso": [
+    "KAZ",
+    "NPL",
+    "OMN",
+    "PAK",
+    "QAT"
+   ]
+  },
+  "11": {
+   "zone": 11,
+   "countries": [
+    "Australia"
+   ],
+   "iso": [
+    "AUS"
+   ]
+  }
+ }
+}

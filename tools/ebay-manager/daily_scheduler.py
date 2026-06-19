@@ -1041,6 +1041,24 @@ def setup_scheduler():
     _rs_enabled = config.get('tasks_enabled', {}).get('research_sourcing', {}).get('enabled', False)
     logger.info(f"W228 リサーチ探索 発火: 毎日 04:30 JST (enabled={_rs_enabled})")
 
+    # ── W283 Phase 9 月次送料 rate table 自動更新 (2026-06-19 追加) ──
+    # 毎月1日 03:00 JST に FedEx/DHL 実費差額式で rate table 金額を自動追従.
+    # 前月為替確定後・主 batch (02:30) 後. codex_lint(03:00) と同時刻だが別 owner・
+    # 月1回のみ。mode=dry_run の間は updateShippingCost を呼ばず diff 通知のみ (初月検証)。
+    # 検証後 user が config.rate_table_batch.mode='auto' へ昇格。
+    scheduler.add_job(
+        _run_rate_table_batch,
+        trigger=CronTrigger(day=1, hour=3, minute=0, second=0),
+        args=[config, 3],
+        id='rate_table_monthly_update',
+        name='W283 月次送料 rate table 自動更新 (毎月1日 03:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _rtb_enabled = config.get('tasks_enabled', {}).get('rate_table_monthly_update', {}).get('enabled', False)
+    _rtb_mode = (config.get('rate_table_batch') or {}).get('mode', 'dry_run')
+    logger.info(f"W283 月次送料 rate table 更新 発火: 毎月1日 03:00 JST (enabled={_rtb_enabled}, mode={_rtb_mode})")
+
     # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
     # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
     # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
@@ -1218,6 +1236,37 @@ def _run_research_sourcing(config: dict, scheduled_hour: int = 4):
     _run_isolated_task('research_sourcing', 'W228 リサーチ探索',
                        lambda: run_research_sourcing(config),
                        scheduled_hour=scheduled_hour)
+
+
+def _run_rate_table_batch(config: dict, scheduled_hour: int = 3):
+    """W283 Phase 9 — 毎月1日 03:00 JST に送料 rate table を実費差額式へ自動更新.
+
+    mode は config.rate_table_batch.mode (既定 dry_run)。dry_run は updateShippingCost を
+    呼ばず diff を Discord/DB に記録するのみ。kill switch =
+    tasks_enabled.rate_table_monthly_update.enabled (false で停止)。
+    """
+    if not config.get('tasks_enabled', {}).get('rate_table_monthly_update', {}).get('enabled', False):
+        logger.info("rate_table_monthly_update: disabled (kill switch) — skip")
+        return
+    try:
+        from scripts.shipping_rate_batch import run_batch as rtb
+    except ImportError as e:
+        logger.error(f"shipping_rate_batch import 失敗: {e}")
+        # 月次 = 月1回発火。痕跡を残さないと次の発火まで誰も気付かない (Q0 silent skip)。
+        _run_isolated_task('rate_table_monthly_update', '月次送料 rate table 自動更新',
+                           lambda: {"success": False,
+                                    "message": f"import 失敗: {type(e).__name__}: {e}"},
+                           scheduled_hour=scheduled_hour)
+        return
+
+    def _runner() -> dict:
+        res = rtb.run_batch(config)
+        ok = res.get("outcome") in ("dry_run", "auto_applied")
+        msg = f"outcome={res.get('outcome')} changes={res.get('n_changes')} run={res.get('run_id')}"
+        return {"success": ok, "message": msg, **res}
+
+    _run_isolated_task('rate_table_monthly_update', '月次送料 rate table 自動更新',
+                       _runner, scheduled_hour=scheduled_hour)
 
 
 def _run_claude_loop_healthcheck(config: dict):

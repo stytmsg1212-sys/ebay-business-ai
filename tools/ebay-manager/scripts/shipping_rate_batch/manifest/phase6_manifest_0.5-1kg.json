@@ -1,0 +1,122 @@
+{
+ "table_id": "5284240010",
+ "band": "0.5-1kg",
+ "rows": [
+  {
+   "rate_id": "1",
+   "zone": 1,
+   "usd": 0,
+   "countries": [
+    "Korea, South",
+    "Taiwan"
+   ]
+  },
+  {
+   "rate_id": "2",
+   "zone": 2,
+   "usd": 0,
+   "countries": [
+    "China",
+    "Hong Kong",
+    "Macau"
+   ]
+  },
+  {
+   "rate_id": "3",
+   "zone": 3,
+   "usd": 0,
+   "countries": [
+    "Indonesia",
+    "Malaysia",
+    "Philippines",
+    "Singapore",
+    "Thailand"
+   ]
+  },
+  {
+   "rate_id": "4",
+   "zone": 4,
+   "usd": 4,
+   "countries": [
+    "India"
+   ]
+  },
+  {
+   "rate_id": "5",
+   "zone": 6,
+   "usd": 7,
+   "countries": [
+    "Andorra",
+    "Austria",
+    "Belgium",
+    "Bulgaria",
+    "Croatia, Republic of",
+    "Cyprus",
+    "Czech Republic",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Liechtenstein",
+    "Luxembourg",
+    "Malta",
+    "Monaco",
+    "Netherlands",
+    "Norway",
+    "Poland",
+    "Portugal",
+    "Romania",
+    "San Marino",
+    "Spain",
+    "Sweden",
+    "Switzerland",
+    "Turkey",
+    "United Kingdom"
+   ]
+  },
+  {
+   "rate_id": "6",
+   "zone": 7,
+   "usd": 11,
+   "countries": [
+    "Albania",
+    "Armenia",
+    "Iceland"
+   ]
+  },
+  {
+   "rate_id": "7",
+   "zone": 8,
+   "usd": 32,
+   "countries": [
+    "Israel"
+   ]
+  },
+  {
+   "rate_id": "8",
+   "zone": 9,
+   "usd": 35,
+   "countries": [
+    "Kazakhstan",
+    "Nepal",
+    "Oman",
+    "Pakistan",
+    "Qatar"
+   ]
+  },
+  {
+   "rate_id": "9",
+   "zone": 11,
+   "usd": 1,
+   "countries": [
+    "Australia"
+   ]
+  }
+ ]
+}

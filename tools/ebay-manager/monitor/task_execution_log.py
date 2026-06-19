@@ -71,6 +71,9 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "order_alert_check", "display": "W7-A 注文アラート (30分ごと)", "hours": None, "weekdays": None, "owner": "order_alert", "kind": "interval", "interval_minutes": 30},
     # W148 (2026-05-21): キーワード新着監視. 2h ごと :20 分 subprocess crawl.
     {"key": "keyword_watch_crawl", "display": "W148 キーワード新着監視 (2h ごと :20)", "hours": None, "weekdays": None, "owner": "keyword_watch", "kind": "interval", "interval_minutes": 120},
+    # W283 Phase 9 (2026-06-19): 送料 rate table 月次自動更新. 毎月1日 03:00 のみ.
+    # kind=monthly で月初以外は missed 判定から除外 (毎日 false-positive 回避)。
+    {"key": "rate_table_monthly_update", "display": "月次送料 rate table 自動更新 (DDP差額式)", "hours": [3], "weekdays": None, "owner": "rate_table_batch", "kind": "monthly", "month_day": 1},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}
@@ -258,6 +261,10 @@ def get_today_expected_tasks(
         # batch slot ではなく */30 等で発火するため expected slot 模型から除外.
         # MonoDeck の missed 判定で false positive を出さない.
         if t.get("kind") == "interval":
+            continue
+        # 月次 task (rate_table_monthly_update): 月初 (month_day) のみ期待。
+        # それ以外の日は毎日 missed false-positive を出さないよう除外。
+        if t.get("kind") == "monthly" and now.day != t.get("month_day", 1):
             continue
         hours = t.get("hours")
         slots: list[int]
