@@ -2597,5 +2597,17 @@
     "created": "2026-06-18",
     "completed": false,
     "completed_date": null
+  },
+  {
+    "id": 350,
+    "title": "W282 仕入先候補cleanupのSKUキー誤用 再発防止CIガード",
+    "description": "cleanup_stale_supplier_candidates 等 supplier_candidates 系クエリに `sku IN/=` 等の listing 照合が混入したら CI テストで検知する回帰ガードを追加。listing 識別は ebay_item_id が正(sku-rules.md)。2026-06-18 に同関数が sku 照合で正当な pending 候補を巻き添え auto_reject しキュー枯渇させた事故(W139/W185 と同系統の SKU 主キー誤用)の恒久再発防止。grep/AST ベースの guard test を想定。",
+    "category": "enhancement",
+    "priority": "normal",
+    "status": "pending",
+    "tag": "W282",
+    "created": "2026-06-19",
+    "completed": false,
+    "completed_date": null
   }
 ]

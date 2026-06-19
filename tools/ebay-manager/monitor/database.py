@@ -5937,47 +5937,56 @@ def unmark_ebay_listing_ended(ebay_item_id: str) -> bool:
 
 
 def cleanup_stale_supplier_candidates() -> dict:
-    """退役済・孤児SKU・仕入先復活SKUに紐づく pending supplier_candidates を auto-reject する。
+    """退役済・孤児・仕入先復活 listing に紐づく pending supplier_candidates を auto-reject する。
 
-    対象:
+    対象 (親 listing は **ebay_item_id** で識別):
       1. status='pending' かつ 親listingが is_ended=1
-      2. status='pending' かつ 親SKUが ebay_listings に存在しない（SKU書き換え後の孤児）
+      2. status='pending' かつ 親 ebay_item_id が ebay_listings に存在しない（listing 退役後の孤児）
       3. status='pending' かつ 親listingの source_status='在庫有' (仕入先復活、候補不要)
          ※ accepted 候補は auto-reject しない（ユーザー判断を尊重、UI警告に委ねる）
+
+    ⚠️ SKU キー違反 fix (2026-06-18): 旧実装は `sku IN (...)` で親 listing を照合していたが、
+    `stock**` SKU は多数 listing が共有し、無在庫 `ebay**` SKU も再出品/重複で複数行に存在し得る。
+    同一 SKU の別 listing が在庫有/ended になると、本来は無在庫 listing に紐づく正当な候補まで
+    巻き添えで auto_rejected され、review キューが枯渇した (誤却下 148 件)。sku-rules.md / W139 /
+    W185 と同系統の SKU 主キー誤用を ebay_item_id 主導へ是正。
 
     Returns: {rejected_ended, rejected_orphan, rejected_recovered}
     """
     with get_conn() as conn:
         # 1. parent ended — auto_rejected=1 でマーク（Phase 1 学習時に除外）
+        # SKU キー違反 fix (2026-06-18): sku → ebay_item_id (親 listing 単位で識別)
         cur1 = conn.execute(
             """UPDATE supplier_candidates
                SET status='rejected', auto_rejected=1, user_action_at=CURRENT_TIMESTAMP
                WHERE status='pending'
-                 AND sku IN (
-                     SELECT sku FROM ebay_listings WHERE is_ended=1
+                 AND ebay_item_id IN (
+                     SELECT ebay_item_id FROM ebay_listings WHERE is_ended=1
                  )"""
         )
         rejected_ended = cur1.rowcount
 
-        # 2. orphan (parent SKU 存在しない) - 作成後1時間の猶予を設ける
-        # SKU書き換え直後に同一SKUの pending が巻き添えで reject される事故を防ぐ
+        # 2. orphan (親 ebay_item_id が存在しない) - 作成後1時間の猶予を設ける
+        # SKU キー違反 fix (2026-06-18): sku → ebay_item_id。ebay_item_id は listing 一意なので
+        # SKU 書き換えで巻き添え孤児化しない（猶予は listing 退役直後の race 用に維持）
         cur2 = conn.execute(
             """UPDATE supplier_candidates
                SET status='rejected', auto_rejected=1, user_action_at=CURRENT_TIMESTAMP
                WHERE status='pending'
-                 AND sku NOT IN (SELECT sku FROM ebay_listings)
+                 AND ebay_item_id NOT IN (SELECT ebay_item_id FROM ebay_listings)
                  AND created_at < datetime('now', '-1 hour')"""
         )
         rejected_orphan = cur2.rowcount
 
         # 3. 仕入先復活 (2026-04-20 追加): 親 listing が source_status='在庫有' に戻った
-        # SKU の pending を auto-reject。accepted は対象外 (UI で警告表示→手動判断)。
+        # listing の pending を auto-reject。accepted は対象外 (UI で警告表示→手動判断)。
+        # SKU キー違反 fix (2026-06-18): sku → ebay_item_id (誤却下 148 件の主因はこの条件)
         cur3 = conn.execute(
             """UPDATE supplier_candidates
                SET status='rejected', auto_rejected=1, user_action_at=CURRENT_TIMESTAMP
                WHERE status='pending'
-                 AND sku IN (
-                     SELECT sku FROM ebay_listings
+                 AND ebay_item_id IN (
+                     SELECT ebay_item_id FROM ebay_listings
                      WHERE source_status='在庫有'
                        AND (is_ended IS NULL OR is_ended=0)
                  )"""
