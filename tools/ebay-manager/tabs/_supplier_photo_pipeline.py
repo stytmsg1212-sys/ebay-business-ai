@@ -202,30 +202,45 @@ def _do_supplier_hero_compose(
         return
 
     # 1. source download
+    # expanded=True: 失敗時の st.error が折りたたみヘッダ裏に隠れる Q0 不可視化を防ぐ
     source_path = out_base / "_source.jpg"
     try:
-        with st.status("画像をダウンロード中...", expanded=False) as _s:
+        with st.status("画像をダウンロード中...", expanded=True) as _s:
             with httpx.Client(timeout=30, follow_redirects=True) as c:
                 r = c.get(source_url)
                 r.raise_for_status()
                 source_path.write_bytes(r.content)
             _s.update(label=f"ダウンロード完了 ({len(r.content) // 1024} KB)", state="complete")
     except Exception as e:
+        logger.warning(f"supplier hero source download 失敗 (sup_{candidate_id}): {e}")
         st.error(f"画像ダウンロード失敗: {e}")
         return
 
     # 2. Photoroom
     try:
-        with st.status("Photoroom で studio 化中 (約 10 秒)...", expanded=False) as _s:
+        with st.status("Photoroom で studio 化中 (約 10 秒)...", expanded=True) as _s:
             pr = compose_cover_with_photoroom(source_path)
             if not pr.success:
-                st.error(f"Photoroom 失敗: {pr.error}")
+                # Q0: state="error" でヘッダを赤表示にし、ログにも痕跡を残す
+                # (Photoroom 402=プラン枯渇等の失敗が無痕跡で消えるのを防ぐ)。
+                # 確立パターン (tab_individual_listing 2026-06-18) に合わせ、実原因
+                # (残高/枚数枯渇が最多) を actionable に案内する。
+                _s.update(label="Photoroom 失敗", state="error")
+                logger.warning(f"supplier hero Photoroom 失敗 (sup_{candidate_id}): {pr.error}")
+                st.error(
+                    f"Photoroom 失敗: {pr.error}\n\n"
+                    "考えられる原因:\n"
+                    "1. Photoroom プランの枚数/残高切れ (402 'exhausted' が頻出原因) — "
+                    "Photoroom dashboard でプランを確認/更新してください\n"
+                    "2. PHOTOROOM_API_KEY が未設定 or 無効"
+                )
                 return
             studio_path = out_base / "_studio.png"
             pr.image.save(studio_path)
             st.session_state[sk_studio] = str(studio_path)
             _s.update(label="Photoroom 完了", state="complete")
     except Exception as e:
+        logger.warning(f"supplier hero Photoroom 例外 (sup_{candidate_id}): {e}")
         st.error(f"Photoroom 例外: {e}")
         return
 
@@ -244,7 +259,7 @@ def _do_supplier_hero_compose(
     except OSError as e:
         logger.warning(f"旧 _compose_opts.json 削除失敗 (sup_{candidate_id}): {e}")
     try:
-        with st.status("Gemini でプレート合成中 (約 30-40 秒, 3 候補並列)...", expanded=False) as _s:
+        with st.status("Gemini でプレート合成中 (約 30-40 秒, 3 候補並列)...", expanded=True) as _s:
             result = generate_hero_candidates(
                 studio_product_path=studio_path,
                 output_dir=out_base,
@@ -285,6 +300,7 @@ def _do_supplier_hero_compose(
                     logger.warning(f"_compose_opts.json 無効化失敗 (sup_{candidate_id}): {e}")
                 logger.warning(f"supplier hero 合成 0 候補 (sup_{candidate_id})")
     except Exception as e:
+        logger.warning(f"supplier hero Gemini 合成例外 (sup_{candidate_id}): {e}")
         st.error(f"Gemini 合成例外: {e}")
         return
 
