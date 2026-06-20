@@ -319,6 +319,11 @@
       "priority": 11,
       "max_per_run": 3,
       "_note": "money-direct タスク。enabled=false のまま canary 1件を手動実行して確認後に true へ昇格。canary 手順: (1) max_per_run=1 で enabled=true (2) scheduler 再起動 (3) 次の 11:30/15:30/22:30 JST に自動発火 or run_task UI から手動発火 (4) old→new item_id 確認 + eBaymag 各国版実ページ目視 (5) 問題なければ max_per_run=3 に戻す。"
+    },
+    "ebaymag_apply_queue": {
+      "enabled": false,
+      "description": "W284 Phase 2: eBaymag 反映キュー消化 — UI で希望保存 (新規出品/区分変更/relist再リンク) されたジョブを CDP 在席時に各国版へ適用 (apply_site_changes)。11:30/15:30/22:30 JST。",
+      "_note": "money-direct タスク (各国版の公開状態を mutate)。config 欠落時は fail-safe OFF (daily_scheduler 側 get('enabled', False))。canary 手順: (1) enabled=true (2) scheduler 再起動 (3) UI で 1 件だけ希望保存 → enqueue (4) 次の 11:30/15:30/22:30 JST 自動発火 or run_task UI 手動発火 (5) eBaymag 各国版実ページで意図通り反映を目視 (6) 問題なければ常用。"
     }
   },
   "rate_table_batch": {

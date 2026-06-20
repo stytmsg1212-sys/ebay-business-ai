@@ -60,15 +60,21 @@ def test_resolve_webhook_url_falls_back_to_env(monkeypatch):
     fallback で取得して URL が返ること. 旧コードは空文字列をそのまま返し silent skip
     していた = 19:00 health check で coverable=1 / fresh=1 / orphan 3 件すべて通知欠落.
     """
+    monkeypatch.delenv("DISCORD_SYSTEM_WEBHOOK_URL", raising=False)
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/from_env")
     # config.discord.webhook_url が空 (8473103 commit 後の実態)
     config_empty = {"discord": {"webhook_url": ""}}
     assert _resolve_webhook_url(config_empty) == "https://example.test/from_env"
     # config.discord 自体が無い場合も .env fallback
     assert _resolve_webhook_url({}) == "https://example.test/from_env"
-    # config 側に URL があれば config 優先 (legacy 後方互換)
+    # W284(#22, 2026-06-20): resolve_webhook("system") へ一本化。config.discord.webhook_url
+    # は 2026-05-25 の .env 移行で deprecated (本番は空文字) のため config 優先は廃止。
+    # config に URL が残っていても env (system 未設定→DISCORD_WEBHOOK_URL) が返る。
     config_legacy = {"discord": {"webhook_url": "https://example.test/from_config"}}
-    assert _resolve_webhook_url(config_legacy) == "https://example.test/from_config"
+    assert _resolve_webhook_url(config_legacy) == "https://example.test/from_env"
+    # system 専用 ch が設定されていれば最優先
+    monkeypatch.setenv("DISCORD_SYSTEM_WEBHOOK_URL", "https://example.test/from_system")
+    assert _resolve_webhook_url(config_empty) == "https://example.test/from_system"
 
 
 def test_cutoff_is_jst_naive_string(monkeypatch):

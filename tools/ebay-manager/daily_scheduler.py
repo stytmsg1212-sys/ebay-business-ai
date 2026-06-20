@@ -1065,7 +1065,9 @@ def setup_scheduler():
     # 11:30 / 15:30 / 22:30 JST (主 batch :00/:30 の直後オフセット)。
     # enabled は config (tasks_enabled.ebaymag_apply_queue.enabled) で制御。
     _emq_cfg = (config.get('tasks_enabled', {}) or {}).get('ebaymag_apply_queue', {}) or {}
-    if _emq_cfg.get('enabled', True):
+    # money-direct タスク (各国版 mutate)。config 欠落時は fail-safe OFF (HIGH-A 修正 2026-06-20)。
+    # canary 後に schedule_config.json の tasks_enabled.ebaymag_apply_queue.enabled=true で昇格。
+    if _emq_cfg.get('enabled', False):
         for _emq_h, _emq_m in [(11, 30), (15, 30), (22, 30)]:
             scheduler.add_job(
                 _run_ebaymag_apply_queue,

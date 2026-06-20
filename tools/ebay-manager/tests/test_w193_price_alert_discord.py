@@ -276,7 +276,9 @@ def _patch_notifier(monkeypatch, results):
     import notifiers.discord_notifier as dn
     holder = {}
 
-    def _factory(webhook):
+    def _factory(webhook, *, bypass_env=False):
+        # W284(#22): 価格アラート送信が DiscordNotifier(..., bypass_env=True) を渡すため
+        # 実 DiscordNotifier.__init__ と同じ signature を mock も受ける (値は fake では不使用)。
         n = _FakeNotifier(webhook, results)
         holder["notifier"] = n
         return n
