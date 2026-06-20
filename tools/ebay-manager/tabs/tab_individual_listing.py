@@ -35,11 +35,13 @@ from typing import Any, Optional
 import streamlit as st
 
 from monitor.database import (
+    enqueue_ebaymag_apply,
     get_description_template,
     get_description_templates,
     get_listing_draft,
     get_listing_drafts,
     save_listing_draft,
+    set_ebaymag_desired,
     update_listing_draft,
     update_listing_draft_status,
     upsert_ebay_listing,
@@ -60,6 +62,8 @@ from monitor.shipping_policy_selector import select_shipping_policy
 from monitor.supplier_scraper import ScrapedProduct, scrape_supplier_url
 # W226 (2026-06-06): URL 振り分け (フリマ→専用 / 汎用 EC→AI) + title-only 生成
 from monitor.product_resolver import resolve_product_from_url, build_title_only_product
+# W284 (2026-06-20): eBaymag 国別出品 区分選択 (出品前 = ebay_item_id 不要)
+from tabs._ebaymag_section import render_segment_selector
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +186,9 @@ def _init_session_state() -> None:
         f"{_SS}verify_result": None,
         f"{_SS}add_result": None,
         f"{_SS}current_draft_id": None,
+        # W284 (2026-06-20): eBaymag 国別出品 区分 (出品前の一時退避)
+        f"{_SS}ebaymag_segment": "出さない",   # 4択: 全国/優先国/カスタム/出さない
+        f"{_SS}ebaymag_desired": [],             # list[str] — 解決済み出品国
         # 手動入力フォールバック用フィールド
         f"{_SS}manual_title_ja": "",
         f"{_SS}manual_condition_ja": "",
@@ -1435,6 +1442,19 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
     st.session_state[f"{_SS}manual_category_id"] = manual_cat
     st.session_state[f"{_SS}extra_instructions"] = extra_instructions
 
+    # W284 (2026-06-20): eBaymag 国別出品 区分選択 (出品前 = ebay_item_id 未確定)
+    # 出品区分 (primary_market=販売先) とは別物: eBaymag 経由の各国公開設定。
+    # 選択結果は session_state に退避し、AddItem 成功後に DB 保存する (item_id 確定後)。
+    st.markdown("---")
+    _em_result = render_segment_selector(
+        key_prefix="il_ebaymag",
+        ebay_item_id=None,  # 出品前 = item_id 未確定
+        current_segment=st.session_state.get(f"{_SS}ebaymag_segment") or "出さない",
+        current_desired=st.session_state.get(f"{_SS}ebaymag_desired") or [],
+    )
+    st.session_state[f"{_SS}ebaymag_segment"] = _em_result["segment"]
+    st.session_state[f"{_SS}ebaymag_desired"] = _em_result["desired_sites"]
+
     # 生成ボタン
     _b1, _b2 = st.columns([1, 5])
     with _b1:
@@ -2440,6 +2460,36 @@ def _do_add(draft_params: dict, settings: dict) -> None:
                         settings,
                         ebay_item_id=str(result.get("ebay_item_id")),
                         errors=[f"exception: {pe}"],
+                    )
+
+                # W284 (2026-06-20): eBaymag 国別出品 区分希望を DB 保存 + キュー登録。
+                # 出品成功で ebay_item_id が確定したタイミングで初めて DB 書込可能。
+                # Q0: 保存失敗を silent にしない (log + UI 表示)。出品成功はブロックしない。
+                _em_seg = st.session_state.get(f"{_SS}ebaymag_segment") or "出さない"
+                _em_desired = st.session_state.get(f"{_SS}ebaymag_desired") or []
+                _em_item_id = str(result.get("ebay_item_id"))
+                try:
+                    set_ebaymag_desired(_em_item_id, _em_seg, _em_desired)
+                    if _em_desired:
+                        enqueue_ebaymag_apply(_em_item_id, "new_listing")
+                        st.info(
+                            f"eBaymag 出品国: {_em_seg} ({', '.join(_em_desired)}) — "
+                            "希望を登録しました (ログイン中に自動で各国へ反映されます)"
+                        )
+                    else:
+                        # desired=[] = 出さない を明示保存 (Q0: silent skip ではなく意図的なlog)
+                        logger.info(
+                            "W284 eBaymag desired=[] (出さない), skip enqueue. item_id=%s",
+                            _em_item_id,
+                        )
+                except Exception as _em_e:  # noqa: BLE001
+                    logger.exception(
+                        "W284 eBaymag desired 保存失敗 (item_id=%s): %s",
+                        _em_item_id, _em_e,
+                    )
+                    st.warning(
+                        f"eBaymag 出品国の希望保存に失敗しました (出品自体は成功済): {_em_e}\n"
+                        "商品管理タブの eBaymag セクションから手動で設定してください。"
                     )
             else:
                 err_msg = "; ".join(result.get("errors") or [])[:500]
