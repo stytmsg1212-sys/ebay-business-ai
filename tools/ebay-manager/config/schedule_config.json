@@ -312,6 +312,13 @@
       "description": "W283 Phase 9: 送料 rate table を FedEx/DHL 実費差額式へ毎月1日 03:00 自動更新",
       "priority": 10,
       "note": "mode は rate_table_batch.mode (既定 dry_run = 適用なし diff 通知のみ)。初月 dry-run 検証後に user が auto 昇格。kill switch = この enabled (false で停止)。"
+    },
+    "ebaymag_relist": {
+      "enabled": false,
+      "description": "W284 Phase 3: eBaymag-aware relist (窓ゼロ) — eBaymag 各国版を持つ listing のrelistを CDP 在席時に完結する。daily_relist の #6 (eBaymag商品除外) とペアで機能。",
+      "priority": 11,
+      "max_per_run": 3,
+      "_note": "money-direct タスク。enabled=false のまま canary 1件を手動実行して確認後に true へ昇格。canary 手順: (1) max_per_run=1 で enabled=true (2) scheduler 再起動 (3) 次の 11:30/15:30/22:30 JST に自動発火 or run_task UI から手動発火 (4) old→new item_id 確認 + eBaymag 各国版実ページ目視 (5) 問題なければ max_per_run=3 に戻す。"
     }
   },
   "rate_table_batch": {

@@ -1098,6 +1098,33 @@ def setup_scheduler():
     else:
         logger.info("W284 eBaymag 更新同期 監査: disabled (tasks_enabled.ebaymag_sync_audit.enabled=false)")
 
+    # ── W284 Phase 3 eBaymag-aware relist (窓ゼロ) (2026-06-20 追加) ──
+    # CDP+eBaymagログイン在席時に eBaymag 商品の relist を窓ゼロで完結。
+    # feature flag (tasks_enabled.ebaymag_relist.enabled) は既定 False。
+    # flag OFF でも add_job は行う (flag-gated = run 時に task 内で即 skip)。
+    # タイミング: ebaymag_apply_queue (:30:00) の 30 秒後 (:30:30)。
+    # HIGH-2 訂正 (code-reviewer 2026-06-20): Phase2 定時はこの relist より先に実行済の
+    # ため、relist 後 discover ラグで委譲した relist_relink ジョブは同回の Phase2 では
+    # 拾われない。窓 (各国版未公開) を縮めるため、run_ebaymag_relist 末尾で自前に
+    # run_ebaymag_apply_queue を1回呼んで同 run で消化する (旧コメント「同一タイミングで
+    # 問題なし」は誤りだった)。
+    _emr_cfg = (config.get('tasks_enabled', {}) or {}).get('ebaymag_relist', {}) or {}
+    for _emr_h, _emr_m in [(11, 30), (15, 30), (22, 30)]:
+        scheduler.add_job(
+            _run_ebaymag_relist,
+            trigger=CronTrigger(hour=_emr_h, minute=_emr_m, second=30),
+            args=[config, _emr_h],
+            id=f'ebaymag_relist_{_emr_h:02d}_{_emr_m:02d}',
+            name=f'W284 eBaymag relist 窓ゼロ ({_emr_h:02d}:{_emr_m:02d})',
+            replace_existing=True,
+            max_instances=1,
+        )
+    _emr_status = "enabled" if _emr_cfg.get('enabled', False) else "disabled (flag OFF)"
+    logger.info(
+        "W284 eBaymag relist (窓ゼロ) 発火: 毎日 11:30:30 / 15:30:30 / 22:30:30 JST "
+        f"({_emr_status})"
+    )
+
     # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
     # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
     # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
@@ -1479,6 +1506,22 @@ def _run_ebaymag_sync_audit(config: dict, scheduled_hour: int = 2):
         return
     _run_isolated_task('ebaymag_sync_audit', 'W284 eBaymag 更新同期 監査',
                        lambda: run_ebaymag_sync_audit(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_ebaymag_relist(config: dict, scheduled_hour: int = 11):
+    """W284 Phase 3 eBaymag-aware relist (窓ゼロ) — CDP+eBaymagログイン在席時のみ実行。
+
+    feature flag (tasks_enabled.ebaymag_relist.enabled) が False の場合は
+    task 内で即 skip されるため、scheduler 登録自体は常に行う (flag-gated)。
+    """
+    try:
+        from tasks.task_ebaymag_relist import run_ebaymag_relist
+    except ImportError as e:
+        logger.error(f"task_ebaymag_relist import 失敗: {e}")
+        return
+    _run_isolated_task('ebaymag_relist', 'W284 eBaymag relist (窓ゼロ)',
+                       lambda: run_ebaymag_relist(config),
                        scheduled_hour=scheduled_hour)
 
 
