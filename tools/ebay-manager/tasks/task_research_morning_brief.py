@@ -59,8 +59,9 @@ def _notify_budget_exceeded(config: Optional[dict], answer) -> None:
     で痕跡を残す (code-reviewer W164-pm HIGH-3 対応). 例外は具体型に絞る.
     """
     try:
-        from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook_url="")  # .env 優先
+        from notifiers.discord_notifier import notifier_for
+        # 依頼ボード#22 (2026-06-20): research カテゴリで振り分け
+        notifier = notifier_for("research")
         if not notifier.webhook_url:
             logger.error(
                 "budget_exceeded notify: webhook_url 空 = user に届かない. "

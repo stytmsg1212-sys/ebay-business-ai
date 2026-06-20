@@ -127,14 +127,12 @@ def _record_navigate(success: bool, error_message: Optional[str] = None) -> None
 def _send_discord(config: dict, message: str, severity: str = "info") -> bool:
     """Discord 通知ヘルパ.
 
-    H-1: config['discord']['webhook_url'] は本番 json で空文字 (2026-05-25 に .env 移行済)。
-    DiscordNotifier (env DISCORD_WEBHOOK_URL 優先読み) 経由に差し替えて確実に届けるよう修正。
+    依頼ボード#22 (2026-06-20): notifier_for("research") 経由でカテゴリ別チャンネルに振り分け。
+    DISCORD_RESEARCH_WEBHOOK_URL 未設定時は DISCORD_WEBHOOK_URL (既定 ch) に自動 fallback。
     webhook が存在しない場合は logger.warning で必ず痕跡を残す (silent skip 禁止 Q0)。
     """
-    from notifiers.discord_notifier import DiscordNotifier
-    # config の webhook を fallback として渡す (空でも DiscordNotifier が env から読む)
-    config_webhook = (config or {}).get("discord", {}).get("webhook_url") or ""
-    notifier = DiscordNotifier(config_webhook)
+    from notifiers.discord_notifier import notifier_for
+    notifier = notifier_for("research")
     if not notifier.webhook_url:
         logger.warning("research_harvest: Discord webhook 未設定 — 通知 skip")
         return False

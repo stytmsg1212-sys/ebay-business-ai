@@ -34,7 +34,6 @@ try:
 except Exception:
     pass
 
-from notifiers.discord_notifier import DiscordNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +52,14 @@ STALE_NOTICE_DAYS = 14
 def _notify(webhook_url: str, message: str) -> tuple[bool, bool]:
     """リマインダーを Discord 送信。戻り値 (has_webhook, sent)。
 
-    DiscordNotifier が `.env` の DISCORD_WEBHOOK_URL を最優先で解決する（空ガードによる
-    silent skip 防止、2026-05-25 .env 移行）。通知専用 task では Discord 送信が唯一の
-    deliverable なので、webhook 未設定 / 送信失敗は logger.error で痕跡を残す（Q0 / R-11）。
+    依頼ボード#22 (2026-06-20): notifier_for("pricing") 経由でカテゴリ別チャンネルに振り分け。
+    DISCORD_PRICING_WEBHOOK_URL 未設定時は DISCORD_WEBHOOK_URL (既定 ch) に自動 fallback。
+    通知専用 task では Discord 送信が唯一の deliverable なので、webhook 未設定 / 送信失敗は
+    logger.error で痕跡を残す（Q0 / R-11）。
     R-11: HTTP 2xx は endpoint 受信であって user 到達 signal ではない点に注意。
     """
-    notifier = DiscordNotifier(webhook_url=webhook_url or "")
+    from notifiers.discord_notifier import notifier_for
+    notifier = notifier_for("pricing")
     if not notifier.webhook_url:
         logger.error(
             "燃料サーチャージ リマインダー: webhook 未設定 = user に届かない. "

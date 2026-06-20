@@ -1059,6 +1059,45 @@ def setup_scheduler():
     _rtb_mode = (config.get('rate_table_batch') or {}).get('mode', 'dry_run')
     logger.info(f"W283 月次送料 rate table 更新 発火: 毎月1日 03:00 JST (enabled={_rtb_enabled}, mode={_rtb_mode})")
 
+    # ── W284 Phase 2 eBaymag 反映キュー自動消化 (2026-06-20 追加) ──
+    # CDP+eBaymagログイン生存時に ebaymag_apply_queue を消化。
+    # CDP 不在が常態なので頻度は控えめ = 1 日 3 回 (主 batch 後タイミング)。
+    # 11:30 / 15:30 / 22:30 JST (主 batch :00/:30 の直後オフセット)。
+    # enabled は config (tasks_enabled.ebaymag_apply_queue.enabled) で制御。
+    _emq_cfg = (config.get('tasks_enabled', {}) or {}).get('ebaymag_apply_queue', {}) or {}
+    if _emq_cfg.get('enabled', True):
+        for _emq_h, _emq_m in [(11, 30), (15, 30), (22, 30)]:
+            scheduler.add_job(
+                _run_ebaymag_apply_queue,
+                trigger=CronTrigger(hour=_emq_h, minute=_emq_m, second=0),
+                args=[config, _emq_h],
+                id=f'ebaymag_apply_queue_{_emq_h:02d}_{_emq_m:02d}',
+                name=f'W284 eBaymag 反映キュー消化 ({_emq_h:02d}:{_emq_m:02d})',
+                replace_existing=True,
+                max_instances=1,
+            )
+        logger.info("W284 eBaymag 反映キュー消化 発火: 毎日 11:30 / 15:30 / 22:30 JST")
+    else:
+        logger.info("W284 eBaymag 反映キュー消化: disabled (tasks_enabled.ebaymag_apply_queue.enabled=false)")
+
+    # ── W284 Phase 2 eBaymag 更新同期 監査 (2026-06-20 追加) ──
+    # 日次 (02:45 JST、主 batch 02:30 直後)。GetItem で US本体 vs 各国版を突合。
+    # enabled は config (tasks_enabled.ebaymag_sync_audit.enabled) で制御。
+    _esa_cfg = (config.get('tasks_enabled', {}) or {}).get('ebaymag_sync_audit', {}) or {}
+    if _esa_cfg.get('enabled', True):
+        scheduler.add_job(
+            _run_ebaymag_sync_audit,
+            trigger=CronTrigger(hour=2, minute=45, second=0),
+            args=[config, 2],
+            id='ebaymag_sync_audit_02_45',
+            name='W284 eBaymag 更新同期 監査 (02:45)',
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info("W284 eBaymag 更新同期 監査 発火: 毎日 02:45 JST")
+    else:
+        logger.info("W284 eBaymag 更新同期 監査: disabled (tasks_enabled.ebaymag_sync_audit.enabled=false)")
+
     # ── W131 P5 claude_loop_healthcheck (2026-05-16 追加) ──
     # 30 分ごとに claude auto-restart loop の heartbeat を確認、stale なら auto-recovery.
     # SessionStart hook (user セッション開始時) と並列で watcher-of-watcher を構成.
@@ -1417,6 +1456,30 @@ def _run_customs_check_only(config: dict, scheduled_hour: int = 6):
     from tasks.task_customs_check import run_customs_check
     _run_isolated_task('customs_check', 'W14 通関対応',
                        lambda: run_customs_check(config), scheduled_hour=scheduled_hour)
+
+
+def _run_ebaymag_apply_queue(config: dict, scheduled_hour: int = 11):
+    """W284 Phase 2 eBaymag 反映キュー消化 — CDP+eBaymagログイン生存時に active job を消化."""
+    try:
+        from tasks.task_ebaymag_apply_queue import run_ebaymag_apply_queue
+    except ImportError as e:
+        logger.error(f"task_ebaymag_apply_queue import 失敗: {e}")
+        return
+    _run_isolated_task('ebaymag_apply_queue', 'W284 eBaymag 反映キュー消化',
+                       lambda: run_ebaymag_apply_queue(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_ebaymag_sync_audit(config: dict, scheduled_hour: int = 2):
+    """W284 Phase 2 eBaymag 更新同期 監査 — US本体 vs 各国版の乖離検出."""
+    try:
+        from tasks.task_ebaymag_sync_audit import run_ebaymag_sync_audit
+    except ImportError as e:
+        logger.error(f"task_ebaymag_sync_audit import 失敗: {e}")
+        return
+    _run_isolated_task('ebaymag_sync_audit', 'W284 eBaymag 更新同期 監査',
+                       lambda: run_ebaymag_sync_audit(config),
+                       scheduled_hour=scheduled_hour)
 
 
 def _run_health_check(config: dict, scheduled_hour: int = 4):

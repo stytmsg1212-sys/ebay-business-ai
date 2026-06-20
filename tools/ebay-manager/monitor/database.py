@@ -4756,6 +4756,23 @@ def update_ebay_listing_condition(
         )
 
 
+def update_ebay_listing_title(ebay_item_id: str, new_title: str) -> None:
+    """eBay 出品の Title を DB 更新する (W31 / 2026-06-20).
+
+    listing 識別は ebay_item_id (sku-rules)。
+    caller は eBay ReviseItem + GetItem verify 成功後にのみ本関数を呼ぶこと
+    (eBay 反映失敗のまま DB に書かない = DB↔eBay 乖離防止)。
+    """
+    title = (new_title or "").strip()
+    if not title:
+        raise ValueError("new_title が空のため DB 更新をスキップ")
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ebay_listings SET title=? WHERE ebay_item_id=?",
+            (title, ebay_item_id),
+        )
+
+
 VALID_PRIMARY_MARKETS: tuple[str, ...] = (
     "US_only", "mixed_global", "global_only", "unknown",
 )

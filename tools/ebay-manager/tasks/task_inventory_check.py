@@ -304,10 +304,9 @@ def _notify_supplier_search_results(config: dict, outcomes: list) -> None:
         return
     try:
         from monitor.database import get_conn
-        from notifiers.discord_notifier import DiscordNotifier
+        from notifiers.discord_notifier import notifier_for
 
-        webhook = (config or {}).get("discord", {}).get("webhook_url") or ""
-        notifier = DiscordNotifier(webhook)
+        notifier = notifier_for("inventory")
         if not notifier.webhook_url:
             logger.warning("[supplier] Discord webhook 未設定 — 探索結果通知 skip")
             return
@@ -913,9 +912,8 @@ def _fetch_and_store_prices(results: list, config: dict) -> int:
 
     # W193: 遷移を 1 メッセージにまとめて Discord 通知 (DB state は更新済 = 送信失敗でも整合)
     if crossings:
-        from notifiers.discord_notifier import inject_webhook_into_config
-        webhook = (inject_webhook_into_config(config or {})
-                   .get("discord", {}).get("webhook_url") or "").strip()
+        from notifiers.discord_notifier import resolve_webhook
+        webhook = resolve_webhook("pricing")
         if webhook:
             ok = _send_price_alert_discord(webhook, crossings)
             if ok:
@@ -947,7 +945,7 @@ def _send_price_alert_discord(webhook: str, crossings: list) -> bool:
         return False
     try:
         from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook)
+        notifier = DiscordNotifier(webhook, bypass_env=True)
         lines = []
         for c in crossings[:20]:
             base = c["baseline"] or 0

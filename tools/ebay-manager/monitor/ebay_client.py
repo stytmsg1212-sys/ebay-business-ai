@@ -1046,6 +1046,134 @@ def revise_item_condition(
             'condition_id': cid}
 
 
+def _build_revise_item_title_xml(item_id: str, new_title: str) -> str:
+    """ReviseItem の Title を更新する XML を組立.
+
+    eBay 制約: Title は最大 80 文字 (caller 側で validate 済を前提)。
+    XML escape で `<`, `>`, `&` を entity 化する。
+    """
+    from xml.sax.saxutils import escape
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    <eBayAuthToken>{{USER_TOKEN}}</eBayAuthToken>
+  </RequesterCredentials>
+  <Item>
+    <ItemID>{escape(item_id)}</ItemID>
+    <Title>{escape(new_title)}</Title>
+  </Item>
+</ReviseItemRequest>"""
+
+
+def revise_item_title(
+    item_id: str,
+    new_title: str,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> dict:
+    """W31 (2026-06-20): active listing の Title を ReviseItem で更新。
+
+    eBay 制約:
+      - Title は **80 文字以内** (超過は本関数が reject、eBay 送出しない)
+      - 空文字は reject
+      - XML escape (saxutils.escape) 適用
+
+    反映後 GetItem で実値 Title が一致するか verify (Ack 偽装成功防止 Q0)。
+
+    Returns:
+        {'success': bool, 'message': str, 'new_title': str}
+    """
+    title = (new_title or "").strip()
+    if not title:
+        return {'success': False, 'message': 'new_title is empty', 'new_title': title}
+    if len(title) > 80:
+        return {
+            'success': False,
+            'message': f"Title が 80 文字超 ({len(title)} 文字) — eBay 制約違反のため送出しません",
+            'new_title': title,
+        }
+
+    user_token = _resolve_active_token(user_token)
+    xml_body = _build_revise_item_title_xml(item_id, title).replace(
+        "{USER_TOKEN}", user_token
+    )
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "ReviseItem",
+        "X-EBAY-API-APP-NAME": app_id,
+        "X-EBAY-API-DEV-NAME": dev_id,
+        "X-EBAY-API-CERT-NAME": cert_id,
+        "Content-Type": "text/xml",
+    }
+    try:
+        resp = httpx.post(
+            TRADING_API_URL, content=xml_body.encode("utf-8"),
+            headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        return {'success': False, 'message': f"通信エラー: {e}", 'new_title': title}
+
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        return {'success': False, 'message': f"XML parse error: {e}", 'new_title': title}
+
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    ack = root.findtext("ns:Ack", namespaces=ns)
+    if ack not in ("Success", "Warning"):
+        errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+        msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+        return {'success': False, 'message': f"API エラー: {msg}", 'new_title': title}
+
+    # post-verify: GetItem で実値 Title が一致するか確認 (Ack でなく実値で判定 Q0)
+    try:
+        xml_get = _build_get_item_xml(item_id).replace("{USER_TOKEN}", user_token)
+        hdr_get = {
+            "X-EBAY-API-SITEID": "0",
+            "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+            "X-EBAY-API-CALL-NAME": "GetItem",
+            "X-EBAY-API-APP-NAME": app_id,
+            "X-EBAY-API-DEV-NAME": dev_id,
+            "X-EBAY-API-CERT-NAME": cert_id,
+            "Content-Type": "text/xml",
+        }
+        resp_get = httpx.post(
+            TRADING_API_URL, content=xml_get.encode("utf-8"),
+            headers=hdr_get, timeout=30,
+        )
+        resp_get.raise_for_status()
+        root_get = ET.fromstring(resp_get.text)
+        actual_title = (
+            root_get.findtext(".//ns:Item/ns:Title", namespaces=ns) or ""
+        ).strip()
+        if actual_title == title:
+            return {
+                'success': True,
+                'message': f"ItemID {item_id} の Title を更新しました ({len(title)} 文字)",
+                'new_title': title,
+            }
+        else:
+            return {
+                'success': False,
+                'message': (
+                    f"Title 反映 verify 失敗 (送出={title!r}, 実値={actual_title!r}) "
+                    f"— GetItem で不一致。eBay 管理画面を確認してください。"
+                ),
+                'new_title': title,
+            }
+    except Exception as e:
+        # verify が通信失敗 → ReviseItem 自体は Ack=Success だったがサイレント成功扱いしない
+        return {
+            'success': False,
+            'message': f"Revise Ack=Success だが verify GetItem 通信エラー: {e}",
+            'new_title': title,
+        }
+
+
 def filter_items_with_sku(items: list[dict]) -> list[dict]:
     """SKUが設定されているアイテムのみ返す"""
     return [i for i in items if i.get("sku", "").strip()]

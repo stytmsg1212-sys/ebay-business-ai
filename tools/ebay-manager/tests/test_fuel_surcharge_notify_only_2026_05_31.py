@@ -13,8 +13,9 @@ money-direct リスクがあった。user 選択で通知専用化 (週次 CPaSS
 - リマインダー文面が CPaSS 手動更新 (小売値を出さない) を案内すること
 を永続固定する (将来 task を触っても自動書込が復活しないこと)。
 
-通知経路は DiscordNotifier (.env 優先解決) に統一済。本テストは T.DiscordNotifier を
-_FakeNotifier に差し替え、解決済 webhook / 送信成否を制御してネットワークを叩かない。
+依頼ボード#22 (2026-06-20): 通知経路を notifier_for("pricing") 経由に変更。
+本テストは notifiers.discord_notifier.notifier_for を _FakeNotifier を返す関数に
+差し替え、webhook 解決 / 送信成否を制御してネットワークを叩かない。
 """
 from __future__ import annotations
 
@@ -25,24 +26,23 @@ from datetime import datetime, timedelta
 import pytest
 
 import tasks.task_fuel_surcharge_check as T
+import notifiers.discord_notifier as _dn
 
 
 class _FakeNotifier:
-    """T.DiscordNotifier 差し替え。resolved_url で .env 優先解決をシミュレートする。
+    """notifier_for() が返す Notifier の差し替え。
 
-    - resolved_url: DiscordNotifier が最終的に持つ webhook (空 = どこにも未設定)
+    - resolved_url: notifier が持つ webhook_url (空 = どこにも未設定)
     - send_ok: send_message の戻り値
-    - last_init_url: run が DiscordNotifier(webhook_url=...) に渡した値 (解決前)
     - last_message: 送信メッセージ
     """
     resolved_url = "https://discord.example/webhook"
     send_ok = True
-    last_init_url: object = None
     last_message: object = None
 
-    def __init__(self, webhook_url: str = ""):
-        _FakeNotifier.last_init_url = webhook_url
-        self.webhook_url = _FakeNotifier.resolved_url
+    @property
+    def webhook_url(self):
+        return _FakeNotifier.resolved_url
 
     def send_message(self, message: str) -> bool:
         _FakeNotifier.last_message = message
@@ -53,9 +53,9 @@ class _FakeNotifier:
 def _patch_notifier(monkeypatch):
     _FakeNotifier.resolved_url = "https://discord.example/webhook"
     _FakeNotifier.send_ok = True
-    _FakeNotifier.last_init_url = None
     _FakeNotifier.last_message = None
-    monkeypatch.setattr(T, "DiscordNotifier", _FakeNotifier)
+    # notifier_for を差し替え (依頼ボード#22: _notify が notifier_for("pricing") 使用)
+    monkeypatch.setattr(_dn, "notifier_for", lambda category="default": _FakeNotifier())
 
 
 def _write_settings(tmp_path, *, fedex=49.5, dhl=47.75, last_updated="2026-05-31T20:01:00",
@@ -125,13 +125,17 @@ def test_success_true_when_send_ok(tmp_path, monkeypatch):
     assert res["reminder_sent"] is True
 
 
-def test_config_webhook_takes_precedence(tmp_path, monkeypatch):
-    """config['discord']['webhook_url'] が settings の空 webhook より優先して _notify に渡る."""
+def test_webhook_resolved_and_reminder_sent(tmp_path, monkeypatch):
+    """webhook が解決できれば送信が試みられ success=True になること.
+
+    依頼ボード#22 (2026-06-20): notifier_for("pricing") 経由に変更後も
+    webhook 有 + 送信成功の基本動作が変わらないことを確認する。
+    """
     p = _write_settings(tmp_path, webhook="")
     monkeypatch.setattr(T, "SETTINGS_FILE", p)
-    res = T.run_fuel_surcharge_check({"discord": {"webhook_url": "https://cfg.example/x"}})
-    assert _FakeNotifier.last_init_url == "https://cfg.example/x"
+    res = T.run_fuel_surcharge_check({})
     assert res["success"] is True
+    assert res["reminder_sent"] is True
 
 
 # ── Q0 silent skip 防止 (code-reviewer HIGH-1): webhook 空 / 送信失敗で痕跡を残す ──

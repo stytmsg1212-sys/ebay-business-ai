@@ -233,10 +233,9 @@ def _save_section232(rc_id: int, flag: bool, annex: Optional[str], rate: Optiona
 
 
 def _send_discord(config: dict, message: str, severity: str = "info") -> bool:
-    """Discord 通知ヘルパ (task_research_harvest.py と同パターン)."""
-    from notifiers.discord_notifier import DiscordNotifier
-    config_webhook = (config or {}).get("discord", {}).get("webhook_url") or ""
-    notifier = DiscordNotifier(config_webhook)
+    """Discord 通知ヘルパ (依頼ボード#22: notifier_for("research") 経由)."""
+    from notifiers.discord_notifier import notifier_for
+    notifier = notifier_for("research")
     if not notifier.webhook_url:
         logger.warning("research_sourcing: Discord webhook 未設定 — 通知 skip")
         return False

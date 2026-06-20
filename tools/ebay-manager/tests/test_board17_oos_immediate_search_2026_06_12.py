@@ -420,14 +420,15 @@ def test_notify_supplier_search_results_sends_embed(oos_db, monkeypatch):
     sent = []
 
     class _FakeNotifier:
-        def __init__(self, url):
-            self.webhook_url = "https://discord.test/webhook"
+        webhook_url = "https://discord.test/webhook"
 
         def send_message(self, msg, embed=None):
             sent.append(embed)
             return True
 
-    monkeypatch.setattr(dn, "DiscordNotifier", _FakeNotifier)
+    # 依頼ボード#22 (2026-06-20): notifier_for("inventory") 経由に変更したため
+    # DiscordNotifier ではなく notifier_for を monkeypatch する
+    monkeypatch.setattr(dn, "notifier_for", lambda category="default": _FakeNotifier())
     outcomes = [
         {"eid": "358000000009", "src": "pattern_1_newly_oos",
          "persisted": 2, "found": 5, "error": None},

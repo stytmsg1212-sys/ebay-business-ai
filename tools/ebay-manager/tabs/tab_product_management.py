@@ -1383,6 +1383,26 @@ def _render_left_basic_and_physical(
             else:
                 st.caption("在庫数管理対象外 (stock*/ebay* 以外の SKU)")
 
+    # ── W31 (2026-06-20): タイトル編集 (任意) ──
+    # dirty-flag: render 時の DB 値を保持し、無操作時は eBay に push しない。
+    # 80 文字制限は _apply_listing_content_to_ebay → revise_item_title で validate。
+    _cur_title = (p.get("title") or "").strip()
+    editing["title_render_initial"] = _cur_title
+    _new_title_val = st.text_input(
+        "商品タイトル (eBay Title / 80 文字以内)",
+        value=_cur_title,
+        max_chars=80,
+        key=f"pm_title_{eid}",
+        help="変更後に 📤eBay反映 すると eBay Title も更新 (変更した時のみ)。"
+             "80 文字超は反映を拒否します。",
+    )
+    editing["new_title"] = _new_title_val.strip() if _new_title_val else ""
+    _title_len = len(editing["new_title"])
+    if _title_len > 70:
+        st.caption(
+            f"⚠️ {'80 文字超 — 反映できません' if _title_len > 80 else f'{_title_len}/80 文字 (残り {80 - _title_len} 文字)'}"
+        )
+
     # 📐 物理属性 (重量 / 長さ / 幅 / 高さ) — モックアップでは控えめなグリッド
     e1, e2 = st.columns(2)
     with e1:
@@ -3908,6 +3928,11 @@ def _render_product_editor(p: dict, config: dict) -> None:
                         editing["listing_description"] = None
                     if _content.get("cond_ok") is False:
                         editing["rank"] = None
+                    # W31: Title 反映失敗時は DB への title 書込を抑止
+                    # (title_ok=True の場合は update_ebay_listing_title が既に呼ばれており
+                    # _save_product_data は title を上書きしないため競合しない)
+                    if _content.get("title_ok") is False:
+                        editing["new_title"] = None
 
             # 2. DB 保存 (save_db / save_ebay 両方で実行)
             # H9 (Wave C): eBay 反映 success 後の DB save 失敗を transparent に報告.
@@ -3995,31 +4020,35 @@ _RANK_TO_CONDITION_ID = {
 
 
 def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dict:
-    """W220 slice3: description (ReviseItem) と 商品ランク→Condition
-    (ReviseFixedPriceItem) を eBay 本番へ反映。price/shipping の _apply_to_ebay
-    とは **独立** (money-direct 送料ロジックに干渉しない)。
+    """W220 slice3 + W31: description / 商品ランク→Condition / Title を eBay へ反映。
+
+    price/shipping の _apply_to_ebay とは **独立** (money-direct に干渉しない)。
 
     - description: 編集 draft が DB 保存値と異なり非空なら ReviseItem で push。
-      (DB 比較は本保存で上書きされる前に行う = この関数は _save_product_data の前に呼ぶ)
-    - condition: rank→ConditionID が実 eBay ConditionID と異なれば
-      ReviseFixedPriceItem で push → post GetItem で実 ConditionID 一致を verify
-      (Ack でなく実値)。S=1500 が category 不可で失敗時は 3000 へ fallback (明示通知)。
-    eBay 書込は呼出側「📤 eBay反映」クリック時のみ発火 (本関数は自動実行されない)。
+    - condition: rank dirty-flag (user 変更時のみ) → ReviseFixedPriceItem + post verify。
+    - title (W31): title dirty-flag (user 変更時のみ) → ReviseItem + GetItem verify。
+      80 文字超は revise_item_title 側で reject (eBay 送出しない)。
 
-    Returns: {'success': bool, 'message': str, 'changed': bool}
+    eBay 書込は呼出側「📤 eBay反映」クリック時のみ発火 (自動実行されない)。
+
+    Returns: {'success': bool, 'message': str, 'changed': bool,
+              'desc_ok': Optional[bool], 'cond_ok': Optional[bool],
+              'title_ok': Optional[bool]}
     """
     new_desc = editing.get("listing_description")
     new_rank = editing.get("rank")
-    # W227 (2026-06-06 緊急 / account-risk): rank→Condition は user が rank widget を
-    # **実際に変更した時のみ** push する (dirty-flag)。ebay_listings.rank は人気度
-    # グレード(自動ランク更新)と商品状態ランクが同居しており、無操作の stale rank を
-    # eBay Condition へ誤上書き (人気度S→Open Box 1500 等) する事故を遮断する。
-    # BP/+each dirty-flag と完全同型 (render が rank_render_initial を無条件 set)。
+    # W227: rank dirty-flag — render 初期値と同じなら push しない (stale 誤上書き防止)
     _rank_initial = editing.get("rank_render_initial")
     _rank_user_changed = bool(new_rank) and new_rank != _rank_initial
     target_cid = _RANK_TO_CONDITION_ID.get(new_rank) if _rank_user_changed else None
 
-    # description は「draft が DB 現値 (上書き前) と異なり非空」の時だけ push。
+    # W31: title dirty-flag — render 初期値と同じなら push しない
+    new_title = (editing.get("new_title") or "").strip()
+    _title_initial = (editing.get("title_render_initial") or "").strip()
+    _title_user_changed = bool(new_title) and new_title != _title_initial
+    title_to_push = new_title if _title_user_changed else None
+
+    # description は「draft が DB 現値と異なり非空」の時だけ push。
     desc_changed = False
     if new_desc is not None and new_desc.strip():
         with get_conn() as conn:
@@ -4030,8 +4059,9 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
         cur_desc = (_r[0] if _r else None) or ""
         desc_changed = new_desc.strip() != cur_desc.strip()
 
-    if not desc_changed and target_cid is None:
-        return {"success": True, "message": "", "changed": False}
+    if not desc_changed and target_cid is None and title_to_push is None:
+        return {"success": True, "message": "", "changed": False,
+                "desc_ok": None, "cond_ok": None, "title_ok": None}
 
     try:
         creds = get_ebay_credentials(config or {})
@@ -4041,19 +4071,22 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
         token = creds.get("user_token", "")
         if not (app_id and dev_id and cert_id and token):
             return {"success": False, "message": "eBay credentials 不在",
-                    "changed": True}
+                    "changed": True, "desc_ok": None, "cond_ok": None, "title_ok": None}
     except (KeyError, ValueError, OSError) as e:
         return {"success": False, "message": f"credentials 取得エラー: {e}",
-                "changed": True}
+                "changed": True, "desc_ok": None, "cond_ok": None, "title_ok": None}
 
-    from monitor.ebay_client import revise_item_condition, revise_item_description
+    from monitor.ebay_client import (
+        revise_item_condition, revise_item_description, revise_item_title,
+    )
     from monitor.ebay_listing_snapshot import fetch_listing_snapshot
-    from monitor.database import update_ebay_listing_condition
+    from monitor.database import update_ebay_listing_condition, update_ebay_listing_title
 
     ok = True
     msgs: list[str] = []
     desc_ok = None   # None=未試行 / True/False=反映結果 (HIGH-3 per-part DB 保存用)
     cond_ok = None
+    title_ok = None  # W31: None=未試行 / True=verify OK / False=失敗
     # ConditionDescription (eBay 表示用、DB 非保存)。used/As-Is で送る。
     cd = (editing.get("condition_description") or "").strip() or None
 
@@ -4129,8 +4162,26 @@ def _apply_listing_content_to_ebay(eid: str, editing: dict, config: dict) -> dic
                     msgs.append(f"Condition 反映 verify 失敗 (実値={actual}): "
                                 f"{_rc.get('message', '不明')}")
 
+    # 3. Title (W31): dirty-flag で user 変更時のみ push → GetItem verify
+    if title_to_push is not None:
+        _rt = revise_item_title(eid, title_to_push, app_id, dev_id, cert_id, token)
+        title_ok = bool(_rt.get("success"))
+        if title_ok:
+            # eBay verify 済み → DB 更新 (verify 失敗時は DB を書かない = 乖離防止)
+            try:
+                update_ebay_listing_title(eid, title_to_push)
+            except ValueError as _te:
+                title_ok = False
+                ok = False
+                msgs.append(f"Title DB 保存失敗: {_te}")
+            else:
+                msgs.append(f"Title を eBay に反映 ({len(title_to_push)} 文字)")
+        else:
+            ok = False
+            msgs.append(f"Title 反映失敗: {_rt.get('message', '不明')}")
+
     return {"success": ok, "message": " / ".join(msgs), "changed": True,
-            "desc_ok": desc_ok, "cond_ok": cond_ok}
+            "desc_ok": desc_ok, "cond_ok": cond_ok, "title_ok": title_ok}
 
 
 def _apply_to_ebay(

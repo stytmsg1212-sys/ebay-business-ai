@@ -74,6 +74,12 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # W283 Phase 9 (2026-06-19): 送料 rate table 月次自動更新. 毎月1日 03:00 のみ.
     # kind=monthly で月初以外は missed 判定から除外 (毎日 false-positive 回避)。
     {"key": "rate_table_monthly_update", "display": "月次送料 rate table 自動更新 (DDP差額式)", "hours": [3], "weekdays": None, "owner": "rate_table_batch", "kind": "monthly", "month_day": 1},
+    # W284 Phase 2 (2026-06-20): eBaymag 反映キュー消化 (1日3回: 11:30/15:30/22:30 JST)
+    # CDP+eBaymagログイン不在時は skip+通知。独立 cron (interval に近い性質のため
+    # hours に列挙しているが missed 判定で false-positive を出さないよう owner を専用に)。
+    {"key": "ebaymag_apply_queue", "display": "W284 eBaymag 反映キュー消化 (1日3回)", "hours": [11, 15, 22], "weekdays": None, "owner": "ebaymag_apply"},
+    # W284 Phase 2 (2026-06-20): eBaymag 更新同期 監査 (日次 02:45 JST)
+    {"key": "ebaymag_sync_audit", "display": "W284 eBaymag 更新同期 監査 (日次)", "hours": [2], "weekdays": None, "owner": "ebaymag_apply"},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

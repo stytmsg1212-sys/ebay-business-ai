@@ -27,24 +27,14 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_webhook_url(config: dict) -> str:
-    """Discord webhook URL を取得 (config 優先、空なら .env DISCORD_WEBHOOK_URL fallback).
+    """Discord webhook URL を取得 (依頼ボード#22: "system" カテゴリで resolve).
 
-    2026-05-25 真因 (commit 8473103): schedule_config.json から bare URL を撤去し
-    .env DISCORD_WEBHOOK_URL に移行したが、本ファイル内 3 系統の Discord 通知関数は
-    config 経由のみ参照していたため、URL が空文字列のまま silent skip していた.
-    `notifiers/discord_notifier.py` は dotenv 経由で読むが、本 module は独自に
-    httpx.post を呼ぶため別途 fallback が必要.
+    2026-06-20 (board#22): notifiers.discord_notifier.resolve_webhook("system") に
+    委譲する。DISCORD_SYSTEM_WEBHOOK_URL が設定されていればシステム専用チャンネルへ、
+    未設定なら DISCORD_WEBHOOK_URL (既定 ch) に自動 fallback (Q0 silent drop 防止)。
     """
-    url = (config.get("discord") or {}).get("webhook_url") or ""
-    if url:
-        return url
-    # config 空 → .env 再読込で os.environ に反映 (idempotent)
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    except ImportError:
-        pass  # dotenv 未インストール時は parent process の env を期待
-    return os.environ.get("DISCORD_WEBHOOK_URL", "")
+    from notifiers.discord_notifier import resolve_webhook
+    return resolve_webhook("system")
 
 
 def _send_discord_alert(webhook_url: str, fresh_missed: list[dict]) -> bool:

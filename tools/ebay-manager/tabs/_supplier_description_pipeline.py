@@ -316,6 +316,89 @@ def generate_supplier_description(
     }
 
 
+_RANK_TO_CONDITION_ID_SUPPLIER: dict[str, str] = {
+    "N": "1000", "S": "1500",
+    "A": "3000", "B": "3000", "C": "3000", "D": "3000", "PO": "3000",
+    "As-Is": "7000",
+}
+
+
+def _apply_supplier_condition(ebay_item_id: str, rank_code: str) -> dict:
+    """W31 要件2: 仕入先パスで description 反映後に Condition を eBay へ反映する。
+
+    商品管理タブの revise_item_condition + fetch_listing_snapshot (post-verify) と
+    同ロジックを委譲。As-Is(7000) は condition_description が無いため反映しない
+    (seller 判断で別途商品管理タブから設定する)。
+
+    Returns:
+        {'success': bool, 'message': str}
+    """
+    target_cid = _RANK_TO_CONDITION_ID_SUPPLIER.get(rank_code)
+    if not target_cid:
+        return {'success': True, 'message': f"Condition スキップ (rank={rank_code!r} 不明)"}
+
+    # As-Is は条件説明必須 (CLAUDE.md) — 仕入先パスでは自動反映しない
+    if target_cid == "7000":
+        return {
+            'success': True,
+            'message': "Condition: As-Is は商品管理タブで理由を入力後に設定してください",
+        }
+
+    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
+    from monitor.ebay_client import revise_item_condition
+    from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+    from monitor.database import update_ebay_listing_condition
+
+    try:
+        creds = get_ebay_credentials()
+    except Exception as e:
+        return {'success': False, 'message': f"Condition 反映: credentials 取得エラー: {e}"}
+    if not ebay_credentials_ok(creds):
+        return {'success': False, 'message': "Condition 反映: credentials 未設定"}
+
+    app_id = creds['app_id']
+    dev_id = creds['dev_id']
+    cert_id = creds['cert_id']
+    token = creds['user_token']
+
+    # pre-verify: 既に同値なら API call 不要
+    snap_pre = fetch_listing_snapshot(ebay_item_id, app_id, dev_id, cert_id, token)
+    if snap_pre.ok and (snap_pre.condition_id or "") == target_cid:
+        update_ebay_listing_condition(
+            ebay_item_id, ebay_condition_id=target_cid, condition_rank=rank_code)
+        return {'success': True,
+                'message': f"Condition: 既に {rank_code}({target_cid}) — DB 同期のみ"}
+
+    rc = revise_item_condition(ebay_item_id, target_cid, app_id, dev_id, cert_id, token)
+    snap_post = fetch_listing_snapshot(ebay_item_id, app_id, dev_id, cert_id, token)
+    actual = snap_post.condition_id if snap_post.ok else None
+    if actual == target_cid:
+        update_ebay_listing_condition(
+            ebay_item_id, ebay_condition_id=target_cid, condition_rank=rank_code)
+        return {'success': True, 'message': f"Condition を {rank_code}({target_cid}) に反映"}
+
+    # S=1500 が category 不可 → 3000 fallback
+    if target_cid == "1500":
+        rc2 = revise_item_condition(ebay_item_id, "3000", app_id, dev_id, cert_id, token)
+        snap2 = fetch_listing_snapshot(ebay_item_id, app_id, dev_id, cert_id, token)
+        if snap2.ok and snap2.condition_id == "3000":
+            update_ebay_listing_condition(ebay_item_id, ebay_condition_id="3000")
+            return {
+                'success': True,
+                'message': "Condition: S(Open Box)はカテゴリ不可のため Used(3000)で反映",
+            }
+        return {
+            'success': False,
+            'message': f"Condition 反映失敗 (S=1500不可・3000 fallback も失敗): "
+                       f"{rc2.get('message', '不明')}",
+        }
+
+    return {
+        'success': False,
+        'message': f"Condition 反映 verify 失敗 (実値={actual}): {rc.get('message', '不明')}",
+    }
+
+
 def apply_listing_update_to_ebay(
     ebay_item_id: str,
     *,
@@ -684,11 +767,22 @@ def render_supplier_description_section(
 
         # Step 3: 生成成功 → 編集 + preview + apply UI
         desc_gen = gen_result.get('description_html') or ''
+        _gen_rank = gen_result.get('rank_code') or ''
         st.success(
-            f"✅ 生成成功 — rank={gen_result.get('rank_code')} / "
+            f"✅ 生成成功 — rank={_gen_rank} / "
             f"title_en='{(gen_result.get('title_en') or '')[:60]}' / "
             f"description {len(desc_gen)} 文字"
         )
+        # W31 要件1: コンディション案を明示表示 (「✅ eBay に反映」で一緒に反映される)
+        if _effective_rank:
+            _cond_id_hint = _RANK_TO_CONDITION_ID_SUPPLIER.get(_effective_rank, "?")
+            st.caption(
+                f"🏷 eBay 反映時のコンディション案: **{_effective_rank}** "
+                f"(ConditionID={_cond_id_hint}) — "
+                "「✅ eBay に反映」で description と同時に反映されます。"
+                + (" ⚠️ As-Is は商品管理タブで理由入力後に設定してください。"
+                   if _effective_rank == "As-Is" else "")
+            )
 
         # 2026-06-01: description を編集可能化 (個別出品 W190 と同等)。
         # 編集値 desc を「✅ eBay に反映」で使用する。
@@ -739,8 +833,26 @@ def render_supplier_description_section(
                 type="primary",
                 disabled=bool(apply_result and apply_result.get('success')),
             ):
-                with st.spinner("eBay ReviseItem 実行中..."):
+                with st.spinner("eBay ReviseItem 実行中 (description + condition)..."):
                     ar = apply_description_to_ebay(ebay_item_id, desc)
+                    # W31 要件2: description 反映成功後、推定ランクを Condition として反映。
+                    # _effective_rank が確定している場合のみ実行 (自動 push ではなく
+                    # user の「✅ eBay に反映」クリック = user トリガー)。
+                    # description 失敗時は condition も実行しない (整合性優先)。
+                    if ar.get('success') and _effective_rank:
+                        _cond_result = _apply_supplier_condition(
+                            ebay_item_id, _effective_rank,
+                        )
+                        # apply 結果にcondition結果をマージ (UI表示用)
+                        _cond_msg = _cond_result.get('message') or ''
+                        if _cond_msg:
+                            ar = dict(ar)
+                            ar['message'] = (
+                                (ar.get('message') or '') + ' / ' + _cond_msg
+                            ).lstrip(' / ')
+                        if not _cond_result.get('success'):
+                            ar = dict(ar)
+                            ar['success'] = False
                 st.session_state[sk_apply_result] = ar
                 st.rerun()
         with cols2[1]:
