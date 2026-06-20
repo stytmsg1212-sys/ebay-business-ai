@@ -19,6 +19,22 @@ SEGMENTS = ["全国", "優先国", "カスタム", "出さない"]
 SITE_CODES = list(SITE_MAP)  # ["UK","DE","FR","IT","ES","CA","AU"]
 
 
+def infer_segment_from_sites(on_sites: list[str]) -> dict:
+    """現在 ON の国セットから区分を推定する (希望未保存の既設定商品のデフォルト用)。
+
+    user 要望 (2026-06-20): 既に eBaymag に設定済みの商品は、4択/チェックを現在の
+    eBaymag 実態に合わせて初期表示する (誤って『出さない』で取り下げる事故を防ぐ)。
+
+    Returns: {"segment": str, "desired_sites": list[str]}
+    """
+    on = sorted(s for s in (on_sites or []) if s in SITE_CODES)
+    if not on:
+        return {"segment": "出さない", "desired_sites": []}
+    if set(on) == set(SITE_CODES):
+        return {"segment": "全国", "desired_sites": list(SITE_CODES)}
+    return {"segment": "カスタム", "desired_sites": on}
+
+
 def render_segment_selector(
     key_prefix: str,
     *,

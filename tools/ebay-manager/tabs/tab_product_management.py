@@ -2086,18 +2086,41 @@ def _render_ebaymag_section(p: dict) -> None:
         # ── W284 (2026-06-20): 区分4択 + 希望保存 (mapping 有無に関わらず常時表示) ──
         # 希望は ebay_listings を単一真実源に保存し、apply_queue へ enqueue。
         # 実反映は Phase2 のキュー消化 (CDP 在席時に discover→実態取得→差分適用)。
-        from tabs._ebaymag_section import render_segment_selector
+        from tabs._ebaymag_section import (
+            render_segment_selector, infer_segment_from_sites,
+        )
         from monitor.database import (
             get_ebaymag_desired, set_ebaymag_desired, enqueue_ebaymag_apply,
         )
+        # ── 初期値の決定 (user 要望 2026-06-20: 既設定商品は eBaymag 実態をデフォルト) ──
+        # 優先: ①保存済み希望 ②eBaymag 実態キャッシュ(現在 ON の国) ③出さない(新規)。
+        # ②③の安全弁: mapping 有(=eBaymag設定済)だが実態未取得の時は、誤って『出さない』
+        # 保存→全各国版 取り下げ事故を防ぐため警告 + 希望保存を無効化し『状態取得』を促す。
         _cur = get_ebaymag_desired(eid)
+        _states = (mapping or {}).get("site_states") or {}
+        _has_actual = bool(_states)
+        _mapped_uncached = mapping is not None and not _has_actual
+        if _cur and _cur.get("segment"):
+            _def_seg = _cur.get("segment")
+            _def_des = _cur.get("desired_sites")
+        elif _has_actual:
+            _inf = infer_segment_from_sites([c for c, v in _states.items() if v])
+            _def_seg, _def_des = _inf["segment"], _inf["desired_sites"]
+        else:
+            _def_seg, _def_des = None, None  # render_segment_selector が『出さない』既定
+        if _mapped_uncached:
+            st.warning(
+                "⚠️ この商品は eBaymag 設定済みですが、現在の国別状態が未取得です。"
+                "誤って取り下げないよう、先に下の『🔄 eBaymag から現在状態を取得』を実行"
+                "してから希望を保存してください。"
+            )
         _sel = render_segment_selector(
             f"ebaymag_seg_{eid}", ebay_item_id=eid,
-            current_segment=(_cur or {}).get("segment"),
-            current_desired=(_cur or {}).get("desired_sites"),
+            current_segment=_def_seg, current_desired=_def_des,
         )
         if st.button("💾 希望を保存 (eBaymag 反映待ちに登録)",
-                     key=f"ebaymag_savedesired_{eid}"):
+                     key=f"ebaymag_savedesired_{eid}",
+                     disabled=_mapped_uncached):
             set_ebaymag_desired(eid, _sel["segment"], _sel["desired_sites"])
             enqueue_ebaymag_apply(eid, "segment_change")
             st.toast("希望を保存しました。ログイン中の自動反映で各国へ適用されます。",
