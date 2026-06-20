@@ -3578,6 +3578,83 @@ def init_db():
                     f"[init_db v76] 部分適用: 列未追加 {_v76_missing}。次回 init_db で再試行。"
                 )
 
+        # ---- v77 (依頼ボード#4#5 / 2026-06-20): eBaymag 希望状態 (desired) 列 ----
+        # eBaymag 各国版 自動連携。希望出品国を ebay_listings に「単一の真実源」として
+        # 保持する (実態キャッシュは ebaymag_products 側、責務分離)。希望は queue に複製
+        # せず、消化時に本列を再読込する (古い snapshot 誤適用を防ぐ。設計書 §2.1)。
+        # 識別キーは ebay_item_id (sku-rules.md)。冪等: 各 ALTER は try/except
+        # sqlite3.OperationalError (v76 流儀)、全列存在確認後のみ user_version bump。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 76:
+            _V77_COLS: dict[str, str] = {
+                "ebaymag_desired_sites_json": "TEXT",       # 希望出品国 ["UK","DE",...]
+                "ebaymag_desired_updated_at": "TIMESTAMP",  # 希望の最終更新 (差分検知)
+            }
+            for _col, _typ in _V77_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ}"
+                    )
+                    logger.info(f"[init_db v77] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 既存列 (重複適用) = OK、冪等
+            _v77_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if set(_V77_COLS) <= _v77_cols:
+                conn.execute("PRAGMA user_version = 77")
+                logger.info("[init_db v77] schema_ver bumped to 77")
+            else:
+                _v77_missing = set(_V77_COLS) - _v77_cols
+                logger.warning(
+                    f"[init_db v77] 部分適用: 列未追加 {_v77_missing}。次回 init_db で再試行。"
+                )
+
+        # ---- v78 (依頼ボード#4#5 / 2026-06-20): eBaymag 反映キュー ----
+        # 希望と実態のズレを CDP 在席時に消化する「変更あり信号」テーブル。
+        # desired_sites は本テーブルに複製しない (消化時に ebay_listings から再読込、
+        # 設計書 §2.2 / Codex-H3)。冪等性は enqueue helper の 2 段集約 (UPDATE→rowcount
+        # 0 で INSERT) で担保し、SQLite で ON CONFLICT ターゲットにできない部分 UNIQUE
+        # index は使わない。識別キーは ebay_item_id (sku-rules.md)。冪等: IF NOT EXISTS。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 77:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ebaymag_apply_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ebay_item_id TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    next_attempt_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ebaymag_queue_item "
+                "ON ebaymag_apply_queue(ebay_item_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ebaymag_queue_status "
+                "ON ebaymag_apply_queue(status)"
+            )
+            _v78_tbl = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='ebaymag_apply_queue'"
+            ).fetchone()
+            if _v78_tbl:
+                conn.execute("PRAGMA user_version = 78")
+                logger.info(
+                    "[init_db v78] ebaymag_apply_queue created, schema_ver bumped to 78"
+                )
+            else:
+                logger.warning(
+                    "[init_db v78] テーブル未作成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -6713,3 +6790,212 @@ def record_ebaymag_apply(
             (result, states_json, states_json, ebay_item_id),
         )
         return cur.rowcount == 1
+
+
+# ---- eBaymag 希望状態 + 反映キュー (v77/v78 / 依頼ボード#4#5 / 2026-06-20) ----
+# 設計書: .company/engineering/docs/2026-06-20-ebaymag-autosync-design.md §2.1/§2.2
+#
+# 責務分離:
+#   ebay_listings (v77 列)      … 希望 (single source of truth)
+#   ebaymag_apply_queue (v78)   … 「変更あり信号」キュー (desired_sites は複製しない)
+#   ebaymag_products (v75)      … 実態キャッシュ (変更不要)
+
+
+def set_ebaymag_desired(
+    ebay_item_id: str,
+    segment: str,
+    desired_sites: list[str],
+) -> None:
+    """希望出品区分と解決済み国リストを ebay_listings に保存する。
+
+    消化時に本行を再読込する設計のため、キューへの複製は行わない (§2.1)。
+    識別キーは ebay_item_id (SKU 使用禁止)。
+    TIMESTAMP は CURRENT_TIMESTAMP (UTC) で統一 (sqlite-timezone.md)。
+    """
+    if not ebay_item_id:
+        raise ValueError("ebay_item_id は必須です")
+    sites_json = json.dumps(desired_sites, ensure_ascii=False)
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ebay_listings
+               SET ebaymag_segment             = ?,
+                   ebaymag_desired_sites_json  = ?,
+                   ebaymag_desired_updated_at  = CURRENT_TIMESTAMP
+             WHERE ebay_item_id = ?
+            """,
+            (segment, sites_json, ebay_item_id),
+        )
+    if cur.rowcount == 0:
+        logger.warning(
+            "set_ebaymag_desired: ebay_item_id=%r が ebay_listings に存在しない"
+            " (rowcount=0)。先に listing を登録してください。",
+            ebay_item_id,
+        )
+
+
+def get_ebaymag_desired(ebay_item_id: str) -> dict | None:
+    """希望状態を取得して {segment, desired_sites, updated_at} で返す。
+
+    desired_sites は list[str] に parse 済み。
+    不正 JSON は [] として返し logger.warning で可視化 (silent 握り潰し禁止)。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT ebaymag_segment,
+                   ebaymag_desired_sites_json,
+                   ebaymag_desired_updated_at
+              FROM ebay_listings
+             WHERE ebay_item_id = ?
+            """,
+            (ebay_item_id,),
+        ).fetchone()
+    if row is None:
+        return None
+
+    raw_json = row["ebaymag_desired_sites_json"]
+    desired_sites: list[str] = []
+    if raw_json:
+        try:
+            parsed = json.loads(raw_json)
+            if isinstance(parsed, list):
+                desired_sites = parsed
+            else:
+                logger.warning(
+                    "get_ebaymag_desired: ebay_item_id=%r の desired_sites_json が"
+                    " list でない型 (%s)。[] として扱います。",
+                    ebay_item_id,
+                    type(parsed).__name__,
+                )
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "get_ebaymag_desired: ebay_item_id=%r の desired_sites_json が"
+                " 不正 JSON。[] として扱います。raw=%r",
+                ebay_item_id,
+                raw_json[:80],
+            )
+
+    return {
+        "segment": row["ebaymag_segment"],
+        "desired_sites": desired_sites,
+        "updated_at": row["ebaymag_desired_updated_at"],
+    }
+
+
+def enqueue_ebaymag_apply(ebay_item_id: str, reason: str) -> None:
+    """eBaymag 反映キューへ追加 (冪等 2 段集約)。
+
+    既に pending/awaiting_import/failed の active job がある場合は
+    INSERT せず reason と updated_at のみ更新 (record_ebaymag_apply と同流儀)。
+    これにより 1 ebay_item_id につき 1 active job に集約される。
+
+    desired_sites はキューに複製しない — 消化時に ebay_listings から再読込 (§2.2)。
+    """
+    if not ebay_item_id:
+        raise ValueError("ebay_item_id は必須です")
+    if not reason:
+        raise ValueError("reason は必須です")
+
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ebaymag_apply_queue
+               SET reason     = ?,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE ebay_item_id = ?
+               AND status IN ('pending', 'awaiting_import', 'failed')
+            """,
+            (reason, ebay_item_id),
+        )
+        if cur.rowcount == 0:
+            conn.execute(
+                """
+                INSERT INTO ebaymag_apply_queue
+                    (ebay_item_id, reason, status, attempts,
+                     last_error, next_attempt_at, created_at, updated_at)
+                VALUES (?, ?, 'pending', 0,
+                        NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (ebay_item_id, reason),
+            )
+
+
+def get_active_ebaymag_apply_jobs(limit: int | None = None) -> list[dict]:
+    """消化対象の active job を返す。
+
+    対象: status が done / needs_manual 以外で、
+          next_attempt_at が NULL または現在時刻以前のもの。
+    limit を指定すると件数を絞る。
+    """
+    sql = """
+        SELECT id, ebay_item_id, reason, status, attempts,
+               last_error, next_attempt_at, created_at, updated_at
+          FROM ebaymag_apply_queue
+         WHERE status NOT IN ('done', 'needs_manual')
+           AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
+         ORDER BY created_at ASC
+    """
+    params: tuple = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (limit,)
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def mark_ebaymag_apply_status(
+    job_id: int,
+    status: str,
+    last_error: str | None = None,
+    increment_attempt: bool = False,
+    next_attempt_at: str | None = None,
+) -> None:
+    """反映ジョブの status を更新する。
+
+    全失敗経路で必ず last_error を渡すこと (Q0 / 偽装成功禁止)。
+    increment_attempt=True で attempts を +1 する。
+    next_attempt_at は ISO 8601 文字列で渡す (backoff 再試行時刻)。
+    """
+    if not status:
+        raise ValueError("status は必須です")
+
+    attempts_expr = "attempts + 1" if increment_attempt else "attempts"
+    with get_conn() as conn:
+        conn.execute(
+            f"""
+            UPDATE ebaymag_apply_queue
+               SET status          = ?,
+                   last_error      = COALESCE(?, last_error),
+                   attempts        = {attempts_expr},
+                   next_attempt_at = ?,
+                   updated_at      = CURRENT_TIMESTAMP
+             WHERE id = ?
+            """,
+            (status, last_error, next_attempt_at, job_id),
+        )
+
+
+def purge_done_ebaymag_apply(older_than_days: int = 30) -> int:
+    """古い done レコードを削除して DB 肥大化を防ぐ (設計書 §3.2 L1)。
+
+    返り値: 削除件数。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM ebaymag_apply_queue
+             WHERE status = 'done'
+               AND updated_at < datetime('now', ? || ' days')
+            """,
+            (f"-{older_than_days}",),
+        )
+    deleted = cur.rowcount
+    if deleted > 0:
+        logger.info(
+            "purge_done_ebaymag_apply: %d 件削除 (older_than=%d days)",
+            deleted,
+            older_than_days,
+        )
+    return deleted

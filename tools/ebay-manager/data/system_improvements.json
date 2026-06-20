@@ -2621,5 +2621,16 @@
     "created": "2026-06-19",
     "completed": true,
     "completed_date": "2026-06-19"
+  },
+  {
+    "id": 352,
+    "tag": "W284",
+    "title": "W284 eBaymag各国版 自動連携 (依頼#4/#5): 4択(全国/優先国/カスタム/出さない)→希望状態保存→CDP在席時に自動反映",
+    "description": "商品登録時に出品国の4択を選べばeBaymagを意識せず自動随時反映。希望状態(ebay_listings)と実態(ebaymag_products)を分離し、ebaymag_apply_queueをCDP在席時に消化。Phase1=基盤(migration v77/v78済)+productId discover+4択UI(商品管理/個別出品)+#5(SKU条件)撤廃。Phase2=自動消化+同期失敗監視。Phase3=eBaymag-aware relist(窓ゼロ別経路)+#6条件付き。設計書 .company/engineering/docs/2026-06-20-ebaymag-autosync-design.md (Codex+code-architect二段レビュー済HIGH=0)。依頼#4=W263/#5=W264紐付け。",
+    "status": "in_progress",
+    "priority": "高",
+    "created": "2026-06-20",
+    "completed": null,
+    "category": "eBaymag連携"
   }
 ]

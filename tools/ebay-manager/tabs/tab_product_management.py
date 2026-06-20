@@ -204,7 +204,12 @@ def _fetch_all_products() -> list[dict]:
                 COALESCE(el.rival_watch_enabled, 0) AS rival_watch_enabled,
                 el.rival_search_keywords,
                 el.rival_search_keywords_generated_at,
-                el.rival_watch_started_at
+                el.rival_watch_started_at,
+                -- W#33: キーワード監視 設定/未設定 フィルタ用。
+                -- listing 識別は ebay_item_id (sku-rules.md)。is_active=1 のみ計上。
+                (SELECT COUNT(*) FROM keyword_watches kw
+                 WHERE kw.ebay_item_id = el.ebay_item_id AND kw.is_active = 1
+                ) AS keyword_watch_count
             FROM ebay_listings el
             WHERE (el.is_ended IS NULL OR el.is_ended = 0)
               AND el.title IS NOT NULL AND el.title != ''
@@ -392,7 +397,7 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
             key="pm_sort",
         )
 
-    fcols = st.columns(6)
+    fcols = st.columns(8)
     with fcols[0]:
         only_missing = st.checkbox("⚠️ 未 FIX (仕入¥/重/寸/BE)", key="pm_only_missing")
     with fcols[1]:
@@ -409,6 +414,18 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
             "📝 初期未完了のみ", key="pm_only_initial_pending",
             help="チェック on = 初期登録未完了 listing のみ表示 (商品 hero の "
                  "「📝 初期登録済み」未チェック分)",
+        )
+    with fcols[6]:
+        # W#33: キーワード監視 設定済み listing のみ
+        only_kw_set = st.checkbox(
+            "🔔 監視 設定済", key="pm_only_kw_set",
+            help="キーワード新着監視に 1 件以上紐付いている listing のみ表示",
+        )
+    with fcols[7]:
+        # W#33: キーワード監視 未設定 listing のみ
+        only_kw_unset = st.checkbox(
+            "🔕 監視 未設定", key="pm_only_kw_unset",
+            help="キーワード新着監視が 1 件も紐付いていない listing のみ表示",
         )
 
     if search:
@@ -440,6 +457,12 @@ def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
     if only_initial_pending:
         # W151: 初期登録未完了 (initial_registered=0 or NULL) のみ表示
         products = [p for p in products if not p.get("initial_registered")]
+    if only_kw_set:
+        # W#33: keyword_watches 紐付き 1 件以上 (is_active=1)
+        products = [p for p in products if (p.get("keyword_watch_count") or 0) > 0]
+    if only_kw_unset:
+        # W#33: keyword_watches 未紐付き (0 件 or NULL)
+        products = [p for p in products if not (p.get("keyword_watch_count") or 0)]
 
     if sort_key == "売れ筋 (sold)":
         products.sort(key=lambda x: -(x.get("total_sold_count") or 0))
@@ -2040,11 +2063,33 @@ def _render_ebaymag_section(p: dict) -> None:
     mapping = get_ebaymag_product(eid)
     with st.expander("🌍 eBaymag 国別出品 (UK / DE / FR / IT / ES / CA / AU)",
                      expanded=False):
+        # ── W284 (2026-06-20): 区分4択 + 希望保存 (mapping 有無に関わらず常時表示) ──
+        # 希望は ebay_listings を単一真実源に保存し、apply_queue へ enqueue。
+        # 実反映は Phase2 のキュー消化 (CDP 在席時に discover→実態取得→差分適用)。
+        from tabs._ebaymag_section import render_segment_selector
+        from monitor.database import (
+            get_ebaymag_desired, set_ebaymag_desired, enqueue_ebaymag_apply,
+        )
+        _cur = get_ebaymag_desired(eid)
+        _sel = render_segment_selector(
+            f"ebaymag_seg_{eid}", ebay_item_id=eid,
+            current_segment=(_cur or {}).get("segment"),
+            current_desired=(_cur or {}).get("desired_sites"),
+        )
+        if st.button("💾 希望を保存 (eBaymag 反映待ちに登録)",
+                     key=f"ebaymag_savedesired_{eid}"):
+            set_ebaymag_desired(eid, _sel["segment"], _sel["desired_sites"])
+            enqueue_ebaymag_apply(eid, "segment_change")
+            st.toast("希望を保存しました。ログイン中の自動反映で各国へ適用されます。",
+                     icon="✅")
+            st.rerun()
+        st.divider()
+
         if mapping is None:
-            st.info(
-                "この商品は eBaymag 連携情報 (productId) がありません。"
-                "6/11 プラン v2 反映分 119 件のみ登録済 — それ以外は eBaymag 取込後に"
-                "連携登録が必要です (依頼ボード #5 スコープ)。"
+            st.caption(
+                "eBaymag 連携 (productId) 未登録。上で希望を保存すると、"
+                "ログイン中の自動反映時に eBaymag を検索して登録・公開します。"
+                "(手動の即時反映は連携登録後に使えます)"
             )
             return
 
@@ -2109,6 +2154,13 @@ def _render_ebaymag_section(p: dict) -> None:
                 eid, "ok" if res.ok else (res.error or "ng")[:200],
                 site_states=res.site_states if res.site_states else None)
             if res.ok:
+                # W284 HIGH-1 (code-reviewer 2026-06-20): 手動反映後の最終 checkbox
+                # 状態を desired にも保存し、希望(ebaymag_desired_sites_json)と実態の
+                # 乖離を防ぐ。これが無いと Phase2 のキュー消化 (desired 再読込で差分
+                # 適用) が手動反映を巻き戻す (サイレント rollback)。手動 ON/OFF は
+                # 実質「カスタム」操作なので segment='カスタム' + 最終状態で保存。
+                _final_sites = [c for c in codes if desired[c]]
+                set_ebaymag_desired(eid, "カスタム", _final_sites)
                 # st.success は直後の rerun で描画されない → toast (rerun 跨ぎ表示)
                 st.toast(f"eBaymag 反映完了 (定着検証済): {res.site_states}",
                          icon="✅")
@@ -2118,6 +2170,87 @@ def _render_ebaymag_section(p: dict) -> None:
                 if res.log:
                     with st.expander("実行ログ", expanded=False):
                         st.code("\n".join(res.log))
+
+
+def _render_keyword_watch_toggle(p: dict) -> None:
+    """W#33: 商品エディタ内 キーワード新着監視 個別トグル section.
+
+    - 現在紐付いている is_active=1 watches を一覧表示
+    - 「🔔 監視に追加」で add_watch(keyword=title, ebay_item_id=eid)
+    - 「解除」で delete_watch(watch_id)
+    - 登録失敗は必ず可視化 (Q0 silent skip 禁止)
+    - form 外で呼ぶ (個別 button 即時反応を維持)
+    """
+    from monitor.keyword_watch_db import add_watch, delete_watch, list_watches
+
+    eid = p["ebay_item_id"]
+    title = p.get("title") or ""
+
+    st.markdown(
+        '<div class="pm-section-label">🔔 キーワード新着監視</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 現在紐付いている watches を取得 (is_active=1 のみ)
+    all_watches = list_watches(active_only=True)
+    linked = [w for w in all_watches if w.get("ebay_item_id") == eid]
+
+    if linked:
+        for w in linked:
+            wcols = st.columns([5, 1])
+            with wcols[0]:
+                st.caption(
+                    f"[{w['site']}] {w['keyword']} "
+                    f"{'(上限¥' + str(w['price_max_jpy']) + ')' if w.get('price_max_jpy') else ''}"
+                )
+            with wcols[1]:
+                if st.button("解除", key=f"pm_kw_del_{eid}_{w['id']}"):
+                    try:
+                        deleted = delete_watch(w["id"])
+                        if deleted:
+                            bump_db_version()
+                            st.rerun()
+                        else:
+                            st.warning(f"解除失敗: watch id={w['id']} が見つかりません")
+                    except Exception as e:
+                        st.error(f"解除エラー: {e}")
+    else:
+        st.caption("監視未登録")
+
+    # 追加ボタン: title をそのままキーワードにして yahoo_auctions に登録
+    # (site/search_url の詳細設定は監視タブで行う運用)
+    short_kw = title[:60]  # keyword DB 制約上の簡略化 (title 全文は長すぎる場合あり)
+    _already = any(
+        w.get("keyword") == short_kw and w.get("ebay_item_id") == eid
+        for w in linked
+    )
+    if not _already:
+        from urllib.parse import quote_plus
+        _url = "https://auctions.yahoo.co.jp/search/search?p=" + quote_plus(short_kw)
+        if st.button(
+            "🔔 監視に追加 (Yahoo オークション)",
+            key=f"pm_kw_add_{eid}",
+            help=f"キーワード「{short_kw}」で監視登録 (詳細は監視タブで調整可)",
+        ):
+            try:
+                watch_id, inserted_new = add_watch(
+                    site="yahoo_auctions",
+                    search_url=_url,
+                    keyword=short_kw,
+                    memo=f"商品管理から自動登録 (item_id={eid})",
+                    source="product_management",
+                    ebay_item_id=eid,
+                )
+                if inserted_new:
+                    st.success(f"登録完了 (watch_id={watch_id})")
+                    bump_db_version()
+                    st.rerun()
+                else:
+                    st.info(f"同一 URL が既に登録済 (watch_id={watch_id})")
+            except Exception as e:
+                st.error(f"登録エラー: {e}")
+
+    st.markdown("---")
 
 
 def _render_rival_section(p: dict, config: dict) -> None:
@@ -3702,6 +3835,9 @@ def _render_product_editor(p: dict, config: dict) -> None:
             # 右列 (form 外): ライバル監視 + 登録済 dataframe
             _render_rival_section(p, config)
 
+        # W#33: キーワード新着監視 トグル (full-width / form 外)
+        _render_keyword_watch_toggle(p)
+
         # eBaymag 国別出品管理 (依頼ボード#10、full-width / form 外 =
         # 状態取得/反映 button の即時反応を維持)
         _render_ebaymag_section(p)
@@ -4659,6 +4795,214 @@ def _build_list_dataframe(products: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# =============================================================================
+# W#33: レガシーキーワードリスト 一括突合 UI
+# =============================================================================
+
+_LEGACY_EXPORT_PATH = Path(__file__).resolve().parent.parent / "data" / "alertcrawler_legacy_export.json"
+# 良マッチの初期チェック threshold (この値以上は初期チェック ON)
+_LEGACY_GOOD_MATCH_THRESHOLD = 0.6
+
+
+def _load_legacy_export() -> list[dict]:
+    """data/alertcrawler_legacy_export.json を読み込む. 不在は []."""
+    if not _LEGACY_EXPORT_PATH.exists():
+        return []
+    try:
+        data = json.loads(_LEGACY_EXPORT_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data.get("exported", [])
+        return data
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"[pm/W#33] legacy export read error: {e}")
+        return []
+
+
+def _render_legacy_bulk_match(products: list[dict]) -> None:
+    """W#33 一括突合 UI (expander 内).
+
+    - alertcrawler_legacy_export.json を読み、各 legacy keyword と
+      eBay 出品 title を類似突合 → チェックボックス一覧 → 一括登録。
+    - 既に keyword_watches.ebay_item_id に紐付いている listing は除外。
+    - 登録は add_watch() を呼ぶ (UNIQUE で重複 skip 自動)。
+    - 登録失敗・skip 件数は必ず可視化 (Q0)。
+    - sku-rules: 紐付けキーは ebay_item_id (title はマッチング判定のみ)。
+    """
+    from tabs._keyword_watch_match import (
+        LegacyEntry,
+        ListingEntry,
+        match_legacy_to_listings,
+    )
+    from monitor.keyword_watch_db import add_watch, list_watches
+
+    with st.expander("🔔 レガシーリスト 一括監視登録 (W#33)", expanded=False):
+        st.caption(
+            f"旧リスト ({_LEGACY_EXPORT_PATH.name}) とアクティブ出品を類似突合し、"
+            "選択分をキーワード監視に一括登録します。"
+        )
+
+        legacy_raw = _load_legacy_export()
+        if not legacy_raw:
+            st.info(f"{_LEGACY_EXPORT_PATH.name} が見つからないか空です。")
+            return
+
+        # 既に ebay_item_id 紐付き済みの watches を取得 (除外用)
+        all_watches = list_watches(active_only=True)
+        already_linked_eids: set[str] = {
+            w["ebay_item_id"] for w in all_watches
+            if w.get("ebay_item_id")
+        }
+
+        # LegacyEntry / ListingEntry に変換
+        legacy_entries = [
+            LegacyEntry(
+                legacy_id=r.get("legacy_id", i),
+                site=r.get("site", "yahoo_auctions"),
+                search_url=r.get("search_url", ""),
+                keyword=r.get("keyword", ""),
+                price_min_jpy=r.get("price_min_jpy"),
+                price_max_jpy=r.get("price_max_jpy"),
+            )
+            for i, r in enumerate(legacy_raw)
+        ]
+
+        # 既に紐付き済み listing を除外した eBay 出品
+        listing_entries = [
+            ListingEntry(
+                ebay_item_id=str(p["ebay_item_id"]),
+                title=p.get("title") or "",
+            )
+            for p in products
+            if str(p.get("ebay_item_id") or "") not in already_linked_eids
+            and p.get("title")
+        ]
+
+        if not listing_entries:
+            st.info("未紐付けの listing が 0 件です (全 listing に監視設定済み)。")
+            return
+
+        # ボタン押下で突合実行。結果は session_state にキャッシュ (rerun 跨ぎで保持)。
+        # Streamlit button は押した rerun でのみ True = 同一 rerun 内で matcher を走らせる。
+        _btn_pressed = st.button(
+            "突合を実行",
+            key="pm_legacy_run_match",
+            help="旧リスト × 出品 を総当たり突合します",
+        )
+
+        cached_results = st.session_state.get("pm_legacy_match_results")
+
+        if _btn_pressed:
+            # ボタン押下: 常に再突合してキャッシュ更新
+            # MEDIUM-2 (code-reviewer 2026-06-20): 前回の checkbox 状態 (pm_legacy_chk_*)
+            # が残ると Streamlit が value=init_checked を無視するため、再突合時に
+            # クリアして良マッチの初期チェックを作り直す。
+            for _k in [k for k in list(st.session_state) if k.startswith("pm_legacy_chk_")]:
+                del st.session_state[_k]
+            with st.spinner("突合中..."):
+                results = match_legacy_to_listings(
+                    legacy_entries, listing_entries, score_threshold=0.0
+                )
+            st.session_state["pm_legacy_match_results"] = results
+        elif cached_results is not None:
+            # キャッシュあり: そのまま使う
+            results = cached_results
+        else:
+            # 初回訪問 or キャッシュなし: 突合前の案内
+            st.info(
+                f"旧リスト {len(legacy_entries)} 件 / 未紐付け listing {len(listing_entries)} 件。"
+                "「突合を実行」を押すと候補一覧が表示されます。"
+            )
+            return
+
+        if not results:
+            st.info("マッチ候補が 0 件でした。")
+            return
+
+        # スコア 0 超のみ表示 (完全 unmatch は除外)
+        visible = [r for r in results if r.score > 0.0]
+        zero_score_count = len(results) - len(visible)
+        st.caption(
+            f"突合結果: {len(visible)} 件表示 "
+            f"(スコア 0 除外: {zero_score_count} 件 / "
+            f"良マッチ閾値 {_LEGACY_GOOD_MATCH_THRESHOLD:.0%})"
+        )
+
+        if not visible:
+            st.info("スコア > 0 の候補がありません。")
+            return
+
+        # チェックボックス一覧 (良マッチは初期チェック ON)。選択状態は session_state
+        # (pm_legacy_chk_*) を唯一の真実源とし、下で読み直す。
+        for r in visible:
+            init_checked = r.score >= _LEGACY_GOOD_MATCH_THRESHOLD
+            key = f"pm_legacy_chk_{r.legacy.legacy_id}_{r.listing.ebay_item_id}"
+            st.checkbox(
+                f"[{r.score:.0%}] 「{r.legacy.keyword[:40]}」→ 「{r.listing.title[:50]}」"
+                f" (item_id={r.listing.ebay_item_id})"
+                + (" ※良マッチ" if r.score >= _LEGACY_GOOD_MATCH_THRESHOLD else ""),
+                value=init_checked,
+                key=key,
+            )
+
+        selected = [
+            r for r in visible
+            if st.session_state.get(
+                f"pm_legacy_chk_{r.legacy.legacy_id}_{r.listing.ebay_item_id}", False
+            )
+        ]
+
+        st.caption(f"選択: {len(selected)} 件")
+
+        if st.button(
+            f"チェック選択分 ({len(selected)} 件) を一括登録",
+            key="pm_legacy_bulk_register",
+            disabled=len(selected) == 0,
+            type="primary",
+        ):
+            ok_count = 0
+            skip_count = 0
+            err_messages: list[str] = []
+
+            for r in selected:
+                try:
+                    _, inserted_new = add_watch(
+                        site=r.legacy.site,
+                        search_url=r.legacy.search_url,
+                        keyword=r.legacy.keyword,
+                        price_min_jpy=r.legacy.price_min_jpy,
+                        price_max_jpy=r.legacy.price_max_jpy,
+                        memo=f"legacy_id={r.legacy.legacy_id} 一括移行",
+                        source="legacy_bulk_import",
+                        ebay_item_id=r.listing.ebay_item_id,
+                    )
+                    if inserted_new:
+                        ok_count += 1
+                    else:
+                        skip_count += 1
+                except Exception as e:
+                    err_messages.append(
+                        f"legacy_id={r.legacy.legacy_id}: {e}"
+                    )
+
+            # 結果サマリ (Q0: 全件可視化)
+            summary_parts = [f"登録: {ok_count} 件"]
+            if skip_count:
+                summary_parts.append(f"重複 skip: {skip_count} 件")
+            if err_messages:
+                summary_parts.append(f"エラー: {len(err_messages)} 件")
+
+            if err_messages:
+                st.error("一括登録エラー\n" + "\n".join(err_messages[:5]))
+            elif ok_count > 0:
+                st.success(" / ".join(summary_parts))
+                bump_db_version()
+                # 突合キャッシュをクリアして次回再突合
+                st.session_state.pop("pm_legacy_match_results", None)
+                st.rerun()
+            else:
+                st.info(" / ".join(summary_parts))
+
+
 def render_product_management(config: dict) -> None:
     """商品管理 main tab エントリーポイント."""
     # ========================================================================
@@ -5078,6 +5422,9 @@ def render_product_management(config: dict) -> None:
 
     st.markdown("---")
 
+    # ── W#33: レガシー一括突合 UI ──
+    _render_legacy_bulk_match(products)
+
     # ── フィルタ + 並び順 ──
     filtered = _apply_filter_and_sort(products)
     st.caption(f"表示: {len(filtered)} / {n} listing")
@@ -5109,6 +5456,9 @@ def render_product_management(config: dict) -> None:
         st.session_state.get("pm_only_us", False),
         st.session_state.get("pm_only_neg", False),
         st.session_state.get("pm_only_initial_pending", False),
+        # W#33: キーワード監視フィルタ (変更で行集合が変わる → 選択破棄対象)
+        st.session_state.get("pm_only_kw_set", False),
+        st.session_state.get("pm_only_kw_unset", False),
     )
     if st.session_state.get("pm_list_filter_sig") != _filter_sig:
         st.session_state["pm_list_filter_sig"] = _filter_sig

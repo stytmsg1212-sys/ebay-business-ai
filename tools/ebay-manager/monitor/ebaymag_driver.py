@@ -47,6 +47,48 @@ DOMAIN_TO_CODE = {v: k for k, v in SITE_MAP.items()}
 
 # --- JS snippets (2026-06-10/11 実証済パターン、script から逐語移植) ---------
 
+# productId= を含むリンクを収集 (discover_product_id 用)
+DISCOVER_JS = r"""() => {
+  const out = [];
+  for (const a of document.querySelectorAll('a[href*="productId="]')) {
+    const m = a.href.match(/productId=(\d+)/);
+    if (m) out.push({productId: m[1],
+                     text: (a.closest('tr, li, [class*="row"], [class*="item"]') || a)
+                           .innerText.slice(0, 160)});
+  }
+  const body = document.body.innerText;
+  return {links: out.slice(0, 20),
+          empty: /商品が見つかりません|見つかりませんでした|0\s*アイテム/.test(body),
+          head: body.slice(0, 300)};
+}"""
+
+# フィルタ結果の行 (query を含む text node) をクリックして panel を開く
+# URL に productId が付与されるので後段で回収する
+OPEN_ROW_JS = r"""(args) => {
+  const [query, skip] = args;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let tnode = null, seen = 0;
+  while (walker.nextNode()) {
+    const t = walker.currentNode.textContent;
+    if (t && t.includes(query) && t.length < 200) {
+      if (seen === skip) { tnode = walker.currentNode; break; }
+      seen++;
+    }
+  }
+  if (!tnode) return 'TITLE_NOT_FOUND(matches=' + seen + ')';
+  let el = tnode.parentElement;
+  for (let i = 0; i < 6 && el; i++) {
+    if (el.tagName === 'A' || el.onclick || el.getAttribute('role') === 'button'
+        || getComputedStyle(el).cursor === 'pointer') {
+      el.click();
+      return 'CLICKED';
+    }
+    el = el.parentElement;
+  }
+  tnode.parentElement.click();
+  return 'CLICKED_FALLBACK';
+}"""
+
 PANEL_TITLE_JS = r"""() => {
   const body = document.body.innerText;
   const act = Array.from(document.querySelectorAll('button'))
@@ -182,6 +224,7 @@ class EbaymagResult:
     error: str | None = None
     site_states: dict[str, bool] = field(default_factory=dict)  # {"UK": True, ...}
     log: list[str] = field(default_factory=list)
+    product_id: str | None = None  # discover_product_id が発見した productId
 
     def _log(self, msg: str) -> None:
         self.log.append(msg)
@@ -279,7 +322,8 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
         "import json, sys; from monitor import ebaymag_driver as d; "
         "r = getattr(d, sys.argv[1])(**json.loads(sys.argv[2])); "
         "print(json.dumps({'ok': r.ok, 'error': r.error, "
-        "'site_states': r.site_states, 'log': r.log}, ensure_ascii=True))"
+        "'site_states': r.site_states, 'log': r.log, "
+        "'product_id': r.product_id}, ensure_ascii=True))"
     )
     env = dict(os.environ)
     env["EBAYMAG_DRIVER_SUBPROCESS"] = "0"  # 再帰防止 (子は in-process 実行)
@@ -317,6 +361,7 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
     res.error = out.get("error")
     res.site_states = out.get("site_states") or {}
     res.log = out.get("log") or []
+    res.product_id = out.get("product_id")
     for line in res.log:  # 子の log は親 logger に流れないため relay (reviewer LOW)
         logger.info("[ebaymag_driver/sub] %s", line)
     return res
@@ -519,3 +564,138 @@ def _get_ebaymag_page(p, res: EbaymagResult):  # -> Page | None (playwright opti
         )
         return None
     return page
+
+
+def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
+    """eBaymag を query で検索し、itm が expected_itm と一致する productId を返す。
+
+    成功時: result.ok=True, result.product_id=<str>
+    失敗時: result.ok=False, result.error に候補数/検索語/expected_itm を明記 (Q0)
+
+    安全弁: panel の itm リンク (eBay item id 12桁) が expected_itm と一致した
+    productId のみ採用する (誤商品防止、apply_site_changes と同じ思想)。
+
+    試行順序:
+      1. アーカイブ一覧 (name=query) で productId= リンクを収集 → itm 照合
+      2. リンクなしの場合: 行クリックで panel を開き URL から productId を回収 → itm 照合
+      3. 候補なし / 不一致 / 複数不一致は ok=False + error に詳細を明記
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    if _should_isolate():
+        return _run_isolated(
+            "discover_product_id",
+            {"query": query, "expected_itm": expected_itm},
+            timeout_sec=180,
+        )
+
+    # アーカイブ一覧で検索 (実証済: archived=true がデフォルト検索対象)
+    search_url = f"https://ebaymag.com/stock?archived=true&name={query}"
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+
+            _goto_and_wait(page, search_url)
+            disc = page.evaluate(DISCOVER_JS)
+            res._log(
+                f"discover: query={query!r} links={len(disc['links'])} empty={disc['empty']}"
+            )
+
+            matched_product_id: str | None = None
+
+            if disc["links"]:
+                # productId= リンクが取れた場合: 各リンクの panel を開いて itm 照合
+                matched: list[str] = []
+                for link in disc["links"]:
+                    pid = link["productId"]
+                    panel_url = f"https://ebaymag.com/stock?archived=true&productId={pid}"
+                    info = _read_panel(page, panel_url)
+                    res._log(
+                        f"  pid={pid} itm={info.get('itm')} "
+                        f"title={(info.get('title') or '')[:60]}"
+                    )
+                    if info.get("itm") == expected_itm:
+                        matched.append(pid)
+
+                if len(matched) == 1:
+                    matched_product_id = matched[0]
+                elif len(matched) > 1:
+                    res.error = (
+                        f"itm 一致候補が複数 ({len(matched)}件) あり特定不能 — "
+                        f"検索語={query!r} expected_itm={expected_itm} "
+                        f"candidates={matched}"
+                    )
+                    return res
+                else:
+                    res.error = (
+                        f"productId リンク {len(disc['links'])}件 中に "
+                        f"expected_itm={expected_itm} と一致するものなし — "
+                        f"検索語={query!r}"
+                    )
+                    return res
+
+            elif disc["empty"]:
+                res.error = (
+                    f"eBaymag で商品が見つかりません (候補0件) — "
+                    f"検索語={query!r} expected_itm={expected_itm}"
+                )
+                return res
+
+            else:
+                # リンクなし・空でもない = 行表示のみ → 行クリックで panel を開く
+                r = page.evaluate(OPEN_ROW_JS, [query, 0])
+                res._log(f"row click: {r}")
+                if not r.startswith("CLICKED"):
+                    res.error = (
+                        f"行クリックで panel を開けませんでした ({r}) — "
+                        f"検索語={query!r} expected_itm={expected_itm}"
+                    )
+                    return res
+
+                time.sleep(4)
+                cur = page.evaluate("() => location.href")
+                m = re.search(r"productId=(\d+)", cur)
+                if not m:
+                    res.error = (
+                        f"行クリック後も URL に productId が現れませんでした "
+                        f"(url={cur[:120]!r}) — "
+                        f"検索語={query!r} expected_itm={expected_itm}"
+                    )
+                    return res
+
+                pid = m.group(1)
+                # itm リンクは描画遅延あり → 最長 12s ポーリング (_read_panel 流用)
+                info = page.evaluate(PANEL_TITLE_JS)
+                deadline = time.time() + 12
+                while info.get("itm") is None and info.get("hasAction") and time.time() < deadline:
+                    time.sleep(2)
+                    info = page.evaluate(PANEL_TITLE_JS)
+
+                res._log(
+                    f"panel (row click): pid={pid} itm={info.get('itm')} "
+                    f"title={(info.get('title') or '')[:60]}"
+                )
+                if info.get("itm") != expected_itm:
+                    res.error = (
+                        f"itm 照合 NG: panel={info.get('itm')} 期待={expected_itm} "
+                        f"(誤商品防止で採用せず) — 検索語={query!r}"
+                    )
+                    return res
+
+                matched_product_id = pid
+
+            res.product_id = matched_product_id
+            res._log(f"discover OK: productId={matched_product_id}")
+            res.ok = True
+
+    except Exception as e:
+        res.error = (
+            f"eBaymag productId 発見失敗: {str(e) or type(e).__name__} — "
+            f"検索語={query!r} expected_itm={expected_itm}"
+        )
+        logger.warning("discover_product_id failed", exc_info=True)
+    return res

@@ -126,6 +126,65 @@ def _fetch_sweep_targets(
             if r["ebay_item_id"] and r["sku"]]
 
 
+def _fetch_stock_zero_targets(
+    skip_if_searched_within_days: int,
+    limit: int,
+) -> list[tuple[str, str]]:
+    """
+    stock SKU かつ qty=0 のアクティブ listing を再仕入れ検索対象として返す。
+    (依頼ボード#32 / 2026-06-20)
+
+    無在庫 (ebay* SKU) は source_url があり URL 直接在庫チェックが使える。
+    有在庫 (stock* SKU) は source_url が無く URL 方式は使えないため、
+    title ベースのキーワード検索経路 (run_supplier_candidate_search) で再仕入れ先を探す。
+
+    throttle: last_supplier_search_at を探索試行マーカーとして使用。
+    inventory_check Pattern 1 (_mark_search_attempt) と同一列。
+
+    条件:
+      - sku LIKE 'stock%' (有在庫判定、SKU rule 準拠)
+      - quantity_ebay = 0 (売り切れ)
+      - is_ended IS NULL OR is_ended=0 (アクティブ出品)
+      - title IS NOT NULL (キーワード検索クエリとして使用)
+      - last_supplier_search_at が skip_if_searched_within_days 日以内でない
+    """
+    sql = """
+        SELECT l.ebay_item_id, l.sku
+        FROM ebay_listings l
+        WHERE l.sku LIKE 'stock%'
+          AND l.quantity_ebay = 0
+          AND (l.is_ended IS NULL OR l.is_ended = 0)
+          AND l.title IS NOT NULL
+          AND NOT (
+              l.last_supplier_search_at IS NOT NULL
+              AND l.last_supplier_search_at >= datetime('now', ?)
+          )
+        ORDER BY l.last_supplier_search_at ASC NULLS FIRST
+        LIMIT ?
+    """
+    skip_clause = f"-{skip_if_searched_within_days} days"
+    with get_conn() as conn:
+        rows = conn.execute(sql, (skip_clause, limit)).fetchall()
+    return [(r["ebay_item_id"], r["sku"]) for r in rows
+            if r["ebay_item_id"] and r["sku"]]
+
+
+def _mark_stock_search_attempt(eid: str) -> None:
+    """stock 在庫0 探索試行マーカーを記録する (Q0: 失敗・0件でも必ず記録)。
+
+    inventory_check の _mark_search_attempt と同一列 (last_supplier_search_at) を更新。
+    """
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE ebay_listings SET last_supplier_search_at=CURRENT_TIMESTAMP "
+                "WHERE ebay_item_id=?",
+                (eid,),
+            )
+    except Exception as e:
+        logger.warning(f"[supplier_sweep] stock 試行マーカー更新失敗 item={eid}: {e}")
+
+
 def run_supplier_sweep(config: dict) -> dict:
     """
     朝バッチ: 長期在庫切れ SKU の仕入先候補を一括探索。
@@ -135,6 +194,10 @@ def run_supplier_sweep(config: dict) -> dict:
     default False (= 既存 realtime API 経路維持). batch 経路の詳細は
     `run_supplier_sweep_batch` docstring 参照.
 
+    依頼ボード#32 (2026-06-20): stock SKU かつ qty=0 を再仕入れ検索対象に追加。
+    無在庫 (ebay*) の既存経路は変更なし。stock 側は別関数 _fetch_stock_zero_targets で
+    取得し、同一の run_supplier_candidate_search キーワード検索経路を流用する。
+
     Returns:
       {'success', 'processed', 'candidates_found', 'errors', 'message'}
     """
@@ -142,6 +205,14 @@ def run_supplier_sweep(config: dict) -> dict:
 
     # W94: batch 経路への分岐 (default OFF で safe rollout)
     if task_cfg.get("use_batch_api", False):
+        # 依頼ボード#32 (code-reviewer HIGH-1): stock 在庫0 の再仕入れ探索は batch 経路
+        # (_fetch_sweep_targets ベース) に未配線。batch 有効時は stock 探索が走らない
+        # (将来配線するまでの既知の制限)。silent 無効化を防ぐため明示 warning を残す (Q0)。
+        logger.warning(
+            "[supplier_sweep] use_batch_api=True: stock 在庫0 の再仕入れ探索は"
+            "本経路では未対応 (無在庫のみ batch 処理)。stock 探索が必要なら "
+            "use_batch_api=False で運用すること。"
+        )
         return run_supplier_sweep_batch(config)
 
     oos_days = int(task_cfg.get("oos_days_threshold", 3))
@@ -149,12 +220,22 @@ def run_supplier_sweep(config: dict) -> dict:
     max_skus = int(task_cfg.get("max_skus_per_run", 30))
     sleep_sec = float(task_cfg.get("sleep_between_skus_sec", 3))
 
-    targets = _fetch_sweep_targets(oos_days, skip_days, max_skus)
+    # 既存: 無在庫 (ebay* SKU) + source_out_of_stock_since >= oos_days の対象
+    oos_targets = _fetch_sweep_targets(oos_days, skip_days, max_skus)
     logger.info(
-        f"仕入先候補スイープ対象: {len(targets)}件 "
+        f"仕入先候補スイープ対象 (無在庫): {len(oos_targets)}件 "
         f"(oos>={oos_days}日 / skip_if_searched<={skip_days}日 / max={max_skus})"
     )
 
+    # 依頼ボード#32: 有在庫 stock+qty=0 の対象 (残枠に詰める)
+    stock_limit = max(0, max_skus - len(oos_targets))
+    stock_targets = _fetch_stock_zero_targets(skip_days, stock_limit)
+    logger.info(
+        f"仕入先候補スイープ対象 (stock在庫0): {len(stock_targets)}件 "
+        f"(skip_if_searched<={skip_days}日 / limit={stock_limit})"
+    )
+
+    targets = oos_targets + stock_targets
     if not targets:
         return {
             "success": True,
@@ -164,33 +245,47 @@ def run_supplier_sweep(config: dict) -> dict:
             "message": "スイープ対象なし",
         }
 
+    # oos_targets の eid セット (discovered_via ラベル分岐に使用)
+    oos_eids = {eid for eid, _ in oos_targets}
+
     processed = 0
     total_found = 0
+    stock_found = 0  # 依頼ボード#32 (HIGH-2): stock在庫0分の候補数を可視化
     errors = 0
 
     for idx, (eid, sku) in enumerate(targets, start=1):
-        logger.info(f"  [{idx}/{len(targets)}] item={eid} sku={sku} を探索中...")
+        is_stock_zero = eid not in oos_eids
+        src = "pattern_2_stock_zero" if is_stock_zero else "pattern_2_batch"
+        logger.info(f"  [{idx}/{len(targets)}] item={eid} sku={sku} ({src}) を探索中...")
         try:
             r = run_supplier_candidate_search(
                 ebay_item_id=eid,
                 sku=sku,
                 config=config,
-                discovered_via="pattern_2_batch",
+                discovered_via=src,
             )
             processed += 1
-            total_found += int(r.get("found") or 0)
+            _found = int(r.get("found") or 0)
+            total_found += _found
+            if is_stock_zero:
+                stock_found += _found
             if not r.get("success"):
                 errors += 1
                 logger.warning(f"    item={eid} sku={sku}: {r.get('message')}")
         except Exception as e:
             errors += 1
             logger.error(f"    item={eid} sku={sku}: 例外発生 {e}", exc_info=True)
+        finally:
+            # stock 在庫0 は last_supplier_search_at でthrottle (Q0: 失敗でも記録)
+            if is_stock_zero:
+                _mark_stock_search_attempt(eid)
 
         if idx < len(targets) and sleep_sec > 0:
             time.sleep(sleep_sec)
 
     msg = (
         f"{processed}件処理 / 候補{total_found}件検出 / エラー{errors}件"
+        f" (stock在庫0: {len(stock_targets)}件処理→候補{stock_found}件)"
     )
     logger.info(f"仕入先候補スイープ完了: {msg}")
     return {

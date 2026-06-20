@@ -18,7 +18,7 @@ eBay アクティブセラー評価を高め、検索順位の底上げを狙う
   2. start_time 古 → 新 (古い listing 優先で鮮度更新)
 
 処理フロー:
-  1. 対象 SKU 1件選出
+  1. 対象 listing (ebay_item_id 単位) を最大 max_per_run 件選出
   2. VerifyRelistFixedPriceItem で dry-run（任意、config で on/off）
   3. EndItem で listing 終了 (EndingReason=Incorrect)
   4. RelistFixedPriceItem で再出品 → 新 ItemID 取得
@@ -59,13 +59,18 @@ END_REASON = "Incorrect"  # "listing details are incorrect" = SEO boost 目的�
 
 
 def _select_relist_targets(limit: int = 7, cooldown_days: int = 30) -> list[dict]:
-    """選出クエリ。条件: watch=0 / rank=E / cooldown N日 / active / SKU有効。
+    """選出クエリ。条件: watch=0 / rank=E / cooldown N日 / active / 出さない限定。
     並び順: time_left 小 → start_time 古。
 
     cooldown_days (2026-06-07 config 化): 同一 listing を再 relist しない日数。
     プール(watch=0 & rank=E)が小さいと 30 日では供給不足で max_per_run に届かない
     ため config で調整可能にした (実効上限 ≒ プール件数 / cooldown_days)。
     SQL injection 防止のため int 化して `datetime('now', ?)` にバインドする。
+
+    識別キーは ebay_item_id (sku-rules.md: SKU は listing 識別キーに使わない)。
+    W284 (2026-06-20): #5 (SKU 条件) を撤廃。SKU 空の産業機器等 17 件が
+    relist プールから除外されていたため対象化。#6 (ebaymag_segment='出さない')
+    は維持し eBaymag 各国版の relist 衝突を防ぐ。
     """
     # int 化で安全な modifier 文字列を構築 (例: '-10 days')。負値/0 は最小 1 日に矯正。
     cd = f"-{max(1, int(cooldown_days))} days"
@@ -78,7 +83,6 @@ def _select_relist_targets(limit: int = 7, cooldown_days: int = 30) -> list[dict
                  AND quantity_ebay >= 1
                  AND watch_count = 0
                  AND rank = 'E'
-                 AND sku IS NOT NULL AND sku != ''
                  -- W242 (2026-06-09): eBaymag 対象 (全国/優先国) は relist (end→sell
                  -- similar で新 ItemID 化) すると eBaymag 各国版とのリンクが壊れるため
                  -- 除外。'出さない' (eBaymag 非対象=US本体のみ) のみ relist する。
@@ -474,12 +478,14 @@ def run_daily_relist(config: dict) -> dict:
     # W242 (2026-06-09): ebaymag_segment=NULL (未分類) の relist 候補が滞留していると
     # relist プールから漏れ続ける (silent skip)。market_analysis_refresh の segment
     # 再計算が止まっている時に user が気付けるよう件数を可視化 (Q0 痕跡)。
+    # W284 (2026-06-20): #5(SKU条件) 撤廃に合わせ、SKU 条件を除去。
+    # NULL 滞留判定は ebaymag_segment のみで行う (識別キー = ebay_item_id)。
     try:
         with get_conn() as _c:
             _null_pool = _c.execute(
                 "SELECT COUNT(*) FROM ebay_listings WHERE (is_ended IS NULL OR is_ended=0) "
                 "AND quantity_ebay>=1 AND watch_count=0 AND rank='E' "
-                "AND sku IS NOT NULL AND sku!='' AND ebaymag_segment IS NULL"
+                "AND ebaymag_segment IS NULL"
             ).fetchone()[0]
         if _null_pool:
             logger.warning(
