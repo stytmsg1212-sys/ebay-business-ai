@@ -1,0 +1,25 @@
+{
+ "band": "6-8kg",
+ "policy_title": "DDP_6-8kg",
+ "tab_values": {
+  "US": 0,
+  "Europe": 0,
+  "Australia": 62,
+  "Canada": 11
+ },
+ "worldwide_free": true,
+ "excluded_countries": [
+  "IND",
+  "ALB",
+  "ARM",
+  "ISL",
+  "ISR",
+  "KAZ",
+  "NPL",
+  "OMN",
+  "PAK",
+  "QAT"
+ ],
+ "source_run_id": "gen_canonical_2026_06_21",
+ "generated_at": "2026-06-21T18:02:19"
+}

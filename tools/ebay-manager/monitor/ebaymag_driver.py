@@ -217,6 +217,64 @@ VERIFY_JS = r"""() => {
   return out;
 }"""
 
+# --- 送料ポリシー付替 (W284 Phase2-3, 2026-06-21) ---------------------------
+# 商品モーダル (productId panel) で「別のポリシーを選択」を押し、配送ポリシー
+# dropdown から target token のオプションを選択する。spike (2026-06-20) で
+# 商品モーダル → 「別のポリシーを選択」→ dropdown → get_by_text(token) で
+# option 特定可能を確認済み。誤付替防止は呼び出し側の itm 照合 (権威安全弁)。
+
+# 「別のポリシーを選択」ボタンを押す (配送ポリシー編集 UI を開く)
+OPEN_POLICY_PICKER_JS = r"""() => {
+  const btn = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+    .find(el => el.innerText && el.innerText.trim().includes('別のポリシーを選択'));
+  if (!btn) return 'PICKER_BUTTON_NOT_FOUND';
+  btn.click();
+  return 'PICKER_OPENED';
+}"""
+
+# 現在割当中の配送ポリシー名を読む (定着検証用)。
+# 配送ポリシー欄の近傍テキストから token 候補を拾う。
+READ_CURRENT_POLICY_JS = r"""(token) => {
+  const body = document.body.innerText;
+  return {hasToken: body.includes(token), head: body.slice(0, 400)};
+}"""
+
+# dropdown / リストから target token のオプションを選択する。
+# money-direct (各国版送料の mutate) のため完全一致のみ採用する
+# (reviewer MED-2: 部分一致フォールバックは誤付替リスク。未ヒットは中断=Q0)。
+SELECT_POLICY_OPTION_JS = r"""(token) => {
+  const cands = Array.from(document.querySelectorAll(
+    'option, li, [role="option"], [role="menuitem"], div, span, button, a'));
+  // 完全一致のみ (trim 後の innerText が token と一致するもの)。
+  // 複数候補がある場合は最短 innerText を選ぶ (option 本体 > それを含む親要素)。
+  const exact = cands
+    .filter(e => e.innerText && e.innerText.trim() === token)
+    .sort((a, b) => a.innerText.length - b.innerText.length);
+  const el = exact[0];
+  if (!el) return 'OPTION_NOT_FOUND';
+  // <option> は click では選択されないため、select 要素経由で value を設定
+  if (el.tagName === 'OPTION') {
+    const sel = el.closest('select');
+    if (sel) {
+      sel.value = el.value;
+      sel.dispatchEvent(new Event('change', {bubbles: true}));
+      return 'OPTION_SELECTED(select)';
+    }
+  }
+  el.click();
+  return 'OPTION_CLICKED';
+}"""
+
+# ポリシー編集 UI の保存ボタン (国トグルの「N 変動を保存」とは別 UI)。
+SAVE_POLICY_JS = r"""() => {
+  const btn = Array.from(document.querySelectorAll('button'))
+    .find(b => b.innerText && /保存|適用|Save|Apply/.test(b.innerText.trim())
+               && !/変動/.test(b.innerText));
+  if (!btn) return 'SAVE_POLICY_BUTTON_NOT_FOUND';
+  btn.click();
+  return 'POLICY_SAVED:' + btn.innerText.trim();
+}"""
+
 
 @dataclass
 class EbaymagResult:
@@ -333,7 +391,7 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
     # apply 経路で子が死んだ場合、eBaymag 側は適用済みの可能性がある
     # (save 後 verify 前) — 状態不明性を error 文言に明示 (reviewer M1)
     apply_hint = ("。反映済みの可能性あり — 「状態取得」で再確認してください"
-                  if func_name == "apply_site_changes" else "")
+                  if func_name in ("apply_site_changes", "assign_policy") else "")
     try:
         proc = subprocess.run(
             [sys.executable, "-c", script, func_name, json.dumps(kwargs)],
@@ -698,4 +756,107 @@ def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
             f"検索語={query!r} expected_itm={expected_itm}"
         )
         logger.warning("discover_product_id failed", exc_info=True)
+    return res
+
+
+def assign_policy(
+    product_id: str,
+    expected_itm: str,
+    target_policy_token: str,
+) -> EbaymagResult:
+    """商品の配送ポリシーを target_policy_token に付替する (W284 Phase2-3).
+
+    フロー (spike 2026-06-20 で UI 操作可を確認):
+      1. アクティブ panel を開いて itm 照合 (権威安全弁 = 誤商品 mutation 防止)
+      2. 「別のポリシーを選択」ボタンを押して配送ポリシー編集 UI を開く
+      3. dropdown / リストから target_policy_token のオプションを選択
+      4. 保存
+      5. リロードして panel 本文に target_policy_token が現れるか定着検証
+
+    money-direct タスク (各国版送料を変える)。呼び出し側は feature flag OFF が
+    既定 = canary まで本関数を実行しない。本関数自体は flag を見ず、呼ばれたら
+    実行する (flag ゲートは消化タスク側の責務)。
+
+    Args:
+        product_id: eBaymag の productId。
+        expected_itm: 期待する eBay item id (12桁)。panel の itm と照合する。
+        target_policy_token: 付替先の配送ポリシー token (UI 表示名と一致させる)。
+
+    Returns:
+        EbaymagResult。ok=True で付替+定着検証成功。失敗時は error に詳細 (Q0)。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    if not target_policy_token or not str(target_policy_token).strip():
+        res.error = "target_policy_token が空 (付替先未指定 — Q0 で中断)"
+        return res
+    if _should_isolate():
+        return _run_isolated(
+            "assign_policy",
+            {"product_id": product_id, "expected_itm": expected_itm,
+             "target_policy_token": target_policy_token},
+            timeout_sec=300,
+        )
+
+    active_url = f"https://ebaymag.com/stock?productId={product_id}"
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+
+            # Step 1: panel + itm 照合 (権威)
+            info = _open_panel_and_check_itm(page, active_url, expected_itm, res)
+            if info is None:
+                if res.error is None:
+                    res.error = "アクティブ panel が開けません (付替せず中断)"
+                return res
+
+            # Step 2: 「別のポリシーを選択」を開く
+            r = page.evaluate(OPEN_POLICY_PICKER_JS)
+            res._log(f"open policy picker: {r}")
+            if r != "PICKER_OPENED":
+                res.error = f"ポリシー選択 UI を開けません ({r}) — 付替せず中断"
+                return res
+            page.wait_for_timeout(1500)
+
+            # Step 3: target token のオプションを選択
+            r = page.evaluate(SELECT_POLICY_OPTION_JS, target_policy_token)
+            res._log(f"select policy option: {r}")
+            if r == "OPTION_NOT_FOUND":
+                res.error = (
+                    f"配送ポリシー一覧に token={target_policy_token!r} が見つかりません "
+                    "(ポリシー未作成 or 表示名不一致 — 付替せず中断)"
+                )
+                return res
+            if not (str(r).startswith("OPTION_CLICKED")
+                    or str(r).startswith("OPTION_SELECTED")):
+                res.error = f"ポリシー選択に失敗 ({r}) — 付替せず中断"
+                return res
+            page.wait_for_timeout(1200)
+
+            # Step 4: 保存
+            r = page.evaluate(SAVE_POLICY_JS)
+            res._log(f"save policy: {r}")
+            if not str(r).startswith("POLICY_SAVED"):
+                res.error = f"ポリシー保存に失敗 ({r})"
+                return res
+            page.wait_for_timeout(5000)
+
+            # Step 5: リロード定着検証 (panel 本文に token が現れるか)
+            _goto_and_wait(page, active_url)
+            check = page.evaluate(READ_CURRENT_POLICY_JS, target_policy_token)
+            if not check.get("hasToken"):
+                res.error = (
+                    f"定着検証 NG: リロード後の panel に token={target_policy_token!r} "
+                    f"が現れません (付替が反映されていない可能性)。head={check.get('head','')[:120]}"
+                )
+                return res
+            res._log(f"policy assigned OK: token={target_policy_token}")
+            res.ok = True
+    except Exception as e:
+        res.error = f"eBaymag ポリシー付替失敗: {str(e) or type(e).__name__}"
+        logger.warning("assign_policy failed", exc_info=True)
     return res

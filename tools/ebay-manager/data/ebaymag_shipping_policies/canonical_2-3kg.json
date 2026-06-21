@@ -1,0 +1,25 @@
+{
+ "band": "2-3kg",
+ "policy_title": "DDP_2-3kg",
+ "tab_values": {
+  "US": 0,
+  "Europe": 13,
+  "Australia": 8,
+  "Canada": 3
+ },
+ "worldwide_free": true,
+ "excluded_countries": [
+  "IND",
+  "ALB",
+  "ARM",
+  "ISL",
+  "ISR",
+  "KAZ",
+  "NPL",
+  "OMN",
+  "PAK",
+  "QAT"
+ ],
+ "source_run_id": "gen_canonical_2026_06_21",
+ "generated_at": "2026-06-21T18:02:19"
+}

@@ -124,8 +124,28 @@ def _discord_notify(config: dict, message: str) -> None:
         logger.warning("Discord 通知失敗 (本処理に影響なし): %s", e)
 
 
+def _policy_assign_enabled(config: dict) -> bool:
+    """送料ポリシー付替 (assign_policy) の feature flag (既定 OFF / money-direct)。
+
+    schedule_config.json: tasks_enabled.ebaymag_policy_assign.enabled。
+    config 欠落時は fail-safe で False (各国版送料を勝手に mutate しない)。
+    """
+    cfg = (config.get("tasks_enabled", {}) or {}).get("ebaymag_policy_assign", {}) or {}
+    return bool(cfg.get("enabled", False))
+
+
 def _process_job(job: dict, config: dict) -> dict:
-    """1 件の apply_queue job を消化する。
+    """1 件の apply_queue job を消化する (HIGH-1: ebay_listings 状態駆動の 2 軸適用)。
+
+    消化側は ebay_listings を単一真実源とし、1 CDP パスで 2 軸を適用する:
+      軸1 (国):   desired_sites_json vs 実サイト状態 → apply_site_changes (既存)
+      軸2 (送料): ebaymag_shipping_band の live token vs ebaymag_applied_policy_token
+                  → 不一致なら assign_policy (feature flag ON 時のみ)
+
+    reason は「どの軸を主因に enqueue したか」の情報のみ。reason では分岐しない。
+    shipping_policy 起因でも国トグルを勝手に走らせない (軸1 は desired==実態なら no-op)。
+    desired_sites が空 (= 国未指定) の listing では軸1 を一切走らせない
+    (HIGH-1 二次災害「全サイト OFF = 出品消失」防止)。
 
     Returns:
         {"result": "applied" | "awaiting_import" | "failed" | "no_change",
@@ -136,11 +156,15 @@ def _process_job(job: dict, config: dict) -> dict:
         get_ebaymag_product,
         upsert_ebaymag_product,
         mark_ebaymag_apply_status,
+        get_ebaymag_policy_state,
+        get_canonical_policy_token,
+        record_ebaymag_policy_applied,
     )
     from monitor.ebaymag_driver import (
         discover_product_id,
         fetch_site_states,
         apply_site_changes,
+        assign_policy,
         SITE_MAP,
     )
 
@@ -167,12 +191,22 @@ def _process_job(job: dict, config: dict) -> dict:
         logger.warning("[ebaymag_apply_queue] job=%d eid=%s %s: %s", job_id, eid, status, error_msg)
         return {"result": "failed", "error": error_msg}
 
-    # Step 1: listing が存在するか + 最新 desired を再読込 (スナップショット複製しない)
+    # Step 1: listing が存在するか + 最新 desired/band を再読込 (スナップショット複製しない)
     desired_info = get_ebaymag_desired(eid)
     if desired_info is None:
         return _fail(f"listing 消滅または desired 未設定 (ebay_item_id={eid})", needs_manual=True)
 
+    # 軸1 用: desired_sites (空 list = 国未指定 = 軸1 を走らせない)
     desired_sites: list[str] = desired_info.get("desired_sites") or []
+    desired_sites_set_present = bool(desired_info.get("desired_sites"))
+
+    # 軸2 用: band → live token、現在 applied token を再読込 (HIGH-2 案b)
+    policy_state = get_ebaymag_policy_state(eid) or {}
+    target_band: str | None = policy_state.get("band")
+    applied_token: str | None = policy_state.get("applied_token")
+    target_token: str | None = (
+        get_canonical_policy_token(target_band) if target_band else None
+    )
 
     # Step 2: ebaymag_products から product_id を取得。なければ discover
     mapping = get_ebaymag_product(eid)
@@ -202,6 +236,26 @@ def _process_job(job: dict, config: dict) -> dict:
             # (site_states 省略=NULL/既存維持)。Step3 fetch 成功後に states を確定する。
             upsert_ebaymag_product(eid, product_id=product_id)
             logger.info("[ebaymag_apply_queue] discover OK: eid=%s product_id=%s", eid, product_id)
+            # 新規 discover (Sell Similar / 新規出品) で band 未設定なら weight から設定 (§8)。
+            # band 設定後の最新値を本 run の軸2 判定に反映させるため再読込する。
+            if not target_band:
+                from monitor.database import get_conn as _get_conn
+                from monitor.ebaymag_policy_lifecycle import sync_shipping_band_for_listing
+                with _get_conn() as _c:
+                    _wrow = _c.execute(
+                        "SELECT weight_g FROM ebay_listings WHERE ebay_item_id=?", (eid,)
+                    ).fetchone()
+                _weight = _wrow["weight_g"] if _wrow else None
+                try:
+                    sync_shipping_band_for_listing(eid, _weight)
+                except Exception as _e:  # noqa: BLE001
+                    logger.warning("[ebaymag_apply_queue] band 同期失敗 eid=%s: %s", eid, _e)
+                _ps = get_ebaymag_policy_state(eid) or {}
+                target_band = _ps.get("band")
+                applied_token = _ps.get("applied_token")
+                target_token = (
+                    get_canonical_policy_token(target_band) if target_band else None
+                )
         else:
             # eBaymag 取込ラグ / 未発見
             error_detail = disc_result.error or "discover: 候補なし"
@@ -224,54 +278,106 @@ def _process_job(job: dict, config: dict) -> dict:
             )
             return {"result": "awaiting_import", "error": error_detail}
 
-    # Step 3: 実態再取得 (誤 OFF 防止 / 設計 M1)
-    actual_result = fetch_site_states(product_id, expected_itm=eid)
-    if not actual_result.ok:
-        return _fail(
-            f"実態取得失敗 (product_id={product_id}): {actual_result.error}"
-        )
-    # states={} は成功扱い禁止 (Q0 / 設計書 §3.2)
-    if not actual_result.site_states:
-        return _fail(
-            f"実態取得: site_states 空 (UI構造変化の可能性, product_id={product_id})"
-        )
+    # ───────── 軸1: 国トグル (desired が明示設定済の listing のみ) ─────────
+    # desired_sites が未設定 (空) の listing では一切国トグルしない。
+    # これにより shipping_policy 単独 enqueue で「全サイト OFF」が誤発火しない。
+    site_changed = False
+    if desired_sites_set_present:
+        # Step 3: 実態再取得 (誤 OFF 防止 / 設計 M1)
+        actual_result = fetch_site_states(product_id, expected_itm=eid)
+        if not actual_result.ok:
+            return _fail(
+                f"実態取得失敗 (product_id={product_id}): {actual_result.error}"
+            )
+        # states={} は成功扱い禁止 (Q0 / 設計書 §3.2)
+        if not actual_result.site_states:
+            return _fail(
+                f"実態取得: site_states 空 (UI構造変化の可能性, product_id={product_id})"
+            )
 
-    actual: dict[str, bool] = actual_result.site_states
-    all_sites = set(SITE_MAP.keys())
-    desired_set = set(s for s in desired_sites if s in all_sites)
-    actual_on = {s for s, v in actual.items() if v}
+        actual: dict[str, bool] = actual_result.site_states
+        all_sites = set(SITE_MAP.keys())
+        desired_set = set(s for s in desired_sites if s in all_sites)
+        actual_on = {s for s, v in actual.items() if v}
 
-    turn_on = sorted(desired_set - actual_on)
-    turn_off = sorted((actual_on - desired_set) & all_sites)
+        turn_on = sorted(desired_set - actual_on)
+        turn_off = sorted((actual_on - desired_set) & all_sites)
 
-    if not turn_on and not turn_off:
-        # 既に目標状態 — done に更新
-        mark_ebaymag_apply_status(job_id, "done")
-        logger.info("[ebaymag_apply_queue] no_change (already target): eid=%s", eid)
-        return {"result": "no_change", "error": None}
+        if turn_on or turn_off:
+            logger.info(
+                "[ebaymag_apply_queue] apply (国): eid=%s turn_on=%s turn_off=%s",
+                eid, turn_on, turn_off,
+            )
+            apply_result = apply_site_changes(product_id, eid, turn_on, turn_off)
+            if not apply_result.ok:
+                return _fail(
+                    f"apply_site_changes 失敗 (product_id={product_id}): {apply_result.error}"
+                )
+            new_states = apply_result.site_states
+            if not new_states:
+                return _fail(
+                    f"apply 後の site_states 空 (定着検証不能, product_id={product_id})"
+                )
+            upsert_ebaymag_product(eid, product_id=product_id, site_states=new_states)
+            site_changed = True
+            logger.info("[ebaymag_apply_queue] 国 applied OK: eid=%s states=%s", eid, new_states)
 
-    # Step 4: 差分適用
-    logger.info(
-        "[ebaymag_apply_queue] apply: eid=%s turn_on=%s turn_off=%s",
-        eid, turn_on, turn_off,
-    )
-    apply_result = apply_site_changes(product_id, eid, turn_on, turn_off)
+    # ───────── 軸2: 送料ポリシー付替 (band の live token と applied token 不一致時) ─────────
+    policy_changed = False
+    if target_band:
+        if not target_token:
+            # band は設定されているが live/draft token が未設定 (= ポリシー未作成)。
+            # 勝手に付替えない (Q0 silent skip 禁止) — needs_manual + 通知。
+            return _fail(
+                f"送料ポリシー未作成: band={target_band} の policy token が未設定 "
+                "(ebaymag_shipping_policies に live/draft token を backfill してください)",
+                needs_manual=True,
+            )
+        if applied_token != target_token:
+            if not _policy_assign_enabled(config):
+                # feature flag OFF (canary 前)。silent skip にせず痕跡を残す (Q0)。
+                # 国軸が変わっていれば applied として扱い (job は done)、送料は次回 flag ON で。
+                logger.info(
+                    "[ebaymag_apply_queue] policy 付替 skip (flag OFF): eid=%s band=%s "
+                    "target_token=%s applied_token=%s",
+                    eid, target_band, target_token, applied_token,
+                )
+            else:
+                logger.info(
+                    "[ebaymag_apply_queue] apply (送料): eid=%s band=%s target_token=%s",
+                    eid, target_band, target_token,
+                )
+                assign_result = assign_policy(product_id, eid, target_token)
+                if not assign_result.ok:
+                    return _fail(
+                        f"assign_policy 失敗 (product_id={product_id}, "
+                        f"band={target_band}): {assign_result.error}"
+                    )
+                if not record_ebaymag_policy_applied(eid, target_token):
+                    # 付替は成功したが applied_token を記録できない (listing 消滅等)。
+                    # 次回消化で band token mismatch のまま再付替を試みる滞留を防ぐため
+                    # 痕跡を残す (Q0)。job 自体は付替成功なので done で続行する。
+                    logger.warning(
+                        "[ebaymag_apply_queue] applied_token 記録失敗 eid=%s token=%s "
+                        "(付替は成功 — 次回 mismatch 再付替の恐れ)",
+                        eid, target_token,
+                    )
+                policy_changed = True
+                logger.info(
+                    "[ebaymag_apply_queue] 送料 applied OK: eid=%s token=%s",
+                    eid, target_token,
+                )
 
-    if not apply_result.ok:
-        return _fail(
-            f"apply_site_changes 失敗 (product_id={product_id}): {apply_result.error}"
-        )
-
-    # Step 5: 新実態を ebaymag_products に更新 + job を done に
-    new_states = apply_result.site_states
-    if not new_states:
-        return _fail(
-            f"apply 後の site_states 空 (定着検証不能, product_id={product_id})"
-        )
-    upsert_ebaymag_product(eid, product_id=product_id, site_states=new_states)
+    # ───────── done 判定 ─────────
     mark_ebaymag_apply_status(job_id, "done")
-    logger.info("[ebaymag_apply_queue] applied OK: eid=%s states=%s", eid, new_states)
-    return {"result": "applied", "error": None}
+    if site_changed or policy_changed:
+        logger.info(
+            "[ebaymag_apply_queue] applied OK: eid=%s site_changed=%s policy_changed=%s",
+            eid, site_changed, policy_changed,
+        )
+        return {"result": "applied", "error": None}
+    logger.info("[ebaymag_apply_queue] no_change (already target): eid=%s", eid)
+    return {"result": "no_change", "error": None}
 
 
 def run_ebaymag_apply_queue(config: dict) -> dict:

@@ -1,0 +1,25 @@
+{
+ "band": "0-0.5kg",
+ "policy_title": "DDP_0-0.5kg",
+ "tab_values": {
+  "US": 0,
+  "Europe": 3,
+  "Australia": 5,
+  "Canada": 4
+ },
+ "worldwide_free": true,
+ "excluded_countries": [
+  "IND",
+  "ALB",
+  "ARM",
+  "ISL",
+  "ISR",
+  "KAZ",
+  "NPL",
+  "OMN",
+  "PAK",
+  "QAT"
+ ],
+ "source_run_id": "gen_canonical_2026_06_21",
+ "generated_at": "2026-06-21T18:02:19"
+}

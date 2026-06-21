@@ -3655,6 +3655,96 @@ def init_db():
                     "[init_db v78] テーブル未作成。次回 init_db で再試行。"
                 )
 
+        # ---- v79 (eBaymag 送料ポリシー正規化 Phase1 / 2026-06-21): canonical 正本 ----
+        # 重量帯ごとの canonical な eBaymag 送料ポリシー定義 (値は rate table 由来、
+        # 設計書 §5/§6)。band = 重量帯 = 値集合キーであり listing 識別ではない
+        # (sku-rules.md 準拠、§15 確認済)。listing 側との紐付けは ebay_listings.
+        # ebaymag_shipping_band (v80) で行う。
+        #   - site_values_json:    {"US":0,"AU":62,"GB":0,...} (サイト別 USD)
+        #   - region_values_json:  {"Europe":0,"Asia":14} (地域 catch-all USD)
+        #   - excluded_countries_json: ["IND","ISR",...] (配送不可で除外、zone 由来)
+        #   - status: draft | live | deprecated
+        # UNIQUE(band, status) で「同帯・同 status は 1 行」を担保 (§5)。
+        # ※§15 LOW: deprecated を複数持つ必要が出たら UNIQUE(band) WHERE status='live'
+        #   等の部分 index へ再検討 (Phase1 では単純な複合 UNIQUE で足りる)。
+        # 冪等: CREATE TABLE IF NOT EXISTS、DROP/DELETE は書かない。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 78:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ebaymag_shipping_policies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    band TEXT NOT NULL,
+                    policy_title TEXT,
+                    ebaymag_policy_token TEXT,
+                    site_values_json TEXT,
+                    region_values_json TEXT,
+                    excluded_countries_json TEXT,
+                    source_run_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(band, status)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ebaymag_policies_band "
+                "ON ebaymag_shipping_policies(band)"
+            )
+            _v79_tbl = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='ebaymag_shipping_policies'"
+            ).fetchone()
+            if _v79_tbl:
+                conn.execute("PRAGMA user_version = 79")
+                logger.info(
+                    "[init_db v79] ebaymag_shipping_policies created, "
+                    "schema_ver bumped to 79"
+                )
+            else:
+                logger.warning(
+                    "[init_db v79] テーブル未作成。次回 init_db で再試行。"
+                )
+
+        # ---- v80 (eBaymag 送料ポリシー正規化 Phase1 / 2026-06-21): listing 側列 ----
+        # 各 listing がどの帯の canonical ポリシーに属し、最後にどの policy token を
+        # 適用したかを ebay_listings に保持する (設計書 §5/§15 HIGH-2 案b)。
+        # 消化側はこの 2 列から「付替要否」を導出し、queue payload に意図を載せない
+        # (reason 衝突回避)。識別キーは ebay_item_id (sku-rules.md)。
+        #   - ebaymag_shipping_band:        target 帯 (build_canonical_policy の band)
+        #   - ebaymag_policy_applied_at:    最後に付替適用した時刻
+        #   - ebaymag_applied_policy_token: 最後に適用した policy token (HIGH-2)
+        # 冪等: 各 ALTER は try/except sqlite3.OperationalError (v77 流儀)、
+        # 全列存在確認後のみ user_version bump。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 79:
+            _V80_COLS: dict[str, str] = {
+                "ebaymag_shipping_band": "TEXT",
+                "ebaymag_policy_applied_at": "TIMESTAMP",
+                "ebaymag_applied_policy_token": "TEXT",
+            }
+            for _col, _typ in _V80_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE ebay_listings ADD COLUMN {_col} {_typ}"
+                    )
+                    logger.info(f"[init_db v80] ebay_listings.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 既存列 (重複適用) = OK、冪等
+            _v80_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(ebay_listings)"
+                ).fetchall()
+            }
+            if set(_V80_COLS) <= _v80_cols:
+                conn.execute("PRAGMA user_version = 80")
+                logger.info("[init_db v80] schema_ver bumped to 80")
+            else:
+                _v80_missing = set(_V80_COLS) - _v80_cols
+                logger.warning(
+                    f"[init_db v80] 部分適用: 列未追加 {_v80_missing}。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4990,6 +5080,7 @@ def update_ebay_listing_weight_estimate(
                WHERE ebay_item_id=?""",
             (weight_g, confidence, ebay_item_id),
         )
+    _sync_shipping_band_after_weight_change(ebay_item_id, weight_g)
 
 
 def update_ebay_listing_physical(ebay_item_id: str, weight_g: float,
@@ -5003,6 +5094,27 @@ def update_ebay_listing_physical(ebay_item_id: str, weight_g: float,
                height_cm=?, includes=?, warranty=?
                WHERE ebay_item_id=?""",
             (weight_g, length_cm, width_cm, height_cm, includes, warranty, ebay_item_id),
+        )
+    _sync_shipping_band_after_weight_change(ebay_item_id, weight_g)
+
+
+def _sync_shipping_band_after_weight_change(
+    ebay_item_id: str, weight_g: float | None
+) -> None:
+    """weight 変更後に eBaymag 送料 band を再計算+enqueue する (W284 Phase3 フック)。
+
+    ライフサイクル §8: weight 変更で旧 band≠新 band なら band 更新→enqueue。
+    本処理の失敗は weight 更新そのものを巻き戻さない (フックは副次的、Q0 で痕跡は残す)。
+    関数内 import で循環参照を回避 (lifecycle → database を逆 import するため)。
+    """
+    try:
+        from monitor.ebaymag_policy_lifecycle import sync_shipping_band_for_listing
+        sync_shipping_band_for_listing(ebay_item_id, weight_g)
+    except Exception as e:  # noqa: BLE001
+        # band 同期の失敗は weight 更新を妨げない。痕跡は warning で残す (Q0)。
+        logger.warning(
+            "_sync_shipping_band_after_weight_change 失敗 eid=%s: %s",
+            ebay_item_id, e,
         )
 
 
@@ -7016,3 +7128,172 @@ def purge_done_ebaymag_apply(older_than_days: int = 30) -> int:
             older_than_days,
         )
     return deleted
+
+
+# ---- eBaymag 送料ポリシー canonical token 解決 + listing 側 band 信号 ----
+# 設計書: .company/engineering/docs/2026-06-21-ebaymag-shipping-policy-automation-design.md
+#   §5 (データモデル) / §7-§8 (driver / ライフサイクル) / §15 HIGH-2 (案b: policy 信号を列で)
+#
+# 付替要否は ebay_listings.ebaymag_shipping_band (target 帯) と
+# ebaymag_applied_policy_token (最後に適用した token) の比較で消化側が導出する。
+# queue payload (reason) には意図を載せない (reason 衝突回避 / HIGH-2)。
+# band は重量帯 = 値集合キーであり listing 識別ではない (sku-rules.md)。
+
+
+def get_canonical_policy_token(band: str) -> str | None:
+    """重量帯 band の canonical ポリシー token を返す (status='live' 優先)。
+
+    ebaymag_shipping_policies から band の token を解決する。
+
+    - status='live' の行を最優先 (本番反映済 = user が手動作成して backfill 済)。
+    - live が無ければ token を持つ draft 行を fallback (live 昇格前の暫定参照)。
+    - token が NULL (= ポリシー未作成) の場合は None を返す。呼び出し側は None を
+      「付替不可 (needs_manual)」として扱い、勝手に付替えない (Q0 silent skip 禁止)。
+
+    Args:
+        band: build_canonical_policy が扱う重量帯文字列 (例: "6-8kg")。
+
+    Returns:
+        policy token 文字列、または未設定時 None。
+    """
+    if not band:
+        return None
+    with get_conn() as conn:
+        # status='live' を最優先、次に token を持つ行 (draft fallback)。
+        # token IS NOT NULL の行のみ候補 (NULL は未作成 = 付替不可)。
+        row = conn.execute(
+            """
+            SELECT ebaymag_policy_token
+              FROM ebaymag_shipping_policies
+             WHERE band = ?
+               AND ebaymag_policy_token IS NOT NULL
+               AND TRIM(ebaymag_policy_token) <> ''
+             ORDER BY CASE status WHEN 'live' THEN 0
+                                  WHEN 'draft' THEN 1
+                                  ELSE 2 END
+             LIMIT 1
+            """,
+            (band,),
+        ).fetchone()
+    if row is None:
+        return None
+    return row["ebaymag_policy_token"]
+
+
+def get_ebaymag_policy_state(ebay_item_id: str) -> dict | None:
+    """listing の付替状態 {band, applied_token, applied_at} を返す。
+
+    消化側が「付替要否」を導出するための単一真実源 (HIGH-2 案b)。
+    識別キーは ebay_item_id (SKU 禁止)。listing が無ければ None。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT ebaymag_shipping_band,
+                   ebaymag_applied_policy_token,
+                   ebaymag_policy_applied_at
+              FROM ebay_listings
+             WHERE ebay_item_id = ?
+            """,
+            (ebay_item_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "band": row["ebaymag_shipping_band"],
+        "applied_token": row["ebaymag_applied_policy_token"],
+        "applied_at": row["ebaymag_policy_applied_at"],
+    }
+
+
+def set_ebaymag_shipping_band_and_enqueue(ebay_item_id: str, band: str) -> bool:
+    """target 帯を ebay_listings に保存し、同一トランザクションで反映キューへ enqueue する。
+
+    band 更新と enqueue を 1 トランザクションで行うことで、消化 (assign_policy) との
+    race を防ぐ (設計書 §15 MED-2: max_instances=1 は別 job 間 race を防がない)。
+    消化側は処理冒頭で ebay_listings から band/applied_token を再読込する設計のため、
+    queue payload に band は載せない (reason は情報のみ / HIGH-2)。
+
+    band が現在値と同じで、かつ既に同 band を適用済み (applied_token が live token と
+    一致) の場合でも、本関数は band 更新 + enqueue を冪等に行う (消化側が no-op 判定)。
+
+    Args:
+        ebay_item_id: 対象 listing。
+        band: build_canonical_policy が扱う重量帯。
+
+    Returns:
+        listing が存在し band を更新できたら True、存在しなければ False。
+    """
+    if not ebay_item_id:
+        raise ValueError("ebay_item_id は必須です")
+    if not band:
+        raise ValueError("band は必須です")
+
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ebay_listings
+               SET ebaymag_shipping_band = ?
+             WHERE ebay_item_id = ?
+            """,
+            (band, ebay_item_id),
+        )
+        if cur.rowcount == 0:
+            logger.warning(
+                "set_ebaymag_shipping_band_and_enqueue: ebay_item_id=%r が "
+                "ebay_listings に存在しない (band 未設定 / enqueue せず)",
+                ebay_item_id,
+            )
+            return False
+        # 同一トランザクション内で enqueue (reason=shipping_policy)。
+        # enqueue_ebaymag_apply と同じ 2 段集約ロジックをここで実行する
+        # (別 get_conn を開くと別トランザクション = race window が空く)。
+        up = conn.execute(
+            """
+            UPDATE ebaymag_apply_queue
+               SET reason     = 'shipping_policy',
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE ebay_item_id = ?
+               AND status IN ('pending', 'awaiting_import', 'failed')
+            """,
+            (ebay_item_id,),
+        )
+        if up.rowcount == 0:
+            conn.execute(
+                """
+                INSERT INTO ebaymag_apply_queue
+                    (ebay_item_id, reason, status, attempts,
+                     last_error, next_attempt_at, created_at, updated_at)
+                VALUES (?, 'shipping_policy', 'pending', 0,
+                        NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (ebay_item_id,),
+            )
+    return True
+
+
+def record_ebaymag_policy_applied(ebay_item_id: str, token: str) -> bool:
+    """付替成功時に listing の applied_token と applied_at を更新する。
+
+    消化側 (assign_policy 成功後) が呼ぶ。これにより次回消化時に
+    band の live token == applied_token となり no-op 判定される (付替の冪等性)。
+    識別キーは ebay_item_id (SKU 禁止)。TIMESTAMP は CURRENT_TIMESTAMP (UTC)。
+
+    Returns:
+        更新できたら True、listing が無ければ False。
+    """
+    if not ebay_item_id:
+        raise ValueError("ebay_item_id は必須です")
+    if not token:
+        raise ValueError("token は必須です")
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ebay_listings
+               SET ebaymag_applied_policy_token = ?,
+                   ebaymag_policy_applied_at    = CURRENT_TIMESTAMP
+             WHERE ebay_item_id = ?
+            """,
+            (token, ebay_item_id),
+        )
+    return cur.rowcount == 1

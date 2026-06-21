@@ -323,6 +323,21 @@ def _process_single_relist(
                        WHERE ebay_item_id = ?""",
                     (desired_sites_json, new_item_id),
                 )
+        # 送料 band を新 item_id へ継承 (§8 relist: band 継承)。weight は relist で
+        # 変わらないため band も同一。新 item_id の applied_token は未設定 (= 付替が
+        # 必要) のまま継承しない (新 listing は eBaymag 上で新規 = 付替やり直し)。
+        with get_conn() as conn:
+            _bandrow = conn.execute(
+                "SELECT ebaymag_shipping_band FROM ebay_listings WHERE ebay_item_id=?",
+                (old_item_id,),
+            ).fetchone()
+            _old_band = _bandrow["ebaymag_shipping_band"] if _bandrow else None
+            if _old_band:
+                conn.execute(
+                    "UPDATE ebay_listings SET ebaymag_shipping_band=? "
+                    "WHERE ebay_item_id=?",
+                    (_old_band, new_item_id),
+                )
     except Exception as e:  # noqa: BLE001
         # inherit 失敗でも relist は eBay 側では成功済。needs_manual + 継続判断
         err = f"inherit_listing_on_relist 失敗: {e} (new_eid={new_item_id} はeBay上で生存)"

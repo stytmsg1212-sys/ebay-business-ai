@@ -1,0 +1,17 @@
+{
+ "_source": "DHL SpeedPAK zone5 (Canada). compute_band_zone_table fuel(DHL=45.25/FedEx=41.5) FX=157.0. 本体 manifest と同一式・AU=$62 逆算検証済 (2026-06-21)。",
+ "zone": 5,
+ "fx": 157.0,
+ "values": {
+  "0-0.5kg": 4,
+  "0.5-1kg": 3,
+  "1-2kg": 1,
+  "2-3kg": 3,
+  "3-4kg": 6,
+  "4-5kg": 5,
+  "5-6kg": 6,
+  "6-8kg": 11,
+  "8-10kg": 8,
+  "10-20kg": 26
+ }
+}
