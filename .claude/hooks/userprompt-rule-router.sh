@@ -102,6 +102,12 @@ ROUTER_MAP = [
          'llm-wiki', 'wiki compilation', 'query-save'],
         'Q7 LLM Wiki Compilation: read-first 規律 / INGEST 再構成 / QUERY-save 3 軸.',
     ),
+    (
+        '.claude/rule-snippets/browser-ui-native-input.md',
+        ['ebaymag', 'playwright', 'cdp', 'ブラウザ操作', 'browser', '自動操作',
+         'connect_over_cdp', 'locator'],
+        'ブラウザ UI は native locator method 第一選択 (合成クリックは controlled component 無効) / eBaymag 各国タブ input name 構造 / 負の能力主張ゲート技術編.',
+    ),
 ]
 
 # ------ keyword matching ------

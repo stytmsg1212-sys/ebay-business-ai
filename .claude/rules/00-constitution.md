@@ -13,7 +13,7 @@
 
 ## Q0-Q7 (品質事故防止、常時適用)
 
-- **Q0** サイレントスキップ / 偽装成功 / 逃避修正は**絶対禁止** → `silent-skip-prevention.md`
+- **Q0** サイレントスキップ / 偽装成功 / 逃避修正は**絶対禁止** → `silent-skip-prevention.md`。**負の能力主張ゲート (2026-06-21)**: 「できない/user 手動が必要/cannot」を未完了タスクに出す前は **Failure Evidence Block 必須** (候補手段列挙 + 最強未試行手段の実テスト証拠 + 真に不能な根拠)。1 手段の失敗を goal 不能に昇格させ user へ転嫁しない。terminal handoff 直前は Codex 相談 (user 指示)
 - **Q1** UI / 定時実行バグ修正 DoD = 11 ステップ Phase 0-3 (pytest だけ NG、Streamlit + Playwright + DB + scheduler.log 必須)
 - **Q2** DB migration 冪等性必須 (try/except OperationalError、DROP/DELETE 別 one-shot、本番直接書込 24h retrospective) → `db-migration-rules.md`
 - **Q3** 新機能 / 外部 API / 不確実変更は構造化設計フロー必須 (Clarify → 設計 → 2 段 review → 実装 → Q1)
@@ -47,6 +47,7 @@
 - `discord-notification.md` — Discord webhook (`eBay Manager`) 設定、R-11 user 実視認 verify 必須
 - `supplier-matching-rules.md` — 仕入先候補 match_score < 60 除外、別 SKU 機会拾い、ジャンク 2 種類判別
 - `llm-wiki-compilation.md` — Q7 read-first / INGEST 再構成 / QUERY-save 基準 3 軸 / OPLOG schema
+- `browser-ui-native-input.md` — ブラウザ UI 操作は native locator method 第一選択 (合成クリックは controlled component に無効)、eBaymag 各国タブ input name 構造 (2026-06-21、負の能力主張ゲート技術編)
 
 ## 完了報告 4 行テンプレ (Q5)
 

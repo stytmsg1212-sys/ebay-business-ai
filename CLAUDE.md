@@ -15,7 +15,7 @@
 
 ## 最優先ルール Q0-Q6 (違反 = 品質事故)
 
-- **Q0** サイレントスキップ / 偽装成功 / 逃避修正は **絶対禁止**。詳細: `.claude/rules/silent-skip-prevention.md`
+- **Q0** サイレントスキップ / 偽装成功 / 逃避修正は **絶対禁止**。**負の能力主張ゲート (2026-06-21)**: 「できない/user 手動が必要/cannot」を未完了タスクに出す前は Failure Evidence Block 必須 (候補手段列挙 + 最強未試行手段の実テスト + 真に不能な根拠)、1 手段失敗を goal 不能に昇格させ user 転嫁しない、terminal handoff 前は Codex 相談。詳細: `.claude/rules/silent-skip-prevention.md`
 - **Q1** UI / 定時実行バグ修正 DoD = 11 ステップ Phase 0-3 全て (pytest PASS だけ NG、Streamlit + Playwright + DB クエリ + scheduler.log 必須)。詳細: `feedback_definition_of_done_protocol.md`
 - **Q2** DB migration 冪等性必須 (try/except OperationalError、DROP/DELETE は別 one-shot script、本番直接書込時 24h retrospective review)。詳細: `.claude/rules/db-migration-rules.md`
 - **Q3** 新機能 / 外部 API / 見積不確実な変更は **構造化設計フロー必須** (Clarify → 設計 → 2 段レビュー → 実装 → Q1 検証)、Phase 3 Clarify 省略禁止。⚠️ 本 repo に `/feature-dev` skill/command は **不在** (md-files-can-be-wrong R-1、2026-05-18 確認) = `code-architect` subagent (設計 Phase) + `code-reviewer` + Codex の 2 段レビューで **等価運用**。詳細・両論併記: `feedback_feature_dev_usage.md`
@@ -48,7 +48,7 @@
 | 本 CLAUDE.md (project root) | プロジェクト構造・絶対ルール・規約 |
 | `~/.claude/rules/*.md` (user global) | 全プロジェクト共通 coding / security |
 | `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** / **progress-touchpoint** (2026-06-10 無応答事故 2 件で昇格) |
-| `.claude/rule-snippets/*.md` (on-demand snippet、2026-05-21 hybrid 化) | **wiki-frontmatter** / **contradiction-annotation** / **discord-notification** / **supplier-matching-rules** / **llm-wiki-compilation** (Q7) — UserPromptSubmit router で keyword 一致時 JIT 注入、または assistant が Read on-demand |
+| `.claude/rule-snippets/*.md` (on-demand snippet、2026-05-21 hybrid 化) | **wiki-frontmatter** / **contradiction-annotation** / **discord-notification** / **supplier-matching-rules** / **llm-wiki-compilation** (Q7) / **browser-ui-native-input** (2026-06-21、ブラウザ UI は native locator 第一選択・負の能力主張ゲート技術編) — UserPromptSubmit router で keyword 一致時 JIT 注入、または assistant が Read on-demand |
 | `tools/ebay-manager/CLAUDE.md` (subdir) | eBay 規制 4 セクション (出品 / 通関 / DDP / ランク) |
 | `USER_MANUAL.md` (project root) | **user (人間) が手で実行する手順** 集約 (scheduler 操作 / Phase 7 監視・緊急停止 / kill switch / メンテ / トラブル対処 / slash command 早見表) |
 | `~/.claude/projects/.../memory/feedback_*.md` | 個別事故 / 学び |

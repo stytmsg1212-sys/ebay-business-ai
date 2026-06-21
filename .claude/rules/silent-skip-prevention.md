@@ -38,6 +38,38 @@ type: rule
 - ❌ scheduled task の skip 条件を緩めて「実行された」ように見せる
 - ✅ **必ず根本原因を調査・修正**。やむを得ず無効化する場合は **明示的に user 許可を求める**
 
+### 4. 負の能力主張による逃避 handoff (negative-capability handoff) ★2026-06-21 制定
+
+**単一手段の失敗を「タスク不能」に昇格させ、未完了タスクを user に転嫁しない。**
+
+出典: 2026-06-21 eBaymag「送料無料」チェック解除で、`page.evaluate` の JS 合成クリック (isTrusted=false、React controlled component が無視) **1 手段だけ**試して「CDP では外せない=user 手動が必要」と確定・作業停止 → 実際は Playwright **ネイティブ実入力** (`locator.uncheck()`) で普通に動いた。2026-06-09「API 無し=UI 操作不能」と完全同型の再発。**method failure ≠ goal failure** を取り違えた。これは「困難を回避で逃げる」= 本ルール 3 の handoff 版。
+
+#### 禁止出力語ゲート (機械的トリガー)
+
+以下の語を**未完了タスクについて**出力する直前は、必ず後述の **Failure Evidence Block を emit** すること (出さずに handoff = Q0 違反):
+
+> 「できない / 不可 / 無理 / 自動操作できない / user 手動が必要 / 手動でお願いします / Playwright/CDP/ブラウザでは〜できない / blocked / cannot / impossible / take over / manual intervention」
+
+#### Failure Evidence Block (3 必須)
+
+1. **候補手段の列挙**: その goal を達成しうる手段を全部挙げる (例: ブラウザ操作なら native locator method / role-based locator / CDP input / page.evaluate の優先順)
+2. **最強の未試行手段を実際にテストした証拠**: 「試した手段名 + 実行結果ログ」。**1 手段の失敗だけで確定しない**
+3. **真に不能な根拠**: なぜ全候補が不能か (検証済の事実。推測で「無理そう」は不可)
+
+#### 除外 (Failure Evidence Block 不要 = 即 handoff してよい)
+
+- credentials / permission の明確な欠落
+- user が既に停止を指示済
+- 法的 / 倫理的に不許可
+- 必要な外部システムが**直接検証済で**利用不能
+- **確定済の user-only 作業** (eBay/銀行ログイン壁、2FA、user 専権の承認ボタン等。2026-06-09 のログイン壁判断は正当だった)
+
+#### Codex 相談則 (user 2026-06-21 指示)
+
+上記ゲートに該当し (= 未完了タスクを能力不足で handoff しようとし)、かつ除外に当たらない時は、**自分一人の判断で止めず Codex に相談してから結論する**。`codex-reviewer` agent (model:opus override) に「root cause + 候補手段 + なぜ不能か」を渡し、外部視点で詰め残しを潰す。terminal handoff 直前のみ発火 (通常の debug/retry/事実確認では呼ばない = Codex usage 枠を浪費しない)。
+
+技術詳細 (ブラウザ UI のネイティブ実入力 vs 合成クリック) は on-demand snippet `.claude/rule-snippets/browser-ui-native-input.md` 参照。
+
 ## コード書く時の自問 (3 項目)
 
 1. このタスクが skip された時、user / 開発者は **どこで知ることができるか?** (`scheduler.log` grep だけは不十分、Discord or DB log or UI 表示が必須)
