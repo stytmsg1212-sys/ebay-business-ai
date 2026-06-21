@@ -1,0 +1,74 @@
+[
+ {
+  "id": "12270180",
+  "title": "DDP_0-0.5kg_$030_7day / A23D / JP",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 1,
+  "__typename": "Profile"
+ },
+ {
+  "id": "12236431",
+  "title": "102 NO STOCK(7day) EXPEDITED 0.5 ~ 1.0kg / EA72 / JP",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 1,
+  "__typename": "Profile"
+ },
+ {
+  "id": "12052020",
+  "title": "B1DE: Free / 4d / 60d return",
+  "color": 0,
+  "dispatchTime": 1,
+  "numberOfProducts": 0,
+  "__typename": "Profile"
+ },
+ {
+  "id": "12052019",
+  "title": "CAA2: Free / 4d / 60d return",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 0,
+  "__typename": "Profile"
+ },
+ {
+  "id": "11391593",
+  "title": "107 NO STOCK(7day) EXPEDITED 3.0 ~ 4.0kg / B402 / JP",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 0,
+  "__typename": "Profile"
+ },
+ {
+  "id": "10498529",
+  "title": "DDP_1-2kg_$030_1day / D42B / JP",
+  "color": 0,
+  "dispatchTime": 1,
+  "numberOfProducts": 57,
+  "__typename": "Profile"
+ },
+ {
+  "id": "10497745",
+  "title": "DDP_10-20kg_$030_7day / 3E53 / JP",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 144,
+  "__typename": "Profile"
+ },
+ {
+  "id": "10497729",
+  "title": "102 NO STOCK(7day) EXPEDITED 0.5 ~ 1.0kg / 2F5B / JP",
+  "color": 0,
+  "dispatchTime": 7,
+  "numberOfProducts": 1,
+  "__typename": "Profile"
+ },
+ {
+  "id": "10497716",
+  "title": "無料 / 30 日間",
+  "color": 1,
+  "dispatchTime": 2,
+  "numberOfProducts": 0,
+  "__typename": "Profile"
+ }
+]
