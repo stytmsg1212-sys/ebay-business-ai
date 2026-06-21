@@ -1,0 +1,50 @@
+{
+ "policy": "DDP_2-3kg",
+ "pid": "12129483",
+ "snapshot": {
+  "uk": {
+   "switcher": false,
+   "free": true,
+   "price": "0"
+  },
+  "de": {
+   "switcher": false,
+   "free": true,
+   "price": "0"
+  },
+  "fr": {
+   "switcher": false,
+   "free": true,
+   "price": "0"
+  },
+  "it": {
+   "switcher": false,
+   "free": true,
+   "price": "0"
+  },
+  "es": {
+   "switcher": false,
+   "free": true,
+   "price": "0"
+  },
+  "au": {
+   "switcher": true,
+   "free": false,
+   "price": "8"
+  },
+  "ca": {
+   "switcher": null,
+   "free": null,
+   "price": null
+  }
+ },
+ "intended": {
+  "uk": 13,
+  "de": 13,
+  "fr": 13,
+  "it": 13,
+  "es": 13,
+  "au": 8,
+  "ca": 3
+ }
+}
