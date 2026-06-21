@@ -64,7 +64,13 @@ eBaymag は全て `https://ebaymag.com/graphql` (POST)。ログイン済 CDP の
 - read/write の ebayProfile id は同一系統
 - 捕捉スクリプト: `scripts/_capture_graphql_save.py` (mutation) / `_capture_graphql_read.py` (profile 読取)
 
-**手順**: ①profile 読取 (id/serviceCode 取得) → ②canonical 値で ebayProfiles 構築 (他は保持) → ③upsertProfile 送信 → ④read 再取得で値 exact 一致を hard-abort 検証 → ⑤実 ebay.{site} ページ目視。1 ポリシー canary → 全展開。
+**新規作成**: 同じ `upsertProfile` を `profile.id` 無し + `ebayProfiles:[]` で送ると新規作成 (2026-06-21 実証、totalCount +1)。
+- ⚠️ **eBaymag は内容重複ポリシーの作成を拒否** ("The profile duplicates another one")。空ポリシーは title 以外同一になり弾かれる。**回避 = Worldwide tariff の `timeMax` を帯別 unique 化** (cosmetic、送料額に無影響)。dispatchTime 違いも distinct 要因。これが 2026-06-21 の consolidation 事故 (DDP_2-3kg/6-8kg 消滅) の正体 = content-based 重複判定。
+- ⚠️ **空ポリシーは `shippingEbayProfiles=0`** (各国設定欄なし)。値設定は **商品割当後** でないと不可 (siteId 指定の生成は GraphQL が拒否)。順序は **①作成 → ②商品割当 → ③値設定** で固定。
+- ⚠️ **delete mutation 未確立** (作りすぎても API で消せない)。作成は 1 個ずつ + 毎回 totalCount==+1 & 既存消失=0 を検証、異常で即 abort。
+- 値はポリシー単位共有 → 値設定済ポリシーへの新規商品は自動継承 (赤字防止は「値未設定ポリシーに割当てない」ガードで)。
+
+**手順 (値設定)**: ①profile 読取 (id/serviceCode 取得) → ②canonical 値 (FX で現地通貨に換算) で ebayProfiles 構築 (他は保持) → ③upsertProfile 送信 → ④read 再取得で値 exact 一致を hard-abort 検証 → ⑤実 ebay.{site} ページ目視。1 ポリシー canary → 全展開。
 
 ## 成否検証は application state で
 
