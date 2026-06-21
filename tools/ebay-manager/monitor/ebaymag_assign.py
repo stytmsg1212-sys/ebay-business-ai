@@ -13,9 +13,24 @@ from monitor.ebaymag_graphql import (
     gql, list_profiles, read_profile, SAVE_MUTATION,
 )
 
-ASSIGN_MUTATION = """mutation ProductSave($input: ProductSaveInput!) {
-  productSave(input: $input) { product { id } errors __typename }
+# 商品→ポリシー割当は GraphQL ではなく REST PUT (2026-06-22 UI 盗聴で判明)。
+# GraphQL productSave(shippingProfileId) は silent no-op だった。
+# PUT /products/{id} に {"shipping_profile_id":{"value":<id>}} を CSRF 付きで送る。
+_ASSIGN_PUT_JS = r"""async (args) => {
+  const meta = document.querySelector('meta[name=csrf-token]');
+  const csrf = meta ? meta.content : '';
+  const r = await fetch('https://ebaymag.com/products/' + args.pid, {
+    method: 'PUT',
+    headers: {'content-type': 'application/json', 'x-csrf-token': csrf},
+    credentials: 'include',
+    body: JSON.stringify({shipping_profile_id: {value: parseInt(args.policy, 10)}}),
+  });
+  let body; try { body = await r.json(); } catch (e) { body = await r.text(); }
+  return {status: r.status, body: body};
 }"""
+
+# 割当 read-back 用 (商品の現 shippingProfileId)
+_PRODUCT_QUERY = "query ProductShip($id: ID!) { product(id: $id) { id shippingProfileId } }"
 
 # siteId → (cc, 現地通貨, 国コード)
 SITE = {3: ("UK", "GBP", "GB"), 77: ("DE", "EUR", "DE"), 71: ("FR", "EUR", "FR"),
@@ -29,7 +44,9 @@ class AssignError(RuntimeError):
 
 
 def snapshot_policies(pg) -> dict:
-    profs = list_profiles(pg)
+    # first を十分大きく取る (MAG 20 + DDP + 探索誤作成 等でポリシー数が増えるため、
+    # 取りこぼすと assert_no_vanish が偽の「消失」を出して全割当が停止する)。
+    profs = list_profiles(pg, first=200)
     return {n["id"]: {"title": n["title"], "products": n.get("numberOfProducts")}
             for n in profs}
 
@@ -50,25 +67,30 @@ def domestic_service_code(ep) -> str | None:
 
 
 def assign_product(pg, product_id: str, policy_id: str) -> None:
-    """商品を policy に割当 (productSave)。前後で snapshot し count delta / 消失を検査。"""
+    """商品を policy に割当 (REST PUT)。read-back で割当確認 + merge/消失検査。"""
     before = snapshot_policies(pg)
-    res = gql(pg, "ProductSave", ASSIGN_MUTATION,
-              {"input": {"changes": {"id": str(product_id), "shippingProfileId": str(policy_id)}}})
-    ps = res.get("productSave") or {}
-    if ps.get("errors"):
-        raise AssignError(f"productSave errors: {ps['errors']}")
+    res = pg.evaluate(_ASSIGN_PUT_JS, {"pid": str(product_id), "policy": str(policy_id)})
+    status = res.get("status")
+    body = res.get("body")
+    if status not in (200, 201, 204):
+        raise AssignError(f"PUT /products/{product_id} HTTP {status}: {str(body)[:200]}")
+    # HTTP 200 でも body にエラーを含む REST 実装に備える (Q0 偽成功防止)
+    if isinstance(body, dict) and (body.get("errors") or body.get("success") is False):
+        raise AssignError(f"PUT /products/{product_id} body error: {str(body)[:200]}")
     pg.wait_for_timeout(1500)
+    # read-back: 割当が反映されたか (最も確実な成功判定)。
+    # 実機では shippingProfileId は raw 数値文字列 ("12270565") だが、
+    # Relay global ID ("Profile:12270565") 形式に備えて末尾 ID で正規化。
+    data = gql(pg, "ProductShip", _PRODUCT_QUERY, {"id": str(product_id)})
+    got = (data.get("product") or {}).get("shippingProfileId")
+    got_id = str(got).split(":")[-1] if got is not None else None
+    if got_id != str(policy_id):
+        raise AssignError(
+            f"read-back NG: product {product_id} shippingProfileId={got} (期待 {policy_id})。"
+            f" PUT は HTTP {status} で受理済の可能性あり — リトライ前に実状態を read 必須")
+    # merge 事故 (DDP_2-3kg/6-8kg 消滅型) 防止: 既存 policy が消えていないこと
     after = snapshot_policies(pg)
     assert_no_vanish(before, after)
-    # target +1 / 他は increase しない (source -1 は別 policy)
-    tgt_b = (before.get(policy_id) or {}).get("products") or 0
-    tgt_a = (after.get(policy_id) or {}).get("products") or 0
-    if tgt_a != tgt_b + 1:
-        raise AssignError(f"target {policy_id} products {tgt_b}->{tgt_a} (期待 +1)")
-    # 増えた policy が target だけか
-    increased = [i for i in after if (after[i]["products"] or 0) > (before.get(i, {}).get("products") or 0)]
-    if increased != [policy_id]:
-        raise AssignError(f"想定外に増えた policy: {increased} (期待 [{policy_id}])")
 
 
 def set_values(pg, policy_id: str, band: str, fx: dict, canonical_tab: dict,
