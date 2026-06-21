@@ -2215,16 +2215,52 @@ def _render_ebaymag_section(p: dict) -> None:
                         st.code("\n".join(res.log))
 
 
-def _render_keyword_watch_toggle(p: dict) -> None:
-    """W#33: 商品エディタ内 キーワード新着監視 個別トグル section.
+def _kw_prefill_values(existing, title: str, eid: str) -> dict:
+    """W#33 v2: キーワード新着監視フォームの pre-fill 値を計算する純関数 (UI から分離=テスト可能).
 
-    - 現在紐付いている is_active=1 watches を一覧表示
-    - 「🔔 監視に追加」で add_watch(keyword=title, ebay_item_id=eid)
-    - 「解除」で delete_watch(watch_id)
-    - 登録失敗は必ず可視化 (Q0 silent skip 禁止)
-    - form 外で呼ぶ (個別 button 即時反応を維持)
+    - existing=None → 新規 default。本家 tab_keyword_watch._render_add_form と同じ
+      (下限なし=ON / 上限なし=OFF、keyword=商品タイトル先頭60字、item_id=この商品 eid)。
+    - existing あり → その watch の値。price_min/max が None または 0 は「なし」扱い
+      (_build_search_url が 0/None を同一視するのと一貫)。
     """
-    from monitor.keyword_watch_db import add_watch, delete_watch, list_watches
+    if existing:
+        pmin_raw = existing.get("price_min_jpy")
+        pmax_raw = existing.get("price_max_jpy")
+        return {
+            "keyword": existing.get("keyword") or "",
+            "pmin": int(pmin_raw) if pmin_raw else 0,
+            "pmin_unset": not pmin_raw,
+            "pmax": int(pmax_raw) if pmax_raw else 0,
+            "pmax_unset": not pmax_raw,
+            "memo": existing.get("memo") or "",
+            "item_id": existing.get("ebay_item_id") or eid,
+        }
+    return {
+        "keyword": title[:60],
+        "pmin": 0, "pmin_unset": True,
+        "pmax": 0, "pmax_unset": False,
+        "memo": "",
+        "item_id": eid,
+    }
+
+
+def _render_keyword_watch_toggle(p: dict) -> None:
+    """W#33 v2 (2026-06-21 user 要望): 商品エディタ内 キーワード新着監視。
+
+    旧版 (site=yahoo 固定・価格設定なしで title を盲目 add) を廃し、
+    本物の新規追加フォーム (サイト/キーワード/価格帯/メモ/eBay Item ID) を
+    商品文脈で開く。tab_keyword_watch の新規追加と同等の入力を提供する。
+
+    - 現在紐付いている is_active=1 watches を一覧表示 (解除可)
+    - サイトを切り替えると、その (eid, site) に**設定済みの値を表示**
+      (メルカリ→メルカリ設定値 / ヤフオク→ヤフオク設定値)。未設定なら新規 default
+    - 既存あり=「更新」(update_watch) / なし=「追加」(add_watch)
+    - 登録/更新失敗は必ず可視化 (Q0 silent skip 禁止)
+    - form 外で呼ぶ前提 (本関数内 st.form はネストしない: caller は form 外で呼出)
+    """
+    from monitor.keyword_watch_db import (
+        add_watch, delete_watch, list_watches, update_watch,
+    )
 
     eid = p["ebay_item_id"]
     title = p.get("title") or ""
@@ -2260,38 +2296,101 @@ def _render_keyword_watch_toggle(p: dict) -> None:
     else:
         st.caption("監視未登録")
 
-    # 追加ボタン: title をそのままキーワードにして yahoo_auctions に登録
-    # (site/search_url の詳細設定は監視タブで行う運用)
-    short_kw = title[:60]  # keyword DB 制約上の簡略化 (title 全文は長すぎる場合あり)
-    _already = any(
-        w.get("keyword") == short_kw and w.get("ebay_item_id") == eid
-        for w in linked
+    # ── 新規追加 / 既存編集 フォーム (本物の キーワード新着監視 新規追加と同等) ──
+    # site selectbox は form 外 = 切替で (eid, site) の既存値を即時反映するため。
+    from tabs.tab_keyword_watch import _build_search_url
+
+    _SITES = ["mercari", "yahoo_auctions"]
+    _site_label = lambda x: "🛒 メルカリ" if x == "mercari" else "🔨 ヤフオク"
+    site = st.selectbox(
+        "サイト", _SITES, format_func=_site_label, key=f"pm_kw_site_{eid}",
+        help="サイトを切り替えると、そのサイトに設定済みの値が表示されます",
     )
-    if not _already:
-        from urllib.parse import quote_plus
-        _url = "https://auctions.yahoo.co.jp/search/search?p=" + quote_plus(short_kw)
-        if st.button(
-            "🔔 監視に追加 (Yahoo オークション)",
-            key=f"pm_kw_add_{eid}",
-            help=f"キーワード「{short_kw}」で監視登録 (詳細は監視タブで調整可)",
-        ):
+    # 選択中サイトの既存 watch (あれば編集、なければ新規)
+    existing = next((w for w in linked if w.get("site") == site), None)
+    if existing:
+        st.caption(f"✅ このサイトは設定済み (#{existing['id']}) — 値を編集して更新できます")
+
+    # pre-fill は純関数で計算 (テスト可能化、HIGH-2)。
+    pf = _kw_prefill_values(existing, title, eid)
+    # HIGH-1 fix: widget key に existing.id (なければ 'new') を織り込む。
+    # 解除→rerun や 既存↔新規 遷移で別 widget 化 → value= が再評価される
+    # (key を {eid}_{site} だけにすると、解除後も古い session_state 値が残る Streamlit 落とし穴)。
+    _wkey = f"{eid}_{site}_{existing['id'] if existing else 'new'}"
+
+    with st.form(f"pm_kw_form_{_wkey}", clear_on_submit=False):
+        keyword = st.text_input(
+            "キーワード", value=pf["keyword"],
+            placeholder="例: Astell&Kern A&norma SR35",
+            key=f"pm_kw_kw_{_wkey}",
+        )
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            pmin = st.number_input(
+                "下限 (¥、空欄=なし)", min_value=0, value=pf["pmin"], step=1000,
+                key=f"pm_kw_pmin_{_wkey}",
+            )
+            pmin_unset = st.checkbox(
+                "下限なし", value=pf["pmin_unset"], key=f"pm_kw_pminun_{_wkey}",
+            )
+        with fc2:
+            pmax = st.number_input(
+                "上限 (¥、空欄=なし)", min_value=0, value=pf["pmax"], step=1000,
+                key=f"pm_kw_pmax_{_wkey}",
+            )
+            pmax_unset = st.checkbox(
+                "上限なし", value=pf["pmax_unset"], key=f"pm_kw_pmaxun_{_wkey}",
+            )
+        st.caption("注: 両方なしだと通知無効 (履歴のみ)")
+        memo = st.text_area(
+            "メモ (任意)", value=pf["memo"],
+            placeholder="採用後のアクション、注意点 等", height=80,
+            key=f"pm_kw_memo_{_wkey}",
+        )
+        item_id = st.text_input(
+            "eBay Item ID", value=pf["item_id"],
+            key=f"pm_kw_iid_{_wkey}",
+            help="紐づく自社 eBay 出品の Item ID (既定でこの商品)。通知時に販売価格を併記。",
+        )
+
+        if st.form_submit_button("💾 更新" if existing else "➕ 追加"):
+            kw = keyword.strip()
+            if not kw:
+                st.error("キーワードは必須です")
+                return
+            pmin_val = None if pmin_unset else int(pmin)
+            pmax_val = None if pmax_unset else int(pmax)
+            iid_val = item_id.strip() or None
             try:
-                watch_id, inserted_new = add_watch(
-                    site="yahoo_auctions",
-                    search_url=_url,
-                    keyword=short_kw,
-                    memo=f"商品管理から自動登録 (item_id={eid})",
-                    source="product_management",
-                    ebay_item_id=eid,
-                )
-                if inserted_new:
-                    st.success(f"登録完了 (watch_id={watch_id})")
-                    bump_db_version()
-                    st.rerun()
+                url = _build_search_url(site, kw, pmin_val, pmax_val)
+            except ValueError as e:
+                st.error(str(e))
+                return
+            try:
+                if existing:
+                    ok = update_watch(
+                        existing["id"], keyword=kw, price_min_jpy=pmin_val,
+                        price_max_jpy=pmax_val, memo=memo, search_url=url,
+                        ebay_item_id=iid_val,
+                    )
+                    if ok:
+                        st.success(f"#{existing['id']} を更新しました")
+                    else:
+                        st.warning(f"更新対象が見つかりません (#{existing['id']})")
                 else:
-                    st.info(f"同一 URL が既に登録済 (watch_id={watch_id})")
+                    wid, new = add_watch(
+                        site=site, search_url=url, keyword=kw,
+                        price_min_jpy=pmin_val, price_max_jpy=pmax_val,
+                        memo=memo, source="product_management", ebay_item_id=iid_val,
+                    )
+                    st.success(
+                        f"#{wid} を追加しました" if new
+                        else f"#{wid} は同 site + 同 URL で登録済みです"
+                    )
+                bump_db_version()
+                st.rerun()
             except Exception as e:
-                st.error(f"登録エラー: {e}")
+                st.error(f"保存エラー: {e}")
 
     st.markdown("---")
 
