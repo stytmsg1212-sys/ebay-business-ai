@@ -1,6 +1,8 @@
-"""揃った MAG (US以外7サイト生成済) に各国送料を FX 換算で一括設定 (money-direct)。
+"""eBaymag 各 MAG に各国送料を FX 換算で一括設定 (money-direct)。
 
-set_values (ebaymag_assign) を各 MAG に適用。7サイト未揃いの MAG は skip (出揃い後に再実行)。
+set_values (ebaymag_assign) を各 MAG に適用。出ている managed サイト (US以外) に
+値設定し、未生成サイトは set_values 内で touch しない。managed サイトが1つも無い MAG
+(各国版未生成) は skip。後で各国版が増えたら再実行で追加設定 (set_values は冪等)。
 set_values 内蔵の read-back + assert_no_vanish で各回検証、失敗で即停止。
 冒頭1回 /shipping reload で CSRF 更新 (バッチは数分以内想定)。途中で CSRF が
 失効した場合は gql が例外で即停止し、再実行で続行 (set_values は冪等)。
@@ -50,9 +52,10 @@ with sync_playwright() as p:
             continue
         prof = G.read_profile(page, x["id"])
         sids = {ep["siteId"] for ep in prof["shippingEbayProfiles"]}
-        if not REQUIRED.issubset(sids):
+        present = REQUIRED & sids  # 出ている managed サイト (US以外)
+        if not present:
             skip += 1
-            print(f"  SKIP {title}: 7サイト未揃い (sites={sorted(sids)})")
+            print(f"  SKIP {title}: managed サイト未生成 (sites={sorted(sids)})")
             continue
         band = title.replace("MAG_", "", 1).rsplit("_", 1)[0]  # MAG_2-3kg_7day -> 2-3kg
         canon = build_canonical_policy(band)["tab_values"]
