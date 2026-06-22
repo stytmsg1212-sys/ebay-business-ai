@@ -155,12 +155,26 @@ def set_values(pg, policy_id: str, band: str, fx: dict, canonical_tab: dict,
         sid = ep["siteId"]; usd = site_usd.get(sid, 0)
         if sid == 0 or usd == 0:
             continue
-        cc, cur, _ = SITE[sid]
+        cc, cur, country = SITE[sid]
         expect = math.ceil(usd * fx[cur])
+        # 送料: 書込と対称に DOMESTIC service の shippingCost を取る (HIGH-1)。
         got = None
         for so in (ep.get("payload") or {}).get("shippingOptions") or []:
+            if so.get("optionType") != "DOMESTIC":
+                continue
             for s in so.get("shippingServices") or []:
                 got = s.get("shippingCost")
-        if got != expect:
-            raise AssignError(f"read-back {cc}: 期待{expect}{cur} 実{got}")
+                break
+        # shippingCost は {'value': N, 'currency': 'XXX'} 形式 (2026-06-22 実機確認)。
+        got_val = got.get("value") if isinstance(got, dict) else got
+        got_cur = got.get("currency") if isinstance(got, dict) else cur
+        if got_val != expect or got_cur != cur:
+            raise AssignError(f"read-back {cc}: 送料 期待{expect}{cur} 実{got}")
+        # 配送可能国の封じ込め検証 (HIGH-2、money-direct)。excludedCountries は
+        # payload 内に自国以外全除外 (len=universe-1) で入る。金額正でも配送国誤りを防ぐ。
+        got_excl = (ep.get("payload") or {}).get("excludedCountries") or []
+        if len(got_excl) != len(universe) - 1 or country in got_excl:
+            raise AssignError(
+                f"read-back {cc}: excludedCountries {len(got_excl)}件 "
+                f"自国除外={country in got_excl} (期待 {len(universe) - 1}件・自国非除外)")
     return plan

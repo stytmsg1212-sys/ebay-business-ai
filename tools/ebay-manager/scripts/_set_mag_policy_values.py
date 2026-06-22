@@ -136,8 +136,10 @@ with sync_playwright() as p:
         for so in (ep.get("payload") or {}).get("shippingOptions") or []:
             for s in so.get("shippingServices") or []:
                 got = s.get("shippingCost")
-        if got != expect:
+        got_val = got.get("value") if isinstance(got, dict) else got
+        got_cur = got.get("currency") if isinstance(got, dict) else cur
+        if got_val != expect or got_cur != cur:
             print(f"  ✗ {cc}: 期待{expect}{cur} 実{got}"); ok = False
         else:
-            print(f"  ✓ {cc}: {got}{cur}")
+            print(f"  ✓ {cc}: {got_val}{got_cur}")
     print("\nread-back", "PASS ✅" if ok and len(after) == before_total else "FAIL ⚠️")
