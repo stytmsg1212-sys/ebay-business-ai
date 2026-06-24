@@ -130,17 +130,22 @@ def _estimate_profit_for_candidate(
     listing: dict,
     purchase_yen: int,
     settings: dict,
-) -> Optional[float]:
+) -> Optional[tuple[float, float]]:
     """
     ebay_listings の物理データ＋販売価格と仕入候補価格から、
-    代表利益（profit_with_refund）を推定する。
+    代表利益を推定する。
 
-    代表値の選び方:
+    Returns:
+        (profit_with_refund, profit_without_refund) のタプル。
+        - profit_with_refund: 消費税還付込み利益（DB 表示用の代表値）
+        - profit_without_refund: 同一サービスの還付抜き利益（600円床の判定用、2026-06-22）
+        推定不能条件（物理データ不足等）は None。
+
+    代表値の選び方（両値とも **同一のサービス** から取る）:
       1. 送料サービス別に全計算を実行
       2. `is_listable=True` かつ profit_with_refund が最大のものを採用
       3. listable が1件もなければ全サービス中 profit_with_refund 最大
-
-    推定不能条件（物理データ不足等）は None 返却。
+      → 採用された ServiceResult の .profit_with_refund と .profit（還付抜き）を返す。
     """
     current_price_usd = listing.get("current_price")
     if current_price_usd is None or current_price_usd <= 0:
@@ -180,7 +185,7 @@ def _estimate_profit_for_candidate(
     listable = [s for s in result.service_results if s.is_listable]
     pool = listable or result.service_results
     best = max(pool, key=lambda s: s.profit_with_refund)
-    return float(best.profit_with_refund)
+    return float(best.profit_with_refund), float(best.profit)
 
 
 # ─── 以下は次セッションで実装する stub ───
@@ -476,15 +481,17 @@ def run_supplier_candidate_search(
         profit_jpy: Optional[float] = None
         profitable = 0
         if sc.hit.price_jpy is not None:
-            profit_jpy = _estimate_profit_for_candidate(
+            _est = _estimate_profit_for_candidate(
                 listing=listing,
                 purchase_yen=sc.hit.price_jpy,
                 settings=settings,
             )
-            if profit_jpy is not None:
+            if _est is not None:
+                profit_jpy, profit_no_refund = _est
                 ok, _breakdown = check_supplier_candidate_profitable(
                     profit_with_refund=profit_jpy,
                     purchase_yen=sc.hit.price_jpy,
+                    profit_without_refund=profit_no_refund,
                 )
                 profitable = int(ok)
 

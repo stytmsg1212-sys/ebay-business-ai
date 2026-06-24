@@ -127,10 +127,10 @@ def _setup_realtime(monkeypatch, t, listing, hits, eval_calls):
         eval_calls.append(h.url)
         return t.ScoredCandidate(hit=h, match_score=70, match_reasoning="freshly judged")
     monkeypatch.setattr(t, "evaluate_candidate_with_claude", _fake_eval)
-    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: 5000.0)
+    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: (5000.0, 4000.0))
     monkeypatch.setattr(
         t, "check_supplier_candidate_profitable",
-        lambda profit_with_refund, purchase_yen: (True, {}),
+        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}),
     )
     saved = []
     monkeypatch.setattr(t, "add_supplier_candidate", lambda **kw: saved.append(kw) or 1)
@@ -204,9 +204,9 @@ def test_realtime_error_eval_not_recorded(monkeypatch):
     monkeypatch.setattr(t, "search_candidates_on_platform",
                         lambda plat, kw, max_results=5: [hit] if plat == "mercari" else [])
     monkeypatch.setattr(t, "evaluate_candidate_with_claude", _err_eval)
-    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: 5000.0)
+    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: (5000.0, 4000.0))
     monkeypatch.setattr(t, "check_supplier_candidate_profitable",
-                        lambda profit_with_refund, purchase_yen: (True, {}))
+                        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}))
     monkeypatch.setattr(t, "add_supplier_candidate", lambda **kw: 1)
 
     t.run_supplier_candidate_search(
@@ -265,9 +265,9 @@ def test_batch_sweep_all_reused_skips_batch_submit(monkeypatch):
     monkeypatch.setattr(s, "check_candidate_availability",
                         lambda url, **_k: {"status": "available", "signal": "m",
                                            "checked_at": "2026-06-05T00:00:00+00:00"})
-    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: 5000.0)
+    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: (5000.0, 4000.0))
     monkeypatch.setattr(s, "check_supplier_candidate_profitable",
-                        lambda profit_with_refund, purchase_yen: (True, {}))
+                        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}))
     monkeypatch.setattr(s, "load_settings", lambda: {})
     saved = []
     monkeypatch.setattr(s, "add_supplier_candidate", lambda **kw: saved.append(kw) or 1)
@@ -308,9 +308,9 @@ def test_batch_sweep_new_candidate_recorded(monkeypatch):
     monkeypatch.setattr(s, "check_candidate_availability",
                         lambda url, **_k: {"status": "available", "signal": "m",
                                            "checked_at": "2026-06-05T00:00:00+00:00"})
-    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: 5000.0)
+    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: (5000.0, 4000.0))
     monkeypatch.setattr(s, "check_supplier_candidate_profitable",
-                        lambda profit_with_refund, purchase_yen: (True, {}))
+                        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}))
     monkeypatch.setattr(s, "load_settings", lambda: {})
     monkeypatch.setattr(s, "add_supplier_candidate", lambda **kw: 1)
 

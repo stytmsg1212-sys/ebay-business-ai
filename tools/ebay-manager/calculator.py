@@ -601,21 +601,40 @@ def _check_listable(item_price_usd: float, profit: float, fx: float) -> bool:
     return False
 
 
-def check_supplier_candidate_profitable(profit_with_refund: float, purchase_yen: float) -> tuple[bool, dict]:
+def check_supplier_candidate_profitable(
+    profit_with_refund: float,
+    purchase_yen: float,
+    profit_without_refund: Optional[float] = None,
+) -> tuple[bool, dict]:
     """
-    仕入先候補の採用判定（2026-04-19決定ロジック）
-    - 最低利益額 600円
+    仕入先候補の採用判定（2026-04-19決定ロジック / 2026-06-22 600円床を還付抜き化）
+
+    - 最低利益額 600円（**還付抜き利益で判定** = profit_without_refund）
+      消費税還付込み利益で判定すると、還付分だけ下駄を履いて本来不採用の薄利候補を
+      採用してしまう（仕入れ=money-direct）ため、user 判断で還付抜きに是正（2026-06-22）。
     - 仕入額に応じたスライド利益率: 5,000円以下=10%、100,000円以上=20%、間は線形補間
+      ※スライド率の分母は現状 **還付込み利益（profit_with_refund）** のまま（従来挙動を維持）。
+        還付抜き化すべきかは user 判断待ちの論点（2026-06-22）。
     - 両方の条件を満たすときのみ採用可
 
     Args:
-        profit_with_refund: 消費税還付込み利益（円）
+        profit_with_refund: 消費税還付込み利益（円）。スライド率の floor 判定に使用。
         purchase_yen: 仕入価格（円、税込）
+        profit_without_refund: 消費税還付抜き利益（円）。600円絶対床の判定に使用。
+            None の場合は後方互換のため profit_with_refund を代用するが、
+            その場合 600円床は還付込みで判定される（呼び出し元は必ず還付抜き値を渡すこと）。
 
     Returns:
-        (採用可否, 内訳dict: floor_profit, floor_rate, pass_600, pass_floor)
+        (採用可否, 内訳dict: floor_profit, required_rate, pass_600, pass_floor,
+         profit_with_refund, profit_without_refund)
     """
     absolute_floor = 600
+
+    # 600円絶対床は還付抜き利益で判定（2026-06-22 money-direct 是正）。
+    # 後方互換: profit_without_refund 未指定なら還付込みを代用（呼び出し元は渡すべき）。
+    profit_for_floor600 = (
+        profit_without_refund if profit_without_refund is not None else profit_with_refund
+    )
 
     if purchase_yen <= 5000:
         required_rate = 0.10
@@ -628,7 +647,8 @@ def check_supplier_candidate_profitable(profit_with_refund: float, purchase_yen:
     floor_by_rate = round(purchase_yen * required_rate)
     floor_profit = max(absolute_floor, floor_by_rate)
 
-    pass_600 = profit_with_refund >= absolute_floor
+    # 600円絶対床 = 還付抜き / スライド率床 = 還付込み（率の基準は論点、上記 docstring 参照）。
+    pass_600 = profit_for_floor600 >= absolute_floor
     pass_floor = profit_with_refund >= floor_profit
     ok = pass_600 and pass_floor
 
@@ -638,4 +658,7 @@ def check_supplier_candidate_profitable(profit_with_refund: float, purchase_yen:
         "pass_600": pass_600,
         "pass_floor": pass_floor,
         "profit_with_refund": round(profit_with_refund),
+        "profit_without_refund": (
+            round(profit_without_refund) if profit_without_refund is not None else None
+        ),
     }

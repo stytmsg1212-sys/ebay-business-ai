@@ -162,9 +162,9 @@ def _setup_realtime(monkeypatch, t, listing, hits, eval_calls):
         eval_calls.append(h.url)
         return t.ScoredCandidate(hit=h, match_score=70, match_reasoning="ok")
     monkeypatch.setattr(t, "evaluate_candidate_with_claude", _fake_eval)
-    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **k: 5000.0)
+    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **k: (5000.0, 4000.0))
     monkeypatch.setattr(t, "check_supplier_candidate_profitable",
-                        lambda profit_with_refund, purchase_yen: (True, {}))
+                        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}))
     monkeypatch.setattr(t, "add_supplier_candidate", lambda **kw: 1)
 
 
@@ -225,9 +225,9 @@ def test_batch_ranker_limits_batch_items(monkeypatch):
     monkeypatch.setattr(s, "check_candidate_availability",
                         lambda url, **_k: {"status": "available", "signal": "m",
                                            "checked_at": "2026-06-05T00:00:00+00:00"})
-    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: 5000.0)
+    monkeypatch.setattr(s, "_estimate_profit_for_candidate", lambda **k: (5000.0, 4000.0))
     monkeypatch.setattr(s, "check_supplier_candidate_profitable",
-                        lambda profit_with_refund, purchase_yen: (True, {}))
+                        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}))
     monkeypatch.setattr(s, "load_settings", lambda: {})
     monkeypatch.setattr(s, "add_supplier_candidate", lambda **kw: 1)
     # ranker は 1 件のみ vision 対象に絞る

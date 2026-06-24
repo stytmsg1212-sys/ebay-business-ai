@@ -574,15 +574,17 @@ def run_supplier_sweep_batch(config: dict) -> dict:
             profit_jpy: Optional[float] = None
             profitable = 0
             if hit.price_jpy is not None:
-                profit_jpy = _estimate_profit_for_candidate(
+                _est = _estimate_profit_for_candidate(
                     listing=listing,
                     purchase_yen=hit.price_jpy,
                     settings=settings,
                 )
-                if profit_jpy is not None:
+                if _est is not None:
+                    profit_jpy, profit_no_refund = _est
                     ok, _ = check_supplier_candidate_profitable(
                         profit_with_refund=profit_jpy,
                         purchase_yen=hit.price_jpy,
+                        profit_without_refund=profit_no_refund,
                     )
                     profitable = int(ok)
             if not eval_r.alt_listing_possible and not profitable:

@@ -95,12 +95,14 @@ def main():
         purchase_yen = r["candidate_price_jpy"]
         if purchase_yen is not None and purchase_yen > 0:
             try:
-                profit_jpy = _estimate_profit_for_candidate(
+                _est = _estimate_profit_for_candidate(
                     listing=listing, purchase_yen=int(purchase_yen), settings=settings,
                 )
-                if profit_jpy is not None:
+                if _est is not None:
+                    profit_jpy, profit_no_refund = _est
                     ok, _ = check_supplier_candidate_profitable(
                         profit_with_refund=profit_jpy, purchase_yen=int(purchase_yen),
+                        profit_without_refund=profit_no_refund,
                     )
                     profitable = int(ok)
             except Exception as e:  # noqa: BLE001

@@ -1,0 +1,70 @@
+{
+  "_description": "VeRO/警告 要注意ブランドの『育つリスト』。eBayから警告が来たブランドやIP侵害リスクの高いブランドを記録する。用途=(1)AI店長の撤退トリガー『警告が来やすいブランドは即撤退』(議事録§6/§13.6)、(2)出品前のVeRO事前判定、(3)リサーチ除外。警告に遭遇するたびに user/AI が追記して育てる。risk値: warning_received=実際に警告を受けた / high=IP侵害リスク高。出典: AI店長ヒアリング議事録(2026-06-23) + ebay-knowledge KB。",
+  "version": 1,
+  "updated": "2026-06-23",
+  "brands": [
+    {
+      "name": "Holbein",
+      "aliases": ["ホルベイン"],
+      "risk": "warning_received",
+      "scope": "色鉛筆 / 画材",
+      "note": "eBayから警告実績あり(色鉛筆)。出品回避、警告が来たら即撤退(損切りしてでも即リスティング削除)",
+      "added": "2026-06-23",
+      "source": "AI店長ヒアリング"
+    },
+    {
+      "name": "Disney",
+      "aliases": ["ディズニー"],
+      "risk": "high",
+      "scope": "キャラクター/IP 全般",
+      "note": "Schedule A 訴訟リスク。中古・新品問わずキャラクターグッズは著作権侵害判断リスク",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    },
+    {
+      "name": "Nintendo",
+      "aliases": ["任天堂"],
+      "risk": "high",
+      "scope": "ゲーム/IP 全般",
+      "note": "IP侵害に積極的。並行輸入 defect リスクも",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    },
+    {
+      "name": "Sony",
+      "aliases": ["SONY", "ソニー"],
+      "risk": "high",
+      "scope": "ゲーム(PlayStation/IP)中心。Sony製品全般を一律回避ではない点に注意",
+      "note": "ゲーム/IP関連は高リスク。一般のSony製品(オーディオ等)は別途判断。並行輸入 defect リスクも",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    },
+    {
+      "name": "Apple",
+      "aliases": ["アップル"],
+      "risk": "high",
+      "scope": "全般",
+      "note": "VeRO積極。非正規ルート品は特にリスク。並行輸入 defect リスクも",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    },
+    {
+      "name": "Adobe",
+      "aliases": [],
+      "risk": "high",
+      "scope": "ソフトウェア/IP",
+      "note": "ソフトウェアライセンス/IP侵害リスク",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    },
+    {
+      "name": "Lego",
+      "aliases": ["レゴ"],
+      "risk": "high",
+      "scope": "玩具/IP",
+      "note": "IP侵害に積極的",
+      "added": "2026-06-23",
+      "source": "ebay-knowledge KB"
+    }
+  ]
+}

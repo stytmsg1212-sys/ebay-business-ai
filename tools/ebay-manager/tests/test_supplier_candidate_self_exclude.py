@@ -85,10 +85,11 @@ def _setup_common(monkeypatch, t, listing, hits, platform="paypay"):
             t.ScoredCandidate(hit=h, match_score=85, match_reasoning="ok"),
     )
     # profit を valid で返す (None だと unprofitable skip 経路に落ちる)
-    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: 5000.0)
+    # 2026-06-22: (profit_with_refund, profit_without_refund) タプルを返すよう変更
+    monkeypatch.setattr(t, "_estimate_profit_for_candidate", lambda **kw: (5000.0, 4000.0))
     monkeypatch.setattr(
         t, "check_supplier_candidate_profitable",
-        lambda profit_with_refund, purchase_yen: (True, {}),
+        lambda profit_with_refund, purchase_yen, profit_without_refund=None: (True, {}),
     )
     saved = []
     monkeypatch.setattr(t, "add_supplier_candidate", lambda **kw: saved.append(kw) or 1)
