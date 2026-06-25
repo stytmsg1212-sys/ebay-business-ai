@@ -35,6 +35,26 @@ def _isolate_monitor_db(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_discord_category_webhooks(monkeypatch):
+    """board#22 (2026-06-25): カテゴリ別 Discord webhook env を全テストで隔離.
+
+    `.env` に DISCORD_ORDER/INVENTORY/RESEARCH/PRICING/SYSTEM 等の専用 webhook が
+    設定されると、resolve_webhook(category) がそれを返すため、「カテゴリは既定 ch に
+    fallback する」前提の既存テストが実 .env を拾って落ちる (test_discord_uses_env_webhook 等).
+    全テストでカテゴリ env を削除し resolve_webhook(category)→DISCORD_WEBHOOK_URL へ
+    fallback を強制 = 決定的化. 個別 test がカテゴリ webhook を見たい時は再 setenv で上書き可.
+    DISCORD_WEBHOOK_URL (既定) は各 test が明示設定するため触らない.
+    """
+    for _cat_env in (
+        "DISCORD_ORDER_WEBHOOK_URL", "DISCORD_INVENTORY_WEBHOOK_URL",
+        "DISCORD_RESEARCH_WEBHOOK_URL", "DISCORD_PRICING_WEBHOOK_URL",
+        "DISCORD_SYSTEM_WEBHOOK_URL", "DISCORD_RIVAL_WEBHOOK_URL",
+        "DISCORD_KEYWORD_WEBHOOK_URL",
+    ):
+        monkeypatch.delenv(_cat_env, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _block_news_ai_calls(monkeypatch):
     """W209: score_relevance / deep_dive_article の実 API call を block.
 

@@ -68,7 +68,7 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # W244 (2026-06-10): order_alert_check は 2026-04-27 から 30 分毎 cron で稼働し
     # task_execution_log に記録されていたのに本レジストリに未登録だった
     # (MonoDeck 定時実行タブ・日次レポートの表示名解決から漏れる)。
-    {"key": "order_alert_check", "display": "W7-A 注文アラート (30分ごと)", "hours": None, "weekdays": None, "owner": "order_alert", "kind": "interval", "interval_minutes": 30},
+    {"key": "order_alert_check", "display": "注文アラート+売却同期 (5分ごと)", "hours": None, "weekdays": None, "owner": "order_alert", "kind": "interval", "interval_minutes": 5},
     # W148 (2026-05-21): キーワード新着監視. 2h ごと :20 分 subprocess crawl.
     {"key": "keyword_watch_crawl", "display": "W148 キーワード新着監視 (2h ごと :20)", "hours": None, "weekdays": None, "owner": "keyword_watch", "kind": "interval", "interval_minutes": 120},
     # W283 Phase 9 (2026-06-19): 送料 rate table 月次自動更新. 毎月1日 03:00 のみ.

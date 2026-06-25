@@ -533,9 +533,100 @@ def _process_memo_sale_warning(order: dict, webhook: str) -> bool:
     return True
 
 
+def _process_sold_actions(
+    order: dict, sold_webhook: str, new_count: Optional[int] = None,
+) -> dict:
+    """売却検知時の汎用アクション (5分 polling / v81)。
+
+    1. 汎用「○○が売れた(残N)」+ 備考 を売却専用ch に Discord 通知
+    2. 無在庫 (ebay* SKU) は 'supplier_trigger' を claim (実探索は supplier_sweep が拾う)
+
+    二重発火防止: record_sold_action(UNIQUE order_id×item_id×kind)+ rowcount。
+    listing 識別は ebay_item_id (sku-rules: SKU は有/無在庫判定の補助のみ)。
+    残N (new_count) は有在庫減算の戻り値を流用、無在庫は None (eBay数量は別経路)。
+
+    Returns: {"notified": bool, "supplier_triggered": bool}
+    """
+    from monitor.database import get_listing_note, record_sold_action
+
+    out = {"notified": False, "supplier_triggered": False}
+    ebay_item_id = order.get("ebay_item_id") or ""
+    order_id = order.get("order_id") or ""
+    sku = order.get("sku") or ""
+    if not ebay_item_id or not order_id:
+        # Q0: SKU fallback 禁止。ItemID 欠落注文は評価不能、silent return せず痕跡。
+        logger.warning(
+            f"sold_actions: order_id={order_id or '?'} に ebay_item_id 無し "
+            f"→ 売却アクション評価不能 (SKU fallback 禁止)。手動確認推奨"
+        )
+        return out
+
+    # 1. 汎用売却通知 (claim 成立時のみ = 二重通知防止)
+    if record_sold_action(order_id, ebay_item_id, "sold_notify", sku, new_count):
+        # 商品名は注文データ (GetOrders) を最優先 = eBaymag各国版 (currency≠USD で
+        # ebay_listings 未登録) の売却でも商品名が出る。無ければ ebay_listings (US本体)、
+        # それも無ければ ItemID。listing 識別は ebay_item_id (sku-rules)。
+        title = (order.get("title") or "").strip()
+        if not title:
+            with _conn() as c:
+                row = c.execute(
+                    "SELECT title FROM ebay_listings WHERE ebay_item_id=?",
+                    (ebay_item_id,),
+                ).fetchone()
+                if row:
+                    title = (row["title"] or "").strip()
+        label = (f"{title[:50]} ({str(ebay_item_id)[-4:]})"
+                 if title else str(ebay_item_id))
+        note = (get_listing_note(ebay_item_id) or "").strip()
+        desc = f"**{label}**\nOrder #{order_id}"
+        if new_count is not None:
+            desc += f"\n在庫残: **{new_count}**"
+        elif sku.startswith("stock"):
+            # HIGH-1 (code-reviewer): 有在庫だが残N不明 (inventory_count 未設定 or
+            # 減算 skip)。silent に欠落させず「不明」明示 + 痕跡 (Q0)。在庫数未設定は
+            # stock SKU で頻出 (_decrement_inventory_for_stock_sku が None を返す)。
+            desc += "\n在庫残: 不明 (在庫数未設定)"
+            logger.info(
+                f"sold_notify: 有在庫だが残N不明 order={order_id} "
+                f"eid={ebay_item_id} (inventory_count 未設定か減算 skip)"
+            )
+        # 無在庫 (ebay*) は local 在庫を持たないため残N行なし (正常)
+        if note:
+            desc += f"\n\n**備考:**\n{note[:1500]}"
+        embed = {
+            "title": "🛒 商品が売れました",
+            "description": desc,
+            "color": 0x2ECC71,
+            "timestamp": datetime.now().isoformat(),
+        }
+        if sold_webhook:
+            sent = _send_discord(sold_webhook, embed)
+            out["notified"] = sent
+            logger.info(
+                f"sold_notify: order={order_id} eid={ebay_item_id} sent={sent}"
+            )
+        else:
+            # resolve_webhook('order') が空 = DISCORD_WEBHOOK_URL すら未設定の異常時のみ。
+            # claim は成立済 (二重防止維持)。silent skip せず痕跡 (Q0)。
+            logger.warning(
+                f"sold_notify: webhook 未解決 (DISCORD_WEBHOOK_URL 未設定?) → 通知 skip "
+                f"(order={order_id} eid={ebay_item_id})"
+            )
+
+    # 2. 無在庫 (ebay* SKU) → 仕入先探索を queue 投入 (claim のみ、実探索は sweep)
+    if sku.startswith("ebay"):
+        if record_sold_action(order_id, ebay_item_id, "supplier_trigger", sku):
+            out["supplier_triggered"] = True
+            logger.info(
+                f"supplier_trigger queued: 無在庫売却 order={order_id} "
+                f"eid={ebay_item_id} → supplier_sweep が次回拾う"
+            )
+    return out
+
+
 def run_order_alert_check(config: Optional[dict] = None,
                           num_days: int = 1) -> dict:
-    """30 分 cron で呼ばれる本体.
+    """5 分 cron で呼ばれる本体 (v81: 30分→5分、売却アクション増設).
 
     Args:
         config: schedule_config.json
@@ -543,6 +634,11 @@ def run_order_alert_check(config: Optional[dict] = None,
     """
     cfg = config or {}
     webhook = cfg.get("discord", {}).get("webhook_url") or ""
+    # v81: 売却通知は W271 ルーター category 'order' (DISCORD_ORDER_WEBHOOK_URL)。
+    # 専用 env 未設定なら resolve_webhook が DISCORD_WEBHOOK_URL (既定 ch) に fallback
+    # = silent drop しない (依頼ボード#22 方針)。専用 chを作るまでは既定 ch に届く。
+    from notifiers.discord_notifier import resolve_webhook
+    sold_webhook = resolve_webhook("order")
 
     creds = _get_credentials()
     if not creds:
@@ -562,6 +658,8 @@ def run_order_alert_check(config: Optional[dict] = None,
     ddpb_alerts = 0
     inventory_decrements = 0
     memo_warnings = 0  # W140: メモ付き listing 売却の発送前警告 (新規 claim 数)
+    sold_notifications = 0  # v81: 汎用売却 Discord (売却専用ch) の新規 claim 数
+    supplier_triggers = 0   # v81: 無在庫売却→仕入先探索 queue 投入の新規 claim 数
     order_processing_errors = 0  # H3 (Wave A): order 単位失敗を transparency 確保
     inventory_zero_listings: list[dict] = []  # 在庫 0 になった listing (DASHBOARD で表示)
     # W149: sales_history 充填 + fulfillment 自動ひも付け
@@ -601,6 +699,16 @@ def run_order_alert_check(config: Optional[dict] = None,
             # (claim-then-act + Discord 1 回。失敗でも MonoDeck バナーで残る)。
             if _process_memo_sale_warning(order, webhook):
                 memo_warnings += 1
+            # v81: 汎用売却通知 (売却専用ch + 備考) + 無在庫→仕入先 queue 投入。
+            # 残N は有在庫減算 dec の new_count を流用 (無在庫は dec=None で残N なし)。
+            sa = _process_sold_actions(
+                order, sold_webhook,
+                new_count=(dec or {}).get("new_count") if dec else None,
+            )
+            if sa["notified"]:
+                sold_notifications += 1
+            if sa["supplier_triggered"]:
+                supplier_triggers += 1
         except (sqlite3.Error, KeyError, TypeError) as e:
             order_processing_errors += 1
             logger.warning(f"order {order.get('order_id')} 処理失敗: {e}")
@@ -707,7 +815,8 @@ def run_order_alert_check(config: Optional[dict] = None,
     logger.info(
         f"order_alert_check: orders={len(orders)} hv_eu={high_value_alerts} "
         f"ddpb={ddpb_alerts} inv_dec={inventory_decrements} "
-        f"memo_warn={memo_warnings} "
+        f"memo_warn={memo_warnings} sold_notify={sold_notifications} "
+        f"supplier_trig={supplier_triggers} "
         f"inv_zero={len(inventory_zero_listings)} errors={order_processing_errors} "
         f"sales_rec={sales_recorded} sales_dup={sales_skipped_dup} "
         f"fol_realtime={fulfillment_links_realtime} sales_fail={sales_failures} "
@@ -720,6 +829,8 @@ def run_order_alert_check(config: Optional[dict] = None,
         "ddpb_alerts": ddpb_alerts,
         "inventory_decrements": inventory_decrements,
         "memo_warnings": memo_warnings,
+        "sold_notifications": sold_notifications,
+        "supplier_triggers": supplier_triggers,
         "inventory_zero_listings": inventory_zero_listings,
         "order_processing_errors": order_processing_errors,
         "sales_recorded": sales_recorded,

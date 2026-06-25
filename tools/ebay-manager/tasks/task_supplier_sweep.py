@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -185,6 +186,46 @@ def _mark_stock_search_attempt(eid: str) -> None:
         logger.warning(f"[supplier_sweep] stock 試行マーカー更新失敗 item={eid}: {e}")
 
 
+def _fetch_sold_trigger_targets(limit: int) -> list[tuple[str, str]]:
+    """v81: 無在庫売却で queue 投入された 'supplier_trigger' claim を拾う。
+
+    task_order_alert._process_sold_actions が record_sold_action(...,'supplier_trigger')
+    で claim した無在庫 (ebay* SKU) 売却を、直近2日分・未候補のものだけ探索対象化する。
+    sweep が「拾う」= user 選択「キュー投入のみ」の消化側 (5分窓を食わずここで処理)。
+
+    識別は ebay_item_id (sku-rules: JOIN は ebay_item_id)。既に候補がある (= 探索済)
+    ものは NOT EXISTS で除外 = 二重探索防止 (既存 _fetch_sweep_targets と同型)。
+    """
+    sql = """
+        SELECT DISTINCT sa.ebay_item_id, sa.sku
+        FROM sold_action_log sa
+        JOIN ebay_listings l ON l.ebay_item_id = sa.ebay_item_id
+        WHERE sa.action_kind = 'supplier_trigger'
+          AND sa.created_at >= datetime('now', '-2 days')
+          AND l.sku GLOB 'ebay*'
+          AND (l.is_ended IS NULL OR l.is_ended = 0)
+          AND NOT EXISTS (
+              SELECT 1 FROM supplier_candidates sc
+              WHERE sc.ebay_item_id = sa.ebay_item_id
+                AND sc.created_at >= sa.created_at
+          )
+        ORDER BY sa.created_at DESC
+        LIMIT ?
+    """
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, (limit,)).fetchall()
+    except sqlite3.OperationalError as e:
+        # v81 migration 未適用 (sold_action_log 無し) 等で sweep 全体を落とさない。
+        # silent skip でなく warning で痕跡を残す (Q0)。次回 init_db で table 作成後に有効化。
+        logger.warning(
+            f"_fetch_sold_trigger_targets skip (sold_action_log 未準備?): {e}"
+        )
+        return []
+    return [(r["ebay_item_id"], r["sku"]) for r in rows
+            if r["ebay_item_id"] and r["sku"]]
+
+
 def run_supplier_sweep(config: dict) -> dict:
     """
     朝バッチ: 長期在庫切れ SKU の仕入先候補を一括探索。
@@ -220,22 +261,32 @@ def run_supplier_sweep(config: dict) -> dict:
     max_skus = int(task_cfg.get("max_skus_per_run", 30))
     sleep_sec = float(task_cfg.get("sleep_between_skus_sec", 3))
 
+    # v81: 無在庫売却 queue (supplier_trigger) を最優先で消化 (5分窓を食わずここで処理)
+    sold_trigger_targets = _fetch_sold_trigger_targets(max_skus)
+    sold_eids = {eid for eid, _ in sold_trigger_targets}
+    if sold_trigger_targets:
+        logger.info(
+            f"仕入先候補スイープ対象 (無在庫売却 queue): {len(sold_trigger_targets)}件"
+        )
+
     # 既存: 無在庫 (ebay* SKU) + source_out_of_stock_since >= oos_days の対象
-    oos_targets = _fetch_sweep_targets(oos_days, skip_days, max_skus)
+    # (sold_trigger と重複する eid は除外 = 二重探索防止)
+    oos_targets = [t for t in _fetch_sweep_targets(oos_days, skip_days, max_skus)
+                   if t[0] not in sold_eids]
     logger.info(
         f"仕入先候補スイープ対象 (無在庫): {len(oos_targets)}件 "
         f"(oos>={oos_days}日 / skip_if_searched<={skip_days}日 / max={max_skus})"
     )
 
     # 依頼ボード#32: 有在庫 stock+qty=0 の対象 (残枠に詰める)
-    stock_limit = max(0, max_skus - len(oos_targets))
+    stock_limit = max(0, max_skus - len(sold_trigger_targets) - len(oos_targets))
     stock_targets = _fetch_stock_zero_targets(skip_days, stock_limit)
     logger.info(
         f"仕入先候補スイープ対象 (stock在庫0): {len(stock_targets)}件 "
         f"(skip_if_searched<={skip_days}日 / limit={stock_limit})"
     )
 
-    targets = oos_targets + stock_targets
+    targets = sold_trigger_targets + oos_targets + stock_targets
     if not targets:
         return {
             "success": True,
@@ -254,8 +305,16 @@ def run_supplier_sweep(config: dict) -> dict:
     errors = 0
 
     for idx, (eid, sku) in enumerate(targets, start=1):
-        is_stock_zero = eid not in oos_eids
-        src = "pattern_2_stock_zero" if is_stock_zero else "pattern_2_batch"
+        # v81: sold_realtime (無在庫売却 queue) を最優先ラベル、次に OOS、残りが stock0
+        if eid in sold_eids:
+            src = "sold_realtime"
+            is_stock_zero = False
+        elif eid in oos_eids:
+            src = "pattern_2_batch"
+            is_stock_zero = False
+        else:
+            src = "pattern_2_stock_zero"
+            is_stock_zero = True
         logger.info(f"  [{idx}/{len(targets)}] item={eid} sku={sku} ({src}) を探索中...")
         try:
             r = run_supplier_candidate_search(

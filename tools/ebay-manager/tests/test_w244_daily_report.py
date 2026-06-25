@@ -106,7 +106,7 @@ class TestRegistryConsistency:
         entry = TASK_SCHEDULE_BY_KEY.get("order_alert_check")
         assert entry is not None, "W244: order_alert_check が TASK_SCHEDULE 未登録"
         assert entry.get("kind") == "interval"
-        assert entry.get("interval_minutes") == 30
+        assert entry.get("interval_minutes") == 5  # v81: 30→5 (売却同期高頻度化)
 
     def test_rival_seller_sweep_config_wired(self):
         """schedule_config.json に rival_seller_sweep が enabled で存在 (dispatch 結線の前提)。"""

@@ -945,18 +945,20 @@ def setup_scheduler():
     logger.info("W7-A 市場戦略 refresh: 毎週日曜 02:00")
 
     # ── W7-A 注文アラート (2026-04-27 追加) ──
-    # 30 分ごとに GetOrders で新規注文を polling し、以下 2 種を検知:
-    #   - DDP-B (US_only) 発送 invoice アラート
-    #   - $1500+ DE/IT/FR/KZ 高額 EU 注文
+    # v81 (2026-06-25): 30分→5分。GetOrders 1 call/run と軽量・全処理冪等
+    # (dedup 済) なので 5分実行で重複副作用なし。売れてから MonoDeck 在庫反映を
+    # 最大8.5h→5分に短縮 + 売却専用ch 通知 + 無在庫→仕入先 queue を高頻度化。
+    # second=20 は主 batch (00/30 分 second=0) との発火衝突回避 (L1133 と同流儀)。
+    # 検知 2 種 (DDP-B 発送 invoice / $1500+ EU) + 売却アクション (v81)。
     scheduler.add_job(
         _run_order_alert_check,
-        trigger=CronTrigger(minute='*/30', second=0),
+        trigger=CronTrigger(minute='*/5', second=20),
         args=[config],
         id='order_alert_check',
-        name='W7-A 注文アラート (30分ごと)',
+        name='注文アラート+売却同期 (5分ごと)',
         replace_existing=True,
     )
-    logger.info("W7-A 注文アラート: 30分ごと")
+    logger.info("注文アラート+売却同期: 5分ごと (v81)")
 
     # ── W183 ライバル価格 refresh + 値下げ (2026-05-10 追加) ──
     # L1 Phase 3 Clarify: 6 時間間隔.

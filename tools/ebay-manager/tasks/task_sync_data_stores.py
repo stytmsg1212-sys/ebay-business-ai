@@ -284,8 +284,9 @@ def sync_enrichment_to_db() -> Dict:
 def _notify_auto_zero(done: list, config) -> None:
     """auto-zero した listing を 1 メッセージで Discord 通知 (R-11: 到達は user 視認)."""
     try:
-        webhook = ((config or {}).get("notifications", {})
-                   .get("discord", {}).get("webhook_url") or "").strip()
+        # board#22: 在庫0化通知は inventory ch (未設定なら既定 ch に fallback)
+        from notifiers.discord_notifier import resolve_webhook
+        webhook = resolve_webhook("inventory")
         if not webhook:
             logger.warning(f"[auto-zero] Discord webhook 未設定 = {len(done)} 件通知 skip")
             return
@@ -298,7 +299,7 @@ def _notify_auto_zero(done: list, config) -> None:
             )
         if len(done) > 20:
             lines.append(f"...他 {len(done) - 20} 件")
-        DiscordNotifier(webhook).send_message("\n".join(lines))
+        DiscordNotifier(webhook, bypass_env=True).send_message("\n".join(lines))
     except Exception as e:  # noqa: BLE001 — 通知失敗は本処理を止めない (0化は完了済)
         logger.warning(f"[auto-zero] Discord 通知失敗: {e}")
 

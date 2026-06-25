@@ -133,13 +133,15 @@ def _notify_discord(config: dict, status: str, detail: str) -> None:
     送信失敗は log のみ、task の success には影響させない (notifier 死で
     healthcheck 自体が止まる事故を回避).
     """
-    webhook = _get_webhook_url(config)
+    # board#22: ループ健全性は system ch (未設定なら既定 ch に fallback)
+    from notifiers.discord_notifier import resolve_webhook
+    webhook = resolve_webhook("system")
     if not webhook:
         logger.warning("Discord webhook 未設定、healthcheck 通知 skip")
         return
     try:
         from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook)
+        notifier = DiscordNotifier(webhook, bypass_env=True)
         color = 0xE74C3C if status in ("DOWN", "RECOVERY_FAILED") else 0x2ECC71
         embed = {
             "title": f"[claude-loop] {status}",

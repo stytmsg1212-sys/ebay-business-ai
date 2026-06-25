@@ -3745,6 +3745,51 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v81 (売却リアルタイムアクション / 2026-06-25): sold_action_log ----
+        # 5分 polling の売却検知で「汎用売却 Discord」「無在庫→仕入先発火」を
+        # 二重発火させないための claim-then-act 台帳。識別は ebay_item_id + order_id
+        # (sku-rules.md: SKU は一意キーに含めない、有/無在庫判定の補助情報のみ)。
+        # 冪等: CREATE TABLE IF NOT EXISTS + 存在確認後のみ user_version bump (v80 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 80:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS sold_action_log (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ebay_order_id TEXT NOT NULL,
+                        ebay_item_id  TEXT NOT NULL,
+                        action_kind   TEXT NOT NULL,
+                        sku           TEXT,
+                        -- new_quantity: 売却検知時点の在庫残 audit スナップショット
+                        -- (有在庫の残N、無在庫/未設定は NULL)。初回 claim 値で固定が
+                        -- 正しい (log の歴史記録、後で更新しない)。Discord 表示は
+                        -- 呼出側の live 値を使い、本列は記録用 (HIGH-2 code-reviewer)。
+                        new_quantity  INTEGER,
+                        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(ebay_order_id, ebay_item_id, action_kind)
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sold_action_log_created "
+                    "ON sold_action_log(created_at DESC)"
+                )
+                logger.info("[init_db v81] sold_action_log created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v81] sold_action_log create skipped: {e}")
+            _v81_exists = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='sold_action_log'"
+            ).fetchone()
+            if _v81_exists:
+                conn.execute("PRAGMA user_version = 81")
+                logger.info("[init_db v81] schema_ver bumped to 81")
+            else:
+                logger.warning(
+                    "[init_db v81] テーブル未作成。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -6033,6 +6078,38 @@ def upsert_listing_note(ebay_item_id: str, note_text: str) -> None:
             "note_text=excluded.note_text, updated_at=datetime('now')",
             (ebay_item_id, note_text),
         )
+
+
+def record_sold_action(
+    ebay_order_id: str, ebay_item_id: str, action_kind: str,
+    sku: str = "", new_quantity: Optional[int] = None,
+) -> bool:
+    """売却時アクションを claim-then-act で 1 行確保 (二重発火防止 / v81)。
+
+    5分 polling で同一注文を複数回検知しても、UNIQUE(order_id, item_id, kind)
+    + INSERT OR IGNORE + rowcount で 1 回だけ True を返す (既存
+    record_sale_warning / inventory_decrement_log と同型)。
+    action_kind: 'sold_notify' (汎用売却 Discord) | 'supplier_trigger' (無在庫探索)。
+    識別は ebay_item_id + order_id (sku-rules: SKU は一意キーに含めない、
+    sku は有/無在庫判定の補助情報のみ保存)。
+
+    Returns: 最初に claim したら True、既存 (重複) なら False。
+    空 order_id/item_id は claim せず False + warning (silent skip 禁止 / Q0)。
+    """
+    if not ebay_order_id or not ebay_item_id:
+        logger.warning(
+            f"record_sold_action: 空キー order_id={ebay_order_id!r} "
+            f"item_id={ebay_item_id!r} kind={action_kind!r} → claim せず"
+        )
+        return False
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO sold_action_log "
+            "(ebay_order_id, ebay_item_id, action_kind, sku, new_quantity) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (ebay_order_id, ebay_item_id, action_kind, sku or None, new_quantity),
+        )
+        return cur.rowcount == 1
 
 
 def record_sale_warning(

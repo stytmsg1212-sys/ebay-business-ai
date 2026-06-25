@@ -99,8 +99,9 @@ def run(config: Optional[dict] = None) -> dict:
     # Discord 通知 (HIGH 3+ 件)
     if high_count >= DISCORD_HIGH_THRESHOLD:
         try:
-            from notifiers.discord_notifier import DiscordNotifier
-            notifier = DiscordNotifier(config or {})
+            # board#22: codex lint は system ch (未設定なら既定 ch に fallback)
+            from notifiers.discord_notifier import notifier_for
+            notifier = notifier_for("system")
             top_3 = summary["high_top_3"]
             msg = (
                 f"📋 **Codex Lint 結果 ({today})**\n"

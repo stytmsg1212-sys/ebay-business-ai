@@ -228,7 +228,9 @@ def run_budget_alert(config: Optional[dict] = None) -> dict:
     """daily_scheduler から 06:00/12:00/19:00 の cron で呼ばれる."""
     scheduled_hour = datetime.now().hour
     alert = _build_alert(config, scheduled_hour=scheduled_hour)
-    webhook = (config or {}).get("discord", {}).get("webhook_url") or ""
+    # board#22: 予算アラートは system ch (未設定なら既定 ch に fallback)
+    from notifiers.discord_notifier import resolve_webhook
+    webhook = resolve_webhook("system")
     sent = _send_discord(webhook, alert)
     logger.info(
         f"budget_alert: severity={alert['severity']} "

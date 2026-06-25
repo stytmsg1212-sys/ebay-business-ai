@@ -327,7 +327,9 @@ def _send_discord(
 
     warning: Haiku fallback 等の警告メッセージ (空でなければ先頭に追加)
     """
-    webhook_url = _get_webhook_url(config)
+    # board#22: 商品発掘は research ch (未設定なら既定 ch に fallback)
+    from notifiers.discord_notifier import resolve_webhook
+    webhook_url = resolve_webhook("research")
     if not webhook_url:
         logger.info("Discord webhook 未設定、通知 skip")
         return
