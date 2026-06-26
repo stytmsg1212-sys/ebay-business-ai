@@ -13,3 +13,5 @@ tests/fixtures/design_samples/*.heic
 # YouTube cookies (動画学習で yt-dlp 認証用、機密情報)
 cookies/*.txt
 !cookies/.gitkeep
+# eBay KB connector の ngrok 固定ドメイン (アカウント固有、commit 不要)
+data/kb_ngrok_domain.txt
