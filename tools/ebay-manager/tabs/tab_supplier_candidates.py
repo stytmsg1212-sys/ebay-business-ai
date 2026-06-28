@@ -498,58 +498,148 @@ def render_supplier_candidates_tab(s: dict) -> None:
         #   H-2: st.rerun() 後に明示 return (Streamlit 仕様変更時の防御)
         #   H-3: メッセージは session_state 経由で rerun 越しに表示 (rerun で消失する UX 退化防止)
         #   H-5: session_state lock で重複 click 防止
-        # alt_listing のみ (score<60 + alt=1) は反映不可なので採用ボタンも disabled.
+        # #35/#36 (2026-06-28): 全パターンで「個別出品で新規」「採用」「不採用」の 3 ボタン常時表示。
+        # alt_only (score<60 + alt=1) の候補: apply (SKU 書換) は task 側でブロックされるため、
+        # 「採用」は accept_supplier_candidate のみ (status='accepted' 記録) に留める。
+        # 「個別出品で新規」は全パターンで il_pending_supplier_url prefill を行う。
         alt_only = (score < 60) and bool(row.get("alt_listing_possible"))
         if alt_only:
             st.caption(
-                "別SKU出品機会: 採用で「個別出品」タブに仕入先 URL を pre-fill します "
-                "(現 listing への SKU 書換は別途別パス)"
+                "別SKU出品機会: 「個別出品で新規」で「個別出品」タブに仕入先 URL を pre-fill (SKU 書換なし)、"
+                "「採用」は確認の上 現 listing の SKU をこの候補 URL に書き換えて eBay 反映します"
             )
 
         _lock_key = f"_sup_lock_{cid}"
         _processing = st.session_state.get(_lock_key, False)
 
-        _btn_cols = st.columns(2)
+        _btn_cols = st.columns(3)
         with _btn_cols[0]:
+            # 「個別出品で新規」ボタン: 全パターン常時表示。
+            # 仕入先 URL を「個別出品」タブの URL 欄に pre-fill する。
+            # status は 'accepted' に変更して採用済み記録も同時に行う。
+            if st.button(
+                "個別出品で新規",
+                key=f"sup_new_listing_{context}_{cid}",
+                help="仕入先 URL を「個別出品」タブの URL 欄に pre-fill (status='accepted' 印付け)",
+            ):
+                try:
+                    update_supplier_candidate_status(cid, "accepted")
+                    # 個別出品タブの URL prefill (依頼ボード#28 修正 2026-06-17):
+                    # 個別出品タブ (_SS="il_") は widget 生成前に
+                    # `il_pending_supplier_url` (pending seed) を読んで input 欄へ
+                    # 反映する設計 (tab_individual_listing._render_step1_urls L464-469)。
+                    # 旧 `il_supplier_url` (pending_ 欠落) はどこからも読まれず prefill
+                    # が常にスキップされていた = 本依頼の真因。pending seed キーに統一。
+                    st.session_state["il_pending_supplier_url"] = url
+                    st.session_state[f"_sup_il_prefilled_{cid}"] = True
+                    st.toast(
+                        f"「個別出品」タブに仕入先 URL を pre-fill しました "
+                        f"(cid={cid})。タブを切り替えて続行してください。",
+                        icon="✓",
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("new_listing prefill failed cid=%s", cid)
+                    st.session_state[f"_sup_msgs_{cid}"] = [
+                        ("error", f"採用記録失敗 (cid={cid})。詳細はログ確認。"),
+                    ]
+                st.rerun(scope="fragment")
+                return  # H-2
+        with _btn_cols[1]:
+            # 「採用」ボタン: 全パターン常時表示。
+            # alt_only=True の候補: #35 (2026-06-28) 2段確認フローで SKU書換 override 採用。
+            #   1クリック目 → confirm フラグを立てて warning + 確定/やめる ボタン表示
+            #   「確定」クリック → accept + apply(allow_alt_override=True) 実行
+            # alt_only=False (復活/置換) は従来通り accept + apply + qty 復元。
+            _confirm_key = f"_sup_confirm_alt_adopt_{cid}"
             if _processing:
                 st.caption("⏳ 処理中... (二度押し防止)")
+            elif alt_only and st.session_state.get(_confirm_key):
+                # 2段目: 確認フラグが立っている → warning + 確定/やめる
+                st.warning(
+                    "⚠️ 別SKU候補です。現 listing の SKU をこの候補 URL に書き換えて eBay に"
+                    " 反映します。別商品の可能性があるため、正しい商品か確認してください。"
+                )
+                _conf_c1, _conf_c2 = st.columns(2)
+                with _conf_c1:
+                    if st.button(
+                        "確定（SKU書換で採用）",
+                        key=f"sup_accept_alt_confirm_{context}_{cid}",
+                        type="primary",
+                    ):
+                        st.session_state[_confirm_key] = False
+                        st.session_state[_lock_key] = True
+                        _msgs: list[tuple[str, str]] = []
+                        _eid = row.get("ebay_item_id") or ""
+                        try:
+                            res_a = accept_supplier_candidate(cid)
+                            if not res_a.get("success"):
+                                _msgs.append(("error", res_a.get("message") or "採用に失敗しました"))
+                            else:
+                                _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+                                _cfg = {}
+                                _cfg_load_ok = True
+                                if _cfg_path.exists():
+                                    try:
+                                        _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                                    except (OSError, json.JSONDecodeError) as _e:
+                                        logger.exception("schedule_config.json 読込失敗 cid=%s", cid)
+                                        _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
+                                        _cfg_load_ok = False
+                                if _cfg_load_ok:
+                                    res_b = apply_supplier_candidate(cid, _cfg, allow_alt_override=True)
+                                    if not res_b.get("success"):
+                                        logger.error(
+                                            "alt override apply failed cid=%s eid=%s msg=%s",
+                                            cid, _eid, res_b.get("message"),
+                                        )
+                                        _msgs.append((
+                                            "error",
+                                            f"eBay 反映失敗: {res_b.get('message') or 'apply エラー'}",
+                                        ))
+                                    else:
+                                        _msgs.append((
+                                            "success",
+                                            res_b.get("message") or "別SKU手動override採用→eBay反映 成功",
+                                        ))
+                                        st.session_state[f"_sup_photo_prompt_{cid}"] = True
+                                        st.session_state[f"_sup_desc_prompt_{cid}"] = True
+                                        st.session_state[f"_sup_photo_meta_{cid}"] = {
+                                            "url": url,
+                                            "eid": _eid,
+                                            "title": title,
+                                        }
+                        except Exception:  # noqa: BLE001
+                            logger.exception("alt override accept/apply 想定外例外 cid=%s eid=%s", cid, _eid)
+                            _msgs.append((
+                                "error",
+                                f"想定外エラー (cid={cid}). 詳細はログ確認、手動で SKU を確認してください。",
+                            ))
+                        finally:
+                            st.session_state[_lock_key] = False
+                            st.session_state[f"_sup_msgs_{cid}"] = _msgs
+                        st.rerun(scope="app")
+                        return  # H-2
+                with _conf_c2:
+                    if st.button(
+                        "やめる",
+                        key=f"sup_accept_alt_cancel_{context}_{cid}",
+                    ):
+                        st.session_state[_confirm_key] = False
+                        st.rerun(scope="fragment")
+                        return  # H-2
             elif st.button(
-                "個別出品で新規" if alt_only else "採用",
+                "採用",
                 key=f"sup_accept_{context}_{cid}",
                 type="primary",
                 help=(
-                    "別SKU出品機会: 仕入先 URL を「個別出品」タブの URL 欄に pre-fill "
-                    "(status='accepted' 印付け、SKU 書換は行わない)"
+                    "採用: 別SKU候補のため確認を 1 枚挟んでから SKU 書換で eBay 反映します"
                     if alt_only
                     else "採用: SKU 書換 + eBay 在庫復元 (復活/置換 candidate のみ有効)"
                 ),
             ):
-                # W174-pm 別SKU出品機会 採用パス (alt_only=True 専用)
-                # 既存の SKU 書換 / qty 復元 path は alt_only candidates に不適切なので
-                # ここで分岐。個別出品タブの session_state に URL を pre-fill し、
-                # status='accepted' を立てて履歴タブに移動 (印付け).
                 if alt_only:
-                    try:
-                        update_supplier_candidate_status(cid, "accepted")
-                        # 個別出品タブの URL prefill (依頼ボード#28 修正 2026-06-17):
-                        # 個別出品タブ (_SS="il_") は widget 生成前に
-                        # `il_pending_supplier_url` (pending seed) を読んで input 欄へ
-                        # 反映する設計 (tab_individual_listing._render_step1_urls L464-469)。
-                        # 旧 `il_supplier_url` (pending_ 欠落) はどこからも読まれず prefill
-                        # が常にスキップされていた = 本依頼の真因。pending seed キーに統一。
-                        st.session_state["il_pending_supplier_url"] = url
-                        st.session_state[f"_sup_il_prefilled_{cid}"] = True
-                        st.toast(
-                            f"「個別出品」タブに仕入先 URL を pre-fill しました "
-                            f"(cid={cid})。タブを切り替えて続行してください。",
-                            icon="✓",
-                        )
-                    except Exception:  # noqa: BLE001
-                        logger.exception("altlist accept failed cid=%s", cid)
-                        st.session_state[f"_sup_msgs_{cid}"] = [
-                            ("error",
-                             f"採用記録失敗 (cid={cid})。詳細はログ確認。"),
-                        ]
+                    # alt_only: 1クリック目 → confirm フラグを立てて warning 表示
+                    st.session_state[_confirm_key] = True
                     st.rerun(scope="fragment")
                     return  # H-2
                 # 通常 採用 path (revive / replace) は既存ロジック継続:
@@ -687,7 +777,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 # candidate が履歴タブに移動するためタブ維持は副次的.
                 st.rerun(scope="app")
                 return  # H-2: defensive early return
-        with _btn_cols[1]:
+        with _btn_cols[2]:
             # 2026-06-11 不採用高速化: on_click コールバックは fragment 再実行の前に
             # 走るため、DB 更新 + hide フラグを先に済ませて 1 往復で関数冒頭の早期
             # return (caption 表示) に直行する。旧 if st.button + st.rerun(scope=

@@ -602,6 +602,50 @@ def render_supplier_description_section(
     # 旧挙動の事故: 初期値が「(Claude 自動推定)」固定で、user が状態=B にしていても
     # 生成すると AI 判定で上書きされた (item 358274830101 と同根)。listing 設定が
     # あればそれを既定にして尊重 (変更可)。eBay Condition 自動 push しない方針は不変。
+    #
+    # 2026-06-28 fix (#34): handling 日数を listing の実 shipping policy から判断する。
+    # sku / shipping_profile_id も同時取得し _in_stock を決定する。
+    # _in_stock は session_state にキャッシュして rerun 毎の DB 再クエリを避ける。
+    sk_in_stock = f"{_SS}in_stock_{candidate_id}"
+    if sk_in_stock not in st.session_state:
+        _in_stock_val: bool = False
+        try:
+            from monitor.database import get_conn
+            with get_conn() as _c:
+                _row = _c.execute(
+                    "SELECT condition_rank, sku, shipping_profile_id"
+                    " FROM ebay_listings WHERE ebay_item_id=?",
+                    (str(ebay_item_id),),
+                ).fetchone()
+            if _row:
+                _sku = ((_row["sku"] or "").strip())
+                _spid = ((_row["shipping_profile_id"] or "").strip())
+                if _sku.startswith("stock"):
+                    _in_stock_val = True
+                elif _spid:
+                    # settings.json の shipping_weight_mapping_in_stock と照合
+                    try:
+                        _cfg_path = (
+                            Path(__file__).resolve().parent.parent / "settings.json"
+                        )
+                        _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                        _in_stock_ids = set(
+                            _cfg.get("ebay_business_policies", {})
+                            .get("shipping_weight_mapping_in_stock", {})
+                            .values()
+                        )
+                        if _spid in _in_stock_ids:
+                            _in_stock_val = True
+                    except Exception as _ce:  # noqa: BLE001
+                        logger.warning(
+                            "shipping_profile_id→in_stock 判定失敗 cid=%s: %s",
+                            candidate_id, _ce,
+                        )
+        except Exception as _e:  # noqa: BLE001 — 補助処理、失敗時は False で続行
+            logger.warning("in_stock 判定 DB 取得失敗 cid=%s: %s", candidate_id, _e)
+        st.session_state[sk_in_stock] = _in_stock_val
+    _in_stock: bool = bool(st.session_state.get(sk_in_stock, False))
+
     if sk_rank_override not in st.session_state:
         try:
             from monitor.database import get_conn
@@ -610,7 +654,7 @@ def render_supplier_description_section(
                     "SELECT condition_rank FROM ebay_listings WHERE ebay_item_id=?",
                     (str(ebay_item_id),),
                 ).fetchone()
-            _cr = ((_row[0] if _row else "") or "").strip()
+            _cr = ((_row["condition_rank"] if _row else "") or "").strip()
             if _cr in _RANK_CHOICES:
                 st.session_state[sk_rank_override] = _cr
         except Exception as _e:  # noqa: BLE001 — 初期値補助、失敗時は auto 既定で続行
@@ -736,7 +780,7 @@ def render_supplier_description_section(
                             res = generate_supplier_description(
                                 candidate_id=candidate_id,
                                 candidate_url=candidate_url,
-                                in_stock=False,
+                                in_stock=_in_stock,
                                 prefetched_product=prefetch.get('product'),
                                 rank_override_code=_effective_rank,
                                 extra_instructions=(

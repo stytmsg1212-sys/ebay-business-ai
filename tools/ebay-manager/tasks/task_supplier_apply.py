@@ -56,12 +56,21 @@ def accept_supplier_candidate(candidate_id: int) -> dict:
     return {"success": True, "message": "採用しました。反映ボタンで eBay に SKU 変更を適用できます"}
 
 
-def apply_supplier_candidate(candidate_id: int, config: dict) -> dict:
+def apply_supplier_candidate(
+    candidate_id: int,
+    config: dict,
+    allow_alt_override: bool = False,
+) -> dict:
     """反映ボタン処理。eBay Trading API ReviseItem を実行し、ローカルDBを追従させる。
 
     Args:
         candidate_id: supplier_candidates.id
         config: schedule_config.json ロード済 dict（ebay 資格情報を含む）
+        allow_alt_override: True の時のみ、alt_only 候補 (score<60 + alt=1) の
+            SKU書換ブロックをスキップする。user が「別商品の可能性はあるが、この
+            仕入先URLで現 listing を更新したい」と明示判断した場合専用。
+            既定 False = 既存呼び出し側の挙動は不変（後方互換）。
+            #35 (2026-06-28) 別SKU候補の手動 override 採用機能。
 
     Returns:
         {'success': bool, 'message': str, 'new_sku': Optional[str]}
@@ -76,10 +85,11 @@ def apply_supplier_candidate(candidate_id: int, config: dict) -> dict:
             "message": f"反映には status='accepted' が必要です (current={c.get('status')!r})",
         }
 
-    # alt_listing のみの候補は「別SKU新規出品機会」であり SKU書き換え反映は不適切
+    # alt_listing のみの候補は「別SKU新規出品機会」であり SKU書き換え反映は不適切。
+    # ただし allow_alt_override=True の場合は user が明示確認した上での手動 override。
     score = c.get("match_score") or 0
     alt_only = (score < 60) and bool(c.get("alt_listing_possible"))
-    if alt_only:
+    if alt_only and not allow_alt_override:
         return {
             "success": False,
             "message": (
@@ -118,6 +128,11 @@ def apply_supplier_candidate(candidate_id: int, config: dict) -> dict:
     if not ebay_item_id:
         return {"success": False, "message": "候補に ebay_item_id がありません"}
 
+    if alt_only and allow_alt_override:
+        logger.warning(
+            f"別SKU手動override採用: ItemID={ebay_item_id} score={score} "
+            f"alt_listing_possible=1 → ReviseItem 実行 (user 明示確認済, cid={candidate_id})"
+        )
     logger.info(f"ReviseItem 実行: ItemID={ebay_item_id} new_sku={new_sku}")
     result = revise_item_sku(
         item_id=ebay_item_id,
@@ -179,11 +194,14 @@ def apply_supplier_candidate(candidate_id: int, config: dict) -> dict:
 
     update_supplier_candidate_status(candidate_id, "applied")
 
-    logger.info(f"反映成功: sku={c['sku']} → {new_sku}")
+    _override_note = " [別SKU手動override採用]" if (alt_only and allow_alt_override) else ""
+    logger.info(f"反映成功: sku={c['sku']} → {new_sku}{_override_note}")
     return {
         "success": True,
         "new_sku": new_sku,
-        "message": f"eBay に反映しました（SKU: {c['sku']} → {new_sku}）",
+        "message": (
+            f"eBay に反映しました（SKU: {c['sku']} → {new_sku}）{_override_note}"
+        ),
     }
 
 
