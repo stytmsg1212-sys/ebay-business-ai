@@ -373,7 +373,33 @@ def _estimate_profit_usd(p: dict, sale_price_usd: Optional[float] = None) -> Opt
 # Filter / sort
 # =============================================================================
 
-def _apply_filter_and_sort(products: list[dict]) -> list[dict]:
+def _resolve_pm_search_seed(initial_search: str, current: str) -> str:
+    """jump seed の決定ロジック (純関数、Streamlit 非依存)。
+
+    - initial_search が非空 → jump 値を返す (key 既存でも session_state に強制書込させる)
+    - initial_search が空  → current (= session_state の既存値) をそのまま返す
+
+    呼び出し側は戻り値を st.session_state["pm_search"] に書いてから
+    text_input を key のみで描画する (value= 引数は使わない)。
+    """
+    return initial_search if initial_search else current
+
+
+def _apply_filter_and_sort(products: list[dict], initial_search: str = "") -> list[dict]:
+    """フィルタ + 並び順 UI を描画し、適用後の products を返す。
+
+    initial_search: W292 jump 時に pm_focus_eid から渡される初期値。
+    Streamlit は key の session_state が既存だと value= を無視するため、
+    session_state に直書きで seed する (ui_cache.seed_keyed_value_from_db と
+    同じ tested パターン)。GC 有無に依存しない確定 seed。
+    """
+    # jump seed: initial_search が非空のときだけ pm_search を上書き。
+    # 非 jump (empty) は既存 user 入力を温存する。
+    _seed = _resolve_pm_search_seed(
+        initial_search, st.session_state.get("pm_search", "")
+    )
+    st.session_state["pm_search"] = _seed
+
     cols = st.columns([3, 2])
     with cols[0]:
         search = st.text_input(
@@ -5178,6 +5204,22 @@ def _render_legacy_bulk_match(products: list[dict]) -> None:
 
 def render_product_management(config: dict) -> None:
     """商品管理 main tab エントリーポイント."""
+    # W292: 本日の作業タブからの jump 着地。pm_focus_eid を 1 度だけ消費し
+    # 検索欄 (pm_search) に Item ID を seed → 表が当該 1 行に絞られる。
+    # (st.dataframe は事前行選択 API が無いため検索で 1 行化 = user が即クリック可能。
+    #  pop で 1 回消費 = 以後 user が検索を消しても再 seed されない。)
+    # _focus を _apply_filter_and_sort に initial_search として渡す。
+    # 内部で session_state["pm_search"] に直書きして seed する
+    # (value= 引数は key 既存時に Streamlit が無視するため使用しない。
+    #  HIGH-1 修正: _resolve_pm_search_seed + session_state 直書きパターン)。
+    _focus = st.session_state.pop("pm_focus_eid", None)
+    _focus_str = str(_focus) if _focus else ""
+    if _focus_str:
+        st.info(
+            f"📝 本日の作業から遷移: Item ID `{_focus_str}` を検索欄に設定しました。"
+            "下の表で行をクリックすると編集ゾーンが開きます。"
+        )
+
     # ========================================================================
     # 商品管理タブ Design System v4 (2026-05-12 「見やすさ最大」最優先)
     # - 強コントラスト (light/dark 両対応)
@@ -5599,7 +5641,9 @@ def render_product_management(config: dict) -> None:
     _render_legacy_bulk_match(products)
 
     # ── フィルタ + 並び順 ──
-    filtered = _apply_filter_and_sort(products)
+    # W292 jump 時は _focus_str を initial_search として渡す。session_state 直書きで確実 seed
+    # (value= は key 既存時に Streamlit が無視するため不使用 / HIGH-1 修正)。
+    filtered = _apply_filter_and_sort(products, initial_search=_focus_str)
     st.caption(f"表示: {len(filtered)} / {n} listing")
 
     # ── 一覧 (W225: eBay連携タブと同じ st.dataframe 表形式。行クリックで編集) ──

@@ -1043,6 +1043,25 @@ def setup_scheduler():
     _rs_enabled = config.get('tasks_enabled', {}).get('research_sourcing', {}).get('enabled', False)
     logger.info(f"W228 リサーチ探索 発火: 毎日 04:30 JST (enabled={_rs_enabled})")
 
+    # ── W286 リサーチ対戦アリーナ (2026-06-28 追加) ──
+    # 毎日 05:00 JST に 6 日ローテ × 3 カテゴリで AI が 5 品リサーチ → duel_round 保存.
+    # research_sourcing (04:30) 完了後・user 起動前 (06:00) の空き枠.
+    # CDP Chrome (port 9222) 必須 (research_harvest と同じ前提). 不在時は痕跡 skip (Q0).
+    # 既存 CDP タスク: research_harvest=03:30, research_sourcing=04:30 (subprocess のみ).
+    # 05:00 は CDP を占有するタスクなし = 競合ゼロ。
+    # enabled は config (tasks_enabled.research_duel.enabled) で制御.
+    scheduler.add_job(
+        _run_research_duel,
+        trigger=CronTrigger(hour=5, minute=0, second=0),
+        args=[config, 5],
+        id='research_duel_05_00',
+        name='W286 リサーチ対戦アリーナ (05:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _rd_enabled = config.get('tasks_enabled', {}).get('research_duel', {}).get('enabled', False)
+    logger.info(f"W286 リサーチ対戦アリーナ 発火: 毎日 05:00 JST (enabled={_rd_enabled})")
+
     # ── W283 Phase 9 月次送料 rate table 自動更新 (2026-06-19 追加) ──
     # 毎月1日 03:00 JST に FedEx/DHL 実費差額式で rate table 金額を自動追従.
     # 前月為替確定後・主 batch (02:30) 後. codex_lint(03:00) と同時刻だが別 owner・
@@ -1305,6 +1324,18 @@ def _run_research_sourcing(config: dict, scheduled_hour: int = 4):
         return
     _run_isolated_task('research_sourcing', 'W228 リサーチ探索',
                        lambda: run_research_sourcing(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_research_duel(config: dict, scheduled_hour: int = 5):
+    """W286 リサーチ対戦アリーナ — 毎日 05:00 JST に 6 日ローテ×3 カテゴリで 5 品 AI リサーチ."""
+    try:
+        from tasks.task_research_duel import run_research_duel
+    except ImportError as e:
+        logger.error(f"task_research_duel import 失敗: {e}")
+        return
+    _run_isolated_task('research_duel', 'W286 リサーチ対戦アリーナ',
+                       lambda: run_research_duel(config),
                        scheduled_hour=scheduled_hour)
 
 

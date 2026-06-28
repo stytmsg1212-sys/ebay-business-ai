@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -448,6 +449,7 @@ def compute_profit_true_for_research(
     height_cm: Optional[float] = None,
     settings: Optional[dict] = None,
     effective_sale_price_usd: Optional[float] = None,
+    actual_duty_rate: Optional[float] = None,
 ) -> tuple[Optional[int], Optional[float], Optional[str], Optional[float]]:
     """FIX-2: calculator.calculate を使った真値利益計算.
 
@@ -465,6 +467,9 @@ def compute_profit_true_for_research(
         effective_sale_price_usd: 状態整合した想定売値 (USD)。指定時はこちらを売値に
             使う (依頼ボード#3 / W265: 中古候補はランク係数で減額した値)。None なら
             従来通り terapeak_avg_price_usd を売値に使う (新品 / 状態不明)。
+        actual_duty_rate: W290 Section232 実関税率 (decimal、I-A 0.50/I-B 0.25/III 0.15)。
+            指定時は buyer 徴収送料(=display 関税)と分離して seller 実負担関税を利益から
+            控除する (過大計上を断つ)。None = 従来 washing 挙動 (後方互換)。
 
     Returns:
         (profit_jpy_true, profit_usd_true, None, revenue_jpy)  — 計算成功
@@ -504,6 +509,8 @@ def compute_profit_true_for_research(
             length_cm=float(length_cm or 0),
             width_cm=float(width_cm or 0),
             height_cm=float(height_cm or 0),
+            # W290: Section232 実関税率 (decimal)。None=従来 washing 挙動 (後方互換)。
+            actual_duty_rate=actual_duty_rate,
         )
         result = calculate(inp, settings)
     except Exception as e:
@@ -645,16 +652,47 @@ def retry_sourcing(rc_id: int) -> bool:
         return False
 
 
-def _best_hit(hits: list[FreemarketHit]) -> Optional[FreemarketHit]:
-    """探索結果の代表 1 件を選ぶ. PoC では「価格が分かっている中で最安」.
+_W291_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
-    K1: 同一性スコアでソートするロジックは本 PoC では人間 review 前提のため不要。
-    最安 1 件を保存し、人間が UI で複数比較する形に統合するのは将来。
+
+def _query_overlap_score(query: str, title: str) -> int:
+    """検索クエリの token が候補タイトルに何個一致するか (大小無視・純関数)。
+
+    W291 + 査読 (2026-06-27): 旧 substring 一致 (`tok in title`) は短/数値 token が
+    別商品に誤ヒットした (例 "150"⊂"LH150" / "zx7"⊂"ZX707" / "7"⊂"700")。回避策:
+      (a) 英数 run を token 化し **token 集合の交差** で数える (部分一致でなく完全一致)。
+      (b) len<2 と純数字 token は低 signal として除外 (型番の英数混在 token を主信号に)。
+    CJK 混じり (例 "内蔵HDD") も [a-z0-9]+ で latin/数字 run を抽出できる。
+    """
+    if not query or not title:
+        return 0
+    q_tokens = {
+        t for t in _W291_TOKEN_RE.findall(query.lower())
+        if len(t) >= 2 and not t.isdigit()
+    }
+    if not q_tokens:
+        return 0
+    t_tokens = set(_W291_TOKEN_RE.findall(title.lower()))
+    return len(q_tokens & t_tokens)
+
+
+def _best_hit(hits: list[FreemarketHit], query: str = "") -> Optional[FreemarketHit]:
+    """探索結果の代表 1 件を選ぶ。
+
+    W291 (2026-06-27): 旧「価格最安」固定を廃止 (真因B/D: ¥21 のゴミを掴み purchase_yen
+    に流れて偽黒字 → 誤仕入)。検索クエリ (Brand+型番) の token 一致数が多い候補を優先選択し、
+    同点は最安で tiebreak する。型番を含まない無関係な最安品が選ばれにくくなる。
+    追加 API コストなし (lexical のみ)。同一性の最終確定は後段 evaluate_match が担う。
+    query 未指定 (空) なら overlap は全件 0 → 従来どおり最安にフォールバック (後方互換)。
     """
     priced = [h for h in hits if h.price_jpy is not None and h.price_jpy > 0]
     if not priced:
         return None
-    return min(priced, key=lambda h: h.price_jpy)
+    # (token 一致数 降順, 価格 昇順) の辞書順最大を返す。
+    return max(
+        priced,
+        key=lambda h: (_query_overlap_score(query, h.title or ""), -int(h.price_jpy)),
+    )
 
 
 def evaluate_product(
@@ -754,12 +792,38 @@ def evaluate_product(
     rc_db.update_status(rc_id, rc_db.STATUS_SOURCING)
 
     # Step 3: フリマ探索 (P2: error と 0 件を区別)
+    # W288 (2026-06-27): 英語フルタイトル直投げ (真因A) を廃止。Brand+型番へ蒸留した
+    # 検索ワードで探索する。生成失敗/空はフルタイトルに fallback (取りこぼし防止・Q0 痕跡)。
+    # 既存 W119 SEARCH_KEYWORD_PROMPT を単発同期で再利用 (K2)。同一性判定 (evaluate_match)
+    # は従来どおりフルタイトルで行う (蒸留は検索クエリのみに適用)。
+    _raw_title = title_ja.strip()
+    search_query = _raw_title
+    try:
+        from tasks.task_generate_search_keywords import generate_keyword_sync
+        _distilled = generate_keyword_sync(_raw_title)
+        if _distilled:
+            search_query = _distilled
+            logger.info(
+                "[research_poc][W288] rc_id=%s クエリ蒸留: %r → %r",
+                rc_id, _raw_title, search_query,
+            )
+        else:
+            logger.warning(
+                "[research_poc][W288] rc_id=%s クエリ生成空 → フルタイトルで探索 (fallback)",
+                rc_id,
+            )
+    except Exception as e:  # noqa: BLE001 — 生成失敗で探索全体を止めない (Q0 痕跡)
+        logger.warning(
+            "[research_poc][W288] rc_id=%s クエリ生成失敗 → フルタイトル fallback: %s",
+            rc_id, e,
+        )
+
     all_hits: list[FreemarketHit] = []
     search_errors: list[str] = []
     for plat in platforms:
         try:
             hits = _search_freemarket(
-                plat, title_ja.strip(), max_results=max_results_per_platform
+                plat, search_query, max_results=max_results_per_platform
             )
             all_hits.extend(hits)
         except Exception as e:
@@ -802,7 +866,7 @@ def evaluate_product(
     # Codex 2段指摘#1: ヒットはあるが全件価格が取れない (価格欄パース失敗) のを
     # not_found に畳むと「実在せず」と「取得不完全」を混同し候補を silent に失う。
     # ヒットがあるのに代表が選べない場合は needs_review (取得不完全) に落とす。
-    best = _best_hit(all_hits)
+    best = _best_hit(all_hits, search_query)  # W291: match優先選択 (search_query=蒸留クエリ)
     if best is None:
         if all_hits:
             reason = (
@@ -855,6 +919,14 @@ def evaluate_product(
             "hits_count_total": len(all_hits),
         }
 
+    # W291 + Fugu M2: 代表が検索クエリと token 一致ゼロ = 蒸留失敗 or 別表記で最安
+    # fallback に落ちている疑い。silent な誤選択を避けるため痕跡を残す (Q0)。
+    if _query_overlap_score(search_query, best.title or "") == 0:
+        logger.warning(
+            "[research_poc][W291] rc_id=%s 代表が検索クエリと一致0 (最安fallbackの疑い): %r",
+            rc_id, (best.title or "")[:60],
+        )
+
     # Step 5: 同一性判定 (claude_evaluator)。保存のみ、最終確定は人間 (§2-B)。
     # API エラーは EvaluationResult.error にメッセージが入る (match_score=0)。
     from .claude_evaluator import evaluate_match
@@ -888,12 +960,16 @@ def evaluate_product(
     _rank_code: Optional[str] = None
     _rank_confidence: Optional[float] = None
     _scraped_condition_ja: Optional[str] = None
+    _scraped_title_ja: Optional[str] = None   # W290/Fugu H1: Section232 推定の和文 signal
+    _scraped_desc_ja: Optional[str] = None
     try:
         from .product_resolver import resolve_product_from_url
         from .rank_classifier import classify_rank
         _prod = resolve_product_from_url(best.url)
         if _prod is not None and not _prod.scrape_error:
             _scraped_condition_ja = _prod.condition_ja
+            _scraped_title_ja = _prod.title_ja
+            _scraped_desc_ja = _prod.description_ja
             _rank = classify_rank(
                 supplier_condition_ja=_prod.condition_ja or "",
                 supplier_description_ja=_prod.description_ja,
@@ -923,6 +999,31 @@ def evaluate_product(
 
     # Step 6: 利益計算 (FIX-2: calculator.calculate 真値に差し替え / P1-1)
     # W265: 中古は状態整合した減額後売値 (condition_matched_price_usd) で計算する。
+    # W290 (2026-06-27/真因C): Section232 該当品は実関税 (I-A 50%/I-B 25%/III 15%) を
+    #   利益から保守的に控除する (既存 washing 挙動は buyer 徴収送料=関税と仮定し相殺 →
+    #   Section232 派生品で profit 過大計上)。既存 estimate_section232 (キーワード辞書) を
+    #   再利用 (K2)。辞書は日本語なので判定対象は フリマ実タイトル(日本語=辞書が効く) +
+    #   入力タイトルの併合。非該当は None=従来挙動 (率を捏造しない/Q0: signal がある時だけ控除)。
+    _s232_rate: Optional[float] = None
+    try:
+        from .research_section232 import estimate_section232
+        # W290 + Fugu H1: 和文 signal を最大化 (英語 title だけでは日本語辞書が発火しない)。
+        # フリマ実タイトル + 仕入先 resolve 済の和文(title/desc) + 入力タイトルを併合。
+        _s232_text = " ".join(filter(None, [
+            best.title, _scraped_title_ja, _scraped_desc_ja, title_ja.strip(),
+        ]))
+        _s232 = estimate_section232(_s232_text)
+        if _s232.get("flag") and _s232.get("rate"):
+            _s232_rate = float(_s232["rate"])
+            logger.info(
+                "[research_poc][W290] rc_id=%s Section232 %s rate=%.2f (kw=%s) → 実関税控除",
+                rc_id, _s232.get("annex"), _s232_rate, _s232.get("matched_keyword"),
+            )
+    except Exception as e:  # noqa: BLE001 — 推定失敗で利益計算を止めない (None=従来挙動/Q0痕跡)
+        logger.warning(
+            "[research_poc][W290] rc_id=%s Section232 推定失敗 (従来挙動): %s", rc_id, e
+        )
+
     purchase_yen = int(best.price_jpy) if best.price_jpy else 0
     profit_jpy_true, profit_usd_true, profit_reason, revenue_jpy_true = compute_profit_true_for_research(
         terapeak_avg_price_usd=terapeak_avg_price_usd,
@@ -933,6 +1034,7 @@ def evaluate_product(
         height_cm=height_cm,
         settings=settings,
         effective_sale_price_usd=condition_matched_price_usd,
+        actual_duty_rate=_s232_rate,
     )
 
     # 後方互換: estimated_profit_usd は profit_usd_true で埋める

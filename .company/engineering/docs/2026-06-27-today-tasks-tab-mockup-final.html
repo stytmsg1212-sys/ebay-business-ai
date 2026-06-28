@@ -1,0 +1,558 @@
+<!doctype html>
+<!-- 「本日の作業」タブ 最終確定モック — MonoDeck純正(W261 Neumorphic Cream)配色 / 2026-06-27
+     提案モック(2026-06-27-today-tasks-tab-proposal.html)の CSS トークン・neumorphic shadow 完全流用。
+     確定設計: 🌅リサーチ導線 / 🌙登録ゴール の 2部コンディションバー / sold DESC / 5種欠落バッジ / 緑チップ。
+     user 認識合わせ専用。production code 不変。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本日の作業 — 最終確定モック (MonoDeck配色)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* === W261 Neumorphic Cream 実トークン (ui_themes.py / mockup v5 準拠) === */
+    --bg:#ede7da; --bg-deep:#e4dcca; --surface:#f2ecdf; --surface-hi:#f9f5eb;
+    --sh-d:rgba(166,150,121,0.50); --sh-l:rgba(255,255,255,0.90);
+    --teal:#0e4f4b; --teal-hi:#156a63; --teal-deep:#0a3d3a; --teal-soft:rgba(14,79,75,0.10);
+    --text:#2a2e2a; --text-2:#5f6557; --text-3:#8d927f;
+    --ok:#2e7d5b; --warn:#b8860b; --err:#a8341b;
+    --raised:5px 5px 12px var(--sh-d), -5px -5px 12px var(--sh-l);
+    --raised-sm:3px 3px 7px var(--sh-d), -3px -3px 7px var(--sh-l);
+    --inset:inset 3px 3px 7px var(--sh-d), inset -3px -3px 7px var(--sh-l);
+    --r:16px; --r-sm:10px;
+    --f-body:'Inter','Noto Sans JP','Hiragino Kaku Gothic ProN','Yu Gothic UI',sans-serif;
+    --f-num:'JetBrains Mono','Consolas',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--f-body);color:var(--text);background:var(--bg);min-height:100vh;line-height:1.55}
+  .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+  a{color:var(--teal);text-decoration:none}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 20px 70px}
+
+  /* topbar */
+  .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:13px}
+  .logo{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;color:#fff;background:var(--teal);box-shadow:var(--raised-sm)}
+  .brand h1{font-size:21px;margin:0;font-weight:700;letter-spacing:.2px}
+  .brand p{margin:2px 0 0;color:var(--text-2);font-size:12.5px;font-weight:500}
+  .spacer{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border-radius:999px;padding:8px 15px;font-size:13px;font-weight:600;box-shadow:var(--raised-sm);color:var(--text-2)}
+  .chip .dot{width:8px;height:8px;border-radius:50%;background:var(--teal)}
+  .chip b{color:var(--teal);font-family:var(--f-num)}
+  .chip.streak{color:var(--warn)}
+  .chip.streak .dot{background:var(--warn)}
+  .chip.streak b{color:var(--warn)}
+  .chip.date b{color:var(--text-2)}
+  .chip.summary{color:var(--teal)}
+  .chip.summary .dot{background:var(--teal)}
+  .chip.summary b{color:var(--teal)}
+
+  /* 2部コンディションバー */
+  .cond{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:18px;color:#f3efe6;
+    background:linear-gradient(120deg,var(--teal-deep),var(--teal) 70%,var(--teal-hi));box-shadow:var(--raised)}
+  .cond-inner{display:grid;grid-template-columns:1fr 1px 1.2fr;gap:0;align-items:stretch;position:relative;z-index:1}
+  .cond-part{padding:20px 24px}
+  .cond-vbar{width:1px;background:rgba(255,255,255,.22);align-self:stretch}
+  .part-label{font-size:10px;opacity:.85;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .part-lead{font-size:16px;font-weight:700;margin-bottom:12px;line-height:1.3}
+  .part-sub{font-size:11.5px;opacity:.82;font-weight:500;margin-top:4px;line-height:1.5}
+
+  /* リサーチ部のジャンプボタン */
+  .gobtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .gobtn{display:inline-flex;align-items:center;gap:6px;background:#f9f5eb;color:var(--teal-deep);border-radius:10px;
+    padding:9px 14px;font-size:12.5px;font-weight:700;box-shadow:0 2px 0 rgba(0,0,0,.08);cursor:pointer;border:0;
+    transition:.15s;text-decoration:none}
+  .gobtn:hover{transform:translateY(-1px);box-shadow:0 3px 0 rgba(0,0,0,.1)}
+
+  /* 夜間部のゴール表示 */
+  .goal-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+  .goal-big{font-size:32px;font-weight:700;font-family:var(--f-num);line-height:1}
+  .goal-big small{font-size:15px;opacity:.75}
+  .pips{display:flex;gap:5px;flex-wrap:wrap}
+  .pips i{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.26)}
+  .pips i.done{background:#f9f5eb;box-shadow:0 0 0 2.5px rgba(255,255,255,.18)}
+  .nowbadge{font-size:11px;font-weight:700;background:rgba(255,255,255,.16);border:1.5px solid rgba(255,255,255,.34);
+    border-radius:999px;padding:5px 12px;white-space:nowrap}
+
+  /* pip-label 行 */
+  .goal-pips-row{display:flex;align-items:center;gap:12px}
+
+  @media(max-width:780px){
+    .cond-inner{grid-template-columns:1fr}
+    .cond-vbar{display:none}
+    .cond-part{padding:16px 18px}
+  }
+
+  /* main grid: ring + checklist */
+  .main{display:grid;grid-template-columns:248px 1fr;gap:16px;align-items:start}
+  @media(max-width:820px){.main{grid-template-columns:1fr}}
+
+  .panel{background:var(--surface);border-radius:var(--r);box-shadow:var(--raised);padding:18px}
+  .panel h3{margin:0 0 12px;font-size:13.5px;display:flex;align-items:center;gap:8px;font-weight:700}
+
+  /* progress ring */
+  .ringwrap{text-align:center}
+  .ring{--p:40;width:168px;height:168px;border-radius:50%;margin:4px auto 12px;position:relative;display:grid;place-items:center;
+    background:conic-gradient(var(--teal) calc(var(--p)*1%), var(--bg-deep) 0);box-shadow:var(--raised-sm)}
+  .ring::before{content:"";position:absolute;width:124px;height:124px;border-radius:50%;background:var(--surface);box-shadow:var(--inset)}
+  .ring .n{position:relative;text-align:center}
+  .ring .n b{font-size:36px;font-weight:700;font-family:var(--f-num);color:var(--text)}
+  .ring .n b small{font-size:15px;color:var(--text-3)}
+  .ring .n .gd{display:inline-block;margin-top:3px;font-size:12px;font-weight:700;color:#fff;background:var(--teal);border-radius:999px;padding:2px 14px}
+  .kpis{display:flex;gap:10px;justify-content:center;margin-top:10px}
+  .kpi{text-align:center;background:var(--bg-deep);border-radius:12px;padding:9px 13px;box-shadow:var(--inset)}
+  .kpi b{display:block;font-size:18px;font-weight:700;font-family:var(--f-num)}
+  .kpi span{font-size:10px;color:var(--text-3);font-weight:600}
+  .hint{font-size:11px;color:var(--text-2);margin-top:14px;line-height:1.6;background:var(--bg-deep);border-radius:11px;
+    padding:10px 12px;box-shadow:var(--inset);font-weight:500}
+
+  /* checklist */
+  .listhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+  .listhead h2{margin:0;font-size:16px;font-weight:700}
+  .listhead .sub{font-size:12px;color:var(--text-2);font-weight:500}
+  .listhead .count{margin-left:auto;font-size:11px;font-weight:700;background:var(--teal-soft);color:var(--teal);border-radius:999px;padding:5px 12px}
+
+  /* task カード */
+  .task{display:flex;align-items:flex-start;gap:13px;background:var(--surface-hi);border-radius:14px;
+    padding:13px 15px;margin-bottom:11px;box-shadow:var(--raised-sm);transition:.18s;position:relative}
+  .task:hover{transform:translateY(-1px);box-shadow:var(--raised)}
+  .task .chk{flex-shrink:0;width:26px;height:26px;border-radius:8px;border:0;cursor:pointer;
+    background:var(--bg-deep);box-shadow:var(--inset);display:grid;place-items:center;
+    font-size:15px;color:transparent;margin-top:2px;transition:.15s}
+  .task .body{flex:1;min-width:0}
+  .task .title{font-weight:700;font-size:14px;line-height:1.4;margin:1px 0 8px}
+  .task .links{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .link{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;border-radius:8px;
+    padding:5px 9px;background:var(--bg-deep);box-shadow:var(--inset);color:var(--teal)}
+  .metric{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:12px;font-family:var(--f-num);
+    background:var(--bg-deep);border-radius:8px;padding:4px 9px;box-shadow:var(--inset)}
+  .metric.sold{color:var(--ok)}
+  .metric.zero{color:var(--err)}
+
+  /* 欠落バッジ */
+  .gaps{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+  .gap{font-size:10.5px;font-weight:600;border-radius:999px;padding:3px 10px}
+  .gap.rival{background:rgba(168,52,27,.12);color:var(--err);border:1px solid rgba(168,52,27,.30)}
+  .gap.miss{background:rgba(184,134,11,.12);color:var(--warn);border:1px solid rgba(184,134,11,.34)}
+  .gap.ok{background:rgba(46,125,91,.12);color:var(--ok);border:1px solid rgba(46,125,91,.30)}
+
+  .jump{flex-shrink:0;align-self:center;border:0;cursor:pointer;border-radius:999px;padding:9px 14px;
+    font-size:12px;font-weight:700;color:#fff;background:var(--teal);box-shadow:var(--raised-sm);white-space:nowrap}
+  .jump:hover{background:var(--teal-hi)}
+
+  /* 完了状態 */
+  .task.done{box-shadow:var(--inset);background:var(--bg-deep);opacity:.68}
+  .task.done .title{color:var(--text-3);text-decoration:line-through}
+  .task.done .chk{background:var(--teal);box-shadow:var(--raised-sm);color:#fff}
+  .task.done .jump{background:var(--text-3);cursor:default}
+  .task.done .link,.task.done .metric,.task.done .gap{opacity:.5}
+
+  .doneband{font-size:11px;font-weight:600;color:var(--text-3);text-align:center;margin:6px 0 12px;letter-spacing:.5px}
+
+  /* 完了セレブレーション */
+  .celebrate-section{margin-top:30px}
+  .celebrate-label{font-size:11.5px;font-weight:700;color:var(--text-3);text-align:center;
+    margin:0 0 10px;letter-spacing:.5px;opacity:.8}
+  .cele-card{position:relative;overflow:hidden;border-radius:var(--r);padding:28px 22px;text-align:center;
+    color:#f3efe6;background:linear-gradient(120deg,var(--teal-deep),var(--teal) 72%,var(--teal-hi));
+    box-shadow:var(--raised)}
+  .cele-card .big{font-size:26px;font-weight:800;letter-spacing:.3px}
+  .cele-card .sub{font-size:13px;opacity:.9;margin-top:6px;font-weight:500}
+  .cele-card .streaknew{display:inline-flex;align-items:center;gap:8px;margin-top:16px;
+    background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.36);
+    border-radius:999px;padding:8px 20px;font-size:14px;font-weight:700}
+  .cele-card .celesub{margin-top:8px;font-size:12px;opacity:.75;font-weight:500}
+  .confetti{position:absolute;top:-10px;font-size:18px;animation:fall 2.4s linear infinite}
+  @keyframes fall{0%{transform:translateY(-20px) rotate(0)}100%{transform:translateY(240px) rotate(220deg);opacity:.2}}
+
+  .foot{margin-top:36px;text-align:center;color:var(--text-3);font-size:11px;line-height:1.7;font-weight:500}
+
+  /* 変更点ノート */
+  .changelist{background:var(--surface);border-radius:var(--r-sm);padding:14px 18px;margin-top:24px;
+    box-shadow:var(--raised-sm);font-size:12px;color:var(--text-2);line-height:1.7}
+  .changelist h4{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--text)}
+  .changelist li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ═══════════════════════════════════════════
+       TOPBAR: タイトル + ストリーク + 日付 + サマリ
+       ═══════════════════════════════════════════ -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">📋</div>
+      <div>
+        <h1>本日の作業</h1>
+        <p>毎日10件だけ。初期登録をベイビーステップで消化 — 売れ筋・未整備 DESC</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <!-- ストリーク chip: 現在日数 / 最高記録 -->
+    <div class="chip streak">
+      <span class="dot"></span>
+      🔥 &nbsp;<b>12</b>&nbsp;日連続 &nbsp;/&nbsp; 最高 <b>18</b>
+    </div>
+    <!-- 日付 chip -->
+    <div class="chip date">
+      <span class="dot" style="background:var(--text-3)"></span>
+      <b>2026/06/27</b>&nbsp;(JST)
+    </div>
+    <!-- 本日サマリ chip -->
+    <div class="chip summary">
+      <span class="dot"></span>
+      本日 <b id="top-done">4</b>&nbsp;/&nbsp;<b id="top-goal">10</b>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       🌅🌙 2部コンディションバー (確定設計)
+       左: 🌅早朝の部 — リサーチ → ジャンプボタン導線
+       右: 🌙夜間の部 — 商品管理初期登録 → ゴール表示
+       ═══════════════════════════════════════════ -->
+  <div class="cond">
+    <div class="cond-inner">
+
+      <!-- 左: 🌅早朝の部 — リサーチ -->
+      <div class="cond-part">
+        <div class="part-label">🌅 早朝の部 — リサーチ</div>
+        <div class="part-lead">新しい仕入れの種をさがす</div>
+        <div class="gobtns">
+          <a class="gobtn" href="#">⚔️ リサーチ対戦へ →</a>
+          <a class="gobtn" href="#">⛏️ 今日の発掘へ →</a>
+          <a class="gobtn" href="#">📊 ライバル調査 →</a>
+        </div>
+        <div class="part-sub">朝のうちに回しておく。夜間の部とは独立。</div>
+      </div>
+
+      <div class="cond-vbar"></div>
+
+      <!-- 右: 🌙夜間の部 — 商品管理 初期登録 (本タブの主役) -->
+      <div class="cond-part">
+        <div class="part-label">🌙 夜間の部 — 商品管理 初期登録</div>
+        <div class="goal-row">
+          <div class="goal-big" id="goalbig">4<small>/10</small></div>
+          <span class="nowbadge">いま夜間の部 🌙</span>
+        </div>
+        <div class="goal-pips-row">
+          <div class="pips" id="pips"></div>
+          <span style="font-size:11px;opacity:.8;font-weight:600">●●●●○○○○○○ 4/10</span>
+        </div>
+        <div class="part-sub">今日のゴール：<b>10件</b>（未済が少ない日はその実数）。<br>欠落バッジを埋めながら消し込む。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       MAIN: 進捗リング (左) + チェックリスト (右)
+       ═══════════════════════════════════════════ -->
+  <div class="main">
+
+    <!-- 左: 進捗リング パネル -->
+    <div class="panel ringwrap">
+      <h3 style="justify-content:center">🎯 今日の進捗</h3>
+      <div class="ring" id="ring" style="--p:40">
+        <div class="n">
+          <b id="ringnum">4<small>/10</small></b>
+          <div class="gd" id="ringgd">あと6件</div>
+        </div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><b id="kpidone" style="color:var(--ok)">4</b><span>完了</span></div>
+        <div class="kpi"><b id="kpileft" style="color:var(--teal)">6</b><span>のこり</span></div>
+      </div>
+      <div class="hint">💡 チェックを入れると「初期登録済み」フラグが立ちます。10件消し込むと今日は完了 🎉 — 連続記録が伸びます</div>
+    </div>
+
+    <!-- 右: チェックリスト -->
+    <div>
+      <div class="listhead">
+        <h2>本日の10件</h2>
+        <span class="sub">売れ筋・未整備 DESC で固定</span>
+        <span class="count" id="listcount">4 / 10 済</span>
+      </div>
+
+      <div id="tasks">
+
+        <!-- ========== 完了済み 4件 ========== -->
+
+        <!-- #1 完了 / sold 15 / 全属性完備 -->
+        <div class="task done">
+          <button class="chk" onclick="toggle(this)">✓</button>
+          <div class="body">
+            <div class="title">FUJITSU ScanSnap iX1600 ドキュメントスキャナ</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 15</span>
+            </div>
+            <div class="gaps">
+              <span class="gap ok">✅ 物理属性 完備</span>
+            </div>
+          </div>
+          <button class="jump" disabled>📝 登録画面へ</button>
+        </div>
+
+        <!-- #2 完了 / sold 12 / 全属性完備 -->
+        <div class="task done">
+          <button class="chk" onclick="toggle(this)">✓</button>
+          <div class="body">
+            <div class="title">HIOKI 3280-10F AC クランプメーター</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 12</span>
+            </div>
+            <div class="gaps">
+              <span class="gap ok">✅ 物理属性 完備</span>
+            </div>
+          </div>
+          <button class="jump" disabled>📝 登録画面へ</button>
+        </div>
+
+        <!-- #3 完了 / sold 9 -->
+        <div class="task done">
+          <button class="chk" onclick="toggle(this)">✓</button>
+          <div class="body">
+            <div class="title">Anritsu MS2711E スペクトラムアナライザ</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 9</span>
+            </div>
+            <div class="gaps">
+              <span class="gap ok">✅ 物理属性 完備</span>
+            </div>
+          </div>
+          <button class="jump" disabled>📝 登録画面へ</button>
+        </div>
+
+        <!-- #4 完了 / sold 8 -->
+        <div class="task done">
+          <button class="chk" onclick="toggle(this)">✓</button>
+          <div class="body">
+            <div class="title">KEYENCE FS-N11N ファイバアンプセンサ</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 8</span>
+            </div>
+            <div class="gaps">
+              <span class="gap ok">✅ 物理属性 完備</span>
+            </div>
+          </div>
+          <button class="jump" disabled>📝 登録画面へ</button>
+        </div>
+
+        <div class="doneband">— ここまで完了 4件 / これから 6件 —</div>
+
+        <!-- ========== 未済 6件 / sold DESC ========== -->
+
+        <!-- #5 sold 7 / ライバル未登録 + 仕入¥未 -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Roland UM-ONE MK2 USB MIDIインターフェース</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 7</span>
+              <span class="metric zero">競合 0</span>
+            </div>
+            <div class="gaps">
+              <span class="gap rival">⚠ ライバル未登録</span>
+              <span class="gap miss">仕入¥ 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+        <!-- #6 sold 6 / 重量未 + 寸法未 -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Casio fx-CG50 グラフ関数電卓</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 6</span>
+            </div>
+            <div class="gaps">
+              <span class="gap miss">重量 未</span>
+              <span class="gap miss">寸法 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+        <!-- #7 sold 5 / ライバル未登録 + 損益分岐未 -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Yokogawa DL350 ScopeCorder ポータブルデータロガ</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 5</span>
+              <span class="metric zero">競合 0</span>
+            </div>
+            <div class="gaps">
+              <span class="gap rival">⚠ ライバル未登録</span>
+              <span class="gap miss">損益分岐 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+        <!-- #8 sold 4 / 仕入¥未 + 重量未 + 損益分岐未 -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Audio-Technica AT-LP120XUSB ダイレクトドライブレコードプレーヤー</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 4</span>
+            </div>
+            <div class="gaps">
+              <span class="gap miss">仕入¥ 未</span>
+              <span class="gap miss">重量 未</span>
+              <span class="gap miss">損益分岐 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+        <!-- #9 sold 3 / ライバル未登録 + 仕入¥未 + 寸法未 -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Panasonic VL-SWD505KS テレビドアホン</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 3</span>
+            </div>
+            <div class="gaps">
+              <span class="gap rival">⚠ ライバル未登録</span>
+              <span class="gap miss">仕入¥ 未</span>
+              <span class="gap miss">寸法 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+        <!-- #10 sold 2 / 全欠落 (重量/寸法/仕入¥/損益分岐/ライバル) -->
+        <div class="task">
+          <button class="chk" onclick="toggle(this)"></button>
+          <div class="body">
+            <div class="title">Sony PCM-D100 ハイレゾ リニアPCMレコーダー</div>
+            <div class="links">
+              <a class="link" href="#">eBay ↗</a>
+              <a class="link" href="#">仕入先 ↗</a>
+              <span class="metric sold">Sold 2</span>
+              <span class="metric zero">競合 0</span>
+            </div>
+            <div class="gaps">
+              <span class="gap rival">⚠ ライバル未登録</span>
+              <span class="gap miss">仕入¥ 未</span>
+              <span class="gap miss">重量 未</span>
+              <span class="gap miss">寸法 未</span>
+              <span class="gap miss">損益分岐 未</span>
+            </div>
+          </div>
+          <button class="jump">📝 登録画面へ</button>
+        </div>
+
+      </div><!-- #tasks end -->
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       完了セレブレーション — 全消化時の表示例
+       ページ下部に「全完了時の表示」として併記
+       ═══════════════════════════════════════════ -->
+  <div class="celebrate-section">
+    <div class="celebrate-label">▼ 全10件 完了時の表示例 ▼</div>
+    <div class="cele-card">
+      <span class="confetti" style="left:6%">🎉</span>
+      <span class="confetti" style="left:20%;animation-delay:.4s">✨</span>
+      <span class="confetti" style="left:40%;animation-delay:.15s">🎊</span>
+      <span class="confetti" style="left:62%;animation-delay:.7s">⭐</span>
+      <span class="confetti" style="left:80%;animation-delay:.3s">🎉</span>
+      <span class="confetti" style="left:94%;animation-delay:.55s">✨</span>
+      <div class="big">🎉 本日の初期登録、完了！</div>
+      <div class="sub">10件すべて消し込みました。お疲れさまでした 🌙</div>
+      <div class="streaknew">🔥 13日連続達成！ — 自己ベスト更新まであと 5 日</div>
+      <div class="celesub">明日も売れ筋10件がここに並びます</div>
+    </div>
+  </div>
+
+  <!-- 変更点ノート (設計書確認用) -->
+  <div class="changelist">
+    <h4>📋 提案モックから変えた点 (最終確定モック)</h4>
+    <ul>
+      <li><b>トップバー:</b> ストリーク chip に「最高 18」を追加。「本日 4/10」サマリ chip を新設。</li>
+      <li><b>2部コンディションバー (最重要):</b> 提案モックでは「早朝の部」「夜間の部」のラベルとテキストのみだったが、<br>
+        🌅早朝の部 = リサーチ導線として「⚔️リサーチ対戦へ」「⛏️今日の発掘へ」「📊ライバル調査」3つのジャンプボタンを設置。<br>
+        🌙夜間の部 = 本タブの主役として「4/10」big display + pips ドット行 + 「●●●●○○○○○○ 4/10」ラベルを設置。</li>
+      <li><b>sold 数を DESC 順に統一:</b> 15→12→9→8 (完了) / 7→6→5→4→3→2 (未済) で「売れ筋」感を表現。</li>
+      <li><b>欠落バッジ 5 種 + 緑チップ:</b> ライバル未登録 / 仕入¥未 / 重量未 / 寸法未 / 損益分岐未 を赤/黄系で識別。<br>
+        全属性埋まり = 「✅ 物理属性 完備」緑チップ (完了済み4件に付与)。</li>
+      <li><b>完了セレブレーション:</b> vanilla JS の動的表示ではなく、ページ下部に「全完了時の表示例」として常時スタティック併記。</li>
+      <li><b>商品データ:</b> 計測器/スキャナ/オーディオ/楽器/カメラ周辺の日本ブランド10件。欠落バッジをバラけさせて多様性を表現。</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    🧪 「本日の作業」タブ 最終確定モック / MonoDeck純正(W261 Neumorphic Cream)配色・Inter+JetBrains Mono。<br>
+    提案モック: <code>2026-06-27-today-tasks-tab-proposal.html</code> / 本ファイル: <code>2026-06-27-today-tasks-tab-mockup-final.html</code><br>
+    production code 不変。user 認識合わせ専用。
+  </div>
+</div>
+
+<script>
+  var GOAL = 10;
+
+  function buildPips() {
+    var done = document.querySelectorAll('.task.done').length;
+    var p = document.getElementById('pips');
+    p.innerHTML = '';
+    for (var i = 0; i < GOAL; i++) {
+      var el = document.createElement('i');
+      if (i < done) el.className = 'done';
+      p.appendChild(el);
+    }
+  }
+
+  function refresh() {
+    var done = document.querySelectorAll('.task.done').length;
+    var left = GOAL - done;
+    var pct = Math.round(done / GOAL * 100);
+
+    document.getElementById('ring').style.setProperty('--p', pct);
+    document.getElementById('ringnum').innerHTML = done + '<small>/' + GOAL + '</small>';
+    document.getElementById('goalbig').innerHTML = done + '<small>/' + GOAL + '</small>';
+    document.getElementById('ringgd').textContent = left > 0 ? ('あと' + left + '件') : '完了 🎉';
+    document.getElementById('kpidone').textContent = done;
+    document.getElementById('kpileft').textContent = left;
+    document.getElementById('listcount').textContent = done + ' / ' + GOAL + ' 済';
+    document.getElementById('top-done').textContent = done;
+    document.getElementById('top-goal').textContent = GOAL;
+    buildPips();
+  }
+
+  function toggle(btn) {
+    var t = btn.closest('.task');
+    t.classList.toggle('done');
+    btn.textContent = t.classList.contains('done') ? '✓' : '';
+    refresh();
+  }
+
+  refresh();
+</script>
+</body>
+</html>

@@ -83,6 +83,8 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # W284 Phase 3 (2026-06-20): eBaymag-aware relist 窓ゼロ (feature flag OFF 既定)
     # 登録はされるが feature flag OFF = run 内即 skip なので missed 判定は CDP 在席依存と同じ owner に
     {"key": "ebaymag_relist", "display": "W284 eBaymag relist 窓ゼロ (flag OFF 既定)", "hours": [11, 15, 22], "weekdays": None, "owner": "ebaymag_apply"},
+    # W286 (2026-06-28): リサーチ対戦アリーナ. 毎日 05:00 JST. CDP 必須 (不在 skip も痕跡あり).
+    {"key": "research_duel", "display": "W286 リサーチ対戦アリーナ (毎日 05:00)", "hours": [5], "weekdays": None, "owner": "research"},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

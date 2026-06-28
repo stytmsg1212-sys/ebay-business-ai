@@ -3790,6 +3790,161 @@ def init_db():
                     "[init_db v81] テーブル未作成。次回 init_db で再試行。"
                 )
 
+        # ---- v82 (リサーチ対戦アリーナ W286 / 2026-06-27): duel 3 テーブル ----
+        # オーナー × AI が同一条件でブラインド・リサーチし、オーナーが AI の各品を
+        # 0-100 採点 → 学習する計測ハーネス (設計書 v2 §1 Phase1)。
+        #   - duel_rounds:    1 セル (jst_date × pattern × category) = 1 ラウンド。
+        #                     snapshot_json に凍結 evidence bundle を保持 (Terapeak は
+        #                     絶対日付 pin 不可のため、AI 取得済 item 集合を凍結)。
+        #   - duel_ai_picks:  AI 5 品の薄い採点台帳。sourcing 実体は research_candidates
+        #                     (rc_id 参照)。profit は複製しない (利益真値は rc_id 側が唯一
+        #                     /Fugu A2)。ebay_item_id は出品確定時 backfill (Phase2 ROI、
+        #                     識別は ebay_item_id のみ / sku-rules.md)。
+        #   - duel_user_picks: オーナー 1-5 品 + なぜ選んだか (why_md = 学習の核)。
+        # 状態遷移検証 (ai_pending→ai_done→user_done→completed / invalidated) は
+        # monitor.research_duel_db 側の CAS で行う (research_candidates_db 流儀)。
+        # 冪等: CREATE TABLE IF NOT EXISTS + 3 テーブル存在確認後のみ bump (v81 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 81:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS duel_rounds (
+                        round_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        jst_date       TEXT NOT NULL,
+                        pattern        TEXT NOT NULL,            -- 'new' / 'echo'
+                        category_id    INTEGER,
+                        category_label TEXT,
+                        snapshot_json  TEXT,                     -- 凍結 evidence bundle
+                        status         TEXT NOT NULL DEFAULT 'ai_pending',
+                        ai_score_avg   REAL,
+                        zero_rate      REAL,
+                        score_median   REAL,
+                        prompt_version TEXT,
+                        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at   TIMESTAMP,
+                        UNIQUE(jst_date, pattern, category_id)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS duel_ai_picks (
+                        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                        round_id         INTEGER NOT NULL,
+                        rc_id            INTEGER,                -- research_candidates.rc_id (sourcing 実体)
+                        rank             INTEGER,                -- 1-5 表示順
+                        title_ja         TEXT,                   -- pick 時点の表示スナップショット (真値は rc_id)
+                        user_score       INTEGER,                -- 0-100、NULL=未採点
+                        user_fb_md       TEXT,                   -- 採点理由 (採点時必須 / Fugu M2)
+                        reject_tags_json TEXT,                   -- 減点タグ enum 配列
+                        ebay_item_id     TEXT,                   -- 出品確定時 backfill (Phase2 ROI)
+                        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        scored_at        TIMESTAMP,
+                        UNIQUE(round_id, rank)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS duel_user_picks (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        round_id        INTEGER NOT NULL,
+                        rank            INTEGER,                 -- 1-5 (最小1)
+                        title_ja        TEXT,
+                        ebay_url        TEXT,
+                        supplier_url    TEXT,
+                        profit_jpy_user INTEGER,                 -- オーナー自身の利益見積 (手入力)
+                        why_md          TEXT,                    -- なぜ選んだか (学習の核)
+                        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(round_id, rank)
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_duel_rounds_date "
+                    "ON duel_rounds(jst_date DESC)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_duel_ai_picks_round "
+                    "ON duel_ai_picks(round_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_duel_user_picks_round "
+                    "ON duel_user_picks(round_id)"
+                )
+                logger.info("[init_db v82] duel_rounds/ai_picks/user_picks created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v82] duel tables create skipped: {e}")
+            _v82_ok = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('duel_rounds','duel_ai_picks','duel_user_picks')"
+            ).fetchone()[0]
+            if _v82_ok == 3:
+                conn.execute("PRAGMA user_version = 82")
+                logger.info("[init_db v82] schema_ver bumped to 82")
+            else:
+                logger.warning(
+                    f"[init_db v82] テーブル未作成 ({_v82_ok}/3)。次回 init_db で再試行。"
+                )
+
+        # ---- v83 (本日の作業タブ W292 / 2026-06-27): daily_task 2 テーブル ----
+        # 毎朝の初期登録作業を「売れ筋上位の未登録 10 件」に固定して消化する作業ボード。
+        #   - daily_task_set:    JST 当日 × rank(1-10) で凍結した 10 件のスナップショット。
+        #                        当日リロードしても不変 (承認方針 C)。listing 識別は
+        #                        ebay_item_id (sku-rules.md: SKU を一意キーにしない)。
+        #                        完了状態は ebay_listings.initial_registered を都度参照する
+        #                        ので本表には複製しない (真値の二重化回避)。
+        #   - daily_task_streak: 連続達成日数 (🔥 streak chip 用)。metric 別 1 行。
+        # 冪等: CREATE TABLE IF NOT EXISTS + 2 テーブル存在確認後のみ bump (v82 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 82:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS daily_task_set (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        jst_date     TEXT NOT NULL,          -- 'YYYY-MM-DD' (JST)
+                        rank         INTEGER NOT NULL,        -- 1-10 (選定順 = 表示順)
+                        ebay_item_id TEXT NOT NULL,           -- listing 識別 (sku-rules)
+                        title_snap   TEXT,                    -- 選定時タイトル (表示安定用スナップショット)
+                        sold_snap    INTEGER,                 -- 選定時 total_sold_count (監査用)
+                        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(jst_date, rank),
+                        UNIQUE(jst_date, ebay_item_id)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS daily_task_streak (
+                        metric        TEXT PRIMARY KEY,        -- 'initial_register' (将来拡張余地)
+                        current_streak INTEGER NOT NULL DEFAULT 0,
+                        best_streak    INTEGER NOT NULL DEFAULT 0,
+                        last_done_date TEXT,                   -- 最後に「10件全完了」を記録した JST 日付
+                        updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_daily_task_set_date "
+                    "ON daily_task_set(jst_date)"
+                )
+                logger.info("[init_db v83] daily_task_set/daily_task_streak created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v83] daily_task tables create skipped: {e}")
+            _v83_ok = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('daily_task_set','daily_task_streak')"
+            ).fetchone()[0]
+            if _v83_ok == 2:
+                conn.execute("PRAGMA user_version = 83")
+                logger.info("[init_db v83] schema_ver bumped to 83")
+            else:
+                logger.warning(
+                    f"[init_db v83] テーブル未作成 ({_v83_ok}/2)。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 

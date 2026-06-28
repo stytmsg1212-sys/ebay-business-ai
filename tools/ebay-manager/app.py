@@ -234,6 +234,7 @@ s = st.session_state.settings
 _W134_GROUPS = {
     "★ 毎日": [
         "DASHBOARD",
+        "本日の作業",       # W292 (2026-06-27)
         "依頼ボード",       # W266 (2026-06-12)
         "商品管理",         # W119 (2026-05-11)
         "在庫監視",
@@ -242,6 +243,7 @@ _W134_GROUPS = {
     ],
     "⚲ リサーチ": [
         "リサーチ脳",       # W24 (2026-04-26)
+        "リサーチ対戦",     # W286 (2026-06-27)
         "今日の発掘",       # W122 (2026-05-13)
         "キーワード新着監視",  # W148 (2026-05-21)
         "ライバルセラー監視",  # W#3 (2026-06-07)
@@ -325,7 +327,7 @@ st.markdown(
         width: 26px;
         height: 26px;
         background: #0e4f4b;
-        color: #fff;
+        color: #fff !important;
         border-radius: 8px;
         font-weight: 700;
         font-size: 14px;
@@ -524,6 +526,18 @@ if _w134_sel == "DASHBOARD":
     from tabs.tab_dashboard import render_dashboard_tab
     render_dashboard_tab(s)
 
+
+# ========== 本日の作業 タブ (W292 / 2026-06-27) ==========
+# 売れ筋上位の「初期登録 未完了」listing 10 件を当日固定で消化する作業ボード。
+# 完了 = 商品管理タブと同じ initial_registered トグル。10件全完了で streak +1。
+if _w134_sel == "本日の作業":
+    try:
+        from tabs.tab_today_tasks import render_today_tasks_tab
+        render_today_tasks_tab(s)
+    except Exception as _e:
+        st.error(f"本日の作業タブ 描画エラー: {_e}")
+
+
 # ========== 利益計算タブ ==========
 if _w134_sel == "利益計算":
     from tabs.tab_profit_calc import render_profit_calc_tab
@@ -633,6 +647,14 @@ if _w134_sel == "SKU変換":
 # ========== リサーチ脳タブ (W24 2026-04-26) ==========
 if _w134_sel == "リサーチ脳":
     render_research_brain_tab()
+
+# ========== リサーチ対戦アリーナ タブ (W286 2026-06-27) ==========
+if _w134_sel == "リサーチ対戦":
+    try:
+        from tabs.tab_research_duel import render_research_duel_tab
+        render_research_duel_tab(s)
+    except Exception as _e:
+        st.error(f"リサーチ対戦アリーナタブ 描画エラー: {_e}")
 
 if _w134_sel == "今日の発掘":
     render_morning_discovery_tab()

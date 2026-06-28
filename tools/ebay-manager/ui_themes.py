@@ -666,8 +666,10 @@ def apply_neumorph_cream_theme():
         transform: translateY(0) !important;
     }
     .stButton button[kind="primary"],
+    .stButton button[kind="primaryFormSubmit"],
     .stButton button[type="primary"],
-    .stFormSubmitButton button[kind="primary"] {
+    .stFormSubmitButton button[kind="primary"],
+    .stFormSubmitButton button[kind="primaryFormSubmit"] {
         background: var(--nm-teal) !important;
         border: 1px solid var(--nm-teal) !important;
         color: #fff !important;
@@ -675,13 +677,17 @@ def apply_neumorph_cream_theme():
         box-shadow: var(--nm-shadow-raised-sm) !important;
     }
     .stButton button[kind="primary"]:hover,
-    .stFormSubmitButton button[kind="primary"]:hover {
+    .stButton button[kind="primaryFormSubmit"]:hover,
+    .stFormSubmitButton button[kind="primary"]:hover,
+    .stFormSubmitButton button[kind="primaryFormSubmit"]:hover {
         background: var(--nm-teal-hi) !important;
         border-color: var(--nm-teal-hi) !important;
         transform: translateY(-1px) !important;
     }
     .stButton button[kind="primary"]:active,
-    .stFormSubmitButton button[kind="primary"]:active {
+    .stButton button[kind="primaryFormSubmit"]:active,
+    .stFormSubmitButton button[kind="primary"]:active,
+    .stFormSubmitButton button[kind="primaryFormSubmit"]:active {
         box-shadow: var(--nm-shadow-inset) !important;
         transform: translateY(0) !important;
     }

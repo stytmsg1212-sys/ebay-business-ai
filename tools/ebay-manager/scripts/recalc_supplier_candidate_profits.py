@@ -103,7 +103,7 @@ def recalc_all(dry_run: bool = False) -> dict:
                 continue
 
             try:
-                profit_jpy = _estimate_profit_for_candidate(
+                _est = _estimate_profit_for_candidate(
                     listing=listing,
                     purchase_yen=int(price_jpy),
                     settings=settings,
@@ -115,14 +115,17 @@ def recalc_all(dry_run: bool = False) -> dict:
 
             stats["recalculated"] += 1
 
-            if profit_jpy is None:
+            if _est is None:
                 to_delete.append(cid)
                 stats["price_none_deleted"] += 1
                 continue
 
+            profit_jpy, profit_no_refund = _est
+
             ok, _breakdown = check_supplier_candidate_profitable(
                 profit_with_refund=profit_jpy,
                 purchase_yen=int(price_jpy),
+                profit_without_refund=profit_no_refund,
             )
 
             if ok:

@@ -2632,5 +2632,60 @@
     "created": "2026-06-20",
     "completed": null,
     "category": "eBaymag連携"
+  },
+  {
+    "id": 353,
+    "tag": "W286",
+    "title": "リサーチ対戦アリーナ(オーナー×AI同条件ブラインドリサーチ+0-100採点で学習する計測ハーネス Phase1)",
+    "description": "オーナーとAIが同じ盤面(凍結snapshot)で同条件ブラインドリサーチを行い、結果を0-100で採点して学習する計測ハーネス。Phase1=前夜タスク(determine_cell 6日ローテ→harvest→凍結snapshot→research_poc.evaluate_product→research_candidates着地→research_duel_db.save_ai_picks)。設計書 .company/engineering/docs/2026-06-27-research-duel-arena-system-design-v2.md §1 Phase1。既存資産再利用=terapeak_scraper/research_poc/research_duel_db/task_research_harvest._check_cdp_available。CDP(9222)必須。",
+    "status": "in_progress",
+    "priority": "高",
+    "created": "2026-06-27",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 354,
+    "tag": "W288",
+    "title": "research_poc 検索クエリをBrand+型番に蒸留(英語フルタイトル直投げ根治)",
+    "description": "research_poc の仕入先探索クエリが英語フルタイトル直投げで命中率が低い問題を、Brand+型番への蒸留に修正。誤マッチ/未発見の根治。",
+    "status": "done",
+    "priority": "高",
+    "created": "2026-06-27",
+    "completed": "2026-06-27",
+    "category": "business"
+  },
+  {
+    "id": 355,
+    "tag": "W290",
+    "title": "Section232実関税を利益計算へ配線(過大計上根治)",
+    "description": "Section 232 の実関税が利益計算に反映されず過大計上になっていた問題を、実関税を利益計算へ配線して根治。money-direct。",
+    "status": "done",
+    "priority": "高",
+    "created": "2026-06-27",
+    "completed": "2026-06-27",
+    "category": "business"
+  },
+  {
+    "id": 356,
+    "tag": "W291",
+    "title": "_best_hit を最安→match優先選択(¥21誤マッチ根治)",
+    "description": "research_poc の _best_hit が最安値を優先選択し ¥21 等の誤マッチを拾う問題を、match(同一性)優先選択に修正して根治。money-direct。",
+    "status": "done",
+    "priority": "高",
+    "created": "2026-06-27",
+    "completed": "2026-06-27",
+    "category": "business"
+  },
+  {
+    "id": 357,
+    "tag": "W292",
+    "title": "本日の作業タブ (売れ筋上位の初期登録未完了10件を当日固定で消化 + streak)",
+    "description": "MonoDeck「★毎日」グループに本日の作業タブを新設。売れ筋 total_sold_count DESC 主の初期登録未完了 listing 10件を daily_task_set に JST 当日固定(snapshot)、欠落項目バッジ(表示のみ)、進捗リング/🔥streak、完了=既存 initial_registered トグル流用、商品管理への jump-to フック。migration v83(daily_task_set/daily_task_streak)。Q1実機検証で widget-precedence 系2バグ(jump seed/checkbox clobber)を捕捉・修正。code-reviewer HIGH=0 + 回帰テスト9件。",
+    "status": "in_progress",
+    "priority": "高",
+    "created": "2026-06-27",
+    "completed": null,
+    "category": "business"
   }
 ]

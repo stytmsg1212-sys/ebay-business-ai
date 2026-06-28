@@ -140,6 +140,49 @@ def _parse_keyword_from_response(message) -> Optional[str]:
         return None
 
 
+# 単発同期の検索ワード生成 (W288 / 2026-06-27)。
+# research_poc 等「未出品候補 (ebay_listings.search_keyword が無い)」の探索前に、
+# Brand+型番へ蒸留した検索ワードを 1 件だけ同期生成する (batch 不要)。
+# 既存 SEARCH_KEYWORD_PROMPT + _parse_keyword_from_response を再利用 (K2)。
+# 失敗 (API key 無し / 例外 / 空) は None → 呼出側はフルタイトル fallback (取りこぼし防止)。
+_SYNC_KEYWORD_MODEL = "claude-haiku-4-5-20251001"  # 単発抽出は Haiku で十分・安価
+
+
+def generate_keyword_sync(title: str, model: str = _SYNC_KEYWORD_MODEL) -> Optional[str]:
+    """1 件のタイトルから Brand+型番の検索ワードを同期生成する (batch を使わない単発版).
+
+    用途: research_poc など未出品候補の探索前蒸留 (英語フルタイトル直投げ=真因A の根治)。
+
+    Args:
+        title: eBay/Terapeak タイトル (英語混じり)。
+        model: 抽出モデル。既定は Haiku 4.5 (単発・安価)。
+
+    Returns:
+        蒸留した検索ワード、または None (生成不能 → 呼出側はフルタイトル fallback)。
+    """
+    if not title or not title.strip():
+        return None
+    client = _get_client()
+    if client is None:
+        logger.warning(
+            "[generate_keyword_sync] ANTHROPIC_API_KEY 無し → None (caller は fallback)"
+        )
+        return None
+    try:
+        msg = client.messages.create(
+            model=model,
+            max_tokens=_MAX_TOKENS,
+            messages=[
+                {"role": "user",
+                 "content": SEARCH_KEYWORD_PROMPT.format(title=title.strip())}
+            ],
+        )
+    except Exception as e:  # noqa: BLE001 — 生成失敗で探索を止めない (None で fallback)
+        logger.warning(f"[generate_keyword_sync] API 失敗 → None (fallback): {e}")
+        return None
+    return _parse_keyword_from_response(msg)
+
+
 # =============================================================================
 # Listings query
 # =============================================================================
