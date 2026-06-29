@@ -511,7 +511,9 @@ def apply_site_changes(
     active_url = f"https://ebaymag.com/stock?productId={product_id}"
 
     try:
-        with sync_playwright() as p:
+        from monitor.cdp_lock import acquire as _cdp_lock_acquire
+        # B: subprocess timeout=420s → lock timeout=300s (subprocess_timeout より短く)
+        with _cdp_lock_acquire(blocking=True, timeout=300), sync_playwright() as p:
             page = _get_ebaymag_page(p, res)
             if page is None:
                 return res
@@ -621,7 +623,15 @@ def _get_ebaymag_page(p, res: EbaymagResult):  # -> Page | None (playwright opti
         res.error = "CDP Chrome にコンテキストがありません"
         return None
     ctx = browser.contexts[0]
-    page = next((pg for pg in ctx.pages if "ebaymag.com" in pg.url), None)
+    # 非 login タブを優先して返す (login stale タブが先頭にある場合の false-positive 防止 W293)
+    page = next(
+        (pg for pg in ctx.pages
+         if "ebaymag.com" in pg.url and "ebaymag.com/login" not in pg.url),
+        None,
+    )
+    if page is None:
+        # fallback: login タブしか無ければそれを返す (GraphQL 権威化により caller が判定)
+        page = next((pg for pg in ctx.pages if "ebaymag.com" in pg.url), None)
     if page is None:
         res.error = (
             "ebaymag.com のタブが見つかりません。"
@@ -629,6 +639,61 @@ def _get_ebaymag_page(p, res: EbaymagResult):  # -> Page | None (playwright opti
         )
         return None
     return page
+
+
+def session_heartbeat() -> EbaymagResult:
+    """W293: eBaymag セッション生死確認 (read-only、新タブ開かない、mutation しない)。
+
+    判定方式 (W293 fix 2026-06-29):
+      GraphQL 権威化: ebaymag_graphql.list_profiles (page.evaluate) で
+        - 例外なし → alive (nodes 0 でも cookie 有効)
+        - EbaymagGraphQLError / 例外 → dead
+      login URL はシグナルとして note 記録のみ (即 dead にしない)。
+      CDP 自体に接続できない / タブ不在 → cdp_absent。
+
+    背景: CDP に login stale タブと shipping 生存タブが共存する時、
+    login タブを掴んで即 dead 誤検知していた (false-positive)。
+    GraphQL は cookie ベースのため タブ URL に依存しない。
+
+    Returns:
+        EbaymagResult。ok=True が alive、ok=False + outcome='dead'/'cdp_absent'/'error'。
+        log に outcome が記録される。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        res.log.append("outcome=cdp_absent")
+        return res
+
+    try:
+        with sync_playwright() as p:
+            # CDP 接続 (新タブは開かない、_get_ebaymag_page 流用)
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                # _get_ebaymag_page が error をセット済 → cdp_absent か ebaymag タブ不在
+                res.log.append("outcome=cdp_absent")
+                return res
+
+            # login URL は補助シグナル: note 記録のみ、即 dead にしない (GraphQL が権威)
+            current_url = page.url or ""
+            if "ebaymag.com/login" in current_url:
+                res.log.append("note=login_url_detected checking_via_graphql")
+
+            # GraphQL で profile 一覧取得 (成功で alive、例外で dead)
+            try:
+                from monitor import ebaymag_graphql as _G
+                profiles = _G.list_profiles(page, first=1)
+                # list_profiles が例外なく返れば alive (nodes 0 でも cookie 有効)
+                res.ok = True
+                res.log.append(f"outcome=alive profiles_count={len(profiles)}")
+            except Exception as gql_e:
+                res.error = f"GraphQL 応答なし: {gql_e}"
+                res.log.append("outcome=dead")
+    except Exception as e:
+        res.error = f"heartbeat 例外: {str(e) or type(e).__name__}"
+        res.log.append("outcome=error")
+        logger.warning("session_heartbeat failed", exc_info=True)
+    return res
 
 
 def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
@@ -809,7 +874,9 @@ def assign_policy(
 
     active_url = f"https://ebaymag.com/stock?productId={product_id}"
     try:
-        with sync_playwright() as p:
+        from monitor.cdp_lock import acquire as _cdp_lock_acquire
+        # B: subprocess timeout=300s → lock timeout=200s (subprocess_timeout より短く)
+        with _cdp_lock_acquire(blocking=True, timeout=200), sync_playwright() as p:
             page = _get_ebaymag_page(p, res)
             if page is None:
                 return res

@@ -184,91 +184,108 @@ def set_policy_site_values(
          "saved": bool, "verified": bool, "snapshot_path": ...}
 
     Raises:
-        PolicyEditError: title 不一致 / snapshot 検証失敗 / read-back 不一致 (hard abort)。
+        PolicyEditError: title 不一致 / snapshot 検証失敗 / read-back 不一致 / lock timeout。
     """
-    _open_policy_editor(page, policy_title)
-    pid = _discover_pid(page)
+    # A: critical section 全体 (open → snapshot → fill → save → read-back) を 1 lock で包む。
+    # dry_run は mutation しないため lock 不要 → nullcontext で通過。
+    # B: lock timeout=240s (subprocess 制約なし CLI 用途、単一操作最悪~120s の約 2 倍)。
+    from contextlib import nullcontext
+    from monitor.cdp_lock import acquire as _cdp_lock_acquire, LockBusy as _LockBusy
+    _lock_cm = nullcontext() if dry_run else _cdp_lock_acquire(blocking=True, timeout=240)
 
-    # MED-7: 保存前 snapshot を write + read 検証 (可逆保証)。dry_run でも記録。
-    # 変更対象サイト (非ゼロ) はタブを選択して実状態を読む。それ以外は best-effort。
-    snapshot = {}
-    for cc, usd in site_cc_values.items():
-        if cc in CC_TO_SITE_LABEL and usd != 0:
-            try:
+    try:
+        with _lock_cm:
+            _open_policy_editor(page, policy_title)
+            pid = _discover_pid(page)
+
+            # MED-7: 保存前 snapshot を write + read 検証 (可逆保証)。dry_run でも記録。
+            # 変更対象サイト (非ゼロ) はタブを選択して実状態を読む。それ以外は best-effort。
+            snapshot = {}
+            for cc, usd in site_cc_values.items():
+                if cc in CC_TO_SITE_LABEL and usd != 0:
+                    try:
+                        _select_site_tab(page, cc)
+                    except Exception:
+                        pass
+                snapshot[cc] = _site_state(page, pid, cc)
+            snap_path = None
+            if snapshot_dir is not None:
+                snapshot_dir = Path(snapshot_dir)
+                snapshot_dir.mkdir(parents=True, exist_ok=True)
+                snap_path = snapshot_dir / f"snapshot_{policy_title}_{pid}.json"
+                payload = {"policy": policy_title, "pid": pid, "snapshot": snapshot,
+                           "intended": site_cc_values}
+                snap_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
+                                     encoding="utf-8")
+                readback = json.loads(snap_path.read_text(encoding="utf-8"))
+                if readback.get("snapshot") != snapshot:
+                    raise PolicyEditError("snapshot の write+read 検証失敗 (可逆保証不能で中断)")
+
+            planned: dict[str, int] = {}
+            skipped: dict[str, str] = {}
+
+            for cc, usd in site_cc_values.items():
+                if cc not in CC_TO_SITE_LABEL:
+                    skipped[cc] = "unknown site cc"
+                    continue
+                if usd == 0:
+                    # 値$0 = 無料維持で触らない (MED-6: 理由を記録)
+                    skipped[cc] = "value=0 (無料維持)"
+                    continue
+                # 値設定: タブ選択 → switcher ON → free uncheck → price fill
                 _select_site_tab(page, cc)
-            except Exception:
-                pass
-        snapshot[cc] = _site_state(page, pid, cc)
-    snap_path = None
-    if snapshot_dir is not None:
-        snapshot_dir = Path(snapshot_dir)
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-        snap_path = snapshot_dir / f"snapshot_{policy_title}_{pid}.json"
-        payload = {"policy": policy_title, "pid": pid, "snapshot": snapshot,
-                   "intended": site_cc_values}
-        snap_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
-                             encoding="utf-8")
-        readback = json.loads(snap_path.read_text(encoding="utf-8"))
-        if readback.get("snapshot") != snapshot:
-            raise PolicyEditError("snapshot の write+read 検証失敗 (可逆保証不能で中断)")
+                sw = page.locator(f'input[name="{pid}-cp-{cc}-switcher"]')
+                if sw.count() and not sw.is_checked():
+                    sw.check(timeout=4000)
+                    page.wait_for_timeout(1500)
+                free = page.locator(f'input[name="{pid}-cp-{cc}-ds-0.cost.free"]')
+                if free.count() and free.is_checked():
+                    free.uncheck(timeout=4000)
+                    page.wait_for_timeout(700)
+                price = page.locator(f'input[name="{pid}-cp-{cc}-ds-0.cost.price"]')
+                if not price.count():
+                    raise PolicyEditError(f"{cc}: cost.price 入力が無い (構造変化?)")
+                price.fill(str(usd), timeout=4000)
+                page.wait_for_timeout(500)
+                planned[cc] = usd
+                logger.info("set %s %s = $%s", policy_title, cc, usd)
 
-    planned: dict[str, int] = {}
-    skipped: dict[str, str] = {}
+            result = {"policy": policy_title, "pid": pid, "planned": planned,
+                      "skipped": skipped, "saved": False, "verified": False,
+                      "snapshot_path": str(snap_path) if snap_path else None}
 
-    for cc, usd in site_cc_values.items():
-        if cc not in CC_TO_SITE_LABEL:
-            skipped[cc] = "unknown site cc"
-            continue
-        if usd == 0:
-            # 値$0 = 無料維持で触らない (MED-6: 理由を記録)
-            skipped[cc] = "value=0 (無料維持)"
-            continue
-        # 値設定: タブ選択 → switcher ON → free uncheck → price fill
-        _select_site_tab(page, cc)
-        sw = page.locator(f'input[name="{pid}-cp-{cc}-switcher"]')
-        if sw.count() and not sw.is_checked():
-            sw.check(timeout=4000)
-            page.wait_for_timeout(1500)
-        free = page.locator(f'input[name="{pid}-cp-{cc}-ds-0.cost.free"]')
-        if free.count() and free.is_checked():
-            free.uncheck(timeout=4000)
-            page.wait_for_timeout(700)
-        price = page.locator(f'input[name="{pid}-cp-{cc}-ds-0.cost.price"]')
-        if not price.count():
-            raise PolicyEditError(f"{cc}: cost.price 入力が無い (構造変化?)")
-        price.fill(str(usd), timeout=4000)
-        page.wait_for_timeout(500)
-        planned[cc] = usd
-        logger.info("set %s %s = $%s", policy_title, cc, usd)
+            if dry_run:
+                page.reload(wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(1500)
+                logger.info("dry_run: 破棄 (保存せず) policy=%s planned=%s", policy_title, planned)
+                return result
 
-    result = {"policy": policy_title, "pid": pid, "planned": planned,
-              "skipped": skipped, "saved": False, "verified": False,
-              "snapshot_path": str(snap_path) if snap_path else None}
+            # 保存 (変更を適用) — 既に lock 内
+            page.get_by_text("変更を適用", exact=False).first.click(timeout=8000)
+            page.wait_for_timeout(6000)
+            result["saved"] = True
 
-    if dry_run:
-        page.reload(wait_until="domcontentloaded", timeout=20000)
-        page.wait_for_timeout(1500)
-        logger.info("dry_run: 破棄 (保存せず) policy=%s planned=%s", policy_title, planned)
-        return result
-
-    # 保存 (変更を適用)
-    page.get_by_text("変更を適用", exact=False).first.click(timeout=8000)
-    page.wait_for_timeout(6000)
-    result["saved"] = True
-
-    # read-back hard-abort 検証 (再度開いて planned が exact 一致するか)
-    _open_policy_editor(page, policy_title)
-    pid2 = _discover_pid(page)
-    mismatches = []
-    for cc, usd in planned.items():
-        _select_site_tab(page, cc)
-        st = _site_state(page, pid2, cc)
-        if st.get("free") is not False or str(st.get("price")) != str(usd):
-            mismatches.append(f"{cc}: 期待 free=False price={usd}, 実 {st}")
-    if mismatches:
-        raise PolicyEditError(
-            "保存後 read-back 不一致 (hard abort): " + " / ".join(mismatches)
-        )
-    result["verified"] = True
-    logger.info("policy %s 保存+検証 OK: %s", policy_title, planned)
-    return result
+            # read-back hard-abort 検証 (再度開いて planned が exact 一致するか)
+            _open_policy_editor(page, policy_title)
+            pid2 = _discover_pid(page)
+            mismatches = []
+            for cc, usd in planned.items():
+                _select_site_tab(page, cc)
+                st = _site_state(page, pid2, cc)
+                if st.get("free") is not False or str(st.get("price")) != str(usd):
+                    mismatches.append(f"{cc}: 期待 free=False price={usd}, 実 {st}")
+            if mismatches:
+                raise PolicyEditError(
+                    "保存後 read-back 不一致 (hard abort): " + " / ".join(mismatches)
+                )
+            result["verified"] = True
+            logger.info("policy %s 保存+検証 OK: %s", policy_title, planned)
+            return result
+    except _LockBusy as e:
+        # LockBusy は lock 取得タイムアウト時 (__enter__ 前) に発生。
+        # staged 編集は存在しないが、念のり reload で状態をクリア。
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=20000)
+        except Exception:
+            pass
+        raise PolicyEditError(f"CDP lock タイムアウト (money-direct で中断): {e}") from e

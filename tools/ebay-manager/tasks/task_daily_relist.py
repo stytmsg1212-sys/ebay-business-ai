@@ -52,6 +52,12 @@ from monitor.credentials import get_ebay_credentials, ebay_credentials_ok  # noq
 from monitor.ebay_client import (  # noqa: E402
     end_item, relist_item, verify_relist_item,
 )
+from monitor.task_execution_log import is_completed_today  # noqa: E402
+from monitor import cdp_lock  # noqa: E402
+
+# プロセス間排他ロック (Layer3 / 並行二重 relist 防止)。
+# msvcrt advisory lock: プロセス死で OS 自動解放、stale デッドロックなし。
+_DAILY_RELIST_LOCK = Path(__file__).resolve().parent.parent / "data" / "daily_relist.lock"
 
 logger = logging.getLogger(__name__)
 
@@ -465,69 +471,103 @@ def run_daily_relist(config: dict) -> dict:
     sleep_between = float(task_cfg.get("sleep_between_sec", 3))
     cooldown_days = int(task_cfg.get("cooldown_days", 30))  # 2026-06-07 config 化 (既定30、現行10)
 
-    creds = get_ebay_credentials(config)
-    if not ebay_credentials_ok(creds):
-        return {"success": False, "message": "eBay 認証情報不足", "processed": 0}
+    # run-once guard (Layer2 money セーフティネット):
+    # 当日すでに daily_relist が completed(success=1) なら即 return (relist せず)。
+    # completed のみを見て in-flight (started/NULL) は見ない — 自己検出回避。
+    # 理由: run_task が log_task_start で 'started' を記録した後に本関数が呼ばれるため、
+    # in-flight を含めると 1 回目の実行が自己 skip してしまう。
+    if is_completed_today("daily_relist"):
+        logger.info(
+            "[daily_relist] run-once guard: 当日すでに completed(success=1) が記録済。"
+            "autofix 等による二重起動を阻止。"
+        )
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "already completed today (run-once guard)",
+            "processed": 0,
+        }
 
-    targets = _select_relist_targets(limit=max_per_run, cooldown_days=cooldown_days)
-    logger.info(
-        f"End→Relist 対象: {len(targets)}件 "
-        f"(dry_run={dry_run}, max={max_per_run}, cooldown={cooldown_days}日)"
-    )
-
-    # W242 (2026-06-09): ebaymag_segment=NULL (未分類) の relist 候補が滞留していると
-    # relist プールから漏れ続ける (silent skip)。market_analysis_refresh の segment
-    # 再計算が止まっている時に user が気付けるよう件数を可視化 (Q0 痕跡)。
-    # W284 (2026-06-20): #5(SKU条件) 撤廃に合わせ、SKU 条件を除去。
-    # NULL 滞留判定は ebaymag_segment のみで行う (識別キー = ebay_item_id)。
+    # Layer3 プロセス間排他ロック:
+    # Layer2 (completed のみ) では 02:30 バッチが未到達の瞬間に 04:00 autofix が
+    # 同時突入するレースを塞げない。msvcrt advisory lock (プロセス死で OS 自動解放)
+    # で物理的に 1 プロセスのみが relist 本体に入れるよう保護する。
     try:
-        with get_conn() as _c:
-            _null_pool = _c.execute(
-                "SELECT COUNT(*) FROM ebay_listings WHERE (is_ended IS NULL OR is_ended=0) "
-                "AND quantity_ebay>=1 AND watch_count=0 AND rank='E' "
-                "AND ebaymag_segment IS NULL"
-            ).fetchone()[0]
-        if _null_pool:
-            logger.warning(
-                f"⚠ relist 候補のうち ebaymag_segment=NULL が {_null_pool}件滞留 "
-                f"(未分類で relist 対象外)。market_analysis_refresh の区分再計算が"
-                f"動いているか確認を。"
+        with cdp_lock.acquire(blocking=False, lock_path=_DAILY_RELIST_LOCK):
+            creds = get_ebay_credentials(config)
+            if not ebay_credentials_ok(creds):
+                return {"success": False, "message": "eBay 認証情報不足", "processed": 0}
+
+            targets = _select_relist_targets(limit=max_per_run, cooldown_days=cooldown_days)
+            logger.info(
+                f"End→Relist 対象: {len(targets)}件 "
+                f"(dry_run={dry_run}, max={max_per_run}, cooldown={cooldown_days}日)"
             )
-    except Exception as e:  # noqa: BLE001 — 可視化失敗は relist 本体を妨げない
-        logger.debug(f"null-segment 可視化 skip: {e}")
 
-    if not targets:
-        return {"success": True, "message": "対象listingなし", "processed": 0, "results": []}
+            # W242 (2026-06-09): ebaymag_segment=NULL (未分類) の relist 候補が滞留していると
+            # relist プールから漏れ続ける (silent skip)。market_analysis_refresh の segment
+            # 再計算が止まっている時に user が気付けるよう件数を可視化 (Q0 痕跡)。
+            # W284 (2026-06-20): #5(SKU条件) 撤廃に合わせ、SKU 条件を除去。
+            # NULL 滞留判定は ebaymag_segment のみで行う (識別キー = ebay_item_id)。
+            try:
+                with get_conn() as _c:
+                    _null_pool = _c.execute(
+                        "SELECT COUNT(*) FROM ebay_listings WHERE (is_ended IS NULL OR is_ended=0) "
+                        "AND quantity_ebay>=1 AND watch_count=0 AND rank='E' "
+                        "AND ebaymag_segment IS NULL"
+                    ).fetchone()[0]
+                if _null_pool:
+                    logger.warning(
+                        f"⚠ relist 候補のうち ebaymag_segment=NULL が {_null_pool}件滞留 "
+                        f"(未分類で relist 対象外)。market_analysis_refresh の区分再計算が"
+                        f"動いているか確認を。"
+                    )
+            except Exception as e:  # noqa: BLE001 — 可視化失敗は relist 本体を妨げない
+                logger.debug(f"null-segment 可視化 skip: {e}")
 
-    results = []
-    ok = 0
-    fail = 0
-    for i, t in enumerate(targets, 1):
-        logger.info(f"--- [{i}/{len(targets)}] {t.get('title','')[:60]} ---")
-        r = process_single_relist(t, creds, dry_run=dry_run, skip_verify=skip_verify)
-        results.append(r)
-        if r.get("success"):
-            ok += 1
-        else:
-            fail += 1
-        if i < len(targets) and sleep_between > 0:
-            time.sleep(sleep_between)
+            if not targets:
+                return {"success": True, "message": "対象listingなし", "processed": 0, "results": []}
 
-    summary = f"{ok}/{len(targets)} 件成功 / {fail} 件失敗"
-    if dry_run:
-        summary = f"[DRY-RUN] {summary}"
-    _notify_secretary(results, summary)
-    logger.info(f"End→Relist 完了: {summary}")
-    # FINDING 9: partial failure を全件失敗と区別 (alert noise 解消、true crash のみ alert).
-    return {
-        "success": ok > 0,  # 1 件でも成功したら True (= alert なし); 全件失敗時のみ False
-        "processed": len(targets),
-        "ok": ok, "failed": fail,
-        "partial_failure": fail > 0 and ok > 0,
-        "dry_run": dry_run,
-        "results": results,
-        "message": summary,
-    }
+            results = []
+            ok = 0
+            fail = 0
+            for i, t in enumerate(targets, 1):
+                logger.info(f"--- [{i}/{len(targets)}] {t.get('title','')[:60]} ---")
+                r = process_single_relist(t, creds, dry_run=dry_run, skip_verify=skip_verify)
+                results.append(r)
+                if r.get("success"):
+                    ok += 1
+                else:
+                    fail += 1
+                if i < len(targets) and sleep_between > 0:
+                    time.sleep(sleep_between)
+
+            summary = f"{ok}/{len(targets)} 件成功 / {fail} 件失敗"
+            if dry_run:
+                summary = f"[DRY-RUN] {summary}"
+            _notify_secretary(results, summary)
+            logger.info(f"End→Relist 完了: {summary}")
+            # FINDING 9: partial failure を全件失敗と区別 (alert noise 解消、true crash のみ alert).
+            return {
+                "success": ok > 0,  # 1 件でも成功したら True (= alert なし); 全件失敗時のみ False
+                "processed": len(targets),
+                "ok": ok, "failed": fail,
+                "partial_failure": fail > 0 and ok > 0,
+                "dry_run": dry_run,
+                "results": results,
+                "message": summary,
+            }
+    except cdp_lock.LockBusy:
+        logger.info(
+            "[daily_relist] 並行 run 検出 → skip (daily_relist.lock 保持中)。"
+            "別の daily_relist run がすでに実行中のため relist をスキップ。"
+        )
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "another daily_relist run in progress (lock held)",
+            "processed": 0,
+        }
 
 
 if __name__ == "__main__":

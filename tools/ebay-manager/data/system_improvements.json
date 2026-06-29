@@ -2687,5 +2687,16 @@
     "created": "2026-06-27",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 358,
+    "tag": "W293",
+    "title": "eBaymag セッション維持自動化 (ログアウト早期検知+Discord通知 / keep-alive)",
+    "description": "eBaymag のブラウザセッション切れで各国版反映が黙って失敗する問題への恒久対策。①今日実装した login-redirect 検知を流用し定時 health check でログアウトを早期検知→Discord 通知(R-11 user 実視認 verify 必須)。②失効方式を実測(cookie 有効期限/無操作/reload)し、アイドル型なら keep-alive ハートビートで延命。初回ログインのみ user 手動、以降の再ログイン頻度を最小化。間隔・定時タスク機構・通知ch は Phase 3 Clarify+実測後に確定。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-29",
+    "completed": null,
+    "category": "internal"
   }
 ]

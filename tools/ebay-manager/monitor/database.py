@@ -3945,6 +3945,42 @@ def init_db():
                     f"[init_db v83] テーブル未作成 ({_v83_ok}/2)。次回 init_db で再試行。"
                 )
 
+        # ---- v84 (W293 eBaymag セッション維持 / 2026-06-29): ebaymag_heartbeat_log ----
+        # 15 分ごとの heartbeat 結果を記録。outcome は alive/dead/skip_busy/cdp_absent/error
+        # の 5 種 CHECK enum。episode dedupe 通知 (dead→alive 等) はタスク層が参照。
+        # 冪等: CREATE TABLE IF NOT EXISTS + テーブル存在確認後のみ bump (v82/v83 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 83:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS ebaymag_heartbeat_log (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        outcome     TEXT    NOT NULL
+                                    CHECK(outcome IN ('alive','dead','skip_busy','cdp_absent','error')),
+                        checked_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        response_ms REAL,
+                        note        TEXT
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_ebaymag_heartbeat_checked_at "
+                    "ON ebaymag_heartbeat_log(checked_at DESC)"
+                )
+                logger.info("[init_db v84] ebaymag_heartbeat_log created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v84] ebaymag_heartbeat_log create skipped: {e}")
+            _v84_ok = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='ebaymag_heartbeat_log'"
+            ).fetchone()
+            if _v84_ok:
+                conn.execute("PRAGMA user_version = 84")
+                logger.info("[init_db v84] schema_ver bumped to 84")
+            else:
+                logger.warning("[init_db v84] テーブル未作成。次回 init_db で再試行。")
+
 
 # ---- サイト設定 ----
 
@@ -7529,3 +7565,51 @@ def record_ebaymag_policy_applied(ebay_item_id: str, token: str) -> bool:
             (token, ebay_item_id),
         )
     return cur.rowcount == 1
+
+
+# ---- W293 eBaymag heartbeat helpers ----
+
+def record_heartbeat(outcome: str, response_ms: Optional[float] = None,
+                     note: Optional[str] = None) -> int:
+    """ebaymag_heartbeat_log に 1 行挿入して ROWID を返す (v84).
+
+    outcome は 'alive'/'dead'/'skip_busy'/'cdp_absent'/'error' の CHECK 制約に従う。
+    response_ms は None 可 (skip_busy/cdp_absent は計測不要)。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO ebaymag_heartbeat_log (outcome, response_ms, note) VALUES (?,?,?)",
+            (outcome, response_ms, note),
+        )
+    return cur.lastrowid
+
+
+def get_last_definitive_heartbeat() -> Optional[dict]:
+    """outcome IN ('alive','dead') の最新 1 件を返す。
+
+    skip_busy / cdp_absent / error は「不定」扱いで episode 判定に使わない。
+    該当なし (初回) は None を返す。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, outcome, checked_at, response_ms, note "
+            "FROM ebaymag_heartbeat_log "
+            "WHERE outcome IN ('alive','dead') "
+            "ORDER BY checked_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def purge_old_heartbeat(days: int = 30) -> int:
+    """days 日より古い heartbeat_log を削除し、削除件数を返す。
+
+    SQLite CURRENT_TIMESTAMP は UTC 保存 (sqlite-timezone.md 準拠)。
+    datetime('now','-N days') で相対指定する (JST 直書き禁止)。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM ebaymag_heartbeat_log "
+            "WHERE checked_at < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+    return cur.rowcount

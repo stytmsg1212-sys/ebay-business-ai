@@ -81,12 +81,13 @@ def _insert_competitor(conn: sqlite3.Connection, our_item_id: str) -> None:
 
 
 def test_v83_idempotent_user_version(tmp_db):
-    """init_db 2 回実行後も user_version == 83 (冪等)。"""
+    """init_db 2 回実行後も user_version が最新 migration 番号 (冪等)。
+    v84 (W293 ebaymag_heartbeat_log) 追加で 84 が現在の最新。"""
     import monitor.database as db_mod
     db_mod.init_db()  # 2 回目
     with sqlite3.connect(str(tmp_db)) as conn:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert ver == 83, f"user_version が 83 でない: {ver}"
+    assert ver == 84, f"user_version が 84 でない: {ver}"
 
 
 def test_v83_idempotent_data_preserved(tmp_db):

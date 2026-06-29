@@ -295,10 +295,31 @@ def _handle_tier1_rerun(config: dict, f: dict, summary: dict,
         summary["escalated"].append({"task_key": tk, "reason": "no_dispatch"})
         new_actions.append(("escalate", f"`{tk}`: 自動再実行 dispatch 未定義 (要人手)"))
         return
+    # 二重実行ガード: 当日すでに completed(success=1) または in-flight(started/NULL) なら
+    # 再実行しない (daily_relist 14件/日 / supplier_sweep 並走二重 の本丸修正)。
+    # is_completed_or_running_today は task_execution_log モジュールのヘルパー。
+    # _display_for と同様に循環 import 回避のため lazy import する。
+    from monitor.task_execution_log import is_completed_or_running_today
+    if is_completed_or_running_today(tk):
+        record_attempt(fh, TIER1, kind, "rerun", "skipped",
+                       target_task_key=tk,
+                       detail="already completed/in-flight today")
+        summary["skipped"].append(
+            {"task_key": tk, "reason": "already_completed_or_inflight"})
+        return
+
     module_path, func_name = disp
     display = _display_for(tk)
     logger.warning(f"[autofix] Tier1 再実行: {tk} ({module_path}.{func_name})")
     result = _rerun_task(display, module_path, func_name, config, tk)
+    # L1 fix: run が skipped:True を返した場合 (Layer2 run-once guard または Layer3 lock-held skip)。
+    # _result_ok は success=True を返すため "resolved" として誤記録されるのを防ぐ。
+    if isinstance(result, dict) and result.get("skipped"):
+        record_attempt(fh, TIER1, kind, "rerun", "skipped",
+                       target_task_key=tk,
+                       detail=f"run skipped: {result.get('reason', '')}")
+        summary["skipped"].append({"task_key": tk, "reason": "rerun_skipped"})
+        return
     # 解消判定は **再実行の結果フラグ** で行う (find_missed_tasks を再 query しない)。
     # 理由: 再実行は health-check の batch_hour で execution_log に記録されるが、
     # find_missed の slot 窓は対象 task の expected slot 基準。各 slot の missed は

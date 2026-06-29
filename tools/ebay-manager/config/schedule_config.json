@@ -335,6 +335,12 @@
       "enabled": false,
       "description": "W284 Phase 2-3: eBaymag 送料ポリシー付替 (assign_policy) の有効化フラグ。反映キュー消化 (ebaymag_apply_queue) の軸2 = 送料ポリシー付替を実行するかを制御する。OFF の間は band の付替要否を検出しても CDP 付替を実行せず痕跡ログのみ (Q0)。",
       "_note": "money-direct タスク (各国版の送料ポリシーを mutate)。config 欠落時は fail-safe OFF。canary 手順: (1) ebaymag_shipping_policies の各帯に user が手動作成した policy token を backfill (2) enabled=true (3) scheduler 再起動 (4) テスト品 1 件の band を設定 → enqueue (5) 11:30/15:30/22:30 JST 自動発火 or run_task UI 手動発火 (6) ebay.{site}/itm/各国版ID を買い手ロケーションで送料正値を目視 (7) 問題なければ常用。 ★既存の $0 漏れ品 (現存各国版) 一括是正は band 変化/relist でしか自動 enqueue されないため、canary 確認後に scripts/backfill_ebaymag_shipping_band_2026_06_21.py --apply で band 一括設定+enqueue する (reviewer MED-1)。"
+    },
+    "ebaymag_session_heartbeat": {
+      "enabled": true,
+      "interval_minutes": 15,
+      "description": "W293 eBaymag セッション維持: 15 分ごとにセッション生死を確認し、切れ/復活時に action_required ch へ Discord 通知。CDP 不在時は cdp_absent で痕跡記録 (Q0)。",
+      "_note": "CDP Chrome (port 9222) 不在は正常な非在席状態として扱う (skip ではなく cdp_absent で記録)。mutating 操作 (apply_site_changes 等) が実行中は skip_busy で skip。scheduler 再起動後に有効化される。"
     }
   },
   "rate_table_batch": {

@@ -1184,6 +1184,26 @@ def setup_scheduler():
             f"W148 キーワード新着監視 発火: {interval_hours} 時間ごと :20 分 (subprocess)"
         )
 
+    # ── W293 eBaymag セッション維持 heartbeat (2026-06-29 追加) ──
+    # 15 分ごと :45 秒 (主 batch :00/:30 および order_alert :05/:20 との発火衝突回避)。
+    # enabled は config (tasks_enabled.ebaymag_session_heartbeat.enabled) で制御。
+    # kill switch 二重ガード: config gate (ここ) + task 内部 config 再確認。
+    _hb_cfg = (config.get('tasks_enabled', {}) or {}).get('ebaymag_session_heartbeat', {}) or {}
+    if _hb_cfg.get('enabled', True):
+        _hb_iv = int(_hb_cfg.get('interval_minutes', 15))
+        scheduler.add_job(
+            _run_ebaymag_session_heartbeat,
+            trigger=CronTrigger(minute=f'*/{_hb_iv}', second=45),
+            args=[config],
+            id='ebaymag_session_heartbeat',
+            name=f'W293 eBaymag セッション維持 ({_hb_iv}分ごと)',
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(f"W293 eBaymag セッション維持 発火: {_hb_iv} 分ごと :45 秒")
+    else:
+        logger.info("W293 eBaymag セッション維持: disabled (tasks_enabled.ebaymag_session_heartbeat.enabled=false)")
+
     return scheduler
 
 
@@ -1228,6 +1248,18 @@ def _run_keyword_watch_crawl(config: dict):
 
     _run_isolated_task('keyword_watch_crawl', 'W148 キーワード新着監視',
                        _launch_subprocess,
+                       scheduled_hour=None)
+
+
+def _run_ebaymag_session_heartbeat(config: dict):
+    """W293 eBaymag セッション維持 heartbeat — 15 分ごと。"""
+    try:
+        from tasks.task_ebaymag_session_heartbeat import run_ebaymag_session_heartbeat
+    except ImportError as e:
+        logger.error(f"task_ebaymag_session_heartbeat import 失敗: {e}")
+        return
+    _run_isolated_task('ebaymag_session_heartbeat', 'W293 eBaymag セッション維持',
+                       lambda: run_ebaymag_session_heartbeat(config),
                        scheduled_hour=None)
 
 

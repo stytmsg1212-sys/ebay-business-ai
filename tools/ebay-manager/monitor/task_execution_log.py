@@ -85,6 +85,9 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "ebaymag_relist", "display": "W284 eBaymag relist 窓ゼロ (flag OFF 既定)", "hours": [11, 15, 22], "weekdays": None, "owner": "ebaymag_apply"},
     # W286 (2026-06-28): リサーチ対戦アリーナ. 毎日 05:00 JST. CDP 必須 (不在 skip も痕跡あり).
     {"key": "research_duel", "display": "W286 リサーチ対戦アリーナ (毎日 05:00)", "hours": [5], "weekdays": None, "owner": "research"},
+    # W293 (2026-06-29): eBaymag セッション維持 heartbeat. 15 分ごと interval.
+    # kind=interval で get_today_expected_tasks の missed 判定から除外 (毎時 false-positive 回避)。
+    {"key": "ebaymag_session_heartbeat", "display": "W293 eBaymag セッション維持", "hours": None, "weekdays": None, "owner": "ebaymag_heartbeat", "kind": "interval", "interval_minutes": 15},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}
@@ -358,6 +361,60 @@ def find_missed_tasks(
             continue
         missed.append(e)
     return missed
+
+
+def is_completed_or_running_today(task_key: str) -> bool:
+    """当日 (JST) に task_key が completed(success=1) または in-flight か判定.
+
+    Layer1 二重実行ガード専用: _handle_tier1_rerun が再実行直前に呼ぶ。
+    - completed AND success=1: 当日すでに正常完了した
+    - started AND finished_at IS NULL: 現在実行中 (in-flight)
+
+    failed / 行なし / 別日 completed は False を返す (正当な再実行は維持)。
+
+    started_at は log_task_start が Python datetime.now() を bind するため
+    JST naive 保存。DATE(started_at)=? で JST today を直接比較 (+9h shift 禁止)。
+    sqlite-timezone.md 参照。
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM task_execution_log
+             WHERE task_key=? AND DATE(started_at)=?
+               AND ( (status='completed' AND success=1)
+                  OR (status='started' AND finished_at IS NULL) )
+             LIMIT 1
+            """,
+            (task_key, today),
+        ).fetchone()
+    return row is not None
+
+
+def is_completed_today(task_key: str) -> bool:
+    """当日 (JST) に task_key が completed(success=1) か判定。in-flight は含まない。
+
+    Layer2 run-once guard 専用 (task_daily_relist.run_daily_relist 冒頭で使う)。
+
+    in-flight (started AND finished_at IS NULL) を含めない理由:
+    run_task が log_task_start で 'started' を記録した後に run_daily_relist が
+    呼ばれるため、in-flight まで含めると 1 回目の実行が自己 skip してしまう
+    (自己検出回避)。
+
+    started_at は JST naive 保存。DATE(started_at)=? で直接比較。
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM task_execution_log
+             WHERE task_key=? AND DATE(started_at)=?
+               AND status='completed' AND success=1
+             LIMIT 1
+            """,
+            (task_key, today),
+        ).fetchone()
+    return row is not None
 
 
 def claim_alert_dedupe(task_key: str, expected_hour: int, alert_date: Optional[str] = None) -> bool:

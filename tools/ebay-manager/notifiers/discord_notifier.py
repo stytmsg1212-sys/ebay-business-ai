@@ -71,13 +71,15 @@ def inject_webhook_into_config(config: dict) -> dict:
 # 各カテゴリは専用 env webhook を持ち、未設定なら DISCORD_WEBHOOK_URL (既定 ch) に fallback。
 # → user は分けたいチャンネルだけ作成して env を設定すればよい (残りは自動で既定 ch)。
 WEBHOOK_CATEGORY_ENV = {
-    'inventory': 'DISCORD_INVENTORY_WEBHOOK_URL',  # 在庫アラート / OOS / 状態不明
-    'order':     'DISCORD_ORDER_WEBHOOK_URL',      # 売れた / 注文 / payout
-    'rival':     'DISCORD_RIVAL_WEBHOOK_URL',       # ライバルセラー検知 / 価格
-    'keyword':   'DISCORD_KEYWORD_WEBHOOK_URL',     # キーワード新着監視
-    'research':  'DISCORD_RESEARCH_WEBHOOK_URL',    # harvest / sourcing / 朝brief / 発掘
-    'pricing':   'DISCORD_PRICING_WEBHOOK_URL',     # 価格改定 / 燃料サーチャージ
-    'system':    'DISCORD_SYSTEM_WEBHOOK_URL',      # ヘルス / エラー / 予算 / lint / 日次レポート
+    'inventory':       'DISCORD_INVENTORY_WEBHOOK_URL',       # 在庫アラート / OOS / 状態不明
+    'order':           'DISCORD_ORDER_WEBHOOK_URL',            # 売れた / 注文 / payout
+    'rival':           'DISCORD_RIVAL_WEBHOOK_URL',            # ライバルセラー検知 / 価格
+    'keyword':         'DISCORD_KEYWORD_WEBHOOK_URL',          # キーワード新着監視
+    'research':        'DISCORD_RESEARCH_WEBHOOK_URL',         # harvest / sourcing / 朝brief / 発掘
+    'pricing':         'DISCORD_PRICING_WEBHOOK_URL',          # 価格改定 / 燃料サーチャージ
+    'system':          'DISCORD_SYSTEM_WEBHOOK_URL',           # ヘルス / エラー / 予算 / lint / 日次レポート
+    # W293 (2026-06-29): eBaymag セッション切れ / 復活など user 対応が必要な通知
+    'action_required': 'DISCORD_ACTION_REQUIRED_WEBHOOK_URL',
 }
 
 
