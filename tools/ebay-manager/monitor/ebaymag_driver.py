@@ -339,6 +339,13 @@ def _open_panel_and_check_itm(
 ) -> dict | None:
     """panel を開いて itm 照合 (権威安全弁)。OK なら panel info、NG なら None."""
     info = _read_panel(page, url)
+    # ログイン切れ検知: login ページへリダイレクトされた場合は itm 照合前に中断
+    panel_url = info.get("url") or ""
+    # NOTE: login パス (ebaymag.com/login) 前提。eBaymag が /sign_in 等へ変更すると従来の fallback に縮退
+    if "ebaymag.com/login" in panel_url:
+        res._log(f"login redirect detected: {panel_url[:80]}")
+        res.error = "eBaymag セッション切れ — CDP Chrome (9222) で再ログインしてください"
+        return None
     res._log(f"panel: itm={info.get('itm')} title={ (info.get('title') or '')[:60] }")
     if not info.get("hasAction"):
         return None
