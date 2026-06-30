@@ -286,7 +286,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             f"{title_s}: 採用に失敗しました — "
                             f"{res_a.get('message') or 'accept失敗'}")
                     return False
-            res_b = apply_supplier_candidate(cid, _cfg)
+            with st.spinner("仕入先の在庫を確認中..."):
+                res_b = apply_supplier_candidate(cid, _cfg)
             if not res_b.get("success"):
                 logger.error(
                     "supplier apply failed (inventory tab) cid=%s eid=%s msg=%s",

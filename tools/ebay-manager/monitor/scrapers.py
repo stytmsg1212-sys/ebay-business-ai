@@ -701,7 +701,13 @@ def _check_paypay_availability(url: str, timeout_sec: int, checked_at: str) -> d
 
 
 def _check_yahoo_auctions_availability(url: str, timeout_sec: int, checked_at: str) -> dict:
-    """ヤフオク (auctions.yahoo.co.jp) raw HTML 判定 (W182)。"""
+    """ヤフオク (auctions.yahoo.co.jp) raw HTML 判定 (W182)。
+
+    __NEXT_DATA__ status を最優先で使う (inventory_check の _detect_yahoo_auction_status と整合)。
+    終了ページにも「入札する」テキストが残るため、テキストマッチだけでは終了済み auction を
+    available と誤判定してしまう。__NEXT_DATA__ status='closed' → not_found で正しく弾く。
+    __NEXT_DATA__ が取れない場合のみテキストマッチにフォールバックする。
+    """
     try:
         resp = httpx.get(url, headers=_avail_headers(), timeout=timeout_sec, follow_redirects=True)
     except httpx.TimeoutException:
@@ -713,6 +719,20 @@ def _check_yahoo_auctions_availability(url: str, timeout_sec: int, checked_at: s
     if resp.status_code != 200:
         return {'status': 'unknown', 'signal': f'HTTP {resp.status_code}', 'checked_at': checked_at}
     html = resp.text
+    # --- __NEXT_DATA__ status 最優先 (inventory_check と判定基準を統一) ---
+    try:
+        from monitor.yahoo_auction_status import _extract_yahoo_item
+        item = _extract_yahoo_item(html)
+    except Exception as e:
+        logger.debug(f"yahoo __NEXT_DATA__ parse error ({url}): {e}")
+        item = None
+    if item:
+        status_raw = item.get("status")
+        if status_raw == "closed":
+            return {'status': 'not_found', 'signal': '__NEXT_DATA__ status=closed', 'checked_at': checked_at}
+        if status_raw == "open":
+            return {'status': 'available', 'signal': '__NEXT_DATA__ status=open', 'checked_at': checked_at}
+    # --- フォールバック: テキストマッチ (__NEXT_DATA__ が取れない場合) ---
     if 'このオークションは終了' in html or 'このオークションは存在しません' in html:
         return {'status': 'not_found', 'signal': 'auction ended/missing', 'checked_at': checked_at}
     if '入札する' in html or '今すぐ落札' in html:

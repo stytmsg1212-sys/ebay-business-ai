@@ -36,6 +36,8 @@ from monitor.database import (  # noqa: E402
 from monitor.ebay_client import revise_item_sku  # noqa: E402
 from monitor.credentials import get_ebay_credentials, ebay_credentials_ok  # noqa: E402
 from sku_mapping_manager import url_to_sku  # noqa: E402
+# W(stock-gate): module-level import で test monkeypatch 互換 (W182 流儀)
+from monitor.scrapers import check_candidate_availability  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +129,33 @@ def apply_supplier_candidate(
     ebay_item_id = c.get("ebay_item_id")
     if not ebay_item_id:
         return {"success": False, "message": "候補に ebay_item_id がありません"}
+
+    # 在庫ゲート: ReviseItem 直前 (全安価チェック通過後、最重い処理の直前)
+    # unavailable / not_found → SKU 書換をブロック (候補 status は accepted のまま据置)
+    # unknown → 判定保留で通過 (W182 既存ゲートと同一方針)
+    try:
+        _avail = check_candidate_availability(c.get("candidate_url") or "")
+    except Exception as _e:
+        logger.warning("在庫チェック例外→unknown続行: cid=%s %s", candidate_id, _e)
+        _avail = {"status": "unknown", "signal": f"exception: {type(_e).__name__}"}
+    _avail_status = _avail.get("status")
+    if _avail_status in ("unavailable", "not_found"):
+        logger.info(
+            "在庫チェックでブロック: cid=%s ebay_item_id=%s status=%s signal=%s",
+            candidate_id, ebay_item_id, _avail_status, _avail.get("signal"),
+        )
+        return {
+            "success": False,
+            "message": (
+                f"この仕入先は既に売り切れです（{_avail.get('signal', '')}）。"
+                f"SKU 書換は行いませんでした"
+            ),
+        }
+    if _avail_status == "unknown":
+        logger.info(
+            "在庫確認できず(unknown)続行: cid=%s ebay_item_id=%s signal=%s",
+            candidate_id, ebay_item_id, _avail.get("signal"),
+        )
 
     if alt_only and allow_alt_override:
         logger.warning(

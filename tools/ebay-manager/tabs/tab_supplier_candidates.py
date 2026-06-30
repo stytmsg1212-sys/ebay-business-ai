@@ -586,7 +586,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
                                         _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
                                         _cfg_load_ok = False
                                 if _cfg_load_ok:
-                                    res_b = apply_supplier_candidate(cid, _cfg, allow_alt_override=True)
+                                    with st.spinner("仕入先の在庫を確認中..."):
+                                        res_b = apply_supplier_candidate(cid, _cfg, allow_alt_override=True)
                                     if not res_b.get("success"):
                                         logger.error(
                                             "alt override apply failed cid=%s eid=%s msg=%s",
@@ -670,7 +671,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
                                 _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
                                 _cfg_load_ok = False
                         if _cfg_load_ok:
-                            res_b = apply_supplier_candidate(cid, _cfg)
+                            with st.spinner("仕入先の在庫を確認中..."):
+                                res_b = apply_supplier_candidate(cid, _cfg)
                             if not res_b.get("success"):
                                 logger.error(
                                     "supplier apply failed cid=%s eid=%s msg=%s",

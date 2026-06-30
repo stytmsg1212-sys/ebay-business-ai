@@ -167,3 +167,96 @@ def test_w182_check_candidate_availability_dispatches_by_host():
     r = check_candidate_availability("")
     assert r["status"] == "unknown"
     assert r["signal"] == "empty url"
+
+
+# ---------------------------------------------------------------------------
+# __NEXT_DATA__ status 判定 (バグ修正: 終了済み auction を available と誤判定する問題)
+# ---------------------------------------------------------------------------
+
+_NEXT_DATA_CLOSED = (
+    '<script id="__NEXT_DATA__" type="application/json">'
+    '{"props":{"pageProps":{"initialState":{"item":{"detail":{"item":{"status":"closed"}}}}}}}'
+    '</script>'
+)
+_NEXT_DATA_OPEN = (
+    '<script id="__NEXT_DATA__" type="application/json">'
+    '{"props":{"pageProps":{"initialState":{"item":{"detail":{"item":{"status":"open"}}}}}}}'
+    '</script>'
+)
+
+
+def test_yahoo_auctions_next_data_closed_is_not_found():
+    """__NEXT_DATA__ status='closed' → not_found (バグ修正の核心: 終了済みを正しく弾く)。"""
+    from monitor.scrapers import _check_yahoo_auctions_availability
+    # 終了済み auction のページ: status=closed が埋込まれ、かつ「入札する」テキストが残る
+    html = f"<html><button>入札する</button>{_NEXT_DATA_CLOSED}</html>"
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.text = html
+    with patch("monitor.scrapers.httpx.get", return_value=fake_resp):
+        r = _check_yahoo_auctions_availability(
+            "https://auctions.yahoo.co.jp/jp/auction/abc123",
+            timeout_sec=5, checked_at="2026-06-30T00:00:00+00:00",
+        )
+    assert r["status"] == "not_found", f"expected not_found for closed: {r}"
+    assert "closed" in r["signal"]
+
+
+def test_yahoo_auctions_next_data_open_is_available():
+    """__NEXT_DATA__ status='open' → available。"""
+    from monitor.scrapers import _check_yahoo_auctions_availability
+    html = f"<html><button>入札する</button>{_NEXT_DATA_OPEN}</html>"
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.text = html
+    with patch("monitor.scrapers.httpx.get", return_value=fake_resp):
+        r = _check_yahoo_auctions_availability(
+            "https://auctions.yahoo.co.jp/jp/auction/abc123",
+            timeout_sec=5, checked_at="2026-06-30T00:00:00+00:00",
+        )
+    assert r["status"] == "available", f"expected available for open: {r}"
+    assert "open" in r["signal"]
+
+
+def test_yahoo_auctions_fallback_bid_text_available():
+    """__NEXT_DATA__ なし + '入札する' テキスト → フォールバックで available。"""
+    from monitor.scrapers import _check_yahoo_auctions_availability
+    html = "<html><button>入札する</button></html>"
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.text = html
+    with patch("monitor.scrapers.httpx.get", return_value=fake_resp):
+        r = _check_yahoo_auctions_availability(
+            "https://auctions.yahoo.co.jp/jp/auction/abc123",
+            timeout_sec=5, checked_at="2026-06-30T00:00:00+00:00",
+        )
+    assert r["status"] == "available", f"expected available for fallback: {r}"
+
+
+def test_yahoo_auctions_fallback_missing_text_not_found():
+    """__NEXT_DATA__ なし + '存在しません' テキスト → フォールバックで not_found。"""
+    from monitor.scrapers import _check_yahoo_auctions_availability
+    html = "<html>このオークションは存在しません</html>"
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.text = html
+    with patch("monitor.scrapers.httpx.get", return_value=fake_resp):
+        r = _check_yahoo_auctions_availability(
+            "https://auctions.yahoo.co.jp/jp/auction/abc123",
+            timeout_sec=5, checked_at="2026-06-30T00:00:00+00:00",
+        )
+    assert r["status"] == "not_found", f"expected not_found for fallback: {r}"
+
+
+def test_check_candidate_availability_yahoo_closed_is_not_found():
+    """check_candidate_availability 経由で closed auction → not_found。"""
+    from monitor.scrapers import check_candidate_availability
+    html = f"<html><button>入札する</button>{_NEXT_DATA_CLOSED}</html>"
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.text = html
+    with patch("monitor.scrapers.httpx.get", return_value=fake_resp):
+        r = check_candidate_availability(
+            "https://auctions.yahoo.co.jp/jp/auction/closed_item"
+        )
+    assert r["status"] == "not_found", f"expected not_found via check_candidate_availability: {r}"
