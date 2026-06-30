@@ -272,7 +272,8 @@ def _process_single_relist(
         # 依存しない。success=0 は cooldown を発火させないので再試行余地は残る)。
         try:
             from monitor.database import record_relist
-            record_relist(old_item_id, None, sku, title, END_REASON, False, err)
+            record_relist(old_item_id, None, sku, title, END_REASON, False, err,
+                          source='ebaymag')
         except Exception as _e:  # noqa: BLE001
             logger.error("[ebaymag_relist] relist_history(失敗) 記録失敗: %s", _e)
         _discord_notify(config, f"[eBaymag relist] needs_manual: {title[:40]}\n{err}")
@@ -289,7 +290,8 @@ def _process_single_relist(
     # 成立済なので、ここで必ず記録する (daily_relist と同じ record_relist 経路)。
     try:
         from monitor.database import record_relist
-        record_relist(old_item_id, new_item_id, sku, title, END_REASON, True)
+        record_relist(old_item_id, new_item_id, sku, title, END_REASON, True,
+                      source='ebaymag')
     except Exception as _e:  # noqa: BLE001
         logger.error(
             "[ebaymag_relist] relist_history 記録失敗 (cooldown不発リスク) %s→%s: %s",

@@ -10,11 +10,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from monitor.database import get_conn
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────
 # 全定時実行タスクのレジストリ.
@@ -322,6 +325,10 @@ def find_missed_tasks(
     # JST 15:00 以降の completion を翌日扱いにし missed と誤判定. 5/05 修正 (FINDING 5) は
     # データ format の誤認に基づいた逆効果修正だった (実 DB hour 分布 02/11/15/18/22 で確認).
     jst_today = now.strftime('%Y-%m-%d')
+    # in-flight stale 抑制: started_at は JST naive 保存 (log_task_start が datetime.now() を
+    # bind) なので now から直接差引き。UTC shift 不要 (sqlite-timezone.md 例外カラム参照)。
+    # 3h を超える started 行は orphan として in-flight 判定から除外し orphan_task 別経路に委ねる。
+    three_hours_ago = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -332,9 +339,26 @@ def find_missed_tasks(
             """,
             (jst_today,),
         ).fetchall()
+        # in-flight バッチ (status='started', finished_at IS NULL, 直近 3h 以内) の
+        # batch_hour 集合を取得。supplier_sweep 等の長時間バッチが走行中に health_check が
+        # 後続タスク (daily_relist 等) を missed と誤判定 → autofix 二重実行するのを防ぐ。
+        # (6/30 シナリオ: 03:10 supplier_sweep 開始 → 04:00 health_check が daily_relist を
+        #  missed 誤判定 → 04:01 autofix が daily_relist を先行実行 → 04:16 通常バッチも実行
+        #  = 二重実行 14 件の根本原因)
+        inflight_rows = conn.execute(
+            """
+            SELECT DISTINCT batch_hour
+              FROM task_execution_log
+             WHERE status = 'started' AND finished_at IS NULL
+               AND started_at >= ?
+            """,
+            (three_hours_ago,),
+        ).fetchall()
     completed_by_task: dict[str, set[int]] = {}
     for r in rows:
         completed_by_task.setdefault(str(r["task_key"]), set()).add(int(r["batch_hour"]))
+    # in-flight バッチの batch_hour 集合 (slot 窓の突合に使用)
+    inflight_batch_hours: set[int] = {int(r["batch_hour"]) for r in inflight_rows}
 
     def _slot_window(slot: int) -> tuple[int, int]:
         """expected slot の許容窓 [slot, next_slot - 1] を返す.
@@ -358,6 +382,17 @@ def find_missed_tasks(
         actual = completed_by_task.get(task_key, set())
         lo, hi = _slot_window(eh)
         if any(lo <= bh <= hi for bh in actual):
+            continue
+        # in-flight バッチが同一スロット窓内で走行中なら missed にしない。
+        # 例: supplier_sweep (batch_hour=2) が 03:10〜04:16 走行中の場合、
+        # daily_relist (窓=[2,10]) が未到達でも missed と誤判定しない。
+        if any(lo <= bh <= hi for bh in inflight_batch_hours):
+            logger.debug(
+                "[find_missed_tasks] in-flight batch_hour=%s が窓[%d,%d]内のため "
+                "task=%s を missed 抑制",
+                sorted(bh for bh in inflight_batch_hours if lo <= bh <= hi),
+                lo, hi, task_key,
+            )
             continue
         missed.append(e)
     return missed
@@ -394,7 +429,10 @@ def is_completed_or_running_today(task_key: str) -> bool:
 def is_completed_today(task_key: str) -> bool:
     """当日 (JST) に task_key が completed(success=1) か判定。in-flight は含まない。
 
-    Layer2 run-once guard 専用 (task_daily_relist.run_daily_relist 冒頭で使う)。
+    本番未使用 (2026-06-30 時点): run_daily_relist の Layer2 guard は
+    relist_history ベースの _has_relisted_today に移行済 (v85, source 列追加で
+    ebaymag_relist との source 混在を根治)。本関数は test から参照されるため
+    削除せず保持する。
 
     in-flight (started AND finished_at IS NULL) を含めない理由:
     run_task が log_task_start で 'started' を記録した後に run_daily_relist が

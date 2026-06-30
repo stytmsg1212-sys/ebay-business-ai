@@ -6,8 +6,10 @@ Layer1 (汎用 / task_health_autofix):
   autofix_attempt_log に 'skipped' を記録する。
 
 Layer2 (money セーフティネット / task_daily_relist):
-  run_daily_relist 冒頭で is_completed_today を呼び、当日 completed(success=1) なら
-  即 return (relist せず)。in-flight は見ない (自己検出回避)。
+  run_daily_relist 冒頭で _has_relisted_today を呼び、当日 relist_history に
+  source='daily_relist'(or NULL) の success=1 行があれば即 return (relist せず)。
+  2026-06-30 (v85): is_completed_today (task_execution_log ベース) から移行済。
+  in-flight は見ない (自己検出回避)。
 
 Layer3 (プロセス間排他ロック / task_daily_relist):
   Layer2 通過後、cdp_lock.acquire(blocking=False, lock_path=_DAILY_RELIST_LOCK) で
@@ -304,11 +306,23 @@ def _setup_creds(monkeypatch) -> None:
     )
 
 
-def test_layer2_skips_when_completed_today(monkeypatch):
-    """当日 completed → run_daily_relist が即 return (relist 処理を呼ばない)。"""
+def test_layer2_skips_when_relisted_today(monkeypatch):
+    """当日 relist_history に success=1 あり → run_daily_relist が即 return。
+
+    修正2 (2026-06-30): Layer2 guard は task_execution_log → relist_history に置換。
+    autofix 経路でも relist_history には記録されるため二重実行を根治 (6/30 incident)。
+    task_execution_log に completed 行がなくても relist_history があれば skip される。
+    """
     _init()
-    log_id = _log_started()
-    _log_completed(log_id)
+    # autofix が先に 7 件 relist 済を模擬: relist_history に success=1 を記録
+    # task_execution_log には記録しない (autofix の実際の挙動を再現)
+    from monitor.database import get_conn
+    with get_conn() as c:
+        c.execute(
+            """INSERT INTO relist_history
+               (old_item_id, new_item_id, sku, title, end_reason, success)
+               VALUES ('old1', 'new1', 'stock1', 'Test Item', 'Incorrect', 1)"""
+        )
 
     _setup_creds(monkeypatch)
     select_calls: list = []

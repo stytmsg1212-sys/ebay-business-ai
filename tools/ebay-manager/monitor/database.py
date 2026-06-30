@@ -3981,6 +3981,35 @@ def init_db():
             else:
                 logger.warning("[init_db v84] テーブル未作成。次回 init_db で再試行。")
 
+        # v85 (2026-06-30 Codex M1 / relist source 列):
+        # relist_history に source TEXT DEFAULT 'daily_relist' を追加。
+        # _has_relisted_today が source 無差別に当日 success=1 を数えていたため、
+        # ebaymag_relist が daily_relist より先に実行されると daily_relist が当日恒久
+        # skip する silent-skip リスク (2026-04-25 事故クラス) を根治。
+        # 既存行: ALTER TABLE ADD COLUMN の DEFAULT により 'daily_relist' を返す。
+        # Q2 冪等: try/except OperationalError でラップ、DROP/DELETE なし。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver < 85:
+            try:
+                conn.execute(
+                    "ALTER TABLE relist_history "
+                    "ADD COLUMN source TEXT DEFAULT 'daily_relist'"
+                )
+            except sqlite3.OperationalError:
+                pass  # 列が既に存在 = 冪等
+            _v85_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(relist_history)"
+                ).fetchall()
+            }
+            if "source" in _v85_cols:
+                conn.execute("PRAGMA user_version = 85")
+                logger.info("[init_db v85] relist_history.source 追加, schema_ver 85")
+            else:
+                logger.warning(
+                    "[init_db v85] relist_history.source 追加失敗。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -6232,15 +6261,24 @@ def update_ebay_listing_timing(ebay_item_id: str, time_left_seconds: Optional[in
 def record_relist(old_item_id: str, new_item_id: Optional[str],
                   sku: Optional[str], title: Optional[str],
                   end_reason: str, success: bool,
-                  error_message: Optional[str] = None) -> int:
-    """relist_history に履歴を記録。cooldown判定に利用。Returns: row id"""
+                  error_message: Optional[str] = None,
+                  source: str = 'daily_relist') -> int:
+    """relist_history に履歴を記録。cooldown 判定に利用。Returns: row id
+
+    source: 書き込み経路を区別する (v85, 2026-06-30 Codex M1)。
+      'daily_relist' (default): 深夜バッチ/autofix 経路 (daily_relist.py)
+      'ebaymag'               : eBaymag 窓ゼロ relist 経路 (task_ebaymag_relist.py)
+    _has_relisted_today は source='daily_relist' or NULL のみを参照し、
+    ebaymag_relist が先行しても daily_relist を誤 skip しない。
+    """
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO relist_history
-               (old_item_id, new_item_id, sku, title, end_reason, success, error_message)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (old_item_id, new_item_id, sku, title, end_reason, success,
+                error_message, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (old_item_id, new_item_id, sku, title, end_reason,
-             1 if success else 0, error_message),
+             1 if success else 0, error_message, source),
         )
         return cur.lastrowid
 

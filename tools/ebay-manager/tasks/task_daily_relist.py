@@ -52,7 +52,6 @@ from monitor.credentials import get_ebay_credentials, ebay_credentials_ok  # noq
 from monitor.ebay_client import (  # noqa: E402
     end_item, relist_item, verify_relist_item,
 )
-from monitor.task_execution_log import is_completed_today  # noqa: E402
 from monitor import cdp_lock  # noqa: E402
 
 # プロセス間排他ロック (Layer3 / 並行二重 relist 防止)。
@@ -301,10 +300,11 @@ def inherit_listing_on_relist(
         note_rows = cur_ln.rowcount
 
         # 履歴記録. success は呼出側責任で渡されること (default True、precondition 参照).
+        # source='daily_relist' を明示 (v85): _has_relisted_today の source 絞りに対応。
         conn.execute(
             """INSERT INTO relist_history
-               (old_item_id, new_item_id, sku, title, end_reason, success)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (old_item_id, new_item_id, sku, title, end_reason, success, source)
+               VALUES (?, ?, ?, ?, ?, ?, 'daily_relist')""",
             (old_item_id, new_item_id, sku, title, end_reason, 1 if success else 0),
         )
 
@@ -316,6 +316,39 @@ def inherit_listing_on_relist(
         "note_rows": note_rows,
         "keyword_watch_rows": keyword_watch_rows,
     }
+
+
+def _has_relisted_today() -> bool:
+    """当日 (JST) に daily_relist 経路の relist_history に success=1 行があるか確認。
+
+    ground truth ガード (Layer2 money セーフティネット):
+    2026-06-30 実測: autofix が daily_relist を 04:01 に再実行したが
+    task_execution_log に batch_hour=4 の daily_relist 行は出現しなかった
+    (completion-only ガードがすり抜けた)。relist_history は通常バッチ・autofix
+    両経路が relist 毎に必ず書く authoritative record のため、
+    task_execution_log の記録状態に依存しないガードとして採用。
+
+    relist_history.created_at は SQL DEFAULT CURRENT_TIMESTAMP = UTC 保存のため
+    DATE(created_at, '+9 hours') で JST 変換する (sqlite-timezone.md 準拠)。
+
+    自己検出回避: 本ガードは run_daily_relist の冒頭 (relist 本体・INSERT より前) で
+    評価するため、現在の run はまだ relist_history に INSERT していない。
+    よって初回は 0 件で通常実行し、2 回目 (autofix or 通常バッチ重複) は
+    前回分 > 0 件で skip される。
+
+    source 絞り (v85, 2026-06-30 Codex M1): source='daily_relist' または NULL の
+    行のみを対象とする。ebaymag_relist (source='ebaymag') が先行しても
+    daily_relist は skip されない。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM relist_history
+               WHERE DATE(created_at, '+9 hours') = DATE('now', '+9 hours')
+                 AND success = 1
+                 AND (source IS NULL OR source = 'daily_relist')
+               LIMIT 1""",
+        ).fetchone()
+    return row is not None
 
 
 def _notify_secretary(results: list[dict], summary: str) -> None:
@@ -471,20 +504,26 @@ def run_daily_relist(config: dict) -> dict:
     sleep_between = float(task_cfg.get("sleep_between_sec", 3))
     cooldown_days = int(task_cfg.get("cooldown_days", 30))  # 2026-06-07 config 化 (既定30、現行10)
 
-    # run-once guard (Layer2 money セーフティネット):
-    # 当日すでに daily_relist が completed(success=1) なら即 return (relist せず)。
-    # completed のみを見て in-flight (started/NULL) は見ない — 自己検出回避。
-    # 理由: run_task が log_task_start で 'started' を記録した後に本関数が呼ばれるため、
-    # in-flight を含めると 1 回目の実行が自己 skip してしまう。
-    if is_completed_today("daily_relist"):
+    # run-once guard (Layer2 money セーフティネット — ground truth ベース):
+    # relist_history に当日 source='daily_relist'(or NULL) の success=1 行があれば
+    # 即 return (relist せず)。
+    # 2026-06-30 実測: autofix が daily_relist を 04:01 に再実行したが
+    # task_execution_log に batch_hour=4 の daily_relist 行は出現しなかった。
+    # relist_history は通常バッチ・autofix 両経路が relist 毎に必ず書く authoritative
+    # record のため、task_execution_log の記録状態に依存しないガードとして採用。
+    # source 列 (v85, 2026-06-30): ebaymag_relist (source='ebaymag') を除外し、
+    # daily_relist 経路のみで当日判定する。
+    # 自己検出回避: 本ガードは relist 本体・INSERT より前に評価するため、
+    # 現在の run はまだ relist_history に書いておらず初回は 0 件で通常実行される。
+    if _has_relisted_today():
         logger.info(
-            "[daily_relist] run-once guard: 当日すでに completed(success=1) が記録済。"
-            "autofix 等による二重起動を阻止。"
+            "[daily_relist] relist_history ガード: 当日 relist_history に success=1 が記録済。"
+            "autofix 等による二重起動を阻止 (ground truth ベース)。"
         )
         return {
             "success": True,
             "skipped": True,
-            "reason": "already completed today (run-once guard)",
+            "reason": "already relisted today (relist_history guard)",
             "processed": 0,
         }
 
