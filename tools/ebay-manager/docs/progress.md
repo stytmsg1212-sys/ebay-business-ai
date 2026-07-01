@@ -2,10 +2,63 @@
 title: eBay Manager 実装進捗レポート
 version: 4.2
 created: 2026-04-07
-last_updated: 2026-06-11
+last_updated: 2026-07-02
 ---
 
 # eBay Manager 実装進捗レポート
+
+---
+
+## W212 メルカリショップ SKU 判別 (2026-07-02)
+
+### ゴール
+`ebayme_<英数字>` SKU をメルカリショップとして扱い、URL 生成・在庫判定 config の両方を正しく振り分ける。
+
+### 実装内容
+- [x] `sku_mapping_manager.py`: `is_mercari_shops_item_id(item_id)` 追加 (isdigit 逆転判定)
+- [x] `sku_mapping_manager.py`: `generate_url("ebayme_", alpha_id)` → ショップ URL
+- [x] `monitor/scrapers.py` `prepare_batch_items`: prefix ループ前に ebayMS_ 優先分岐
+- [x] `monitor/database.py` `find_site_config_by_sku`: ebayme_+英字 → ebayMS_ 設定を返す
+- [x] `monitor/database.py` `_build_source_url_from_sku`: ショップ URL 生成に対応
+- [x] `tests/test_mercari_shops_sku.py`: 20件 unit test (新規)
+- [x] `scripts/fix_ebayme_shops_source_url_2026_07_02.py`: one-shot DB 修正スクリプト実行済
+
+### スコア自己評価
+- **完成度**: 5/5
+- **テスト実施**: 20件新規 PASS / 全体 230 PASS (1 FAIL は pre-existing v83/v84 migration debt)
+- **仕様準拠**: 全受け入れ基準充足・既存 107件 ebayme_数字は無影響 regression 確認済
+
+### T4 DB 修正 before/after
+- ebay_item_id: 357267376383
+- sku: ebayme_2JNdrTRFyn3rAX2enYZwkZ
+- **修正1 (初版 raw UPDATE)**: ebay_listings.source_url NULL → shops URL
+- **修正2 (再実装、update_ebay_listing_sku 経由)**:
+  初版 raw UPDATE では monitored_items 側が壊れた通常メルカリ URL のまま残り、在庫チェック(`get_active_items()` = monitored_items 読み)が誤 URL をスクレイプする潜在バグをレビューで検出。one-shot を raw UPDATE から `update_ebay_listing_sku(eid, sku)` に書き直して再実行。
+  - ebay_listings.source_url: shops URL (維持)
+  - ebay_listings.source_status: 'ページなし' → 'unknown' (リセット)
+  - ebay_listings.source_last_checked / source_out_of_stock_since: NULL (リセット)
+  - monitored_items.source_url: 通常メルカリ 404 URL → shops URL
+  - monitored_items.site_config_id: 1 (ebayme_) → 2 (ebayMS_)
+
+### 再発防止 (将来 UI 経路)
+`tabs/tab_product_management.py` の SKU 保存ハンドラは差分検出時のみ `update_ebay_listing_sku(eid, sku)` を呼び、内部で `_build_source_url_from_sku` (T2c で ebayme_+英字 → shops URL 対応済) → `_sync_monitored_items_sku` で monitored_items まで自動同期。UI 経由での ebayme_<英字> 保存も両テーブル整合を保つ。
+
+### 追加修正 (code-reviewer HIGH-1/HIGH-2/MEDIUM ラウンド 2)
+- **HIGH-1**: 初版 `is_mercari_shops_item_id = not item_id.isdigit()` は `m<数字>` (実 DB `ebayme_m95434266490` 等) をショップ誤判定。regex `m?\d+` fullmatch で通常メルカリ除外に変更、URL 形式ベース判定に (DB 件数依存の docstring も削除)。
+- **HIGH-2**: `tests/test_mercari_shops_sku.py` に m-form regression test 追加 (12 件): `is_mercari_shops_item_id` / `generate_url` / `_build_source_url_from_sku` / `prepare_batch_items` の 4 経路で `m<数字>` = 通常メルカリを機械的に立証。旧実装だと新テスト 3 件が FAIL することも確認。
+- **MEDIUM**: `find_site_config_by_url` を longest-keyword-match に変更。`mercari` (id=1) と `jp.mercari.com/shops` (id=2) の DB 順先頭一致で shops URL が通常メルカリ設定に誤マッチしていた (仕入先候補在庫 gate で shops 売切見逃し → 売切候補採用リスク)。longest-keyword 優先で `jp.mercari.com/shops` が `mercari` に勝つ。他サイトは単一マッチなので挙動不変。
+- **fixtures**: test_w139fix_coverage_ebay_item_id.py / test_w139_monitor_coverage.py の `ebayme_<英字混入>` テスト fixture (`ebayme_NEW0001` 等 26 個所) を実 SKU 形式 `ebayme_<digits>` に置換 (K2 surgical、テスト意図保持)。
+- **live 4 経路確認**: `ebayme_m95434266490` が全 4 経路で通常メルカリ扱い / `ebayme_2JN...` は全経路で shops 扱い。実 DB `ebayme_m95434266490` の site_config_id=1 のまま (データ修正不要、is_active=0 の凍結行)。
+
+### 追加修正 (Codex HIGH/MEDIUM ラウンド 3、2026-07-02)
+- **Codex HIGH (二重 m 修正)**: 通常メルカリ URL 生成が `ebayme_m<数字>` に対し `.../item/mm<数字>` (404) を返していた。`generate_url` と `_build_source_url_from_sku` の通常メルカリ経路で「pattern が `m{item_id}` かつ item_id が `m<全数字>`」なら m を 1 個剥がす分岐を追加。`ebayme_95434266490` (m 無し既存 107 件形式) は挙動不変で regression 無し。
+- **Codex MEDIUM (残り 2 経路 longest-match 化)**:
+  - `monitor/scrapers.py _check_via_site_configs`: `rows` を `len(url_keyword)` desc sort してから走査 (W182 仕入先候補在庫 gate で shops 候補売切見逃し防止、money-direct)。
+  - `monitor/scrapers.py prepare_batch_items` path-2 fallback: `configs_by_prefix.values()` を同様に sort してから `kw in source_url` 判定 (一貫性、shops URL がここに落ちた際の保険)。
+- **test 追加** (計 36 件): `generate_url("ebayme_", "m95434266490")` == `.../item/m95434266490` / `generate_url("ebayme_", "95434266490")` == 同値 (regression) / `_build_source_url_from_sku` 同経路 / `_check_via_site_configs` shops URL がメルカリショップ設定 (sold_out=売り切れ) を選ぶこと (monkeypatch で `_check_with_httpx` を差し替えて site 選択部分単体確認)。
+- **live 確認**: 4 経路 + `_check_via_site_configs` + path-2 fallback の全 6 経路で `ebayme_m95434266490` → 単一 m URL `.../item/m95434266490` + メルカリ設定、`ebayme_2JN...` → shops URL + メルカリショップ設定。
+
+**Status**: 完了
 
 ---
 

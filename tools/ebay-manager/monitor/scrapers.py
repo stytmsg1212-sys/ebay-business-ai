@@ -585,14 +585,35 @@ def prepare_batch_items(items: list[dict], configs_by_prefix: dict) -> list[dict
             dropped_no_url += 1
             continue
         cfg = None
-        # 1) SKU prefix 一致 (従来の無在庫 ebay**_ SKU)
-        for prefix, c in configs_by_prefix.items():
-            if prefix and sku.startswith(prefix):
-                cfg = c
-                break
-        # 2) W183 fallback: prefix 不一致は source_url の url_keyword で site 解決
+        # 0) メルカリショップ判定: ebayme_ + 英字含む item_id は ebayMS_ 設定を優先
+        #    (prefix ループより先に評価し、通常メルカリ設定への誤マッチを防ぐ)
+        if sku.startswith("ebayme_"):
+            try:
+                from sku_mapping_manager import is_mercari_shops_item_id
+                if is_mercari_shops_item_id(sku[len("ebayme_"):]):
+                    cfg = configs_by_prefix.get("ebayMS_")
+                    if cfg is None:
+                        # ebayMS_ 設定が未登録 = Q0 silent skip 防止でログ記録後 drop
+                        dropped_no_config.append(
+                            {"id": item.get("id"), "sku": sku, "url": source_url}
+                        )
+                        continue
+            except ImportError:
+                pass
+        # 1) SKU prefix 一致 (従来の無在庫 ebay**_ SKU、ショップ判定済みは skip)
         if cfg is None:
-            for c in configs_by_prefix.values():
+            for prefix, c in configs_by_prefix.items():
+                if prefix and sku.startswith(prefix):
+                    cfg = c
+                    break
+        # 2) W183 fallback: prefix 不一致は source_url の url_keyword で site 解決
+        #    最長一致 (Codex MEDIUM 2026-07-02): 'jp.mercari.com/shops' が
+        #    'mercari' に勝ち、shops URL がここに落ちた場合も正しい設定を得る
+        #    (他 EC は keyword 相互非包含で挙動不変)。
+        if cfg is None:
+            for c in sorted(configs_by_prefix.values(),
+                            key=lambda x: len(x.get("url_keyword", "") or ""),
+                            reverse=True):
                 kw = c.get("url_keyword", "")
                 if kw and kw in source_url:
                     cfg = c
@@ -781,7 +802,14 @@ def _check_yahoo_shopping_availability(url: str, timeout_sec: int, checked_at: s
 
 
 def _check_via_site_configs(url: str, timeout_sec: int, checked_at: str) -> dict:
-    """site_configs から URL に一致する site を引いて httpx 判定 (W182、mercari / fril / 他)。"""
+    """site_configs から URL に一致する site を引いて httpx 判定 (W182、mercari / fril / 他).
+
+    2026-07-02 Codex MEDIUM: url_keyword の **最長一致** で site を選ぶ。DB 順の
+    先頭一致だと 'mercari' (通常メルカリ、sold_out='売り切れました') が
+    'jp.mercari.com/shops' より先にヒットして shops URL の売切「売り切れ」を
+    見逃す → 売切候補採用リスク (money-direct)。他サイト (fril / paypay /
+    yahoo / rakuten / amazon 等) は keyword が相互非包含なので挙動不変。
+    """
     try:
         from monitor.database import get_conn
         with get_conn() as conn:
@@ -791,7 +819,9 @@ def _check_via_site_configs(url: str, timeout_sec: int, checked_at: str) -> dict
             ).fetchall()
     except Exception as e:
         return {'status': 'unknown', 'signal': f'site_configs read error: {type(e).__name__}', 'checked_at': checked_at}
-    for r in rows:
+    # longest url_keyword が勝つよう desc sort (Codex MEDIUM 2026-07-02)
+    rows_sorted = sorted(rows, key=lambda r: len(r[1] or ""), reverse=True)
+    for r in rows_sorted:
         if r[1] and r[1] in url:
             in_stock = [x for x in (r[2], r[3]) if x]
             sold_out = [r[4]] if r[4] else []

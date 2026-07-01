@@ -97,8 +97,8 @@ class TestPhantomGapFixed:
         """T1 核心: listing.sku=NEW / monitored.sku=OLD でも ebay_item_id
         一致なら coverable に出ない (旧 m.sku=l.sku 結合なら phantom gap 化)."""
         from tasks.task_ensure_monitor_coverage import find_coverage_gaps
-        _seed_listing("E_PH_1", "ebayme_NEW0001")          # SKU 編集後
-        _seed_monitored("E_PH_1", "ebayme_OLD0001")        # 旧 sku のまま
+        _seed_listing("E_PH_1", "ebayme_10010001")          # SKU 編集後
+        _seed_monitored("E_PH_1", "ebayme_10020001")        # 旧 sku のまま
         gaps = find_coverage_gaps()
         assert not any(c["ebay_item_id"] == "E_PH_1"
                        for c in gaps["coverable"]), \
@@ -109,8 +109,8 @@ class TestPhantomGapFixed:
         """ebay_item_id 空の monitored 行は『カバレッジなし』扱い
         (= backfill で充填すべき対象。新 query が空 ID を数えない明示確認)."""
         from tasks.task_ensure_monitor_coverage import find_coverage_gaps
-        _seed_listing("E_PH_2", "ebayme_pn000002")
-        _seed_monitored("", "ebayme_pn000002")  # ebay_item_id 空
+        _seed_listing("E_PH_2", "ebayme_20000002")
+        _seed_monitored("", "ebayme_20000002")  # ebay_item_id 空
         gaps = find_coverage_gaps()
         assert any(c["ebay_item_id"] == "E_PH_2"
                    for c in gaps["coverable"]), \
@@ -124,7 +124,7 @@ class TestTrueGapStillDetected:
         (誤検知除去で本物の盲点まで消していないこと = anti-silent-skip)."""
         from tasks.task_ensure_monitor_coverage import (
             find_coverage_gaps, run_ensure_monitor_coverage)
-        _seed_listing("E_TG_1", "ebayme_truegap01")
+        _seed_listing("E_TG_1", "ebayme_30000001")
         gaps = find_coverage_gaps()
         assert any(c["ebay_item_id"] == "E_TG_1"
                    for c in gaps["coverable"])
@@ -142,8 +142,8 @@ class TestSkuEditFollowThrough:
         from monitor.database import (
             upsert_item, update_ebay_listing_sku, build_source_url,
             find_site_config_by_sku)
-        _seed_listing("E_SE_1", "ebayme_old00001")
-        upsert_item(sku="ebayme_old00001", ebay_item_id="E_SE_1", title="x")
+        _seed_listing("E_SE_1", "ebayme_40000001")
+        upsert_item(sku="ebayme_40000001", ebay_item_id="E_SE_1", title="x")
         update_ebay_listing_sku("E_SE_1", "ebayyh_new00001")
         m = _mon_row("E_SE_1")
         assert m["sku"] == "ebayyh_new00001", \
@@ -157,14 +157,14 @@ class TestSkuEditFollowThrough:
         from monitor.database import (
             upsert_ebay_listing, upsert_item, get_conn,
             _build_source_url_from_sku)
-        upsert_ebay_listing("E_SE_2", "ebayme_old00002", title="x",
+        upsert_ebay_listing("E_SE_2", "ebayme_40000002", title="x",
                             quantity_ebay=1)
-        upsert_item(sku="ebayme_old00002", ebay_item_id="E_SE_2", title="x")
+        upsert_item(sku="ebayme_40000002", ebay_item_id="E_SE_2", title="x")
         # eBay 側 SKU 変更を ebay_sync が検知 (再 upsert で sku_changed 分岐)
-        upsert_ebay_listing("E_SE_2", "ebayme_new00002", title="x",
+        upsert_ebay_listing("E_SE_2", "ebayme_40000012", title="x",
                             quantity_ebay=1)
         m = _mon_row("E_SE_2")
-        assert m["sku"] == "ebayme_new00002", \
+        assert m["sku"] == "ebayme_40000012", \
             f"ebay_sync 経路で monitored 未追従: {m}"
         # HIGH-1 修正後: monitored は ebay_listings.source_url を mirror =
         # 本番生成器形 (_build_source_url_from_sku)。両者一致を確認。
@@ -172,15 +172,15 @@ class TestSkuEditFollowThrough:
             ls = c.execute("SELECT source_url FROM ebay_listings "
                            "WHERE ebay_item_id='E_SE_2'").fetchone()[0]
         assert m["source_url"] == ls == \
-            _build_source_url_from_sku("ebayme_new00002")
+            _build_source_url_from_sku("ebayme_40000012")
 
     def test_followthrough_no_monitored_row_is_noop(self, tmp_db):
         """T6b: 監視台帳未登録 listing の SKU 編集は no-op (例外を投げない。
         次 batch の ensure_monitor_coverage が拾う自己修復 = Q0 silent でない)."""
         from monitor.database import update_ebay_listing_sku
-        _seed_listing("E_SE_3", "ebayme_old00003")
+        _seed_listing("E_SE_3", "ebayme_40000003")
         # monitored 行なし。例外なく完了すること
-        update_ebay_listing_sku("E_SE_3", "ebayme_new00003")
+        update_ebay_listing_sku("E_SE_3", "ebayme_40000013")
         assert _mon_row("E_SE_3") is None  # 追従対象なし = no-op
 
     def test_followthrough_keyed_by_ebay_item_id_not_sku(self, tmp_db):
@@ -189,13 +189,13 @@ class TestSkuEditFollowThrough:
         (注: 同 no-stock SKU = 同 source_url は upsert_item が 1 行集約する
         仕様のため、独立性検証は別 sku の 2 listing で行う)."""
         from monitor.database import upsert_item, update_ebay_listing_sku
-        _seed_listing("E_SE_A", "ebayme_distinctA1")
-        _seed_listing("E_SE_B", "ebayme_distinctB1")  # 別 sku 別 listing
-        upsert_item(sku="ebayme_distinctA1", ebay_item_id="E_SE_A", title="a")
-        upsert_item(sku="ebayme_distinctB1", ebay_item_id="E_SE_B", title="b")
-        update_ebay_listing_sku("E_SE_A", "ebayme_changedA1")
-        assert _mon_row("E_SE_A")["sku"] == "ebayme_changedA1"
-        assert _mon_row("E_SE_B")["sku"] == "ebayme_distinctB1", \
+        _seed_listing("E_SE_A", "ebayme_50000001")
+        _seed_listing("E_SE_B", "ebayme_50000002")  # 別 sku 別 listing
+        upsert_item(sku="ebayme_50000001", ebay_item_id="E_SE_A", title="a")
+        upsert_item(sku="ebayme_50000002", ebay_item_id="E_SE_B", title="b")
+        update_ebay_listing_sku("E_SE_A", "ebayme_51000001")
+        assert _mon_row("E_SE_A")["sku"] == "ebayme_51000001"
+        assert _mon_row("E_SE_B")["sku"] == "ebayme_50000002", \
             "ebay_item_id キーのはずが別 listing の monitored 行を巻き込んだ"
 
 
@@ -203,29 +203,29 @@ class TestBackfillResolution:
     def test_resolve_active_single_match(self, tmp_db):
         """T3a: source_url が active listing 1 件に一致 → 解決."""
         from monitor.database import get_conn, build_source_url
-        url = build_source_url("ebayme_bk000001")
-        _seed_listing("E_BK_1", "ebayme_bk000001")
+        url = build_source_url("ebayme_60000001")
+        _seed_listing("E_BK_1", "ebayme_60000001")
         with get_conn() as c:
-            eid, reason = bf._resolve_ebay_item_id(c, url, "ebayme_bk000001")
+            eid, reason = bf._resolve_ebay_item_id(c, url, "ebayme_60000001")
         assert eid == "E_BK_1", reason
 
     def test_resolve_multiple_match_unresolved(self, tmp_db):
         """T3b: 同 source_url の active listing 複数 → 一意決定不能 unresolved
         (推測で誤 ID 充填しない = Q0)."""
         from monitor.database import get_conn, build_source_url
-        url = build_source_url("ebayme_bk000002")
-        _seed_listing("E_BK_2a", "ebayme_bk000002", source_url=url)
-        _seed_listing("E_BK_2b", "ebayme_bk000002", source_url=url)
+        url = build_source_url("ebayme_60000002")
+        _seed_listing("E_BK_2a", "ebayme_60000002", source_url=url)
+        _seed_listing("E_BK_2b", "ebayme_60000002", source_url=url)
         with get_conn() as c:
-            eid, reason = bf._resolve_ebay_item_id(c, url, "ebayme_bk000002")
+            eid, reason = bf._resolve_ebay_item_id(c, url, "ebayme_60000002")
         assert eid is None and "複数" in reason
 
     def test_resolve_recompute_from_sku_when_url_missing(self, tmp_db):
         """T3c: monitored.source_url 無し → sku から build_source_url 再計算."""
         from monitor.database import get_conn
-        _seed_listing("E_BK_3", "ebayme_bk000003")
+        _seed_listing("E_BK_3", "ebayme_60000003")
         with get_conn() as c:
-            eid, reason = bf._resolve_ebay_item_id(c, None, "ebayme_bk000003")
+            eid, reason = bf._resolve_ebay_item_id(c, None, "ebayme_60000003")
         assert eid == "E_BK_3", reason
 
     def test_resolve_no_match_unresolved(self, tmp_db):
@@ -233,14 +233,14 @@ class TestBackfillResolution:
         from monitor.database import get_conn, build_source_url
         with get_conn() as c:
             eid, reason = bf._resolve_ebay_item_id(
-                c, build_source_url("ebayme_nomatch9"), "ebayme_nomatch9")
+                c, build_source_url("ebayme_60000099"), "ebayme_60000099")
         assert eid is None
 
     def test_backfill_idempotent_filled_excluded(self, tmp_db):
         """T4: ebay_item_id 充填済行は対象クエリに入らない (冪等)."""
         from monitor.database import get_conn
-        _seed_listing("E_BK_5", "ebayme_bk000005")
-        _seed_monitored("E_BK_5", "ebayme_bk000005")  # 既に ID あり
+        _seed_listing("E_BK_5", "ebayme_60000005")
+        _seed_monitored("E_BK_5", "ebayme_60000005")  # 既に ID あり
         with get_conn() as c:
             targets = c.execute(
                 "SELECT id FROM monitored_items "
@@ -253,31 +253,31 @@ class TestCleanupGuards:
         """T7a: active listing が source_url で紐づく NULL 行は保護
         (G2 = W139 原事故 監視対象誤減 の再現防止 核心ガード)."""
         from monitor.database import get_conn, build_source_url
-        url = build_source_url("ebayme_cl000001")
-        _seed_listing("E_CL_1", "ebayme_cl000001", source_url=url)
+        url = build_source_url("ebayme_70000001")
+        _seed_listing("E_CL_1", "ebayme_70000001", source_url=url)
         with get_conn() as c:
-            assert cl._has_active_listing(c, url, "ebayme_cl000001") is True
+            assert cl._has_active_listing(c, url, "ebayme_70000001") is True
 
     def test_orphan_row_has_no_active_listing(self, tmp_db):
         """T7b: どの active listing にも紐づかない NULL 行は孤立判定."""
         from monitor.database import get_conn, build_source_url
         with get_conn() as c:
             assert cl._has_active_listing(
-                c, build_source_url("ebayme_orphan99"),
-                "ebayme_orphan99") is False
+                c, build_source_url("ebayme_70000099"),
+                "ebayme_70000099") is False
 
     def test_ended_listing_does_not_protect(self, tmp_db):
         """T7c: ended listing しか無い source_url は保護されない (孤立扱い)."""
         from monitor.database import get_conn, build_source_url
-        url = build_source_url("ebayme_cl000003")
-        _seed_listing("E_CL_3", "ebayme_cl000003", is_ended=1, source_url=url)
+        url = build_source_url("ebayme_70000003")
+        _seed_listing("E_CL_3", "ebayme_70000003", is_ended=1, source_url=url)
         with get_conn() as c:
-            assert cl._has_active_listing(c, url, "ebayme_cl000003") is False
+            assert cl._has_active_listing(c, url, "ebayme_70000003") is False
 
     def test_cleanup_only_demotes_not_deletes_idempotent(self, tmp_db):
         """T8: is_active=0 降格のみ (DELETE 禁止)、is_active=0 は再対象外."""
         from monitor.database import get_conn
-        _seed_monitored("", "ebayme_cl000004", is_active=1)  # 孤立
+        _seed_monitored("", "ebayme_70000004", is_active=1)  # 孤立
         with get_conn() as c:
             row = c.execute(
                 "SELECT id FROM monitored_items "
@@ -326,9 +326,9 @@ class TestSourceUrlGeneratorParityHigh1:
         from monitor.database import (
             upsert_item, update_ebay_listing_sku, get_conn,
             _build_source_url_from_sku)
-        _seed_listing("E_H1", "ebayme_old11111")
-        upsert_item(sku="ebayme_old11111", ebay_item_id="E_H1", title="x")
-        update_ebay_listing_sku("E_H1", "ebayme_new11111")
+        _seed_listing("E_H1", "ebayme_80000001")
+        upsert_item(sku="ebayme_80000001", ebay_item_id="E_H1", title="x")
+        update_ebay_listing_sku("E_H1", "ebayme_80000011")
         with get_conn() as c:
             ls = c.execute("SELECT source_url FROM ebay_listings "
                            "WHERE ebay_item_id='E_H1'").fetchone()[0]
@@ -337,7 +337,7 @@ class TestSourceUrlGeneratorParityHigh1:
             f"monitored が listing と不一致 (HIGH-1 再発): "
             f"mon={m['source_url']} listing={ls}")
         assert m["source_url"] == _build_source_url_from_sku(
-            "ebayme_new11111"), "本番生成器形で mirror されていない"
+            "ebayme_80000011"), "本番生成器形で mirror されていない"
 
     def test_backfill_resolves_mercari_cross_generator(self, tmp_db):
         """legacy NULL 行が build_source_url 形で source_url 保存されていても、
@@ -379,20 +379,20 @@ class TestCodexRound1HighFixes:
         from tabs.tab_product_management import _save_product_data
         from monitor.database import (
             upsert_item, get_conn, _build_source_url_from_sku)
-        _seed_listing("E_C1", "ebayme_pmold01")
-        upsert_item(sku="ebayme_pmold01", ebay_item_id="E_C1", title="x")
+        _seed_listing("E_C1", "ebayme_90000001")
+        upsert_item(sku="ebayme_90000001", ebay_item_id="E_C1", title="x")
         _save_product_data(ebay_item_id="E_C1",
-                           editing={"sku": "ebayme_pmnew01"},
+                           editing={"sku": "ebayme_90000011"},
                            competitors=[], recalc_breakeven=False, config={})
         with get_conn() as c:
             ls_sku, ls_url = c.execute(
                 "SELECT sku, source_url FROM ebay_listings "
                 "WHERE ebay_item_id='E_C1'").fetchone()
         m = _mon_row("E_C1")
-        assert ls_sku == "ebayme_pmnew01"
-        assert ls_url == _build_source_url_from_sku("ebayme_pmnew01"), \
+        assert ls_sku == "ebayme_90000011"
+        assert ls_url == _build_source_url_from_sku("ebayme_90000011"), \
             "source_url 未再構築 (raw UPDATE 復活?)"
-        assert m["sku"] == "ebayme_pmnew01", \
+        assert m["sku"] == "ebayme_90000011", \
             "monitored 未追従 = HIGH-1 silent gap 再発"
         assert m["source_url"] == ls_url
 
@@ -441,8 +441,8 @@ class TestCodexRound1HighFixes:
     # --- HIGH-2: is_active=0 monitored 行が誤って「監視済」扱い ---
     def test_inactive_monitored_row_not_counted_as_covered(self, tmp_db):
         from tasks.task_ensure_monitor_coverage import find_coverage_gaps
-        _seed_listing("E_C2", "ebayme_inact01")
-        _seed_monitored("E_C2", "ebayme_inact01", is_active=0)
+        _seed_listing("E_C2", "ebayme_95000001")
+        _seed_monitored("E_C2", "ebayme_95000001", is_active=0)
         gaps = find_coverage_gaps()
         assert any(c["ebay_item_id"] == "E_C2"
                    for c in gaps["coverable"]), \

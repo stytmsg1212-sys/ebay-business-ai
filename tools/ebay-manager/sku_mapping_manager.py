@@ -210,15 +210,71 @@ def reset_to_defaults() -> bool:
     return save_mappings(DEFAULT_MAPPINGS.copy())
 
 
+# 通常メルカリ (フリマアプリ) の item_id 形式:
+#   - "<digits>"    例: "123456"        (先頭 m 無し、eBay Manager 主流表記)
+#   - "m<digits>"   例: "m95434266490"  (URL 側の m を SKU に含めた歴史的表記)
+# 両者とも `jp.mercari.com/item/m<...>` に到達する通常メルカリ経路。
+# 上記のいずれの形式にも該当しない (英字を含む・m の後が非数字・記号あり)
+# 場合をメルカリショップ (`jp.mercari.com/shops/product/<英数字>`) と判定する。
+# 分類は URL 形式ベースで、DB 件数分布には依存させない (件数依存にすると将来
+# のデータ増減で判定が壊れる、K0)。
+_MERCARI_REGULAR_ITEM_ID_RE = re.compile(r'm?\d+')
+
+
+def is_mercari_shops_item_id(item_id: str) -> bool:
+    """item_id がメルカリショップ形式かを判定 (通常メルカリでは False)。
+
+    判別ロジック (URL 形式ベース、DB 件数非依存):
+    - 通常メルカリ 一致パターン: `<数字のみ>` または `m<数字のみ>` (fullmatch)
+    - 上記に該当しない非空文字列 = メルカリショップ (英字を含む、記号入り 等)
+    - 空文字列 = False (呼び元の SKU rule 準拠、shops URL 生成に流さない)
+
+    Args:
+        item_id: SKU から "ebayme_" を除いた残部
+    Returns:
+        True  = メルカリショップ
+        False = 通常メルカリ / 空文字列
+    """
+    if not item_id:
+        return False
+    return _MERCARI_REGULAR_ITEM_ID_RE.fullmatch(item_id) is None
+
+
 def generate_url(prefix: str, item_id: str) -> Optional[str]:
-    """SKU プリフィックスと item_id から URL を生成"""
+    """SKU プリフィックスと item_id から URL を生成。
+
+    ebayme_ (通常メルカリ):
+      - item_id 全数字 (`123456`) / `m<数字>` (`m95434266490`) の 2 形式を受理。
+      - URL 側は必ず `.../item/m<数字>` = 単一 m。先頭 m があれば剥がしてから
+        pattern `m{item_id}` に差し込むことで二重 m (`mm95434266490` = 404)
+        を防ぐ (Codex HIGH 2026-07-02)。
+      - 英字を含む場合 (`2JN...`) はメルカリショップ (`.../shops/product/<id>`)。
+    他 prefix (ebayMS_ / ebayyh_ / ebayrm_ 等) は変更なし。
+    """
     mappings = load_mappings()
+
+    # ebayme_ + 英字含む item_id = メルカリショップ
+    if prefix == "ebayme_" and is_mercari_shops_item_id(item_id):
+        shops_cfg = mappings.get("ebayMS_")
+        if shops_cfg:
+            pattern = shops_cfg.get("pattern", "{item_id}")
+            url_part = pattern.format(item_id=item_id)
+            return shops_cfg.get("common_url", "") + url_part
+        # ebayMS_ エントリ不在時の定数 fallback (後方互換)
+        return f"https://jp.mercari.com/shops/product/{item_id}"
 
     if prefix not in mappings:
         return None
 
     config = mappings[prefix]
     pattern = config.get("pattern", "{item_id}")
+    # 通常メルカリの二重 m 防止: pattern `m{item_id}` に item_id `m<数字>` を
+    # そのまま差し込むと `mm<数字>` = 404。先頭 m + 残り全数字 の時のみ剥がす
+    # (`m95434266490` → `95434266490`)。`95434266490` はそのまま (剥がすもの
+    # なし = 挙動不変)。他 pattern は影響しない (Codex HIGH 2026-07-02)。
+    if (prefix == "ebayme_" and pattern.startswith("m")
+            and item_id.startswith("m") and item_id[1:].isdigit()):
+        item_id = item_id[1:]
     url_part = pattern.format(item_id=item_id)
     return config.get("common_url", "") + url_part
 

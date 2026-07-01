@@ -124,11 +124,11 @@ class TestEnsureMonitorCoverage:
     def test_mixed_scan_counts(self, tmp_db):
         from tasks.task_ensure_monitor_coverage import run_ensure_monitor_coverage
         _seed_listing("E_W139_m1", "ebayyh_mix001")
-        _seed_listing("E_W139_m2", "ebayme_mix002")
+        _seed_listing("E_W139_m2", "ebayme_10000002")
         _seed_listing("E_W139_m3", "ebayZZ_mixdlq")        # DLQ
         _seed_listing("E_W139_m4", "ebayyh_mixq0", qty=0)   # 除外
         r = run_ensure_monitor_coverage({})
-        assert r["registered"] == 2  # ebayyh_mix001 + ebayme_mix002
+        assert r["registered"] == 2  # ebayyh_mix001 + ebayme_10000002
         assert r["dlq"] == 1
         assert r["scanned"] == 3     # coverable2 + dlq1 (qty0 は対象外)
         assert r["failed"] == 0

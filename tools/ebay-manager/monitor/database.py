@@ -4057,8 +4057,24 @@ def delete_site_config(config_id: int):
 
 
 def find_site_config_by_sku(sku: str) -> Optional[dict]:
-    """SKUプレフィックスからサイト設定を検索"""
+    """SKUプレフィックスからサイト設定を検索。
+
+    ebayme_ + 英字含む item_id はメルカリショップ (ebayMS_) 設定を返す。
+    ebayMS_ 設定が未登録の場合は None (caller が dropped_no_config 処理する)。
+    """
     configs = get_site_configs()
+    # ebayme_ + 英字含む item_id = メルカリショップ設定を優先
+    if sku.startswith("ebayme_"):
+        try:
+            from sku_mapping_manager import is_mercari_shops_item_id
+        except ImportError:
+            pass
+        else:
+            if is_mercari_shops_item_id(sku[len("ebayme_"):]):
+                for cfg in configs:
+                    if cfg.get("convert_url", "") == "ebayMS_":
+                        return cfg
+                return None  # ebayMS_ 設定未登録
     for cfg in configs:
         prefix = cfg.get("convert_url", "")
         if prefix and sku.startswith(prefix):
@@ -4082,14 +4098,25 @@ def find_site_config_by_url(url: str) -> Optional[dict]:
 
     url_keyword の部分一致で判定。Amazon/楽天等を直接 URL で監視する際、
     SKU prefix に頼らず site の在庫判定文字列 (in_stock/sold_out/no_page) を引く。
+
+    2026-07-02: longest-keyword-match に変更 (money-direct)。
+    メルカリ (url_keyword="mercari") と メルカリショップ ("jp.mercari.com/shops")
+    は shops URL に対して両方マッチするが、DB 挿入順の先頭一致だと通常メルカリ
+    設定 (sold_out="売り切れました") が shops URL (sold_out="売り切れ") を横取り
+    して**shops 側の売切候補を採用するリスク** (仕入先候補在庫 gate で発火)。
+    最長 url_keyword を優先すれば "jp.mercari.com/shops" が "mercari" に勝ち、
+    他サイトは keyword が単一マッチなので挙動不変。
     """
     if not url:
         return None
+    best_cfg: Optional[dict] = None
+    best_kw_len = -1
     for cfg in get_site_configs():
-        kw = cfg.get("url_keyword", "")
-        if kw and kw in url:
-            return cfg
-    return None
+        kw = cfg.get("url_keyword", "") or ""
+        if kw and kw in url and len(kw) > best_kw_len:
+            best_cfg = cfg
+            best_kw_len = len(kw)
+    return best_cfg
 
 
 def set_listing_source_url_manual(
@@ -4800,17 +4827,39 @@ def update_ebay_listing_quantity(ebay_item_id: str, quantity: int):
 
 
 def _build_source_url_from_sku(sku: str) -> Optional[str]:
-    """SKU prefix + item_id から仕入先URLを組み立てる。未知prefixは None。"""
+    """SKU prefix + item_id から仕入先URLを組み立てる。未知prefixは None。
+
+    ebayme_:
+      - 英字含む item_id はメルカリショップ URL (generate_url と対称)。
+      - 通常メルカリで item_id 先頭に m が既にある場合は 1 個剥がして pattern
+        `m{item_id}` に差し込み、二重 m (`.../item/mm<数字>` = 404) を防ぐ
+        (Codex HIGH 2026-07-02)。m 無し `<数字>` はそのまま (剥がすもの
+        なし = 挙動不変)。
+    """
     try:
-        from sku_mapping_manager import load_mappings
+        from sku_mapping_manager import load_mappings, is_mercari_shops_item_id
     except ImportError:
         return None
     mappings = load_mappings()
     for prefix, m in mappings.items():
         if sku.startswith(prefix):
+            item_id = sku[len(prefix):]
+            # ebayme_ + 英字含む item_id = メルカリショップ
+            if prefix == "ebayme_" and is_mercari_shops_item_id(item_id):
+                shops = mappings.get("ebayMS_")
+                if shops:
+                    base = shops.get("common_url") or ""
+                    pattern = shops.get("pattern", "{item_id}")
+                    path = pattern.replace("{item_id}", item_id)
+                    return base + path
+                return f"https://jp.mercari.com/shops/product/{item_id}"
             base = m.get("common_url") or ""
             pattern = m.get("pattern", "{item_id}")
-            item_id = sku[len(prefix):]
+            # 通常メルカリの二重 m 防止: pattern `m{item_id}` に item_id `m<数字>`
+            # をそのまま入れると `mm<数字>` = 404。先頭 m + 残り全数字 のみ剥がす。
+            if (prefix == "ebayme_" and pattern.startswith("m")
+                    and item_id.startswith("m") and item_id[1:].isdigit()):
+                item_id = item_id[1:]
             # Mercari だけ pattern が "m{item_id}" なので item_id を使って構築
             path = pattern.replace("{item_id}", item_id)
             return base + path
