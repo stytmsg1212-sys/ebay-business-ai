@@ -746,10 +746,12 @@ def _build_diffboard_html(picks: dict) -> str:
 # 操作パネル (Streamlit widget): ユーザー picks 入力
 # ────────────────────────────────────────────────────────────────────────────
 def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> None:
-    """オーナー 1-5 品の入力フォーム (確定でブラインド解除)。
+    """オーナー 1-5 品の入力フォーム (品ごとに保存 → 他タブ移動後も消えない)。
 
-    確定 (save_user_picks) すると round status を user_done へ進め、AI 採点を解禁。
-    既存 user picks があれば編集用に prefill。
+    W299 方式A: rank ごとに個別 st.form + 「品N を保存」ボタン → save_user_pick() upsert。
+    全品入力後に「確定」ボタンで status を user_done へ前進し AI ブラインド解除。
+    既存 user picks があれば編集用に prefill (DB から取得した existing を value= に渡す)。
+    save_user_picks (一括) 引数は後方互換のため保持するが本関数では使用しない。
     """
     round_id = rnd["round_id"]
     st.markdown(
@@ -758,16 +760,21 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
     )
     st.caption(
         "今日のカテゴリ条件で見つけた品を 1〜5 品入力 (時間が無ければ少なくてよい)。"
-        "「確定」を押すと MONOペンギン の品が公開され採点に進めます (アンカリング防止)。"
+        "品ごとに「保存」→ 他タブへ移動しても消えません。全品入力後「確定」で AI の品が公開されます。"
     )
+
+    from monitor.research_duel_db import save_user_pick as _save_one
 
     # 既存 picks を rank → dict にして prefill default 化
     _by_rank = {int(p.get("rank") or 0): p for p in existing}
 
-    with st.form(key=f"{_SS}user_form_{round_id}"):
-        for rank in range(1, 6):
-            _ex = _by_rank.get(rank, {})
-            with st.container(border=True):
+    for rank in range(1, 6):
+        _ex = _by_rank.get(rank, {})
+        _saved = bool(_ex.get("title_ja"))
+        with st.container(border=True):
+            if _saved:
+                st.caption(f"品 {rank} — 保存済み (上書き可)")
+            with st.form(key=f"{_SS}u_form_{round_id}_{rank}"):
                 _c1, _c2 = st.columns([3, 1])
                 with _c1:
                     st.text_input(
@@ -803,44 +810,92 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
                     height=70,
                     placeholder="例: 校正不要クランプは安定需要。状態B・ヤフオク¥3,000台で実用十分。",
                 )
-        _submit = st.form_submit_button(
-            "自分の品を確定して採点へ進む", type="primary", use_container_width=True
-        )
+                _sub = st.form_submit_button(
+                    f"品 {rank} を保存", use_container_width=True
+                )
+            if _sub:
+                _title = (
+                    st.session_state.get(f"{_SS}u_title_{round_id}_{rank}") or ""
+                ).strip()
+                if not _title:
+                    st.error(f"品 {rank}: 商品名を入力してください。")
+                else:
+                    try:
+                        _save_one(
+                            round_id,
+                            rank,
+                            _title,
+                            ebay_url=(
+                                st.session_state.get(
+                                    f"{_SS}u_ebay_{round_id}_{rank}"
+                                ) or ""
+                            ).strip() or None,
+                            supplier_url=(
+                                st.session_state.get(
+                                    f"{_SS}u_sup_{round_id}_{rank}"
+                                ) or ""
+                            ).strip() or None,
+                            profit_jpy_user=int(
+                                st.session_state.get(
+                                    f"{_SS}u_profit_{round_id}_{rank}"
+                                ) or 0
+                            ),
+                            why_md=(
+                                st.session_state.get(
+                                    f"{_SS}u_why_{round_id}_{rank}"
+                                ) or ""
+                            ).strip() or None,
+                        )
+                        st.toast(f"品 {rank} を保存しました。", icon="✅")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f"保存失敗: {e}")
+                    except Exception as e:  # noqa: BLE001
+                        logger.exception(
+                            "save_user_pick failed round_id=%s rank=%s", round_id, rank
+                        )
+                        st.error(f"保存失敗 (詳細はログ): {e}")
 
-    if _submit:
-        # フォーム入力を収集。title が空の rank は除外 (1-5 品、最低 1 品必須)。
-        picks: list[dict] = []
-        for rank in range(1, 6):
-            _title = (st.session_state.get(f"{_SS}u_title_{round_id}_{rank}") or "").strip()
-            if not _title:
-                continue
-            picks.append({
-                "rank": rank,
-                "title_ja": _title,
-                "ebay_url": (st.session_state.get(f"{_SS}u_ebay_{round_id}_{rank}") or "").strip() or None,
-                "supplier_url": (st.session_state.get(f"{_SS}u_sup_{round_id}_{rank}") or "").strip() or None,
-                "profit_jpy_user": int(st.session_state.get(f"{_SS}u_profit_{round_id}_{rank}") or 0),
-                "why_md": (st.session_state.get(f"{_SS}u_why_{round_id}_{rank}") or "").strip() or None,
-            })
-        if not picks:
-            st.error("最低 1 品は商品名を入力してください。")
-            return
+    # ── 確定ボタン (status を ai_done → user_done へ前進 + AI ブラインド解除) ──
+    st.markdown("---")
+    _saved_count = len([p for p in existing if p.get("title_ja")])
+    cur_status = rnd.get("status")
+
+    if cur_status in (_ST_USER_DONE, _ST_COMPLETED):
+        st.success("確定済みです (AI の品が公開されています)。")
+        return
+
+    if cur_status == _ST_AI_PENDING:
+        st.info(
+            "AI のリサーチ完了後に「確定」できます。先に品を保存しておくことができます。"
+        )
+        return
+
+    # ai_done: 確定ボタン活性化
+    _can_confirm = _saved_count >= 1
+    if not _can_confirm:
+        st.info("最低 1 品を保存してから「確定」できます。")
+    _confirm = st.button(
+        "自分の品を確定して採点へ進む",
+        type="primary",
+        use_container_width=True,
+        disabled=not _can_confirm,
+        key=f"{_SS}u_confirm_{round_id}",
+    )
+    if _confirm and _can_confirm:
         try:
-            save_user_picks(round_id, picks)
-            # status を user_done へ前進 (ai_done からのみ許容)。既に user_done/
-            # completed なら no-op (再編集の保存)。遷移エラーは可視化 (Q0)。
             from monitor.research_duel_db import (
-                update_round_status as _upd, can_transition as _can,
+                update_round_status as _upd,
+                can_transition as _can,
             )
-            cur_status = rnd.get("status")
-            if cur_status == _ST_AI_DONE and _can(_ST_AI_DONE, _ST_USER_DONE):
+            if _can(_ST_AI_DONE, _ST_USER_DONE):
                 _upd(round_id, _ST_USER_DONE)
-            st.toast(f"{len(picks)} 品を確定しました。AI の品を公開します。", icon="✅")
+            st.toast("確定しました。AI の品を公開します。", icon="✅")
             st.rerun()
         except ValueError as e:
             st.error(f"確定失敗: {e}")
         except Exception as e:  # noqa: BLE001
-            logger.exception("save_user_picks failed round_id=%s", round_id)
+            logger.exception("confirm_user_picks failed round_id=%s", round_id)
             st.error(f"確定失敗 (詳細はログ): {e}")
 
 

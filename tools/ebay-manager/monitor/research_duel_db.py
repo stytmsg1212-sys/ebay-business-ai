@@ -237,6 +237,46 @@ def save_user_picks(round_id: int, picks: list[dict]) -> None:
             )
 
 
+def save_user_pick(
+    round_id: int,
+    rank: int,
+    title_ja: str,
+    *,
+    ebay_url: Optional[str] = None,
+    supplier_url: Optional[str] = None,
+    profit_jpy_user: Optional[int] = None,
+    why_md: Optional[str] = None,
+) -> None:
+    """1 品だけ upsert (他 rank を消さない)。per-item 保存用 (W299 方式A)。
+
+    rank は 1-5 必須。title_ja 必須 (空文字は ValueError)。
+    ON CONFLICT(round_id, rank) DO UPDATE で既存 rank を上書き、他 rank は無変更。
+    参考実装: score_ai_pick (同ファイル) の upsert パターン + _get_conn 作法に準拠。
+    """
+    if not (1 <= rank <= 5):
+        raise ValueError(f"save_user_pick: rank must be 1-5, got {rank}")
+    if not title_ja or not title_ja.strip():
+        raise ValueError("save_user_pick: title_ja is required (empty not allowed)")
+    title_ja = title_ja.strip()
+    with get_conn() as conn:
+        if not conn.execute(
+            "SELECT 1 FROM duel_rounds WHERE round_id=?", (round_id,)
+        ).fetchone():
+            raise ValueError(f"save_user_pick: round_id={round_id} not found")
+        conn.execute(
+            "INSERT INTO duel_user_picks "
+            "(round_id, rank, title_ja, ebay_url, supplier_url, profit_jpy_user, why_md) "
+            "VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(round_id, rank) DO UPDATE SET "
+            "title_ja=excluded.title_ja, "
+            "ebay_url=excluded.ebay_url, "
+            "supplier_url=excluded.supplier_url, "
+            "profit_jpy_user=excluded.profit_jpy_user, "
+            "why_md=excluded.why_md",
+            (round_id, rank, title_ja, ebay_url, supplier_url, profit_jpy_user, why_md),
+        )
+
+
 def score_ai_pick(
     pick_id: int,
     *,

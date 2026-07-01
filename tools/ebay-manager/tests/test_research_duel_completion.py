@@ -225,3 +225,85 @@ def test_already_completed_is_noop(tmp_db, tmp_memory_dir, monkeypatch):
     # memory ファイル数も変わっていない
     mem_files_after_second = list(tmp_memory_dir.glob("feedback_research_duel_*.md"))
     assert len(mem_files_after_second) == len(mem_files_after_first)
+
+
+# ============================================================================
+# テスト (d): save_user_pick (per-rank upsert / W299 方式A)
+# ============================================================================
+
+def test_save_user_pick_no_cross_rank_delete(tmp_db):
+    """1 件 upsert で他 rank が消えないこと。"""
+    import monitor.research_duel_db as ddb
+    from monitor.database import get_conn
+
+    rid = ddb.create_round(jst_date="2099-07-01", pattern="new")
+
+    # rank 1 と rank 3 を一括保存 (既存 save_user_picks で土台を作る)
+    ddb.save_user_picks(rid, [
+        {"rank": 1, "title_ja": "オーナー品1"},
+        {"rank": 3, "title_ja": "オーナー品3"},
+    ])
+
+    # rank 2 だけ per-rank upsert
+    ddb.save_user_pick(rid, 2, "オーナー品2")
+
+    with get_conn() as conn:
+        rows = {
+            r[0]: r[1]
+            for r in conn.execute(
+                "SELECT rank, title_ja FROM duel_user_picks"
+                " WHERE round_id=? ORDER BY rank",
+                (rid,),
+            ).fetchall()
+        }
+
+    assert rows.get(1) == "オーナー品1", "rank 1 が消えた"
+    assert rows.get(2) == "オーナー品2", "rank 2 が保存されていない"
+    assert rows.get(3) == "オーナー品3", "rank 3 が消えた"
+
+
+def test_save_user_pick_overwrite_same_rank(tmp_db):
+    """同 rank 再保存で上書きされること。"""
+    import monitor.research_duel_db as ddb
+    from monitor.database import get_conn
+
+    rid = ddb.create_round(jst_date="2099-07-02", pattern="new")
+
+    ddb.save_user_pick(rid, 1, "最初のタイトル", why_md="最初の理由")
+    ddb.save_user_pick(rid, 1, "上書きタイトル", why_md="上書き理由")
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT title_ja, why_md FROM duel_user_picks WHERE round_id=? AND rank=?",
+            (rid, 1),
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] == "上書きタイトル"
+    assert row[1] == "上書き理由"
+
+
+def test_save_user_pick_invalid_rank(tmp_db):
+    """rank 範囲外 (0, 6) で ValueError。"""
+    import monitor.research_duel_db as ddb
+
+    rid = ddb.create_round(jst_date="2099-07-03", pattern="new")
+
+    with pytest.raises(ValueError):
+        ddb.save_user_pick(rid, 0, "テスト品")
+
+    with pytest.raises(ValueError):
+        ddb.save_user_pick(rid, 6, "テスト品")
+
+
+def test_save_user_pick_empty_title(tmp_db):
+    """title_ja が空文字 / 空白のみで ValueError。"""
+    import monitor.research_duel_db as ddb
+
+    rid = ddb.create_round(jst_date="2099-07-04", pattern="new")
+
+    with pytest.raises(ValueError):
+        ddb.save_user_pick(rid, 1, "")
+
+    with pytest.raises(ValueError):
+        ddb.save_user_pick(rid, 1, "   ")

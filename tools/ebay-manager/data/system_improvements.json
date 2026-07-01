@@ -2698,5 +2698,71 @@
     "created": "2026-06-29",
     "completed": null,
     "category": "internal"
+  },
+  {
+    "id": 359,
+    "tag": "W294",
+    "title": "autofix/health_check 根本対策 (in-flight バッチ配下を missed 誤判定しない + rerun 記録欠落解消)",
+    "description": "daily_relist 二重実行(W293で止血)の deeper root cause。find_missed_tasks が status='completed' のみ見て『走行中の02:30バッチ配下/未到達タスク』を missed 誤判定→04:00 health_check が毎朝『欠落12件』アラート+autofix Tier1 再実行を誘発。対策=missed 判定で in-flight バッチ配下を除外(or health_check を batch 完了後に遅延)。併せて autofix rerun が __main__/daily_scheduler 二重モジュールで _batch_ctx 未設定→task_execution_log 未記録の可視性穴を解消(Codex 指摘)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-29",
+    "completed": null,
+    "category": "internal"
+  },
+  {
+    "id": 360,
+    "tag": "W295",
+    "title": "二重実行ガード横展開 + heartbeat 堅牢化 (supplier_sweep run-lock / mirror dry-run lock / transient debounce)",
+    "description": "W293 レビューの MEDIUM 群 follow-up。①supplier_sweep の並行二重起動を daily_relist 同様 run-lock で防止(コスト二重、reviewer M1)②mirror dry-run が lock 非取得で共有CDPタブ navigate→他mutationと競合し得る(W293 review MED)③heartbeat の transient 5xx/瞬断で偽 dead 通知→N回連続 dead で episode flip する debounce(要対応ch 信号品質)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-29",
+    "completed": null,
+    "category": "internal"
+  },
+  {
+    "id": 361,
+    "tag": "W296",
+    "title": "scheduler 起動時に init_db で schema 整合を保証 (migration 未適用で新コードが crash する穴)",
+    "description": "daily_scheduler は起動時 init_db を呼ばないため、migration を含むコード変更を scheduler 再起動だけで反映すると、新コードが未 migration の DB を SELECT して Operationala Error で crash しうる(2026-06-29 v84 / 06-30 v85 で顕在化、手動 init_db で回避)。対策=scheduler 起動シーケンスで init_db() を呼ぶ(冪等なので安全)か、デプロイ手順に『migration 時は init_db 実行』を機械強制。money-direct タスク(daily_relist/apply 等)の crash 防止。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-06-30",
+    "completed": null,
+    "category": "internal"
+  },
+  {
+    "id": 362,
+    "tag": "W297",
+    "title": "source_url 真実源の一元化 (monitored↔ebay_listings 乖離の予防穴 + per-row 監査補正)",
+    "description": "在庫監視の再出現調査(2026-07-01)で判明した別件。①予防穴: sync_sku_conversion_to_db(nightly配線)が ebay_listings.source_url を書くが monitored_items を同期せず L-drift(72件規模)を生む。update_ebay_listing_source_info も同様。→ ebay_listings 更新時に必ず monitored mirror する中央経路(set_listing_source_url)へ集約。②乖離の per-row 監査補正: 真実源は『現SKU』。drift は混在(CLEAN=M正/REVERSED=L正)するため一律 bulk 同期は禁止(危険、W139事故再発)。既存 fix_url_divergence_2026_06_20.py(SKU検証付き per-row)流儀で REVERSED の active false-OOS のみ補正。③乖離件数の定期 Discord 監査アラート。Codex+Fugu 両確認済。inventory_check は M を読むので緊急 false-OOS リスクは低(現再出現は genuine OOS=採用ゲートでカバー)。money-direct→Q2 6step+code-reviewer+Codex 2段。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-01",
+    "completed": null,
+    "category": "internal"
+  },
+  {
+    "id": 363,
+    "tag": "W298",
+    "title": "仕入先URL生成器の二重負債を統一 (build_source_url vs _build_source_url_from_sku)",
+    "description": "source_url の canonical 生成器が2系統並存(build_source_url と _build_source_url_from_sku)し、mercari等で .../item/123 vs .../item/m123 の食い違い・None返しを生む。これが W297 の乖離/再生成不能の根本。1系統へ統一し、両テーブルが現SKUから同一URLを導出できるようにする。Codex/Fugu 指摘の root 負債。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-01",
+    "completed": null,
+    "category": "internal"
+  },
+  {
+    "id": 364,
+    "tag": "W299",
+    "title": "リサーチ対決に1件ずつ登録/下書き一時保存+完了ボタンを追加",
+    "description": "リサーチ対決で5品を提示する運用中、候補探索の合間に利益計算など他タブへ移動すると入力が消える(現状は一時保存が無い認識)。他タブ移動(Streamlit rerun)を跨いで残る下書き保存、または1件ずつ確定登録を可能にし、5品揃ったら『完了』ボタンで確定するフローを追加。詳細UX(1件ずつ確定 vs 全部下書き→一括確定)は Phase 3 Clarify で確定。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-01",
+    "completed": null,
+    "category": "business"
   }
 ]
