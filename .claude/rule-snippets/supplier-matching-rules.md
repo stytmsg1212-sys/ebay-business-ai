@@ -57,7 +57,8 @@ DB: `alt_listing_possible=1` + `alt_listing_note` に具体提案を格納。
 
 - 判定ロジック: `monitor/claude_evaluator.py::STABLE_PROMPT_TEMPLATE`
 - DB schema: `supplier_candidates` テーブル (migration v5 で追加) の `alt_listing_possible` / `alt_listing_note` / `junk_likely_untested` カラム
-- **現状 (2026-05-29〜)**: `supplier_evaluate` は **Sonnet 4.6** で運用 (`claude_evaluator.py::CLAUDE_MODEL = "claude-sonnet-4-6"` が真実)。2026-05-29 Opus 4.8 移行時も user 判断で Sonnet 据え置き (コスト対効果)。
+- **現状 (2026-07-01〜)**: `supplier_evaluate` は **Sonnet 5** + effort=high で運用 (`claude_evaluator.py::CLAUDE_MODEL = "claude-sonnet-5"` が真実、batch 経路も継承)。money-direct のため誤 buy 損失 ≫ モデル差額で品質マージンを取る。公式: Sonnet 5 high ≈ 旧 4.6 max。価格は 4.6 と同額 ($3/$15)。
+- **過去 (2026-05-29〜2026-06-30)**: Sonnet 4.6 で運用 (`CLAUDE_MODEL = "claude-sonnet-4-6"`)。2026-05-29 Opus 4.8 移行時も user 判断で Sonnet 据え置き (コスト対効果)。
 - **過去 (〜2026-05-05)**: W25 で「Opus escalation = supplier_evaluate Opus 全置換」を検討したが、2026-05-02 W94 + 2026-05-05 Sonnet 切替で解消済。`feedback_w25_supplier_opus_review_pending.md` は ⛔ SUPERSEDED (historical only)。
 
 ## 未確定項目 (次回ヒアリング候補)

@@ -235,6 +235,15 @@ def test_build_batch_request_system_has_1h_cache_control():
     assert sys_block["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
+# ─── 6b. Sonnet 5 移行 (2026-07-01): batch request に effort=high が入る ───
+
+def test_build_batch_request_has_effort_high():
+    """money-direct 仕入先評価 batch は output_config.effort=high (realtime と品質統一)."""
+    item = _make_item()
+    req = sbe._build_batch_request(item, model="claude-sonnet-5")
+    assert req["params"]["output_config"] == {"effort": "high"}
+
+
 # ─── 7. BP2: knowledge_block 有 → 別 text block + 1h cache ───
 
 def test_build_user_content_with_kb_has_separate_cached_block():

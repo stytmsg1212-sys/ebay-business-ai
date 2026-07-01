@@ -39,6 +39,7 @@ from monitor.claude_evaluator import (
     _SYSTEM_PROMPT,
     _build_past_judgments_block,
     _parse_response,
+    _supports_effort,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,23 +152,28 @@ def _build_user_content(item: BatchItem) -> list[dict]:
 
 def _build_batch_request(item: BatchItem, model: str) -> dict:
     """1 件 BatchItem → Anthropic Batch request dict."""
-    return {
-        "custom_id": item.custom_id,
-        "params": {
-            "model": model,
-            "max_tokens": 800,
-            "system": [{
-                "type": "text",
-                "text": _SYSTEM_PROMPT,
-                # BP1: system に 1h cache. batch 内 99 件 hit で write 2x cost を回収.
-                "cache_control": {"type": "ephemeral", "ttl": _CACHE_TTL_1H},
-            }],
-            "messages": [{
-                "role": "user",
-                "content": _build_user_content(item),
-            }],
-        },
+    params = {
+        "model": model,
+        # 2026-07-01 MED2: adaptive thinking + effort=high 分の余裕込みで
+        # 評価 JSON の truncate (→ parse 失敗 → match_score=0 silent no-buy) を防ぐ。
+        # realtime 経路 (evaluate_match) と統一。
+        "max_tokens": 4096,
+        "system": [{
+            "type": "text",
+            "text": _SYSTEM_PROMPT,
+            # BP1: system に 1h cache. batch 内 99 件 hit で write 2x cost を回収.
+            "cache_control": {"type": "ephemeral", "ttl": _CACHE_TTL_1H},
+        }],
+        "messages": [{
+            "role": "user",
+            "content": _build_user_content(item),
+        }],
     }
+    # 2026-07-01 Sonnet 5 移行: money-direct 仕入先評価は effort=high (realtime と統一)。
+    # 非対応モデル (Haiku 等) に output_config を付けると 400 になるため共有ガードで判定。
+    if _supports_effort(model):
+        params["output_config"] = {"effort": "high"}
+    return {"custom_id": item.custom_id, "params": params}
 
 
 def _extract_result_from_message(msg) -> EvaluationResult:
@@ -252,7 +258,7 @@ def evaluate_batch(
 
     Args:
         items: 評価対象. custom_id は呼出側が一意付与 (例: f"{eid}-{plat}-{idx}").
-        model: モデル ID. None で CLAUDE_MODEL (claude-opus-4-7).
+        model: モデル ID. None で claude_evaluator.CLAUDE_MODEL (現行 claude-sonnet-5)。
         poll_interval_sec: poll 間隔.
         hard_timeout_sec: 超過時に未完了 request_id を DLQ.
 

@@ -79,9 +79,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Listing 生成は複数制約 (SEO / カテゴリ推定 / Item Specifics 抽出 / 日本語→英語変換)
-# を同時に満たすマルチ制約タスク。Sonnet 4.6 採用 (PRD v1.1 セクション 14 推奨)。
-# 品質課題が出たら opus-4-7 に切替。
-CLAUDE_MODEL = "claude-sonnet-4-6"
+# を同時に満たすマルチ制約タスク。2026-07-01 Sonnet 5 へ移行。
+# effort=medium (公式: Sonnet 5 medium ≈ Sonnet 4.6 high) で現行同品質かつコスト最適化。
+# 品質課題が出たら opus-4-8 に切替。
+CLAUDE_MODEL = "claude-sonnet-5"
 
 
 # =========================================================================
@@ -716,13 +717,18 @@ def generate_listing(
     user_prompt = _compose_user_prompt(product, reference, rank, extra_instructions)
 
     from monitor.api_logger import log_anthropic_response, _Timer
+    from monitor.claude_evaluator import _supports_effort
 
     msg = None
     try:
         with _Timer() as t:
+            _extra_kwargs: dict = (
+                {"output_config": {"effort": "medium"}} if _supports_effort(CLAUDE_MODEL) else {}
+            )
             msg = client.messages.create(
                 model=CLAUDE_MODEL,
                 max_tokens=4000,
+                **_extra_kwargs,
                 system=[
                     {
                         "type": "text",

@@ -14,7 +14,7 @@ def render_model_comparison_tab() -> None:
     """Supplier 評価モデル比較 (A/B test 結果) タブ."""
     st.markdown("# モデル比較 (Supplier A/B Test)")
     st.caption(
-        "Opus 4.7 vs Sonnet 4.6 で同じ scrape 結果を独立評価し、判定と精度を比較。"
+        "Opus 4.7 / Sonnet 4.6 / Sonnet 5 で同じ scrape 結果を独立評価し、判定と精度を比較。"
         "past_judgments / knowledge は両モデルとも bypass (test_mode=True)。"
     )
 
@@ -68,9 +68,11 @@ def render_model_comparison_tab() -> None:
         )
         _summary_rows = []
         for _s in _summary:
+            _m = _s["model"].lower()
             _model_label = (
-                "Opus 4.7" if "opus" in _s["model"].lower()
-                else "Sonnet 4.6" if "sonnet" in _s["model"].lower()
+                "Opus 4.7" if "opus" in _m
+                else "Sonnet 5" if "sonnet-5" in _m
+                else "Sonnet 4.6" if "sonnet" in _m
                 else _s["model"]
             )
             _hit_rate = (_s["cache_hits"] / _s["calls"] * 100) if _s["calls"] else 0
@@ -101,7 +103,8 @@ def render_model_comparison_tab() -> None:
                   SELECT
                     ebay_item_id, candidate_index,
                     MAX(CASE WHEN model='claude-opus-4-7' THEN match_score END) AS opus_score,
-                    MAX(CASE WHEN model='claude-sonnet-4-6' THEN match_score END) AS sonnet_score
+                    -- sonnet-5 移行後の新 A/B データも拾う (過去 sonnet-4-6 も併記)
+                    MAX(CASE WHEN model IN ('claude-sonnet-4-6','claude-sonnet-5') THEN match_score END) AS sonnet_score
                   FROM supplier_ab_test_runs
                   WHERE run_id=?
                   GROUP BY ebay_item_id, candidate_index
@@ -166,7 +169,9 @@ def render_model_comparison_tab() -> None:
 
             for _idx in sorted(_by_cand.keys()):
                 _opus = _by_cand[_idx].get("claude-opus-4-7")
-                _sonnet = _by_cand[_idx].get("claude-sonnet-4-6")
+                # sonnet-5 移行後の新データも拾う (過去 sonnet-4-6 データは温存)
+                _sonnet = (_by_cand[_idx].get("claude-sonnet-4-6")
+                           or _by_cand[_idx].get("claude-sonnet-5"))
                 _cand_title = (_opus or _sonnet)["candidate_title"]
                 _cand_url = (_opus or _sonnet)["candidate_url"]
                 _cand_price = (_opus or _sonnet)["candidate_price_jpy"]

@@ -59,7 +59,34 @@ logger = logging.getLogger(__name__)
 #   誤認していたが実際は 4.5 以降ずっと $5/$25 = Sonnet ($3/$15) の ~1.67x のみ。
 #   実 Opus コストは ~$130/月 (3 倍過大だった)。Sonnet 据え置きは user 決定で有効だが、
 #   再評価時は訂正値を使う (新トークナイザで Opus は同一テキスト最大 +35% token も考慮)。
-CLAUDE_MODEL = "claude-sonnet-4-6"
+# 2026-07-01: Sonnet 5 へ移行 (公式: Sonnet 5 high ≈ 4.6 max、全 effort 帯で 4.6 超え)。
+# money-direct な仕入先評価は effort=high で品質マージンを確保 (誤 buy 損失 ≫ モデル差額)。
+# rollback は本行を "claude-sonnet-4-6" に戻すだけ (_PRICING/_TIER1 の旧行は温存済)。
+CLAUDE_MODEL = "claude-sonnet-5"
+
+# effort (output_config={"effort": ...}) を受け付けるモデル集合 (2026-07-01 制定)。
+# 非対応モデル (Haiku 4.5 等) に output_config を付けると 400 BadRequest になるため、
+# 対応モデルの時だけ付与する。model override / rollback で非対応モデルに切り替えても
+# 400 を出さない (400 を「画像 fetch 失敗」と誤診断→ match_score=0 silent no-buy を防ぐ)。
+# 出典: 公式 effort docs (platform.claude.com/docs/en/build-with-claude/effort)。
+# effort 対応 = Claude Fable 5 / Opus 4.5 / 4.6 / 4.7 / 4.8 / Sonnet 4.6 / Sonnet 5。
+# Haiku 4.5 は非対応。rollback 先 sonnet-4-6 も effort 対応のため rollback 経路も安全
+# (reviewer MED-1 裏取り、2026-07-01)。
+_EFFORT_SUPPORTED_MODELS = frozenset({
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+    "claude-opus-4-5",
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable-5",
+})
+
+
+def _supports_effort(model: str) -> bool:
+    """model が output_config={"effort": ...} を受け付けるか。非対応に付けると 400。"""
+    return model in _EFFORT_SUPPORTED_MODELS
+
 
 # ────────── Tier 1 Rate Limit 保護 ──────────
 # Anthropic Tier 1 制限: 50 req/min、Haiku=50K input tokens/min、Sonnet=30K。
@@ -69,6 +96,7 @@ CLAUDE_MODEL = "claude-sonnet-4-6"
 # モデル別 tokens/min 上限 (Tier 1):
 _TIER1_INPUT_TOKENS_PER_MIN: dict[str, int] = {
     "claude-haiku-4-5-20251001": 50_000,
+    "claude-sonnet-5": 30_000,
     "claude-sonnet-4-6": 30_000,
     "claude-opus-4-7": 30_000,
 }
@@ -492,30 +520,46 @@ def evaluate_match(
     _retried_without_images = False
     while True:
         try:
+            # 2026-07-01 MED2: Sonnet 5 は adaptive thinking 既定オン + effort=high。
+            # thinking トークンが max_tokens=800 を食い潰すと評価 JSON が truncate →
+            # parse 失敗 → match_score=0 の silent no-buy (money-direct) になりうる。
+            # thinking を残したまま (判定品質を落とさない) 出力枠を 4096 に広げ、
+            # thinking + JSON 出力 (~300 token) が確実に収まるようにする。
+            _create_kwargs = {
+                "model": _model_used,
+                "max_tokens": 4096,
+                "system": [
+                    {
+                        "type": "text",
+                        "text": _SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                "messages": [{"role": "user", "content": content}],
+            }
+            # effort 非対応モデル (rollback / override 時) に output_config を付けると 400。
+            if _supports_effort(_model_used):
+                _create_kwargs["output_config"] = {"effort": "high"}
             with _Timer() as _t:
-                msg = client.messages.create(
-                    model=_model_used,
-                    max_tokens=800,
-                    system=[
-                        {
-                            "type": "text",
-                            "text": _SYSTEM_PROMPT,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ],
-                    messages=[{"role": "user", "content": content}],
-                )
+                msg = client.messages.create(**_create_kwargs)
             log_anthropic_response("candidate_evaluate", _model_used, msg,
                                    duration_ms=_t.duration_ms, success=True)
             break
         except anthropic.BadRequestError as e:
-            # 画像つき request の 400 は画像 fetch 失敗が最有力。画像を外して 1 回再評価。
+            # 2026-07-01 H1: 400 の実 error message を必ず surface (画像起因か
+            # effort/その他要因かを後から切り分け可能に = money-direct な silent 誤診断防止)。
+            # 挙動 (画像を外して 1 回再試行) は維持するが「画像 fetch 失敗」は仮説であり
+            # 断定しない。
+            logger.warning(
+                f"evaluate_match BadRequestError (ebay_item_id={ebay_item_id}): {e}"
+            )
             _has_image = any(c.get("type") == "image" for c in content)
             if _has_image and not _retried_without_images:
                 _retried_without_images = True
                 logger.warning(
-                    f"evaluate_match BadRequest with image, retry text-only "
-                    f"(ebay_item_id={ebay_item_id}): {e}"
+                    f"evaluate_match: 画像 fetch 失敗を最有力仮説として画像を外し "
+                    f"text-only で 1 回再試行 (ebay_item_id={ebay_item_id})。"
+                    f"上記 error message で他要因かも切り分け可能"
                 )
                 log_anthropic_response(
                     "candidate_evaluate", _model_used, None, success=False,

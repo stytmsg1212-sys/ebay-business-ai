@@ -240,6 +240,7 @@ def test_profit_unknown_uses_na_class():
 
 @pytest.mark.parametrize("eval_model, expected_label", [
     ("claude-opus-4-8", "Opus 4.7"),  # opus → Opus 4.7 label
+    ("claude-sonnet-5", "Sonnet 5"),  # sonnet-5 移行後の新ラベル
     ("claude-sonnet-4-6", "Sonnet 4.6"),
     ("claude-haiku-4-5", "Haiku 4.5"),
 ])

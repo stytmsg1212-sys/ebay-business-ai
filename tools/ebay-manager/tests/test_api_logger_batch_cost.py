@@ -114,6 +114,17 @@ def test_log_api_call_non_batch_operation_full_price():
     _cleanup_test_rows()
 
 
+# T5 (2026-07-01 Sonnet 5 移行): sonnet-5 が _PRICING に登録され batch/通常とも正価格
+def test_sonnet5_batch_and_realtime_cost():
+    """claude-sonnet-5 ($3/$15) で 1M in + 1M out = $18、batch 50% = $9。
+    _PRICING 未登録なら cost=0 で fail = $0 過小計上事故の検出。"""
+    kwargs = dict(model="claude-sonnet-5", in_tok=1_000_000, out_tok=1_000_000)
+    normal = _estimate_cost_usd(**kwargs, is_batch=False)
+    batch = _estimate_cost_usd(**kwargs, is_batch=True)
+    assert abs(normal - 18.0) < 1e-3, f"sonnet-5 通常価格 $18 を期待、実 ${normal}"
+    assert abs(batch - 9.0) < 1e-3, f"sonnet-5 batch 価格 $9 を期待、実 ${batch}"
+
+
 # T4
 def test_init_db_idempotent_preserves_is_batch_column():
     """Q2 冪等性: init_db 2 回連続実行で is_batch カラム + データが残る."""

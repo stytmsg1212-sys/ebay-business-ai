@@ -202,6 +202,8 @@ def _model_badge(eval_model: str) -> str:
     m = (eval_model or "").lower()
     if "opus" in m:
         label, color, bg = "Opus 4.7", "#2a2e2a", "rgba(14,79,75,0.18)"
+    elif "sonnet-5" in m:
+        label, color, bg = "Sonnet 5", "#2a2e2a", "rgba(14,79,75,0.10)"
     elif "sonnet" in m:
         label, color, bg = "Sonnet 4.6", "#2a2e2a", "rgba(14,79,75,0.10)"
     elif "haiku" in m:

@@ -27,6 +27,7 @@ _PRICING = {
     # Anthropic Claude
     "claude-opus-4-8": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
     "claude-opus-4-7": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
+    "claude-sonnet-5": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
     "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25},
@@ -47,6 +48,14 @@ def _estimate_cost_usd(model: str, in_tok: int, out_tok: int,
     """
     p = _PRICING.get(model)
     if not p:
+        # $0 事故の本丸: 未登録モデルを silent に 0.0 計上すると過小計上に気付けない
+        # (Q0 silent-skip-prevention.md)。raise は禁止 — 本関数は log_api_call の
+        # try/except 内から呼ばれ、raise すると except が握りつぶして「INSERT 行ごと消失」
+        # = $0 記録より悪い。fail-loud な痕跡は warning ログのみに留める (行は必ず残す)。
+        logger.warning(
+            f"[api_logger] pricing 未登録モデル '{model}' → cost 0.0 で記録"
+            f" (価格表 _PRICING に行追加が必要)"
+        )
         return 0.0
     total = (
         in_tok * p["input"] / 1_000_000
