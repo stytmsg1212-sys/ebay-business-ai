@@ -19,9 +19,12 @@ Pipeline:
     b. ライバル最安 (min(competitor_price_usd + competitor_shipping_usd)) を計算
     c. ライバル < 我々 なら値下げ candidate
     d. price_rule から目標価格を計算
+    d2. (2026-07-02 user 指示・第 2 安全弁) 1 回の下げ幅は現価格の 5% まで clamp
     e. min_price floor (lp_min_price > 0 ? lp_min_price : lp_breakeven_usd) でクランプ
     f. L2 (本日 success<4) チェック
     g. ReviseFixedPriceItem 実行 → price_change_log に記録
+    h. (2026-07-02 user 指示・第 3 安全弁) 直近 7 日で値下げ 3 連続 (間に値上げ
+       なし) なら Discord アラート (通知のみ、値下げは止めない、1 日 1 回 dedupe)
 """
 
 import logging
@@ -41,6 +44,17 @@ DAILY_PRICE_CHANGE_CAP = 4
 # 自分が設定した値」と食い違う時のみ、その回の判定を見送る (次サイクルで
 # settle 済みを処理 = 最大 1 サイクル遅延、恒久凍結なし)。cron は 6h 間隔.
 STALE_PRICE_GUARD_HOURS = 6
+
+# 2026-07-02 (user 指示): 値下げ合戦スパイラル抑止のための第 2・第 3 の安全弁。
+# 既存 L5 (lp_min_price 床) は一切変更せず併用する独立ガード
+# (`.company/engineering/docs/2026-06-24-ai-manager-phase1-design.md` L65
+#  「⚠️ 2026-07-02 user 改訂 (実装必須)」)。
+# 第 2 安全弁: 1 回の実行での値下げ幅は現価格の 5% まで (段階的降下)。
+MAX_SINGLE_DROP_PCT = 0.05
+# 第 3 安全弁: 同一 listing が直近 WINDOW_DAYS 以内に THRESHOLD 回連続値下げ
+# (間に値上げなし) したら Discord アラート (通知のみ、値下げ自体は止めない)。
+CONSECUTIVE_REDUCTION_ALERT_THRESHOLD = 3
+CONSECUTIVE_REDUCTION_WINDOW_DAYS = 7
 
 # H4 (2026-05-17 code-reviewer HIGH-1): 予約取得時に DB 書込ロック競合
 # (sqlite3.OperationalError "database is locked") が出た場合の戻り値。
@@ -457,6 +471,80 @@ def _decide_floor_price(state: dict) -> Optional[float]:
 
 
 # ────────────────────────────────────────
+# 2026-07-02 (user 指示): 値下げ合戦スパイラル抑止 — 第 2・第 3 の安全弁
+# 既存 L5 (lp_min_price 床、_decide_floor_price) は本節の外側で無変更のまま
+# 併用される (clamp 後の価格が床を割るなら床側が勝つ)。
+# ────────────────────────────────────────
+
+def _apply_max_drop_clamp(our_price: float, target_price: float) -> tuple[float, bool]:
+    """1 回の値下げ幅を現価格の MAX_SINGLE_DROP_PCT (5%) までに制限する (第 2 安全弁).
+
+    目標価格が current_price * 0.95 未満なら current_price * 0.95 に clamp する
+    (次回実行でまた最大 5% 下がる = 段階的降下)。ちょうど 5% の下げは clamp
+    しない (境界は許容側)。
+
+    H2 (_compute_target_price) と同じ理由で整数セント判定にする (float 誤差で
+    境界を誤判定しない)。5% ライン自体は ceil で確定し、実際の下落率が
+    5% を "超えない" 方向に丸める (5% ちょうどは非 clamp のまま許容).
+
+    Returns: (適用する target_price, clamp が発動したか).
+    """
+    our_cents = int(round(float(our_price) * 100))
+    floor_cents = math.ceil(our_cents * (1 - MAX_SINGLE_DROP_PCT) - 1e-9)
+    target_cents = int(round(float(target_price) * 100))
+    if target_cents < floor_cents:
+        return floor_cents / 100.0, True
+    return target_price, False
+
+
+def _check_consecutive_reduction_streak(ebay_item_id: str) -> Optional[dict]:
+    """直近 CONSECUTIVE_REDUCTION_WINDOW_DAYS 日以内で値下げ
+    CONSECUTIVE_REDUCTION_ALERT_THRESHOLD 回連続 (間に値上げなし) か判定する
+    (第 3 安全弁: 値下げ合戦スパイラル検知)。
+
+    判定対象: price_change_log の success=1 行を changed_at 降順に閾値件数だけ
+    取得する。
+      - 件数が閾値未満                          → 非対象 (None)
+      - いずれか 1 件でも「値下げでない」        → 非対象 (None、ストリーム
+        リセット済み。値上げ/同額/価格欠損のいずれか)
+      - 最も古い 1 件が WINDOW_DAYS 超前         → 非対象 (None、window 外)
+      - 上記いずれにも当たらない                → 発火情報を返す
+
+    アラートは通知のみ (値下げ自体は止めない、停止判断は user)。
+
+    Returns: {'count': int, 'oldest_changed_at': str, 'newest_changed_at': str,
+              'prices': list[float] (新しい順の new_price_usd)} or None.
+    """
+    from monitor.database import get_conn
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT old_price_usd, new_price_usd, changed_at "
+            "FROM price_change_log WHERE ebay_item_id=? AND success=1 "
+            "ORDER BY changed_at DESC, id DESC LIMIT ?",
+            (ebay_item_id, CONSECUTIVE_REDUCTION_ALERT_THRESHOLD)
+        ).fetchall()
+    if len(rows) < CONSECUTIVE_REDUCTION_ALERT_THRESHOLD:
+        return None
+    for old_p, new_p, _ in rows:
+        if old_p is None or new_p is None or not (float(new_p) < float(old_p)):
+            return None  # 値上げ / 同額 / 欠損 = ストリーク非成立 (リセット済)
+    oldest_changed_at = rows[-1][2]
+    with get_conn() as conn:
+        in_window = conn.execute(
+            "SELECT ? >= datetime('now', ?)",
+            (oldest_changed_at, f'-{CONSECUTIVE_REDUCTION_WINDOW_DAYS} days')
+        ).fetchone()[0]
+    if not in_window:
+        return None
+    return {
+        'count': len(rows),
+        'oldest_changed_at': oldest_changed_at,
+        'newest_changed_at': rows[0][2],
+        'prices': [float(r[1]) for r in rows],
+    }
+
+
+# ────────────────────────────────────────
 # 値下げ実行
 # ────────────────────────────────────────
 
@@ -534,7 +622,12 @@ def _evaluate_and_apply_one(
             'message': msg,
         }
 
-    # L5 min_price floor
+    # L5 min_price floor (raw target で判定).
+    # 2026-07-02 main HIGH 修正: clamp を先に適用すると raw が床割れ (旧: skip)
+    # の商品も clamp 後価格が床超になり値下げが「解禁」→ 競合には勝てないのに
+    # 利幅だけ削る純損経路が発生した。clamp は「承認された値下げの幅を制限」
+    # であり「旧来ブロックされていた値下げを解禁」ではない、という仕様に沿って
+    # 床判定を raw target のまま行い、旧意味論を完全維持する.
     floor = _decide_floor_price(state)
     if floor is None:
         return {
@@ -548,13 +641,30 @@ def _evaluate_and_apply_one(
             'competitor_total': competitor['total_usd'],
         }
 
-    # 値下げ方向のみ許容 (現価以上に上げる方向は別タスクの責務)
+    # 値下げ方向のみ許容 (現価以上に上げる方向は別タスクの責務、raw target で判定).
     if target_price >= float(our_price):
         return {
             'action': 'skip_already_cheapest',
             'message': f"target=${target_price:.2f} >= current=${our_price:.2f}",
             'competitor_total': competitor['total_usd'],
         }
+
+    # 2026-07-02 (user 指示・第 2 安全弁): 床 + 方向を通過した「承認済み値下げ」
+    # に対してのみ、1 回の下げ幅を現価格の 5% まで clamp する.
+    # clamp は target を raw より "現価格側" にしか動かさない (max(raw, 0.95*our)):
+    #   - raw ≥ floor が既に確認済 ∧ clamp 後 ≥ raw → 自明に clamp 後 ≥ floor
+    #   - raw < our_price ∧ clamp 後 ≤ 0.95*our_price < our_price → 方向反転しない
+    # よって clamp 後の再チェックは不要 (旧来ブロックの解禁は構造的に不可能).
+    rule_applied = rule
+    raw_target_price = target_price
+    target_price, _was_clamped = _apply_max_drop_clamp(float(our_price), target_price)
+    if _was_clamped:
+        logger.info(
+            f"W183 5%clamp: {ebay_item_id} raw_target=${raw_target_price:.2f} "
+            f"→ clamped=${target_price:.2f} (current=${float(our_price):.2f}, "
+            f"上限 {MAX_SINGLE_DROP_PCT * 100:.0f}%/回)"
+        )
+        rule_applied = f"{rule} [clamp{int(MAX_SINGLE_DROP_PCT * 100)}%]"
 
     # 認証情報チェック (恒久設定不備で予約行を作らないよう claim より前).
     from monitor.credentials import get_ebay_credentials, ebay_credentials_ok
@@ -564,7 +674,7 @@ def _evaluate_and_apply_one(
         _log_price_change(
             ebay_item_id, float(our_price), target_price,
             competitor['competitor_item_id'], competitor['total_usd'],
-            rule, triggered_by, success=False, error_message=msg,
+            rule_applied, triggered_by, success=False, error_message=msg,
         )
         return {
             'action': 'failed_api',
@@ -580,7 +690,7 @@ def _evaluate_and_apply_one(
     claim_id = _claim_price_change_slot(
         ebay_item_id, float(our_price), target_price,
         competitor['competitor_item_id'], competitor['total_usd'],
-        rule, triggered_by,
+        rule_applied, triggered_by,
     )
     if claim_id is _SLOT_LOCKED:
         # HIGH-1: lock 競合を skip_daily_cap と混同しない (user 誤誘導防止 +
@@ -622,6 +732,17 @@ def _evaluate_and_apply_one(
             f"W183 値下げ: {ebay_item_id} ${our_price:.2f}→${target_price:.2f} "
             f"(competitor=${competitor['total_usd']:.2f}, by={triggered_by})"
         )
+        # 2026-07-02 (user 指示・第 3 安全弁): 値下げは既に確定済み (成功) なので、
+        # ここで例外が出ても値下げ結果自体は覆さない (Q0: 偽装失敗にしない)。
+        # 例外は握り潰さず必ず warning で痕跡を残す。
+        try:
+            _streak = _check_consecutive_reduction_streak(ebay_item_id)
+            if _streak is not None:
+                _send_discord_spiral_alert(config, ebay_item_id, _streak)
+        except Exception as e:
+            logger.warning(
+                f"W183 spiral streak check/alert 失敗 ({ebay_item_id}): {e}"
+            )
         return {
             'action': 'reduced',
             'old_price': float(our_price),
@@ -697,6 +818,49 @@ def _send_discord_reduced(config: Dict, reduced_items: list) -> None:
         DiscordNotifier(webhook, bypass_env=True).send_message(content)
     except Exception as e:
         logger.warning(f"W245: discord reduced notify failed: {e}")
+
+
+def _send_discord_spiral_alert(config: Dict, ebay_item_id: str, streak: dict) -> None:
+    """値下げ合戦スパイラル疑い alert (2026-07-02 user 指示・第 3 安全弁)。
+
+    通知のみ、値下げ自体は止めない (停止判断は user)。同一商品への重複通知は
+    1 日 1 回に dedupe (既存 claim_alert_dedupe パターンを踏襲、
+    task_scheduler_health_check.py の url_divergence 通知と同方式)。
+    """
+    try:
+        from monitor.task_execution_log import claim_alert_dedupe
+        fresh = claim_alert_dedupe(
+            task_key=f"__w183_spiral_{ebay_item_id}__", expected_hour=0
+        )
+    except Exception as e:  # noqa: BLE001 — dedupe DB 失敗で alert 自体を止めない
+        logger.warning(f"W183 spiral alert dedupe DB error ({ebay_item_id}): {e}")
+        fresh = True  # フェールセーフで通知側に倒す
+    if not fresh:
+        logger.info(
+            f"W183 spiral alert: 本日通知済みのため dedupe suppress ({ebay_item_id})"
+        )
+        return
+    webhook = _resolve_pricing_webhook(config)
+    if not webhook:
+        logger.warning(
+            f"W245: Discord webhook 未設定 — spiral alert をスキップ ({ebay_item_id})"
+        )
+        return
+    from notifiers.discord_notifier import DiscordNotifier
+    title = _get_listing_title(ebay_item_id)
+    prices_s = " → ".join(f"${p:.2f}" for p in reversed(streak['prices']))
+    content = (
+        f"⚠️ **W183 値下げ合戦アラート**: {title} ({ebay_item_id[-4:]})\n"
+        f"直近 {streak['count']} 回連続値下げ (間に値上げなし、"
+        f"{CONSECUTIVE_REDUCTION_WINDOW_DAYS} 日以内): {prices_s}\n"
+        f"値下げは継続中 (床 lp_min_price / 1 回 {int(MAX_SINGLE_DROP_PCT * 100)}% 上限は既存通り適用)。"
+        f"ライバルとの値下げ合戦の疑いあり、必要なら手動確認をお願いします。"
+    )
+    try:
+        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+        logger.info(f"W183 spiral alert 送信: {ebay_item_id}")
+    except Exception as e:
+        logger.warning(f"W183 spiral alert send failed ({ebay_item_id}): {e}")
 
 
 def _send_discord_failure_alert(

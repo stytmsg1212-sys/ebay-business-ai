@@ -2764,5 +2764,16 @@
     "created": "2026-07-01",
     "completed": "2026-07-01",
     "category": "business"
+  },
+  {
+    "id": 365,
+    "tag": "W300",
+    "title": "W183安全弁: 値下げ1回5%上限 + 3連続値下げアラート",
+    "description": "稼働中の自動値下げ (W183 rival_pricing) に第2・第3の安全弁を追加。①1回の値下げ幅を現価格の5%までにclamp (lp_min_price床と併用)、②同一商品が7日以内に3連続値下げされたらDiscordアラート (ライバルも自動値下げシステム使用想定の値下げ合戦スパイラル検知、通知は1日1回dedupe)。AI店長Phase1条件2としてuser承認 (2026-07-02)、Phase1本体と独立の先行実装。",
+    "status": "対応中",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
   }
 ]

@@ -244,14 +244,19 @@ class TestEvaluateAndApply:
         assert r['action'] == 'skip_already_cheapest'
 
     def test_skip_below_floor(self, tmp_db):
+        """2026-07-02 main HIGH 修正後: 床判定は raw target で行われる.
+        raw=$79.99 が floor=$116 を割っているので、clamp を通す前に skip される
+        (旧 L5 意味論を完全維持: 勝てない値下げは据え置き)."""
         from tasks.task_rival_pricing import _evaluate_and_apply_one
         _seed_listing('TEST_W183_E3', current_price=120.0, shipping_cost=10.0,
-                      lp_min_price=100.0)
+                      lp_min_price=116.0)
         # competitor $80, shipping $10 → comp_total=$90 < our_total=$130
-        # target = 80 + 10 - 0.01 - 10 = 79.99 < floor 100 → skip
+        # raw target = 80 + 10 - 0.01 - 10 = 79.99 → floor=$116 で below_floor
         _seed_competitor('TEST_W183_E3', 'C1', price_usd=80.0, shipping_usd=10.0)
         r = _evaluate_and_apply_one('TEST_W183_E3', {})
         assert r['action'] == 'skip_below_floor'
+        # message は raw target を報告 (clamp 前の $79.99 が使われることを確認)
+        assert 'target=$79.99' in r['message']
 
     def test_skip_no_floor(self, tmp_db):
         from tasks.task_rival_pricing import _evaluate_and_apply_one
@@ -304,14 +309,21 @@ class TestEvaluateAndApply:
         assert cnt == 1, "Q0 silent skip 違反: log row が入っていない"
 
     def test_happy_path_calls_revise_api(self, tmp_db, monkeypatch):
-        """API は mock し、target_price と DB 更新まで通る経路を確認."""
+        """API は mock し、target_price と DB 更新まで通る経路を確認.
+
+        2026-07-02 5% clamp 追加後: raw target=$79.99 は現価格 $120 から
+        33%超の下げなので clamp が発動し、実際に適用される価格は
+        $120 * 0.95 = $114.00 になる (floor=$50 はクランプ後価格を下回るため
+        不発動、clamp が実質上の下限として効く)。
+        """
         from monitor.database import get_conn
         from tasks.task_rival_pricing import _evaluate_and_apply_one
 
         _seed_listing('TEST_W183_E8', current_price=120.0, shipping_cost=10.0,
                       lp_min_price=50.0)
         _seed_competitor('TEST_W183_E8', 'C1', price_usd=80.0, shipping_usd=10.0)
-        # comp total=$90, our_total=$130, target = 89.99-10 = 79.99 ($50 floor 越え)
+        # comp total=$90, our_total=$130, raw target = 89.99-10 = 79.99
+        # → 5% clamp で $114.00 ($50 floor は $114 を下回るため不発動)
 
         # creds と revise_fixed_price_item を monkeypatch
         monkeypatch.setattr(
@@ -337,7 +349,7 @@ class TestEvaluateAndApply:
         r = _evaluate_and_apply_one('TEST_W183_E8', {'ebay': {}})
         assert r['action'] == 'reduced'
         assert captured['item_id'] == 'TEST_W183_E8'
-        assert captured['price'] == 79.99
+        assert captured['price'] == 114.0
         # DB 更新確認
         with get_conn() as c:
             cur = c.execute(
@@ -349,8 +361,15 @@ class TestEvaluateAndApply:
                 "WHERE ebay_item_id=? AND success=1",
                 ('TEST_W183_E8',)
             ).fetchone()[0]
-        assert cur == 79.99
+            rule_applied = c.execute(
+                "SELECT rule_applied FROM price_change_log "
+                "WHERE ebay_item_id=? AND success=1",
+                ('TEST_W183_E8',)
+            ).fetchone()[0]
+        assert cur == 114.0
         assert log_cnt == 1
+        # Q0: clamp 発動が rule_applied 列に痕跡として残る
+        assert 'clamp' in rule_applied
 
 
 # ────────────────────────────────────────
@@ -917,8 +936,10 @@ class TestW245RunLevelSuccess:
         assert r['success'] is True
         assert r['reduced'] == 1
         assert any('自動値下げ' in m for m in sent), "値下げ結果通知が飛んでいない"
-        # 通知に old→new 価格が含まれる (money-direct 可視化)
-        assert any('$120.00' in m and '$79.99' in m for m in sent)
+        # 通知に old→new 価格が含まれる (money-direct 可視化)。
+        # 2026-07-02 5% clamp 追加後: raw target $79.99 は clamp されて $114.00
+        # ($120 * 0.95) になる。
+        assert any('$120.00' in m and '$114.00' in m for m in sent)
 
     def test_healthy_skip_run_is_success_and_silent(self, tmp_db, monkeypatch):
         """全件 skip (already cheapest) の健全 run → success=True + Discord 無音."""
@@ -937,3 +958,480 @@ class TestW245RunLevelSuccess:
         assert r['success'] is True
         assert r['skipped_already_cheapest'] == 1
         assert sent == [], "健全 skip なのに通知が飛んだ (alert fatigue)"
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-07-02 (user 指示): 値下げ合戦スパイラル抑止 — 第 2・第 3 の安全弁
+# ════════════════════════════════════════════════════════════════
+
+class TestMaxDropClamp:
+    """第 2 安全弁: 1 回の値下げ幅は現価格の 5% まで (_apply_max_drop_clamp)."""
+
+    def test_within_5pct_not_clamped(self):
+        from tasks.task_rival_pricing import _apply_max_drop_clamp
+        # 120 → 115 (4.17% 下げ) は 5% 以内、clamp 不発動
+        price, clamped = _apply_max_drop_clamp(120.0, 115.0)
+        assert clamped is False
+        assert price == 115.0
+
+    def test_exactly_5pct_not_clamped(self):
+        """ちょうど 5% ジャストの下げは非 clamp (境界は許容側)."""
+        from tasks.task_rival_pricing import _apply_max_drop_clamp
+        price, clamped = _apply_max_drop_clamp(120.0, 114.0)  # 120*0.95=114.0
+        assert clamped is False
+        assert price == 114.0
+
+    def test_over_5pct_clamped_to_95pct(self):
+        """5% 超の下げは current_price * 0.95 に clamp される."""
+        from tasks.task_rival_pricing import _apply_max_drop_clamp
+        price, clamped = _apply_max_drop_clamp(120.0, 79.99)  # 33%超の下げ
+        assert clamped is True
+        assert price == 114.0
+
+    def test_just_over_5pct_boundary_clamped(self):
+        """5.01% 下げ (境界のすぐ外) は clamp される."""
+        from tasks.task_rival_pricing import _apply_max_drop_clamp
+        price, clamped = _apply_max_drop_clamp(100.0, 94.9)  # 5.1% 下げ
+        assert clamped is True
+        assert price == 95.0
+
+    def test_float_precision_boundary_not_falsely_clamped(self):
+        """整数セント判定により float 誤差で境界 (端数価格) を誤 clamp しない.
+
+        99.99 * 0.95 = 94.9905 (端数セント) → ceil で $95.00 に確定。
+        target がちょうど $95.00 ならジャスト境界として非 clamp、
+        $94.99 (1 セント下) なら clamp される (float 誤差で揺れない)."""
+        from tasks.task_rival_pricing import _apply_max_drop_clamp
+        price, clamped = _apply_max_drop_clamp(99.99, 95.00)
+        assert clamped is False
+        assert price == 95.00
+        price2, clamped2 = _apply_max_drop_clamp(99.99, 94.99)
+        assert clamped2 is True
+        assert price2 == 95.00
+
+
+class TestMaxDropClampIntegration:
+    """5% clamp と既存 floor (L5) の統合挙動 (_evaluate_and_apply_one 経由)."""
+
+    def test_raw_target_below_floor_skips_regardless_of_clamp(self, tmp_db):
+        """★HIGH 修正の核心: raw target が床を割っていたら、clamp を通す前に
+        skip_below_floor で据え置き (旧意味論を完全維持)。
+
+        旧実装 (clamp を先に適用) では raw=$45 → clamp $114 → 床 $50 通過 →
+        値下げが「解禁」され $114 に降下 → 競合には勝てないのに利幅だけ削る
+        純損経路が発生した。新実装は raw で床判定するのでこの経路が塞がれる。
+        """
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        _seed_listing('CLAMP_A', current_price=120.0, shipping_cost=0.0,
+                      lp_min_price=50.0)
+        # comp_total=$45.01 → raw target=$45.00 < floor $50.00 → skip
+        # (旧実装は clamp $114 で通過し reduced になっていた)
+        _seed_competitor('CLAMP_A', 'C1', price_usd=45.01, shipping_usd=0.0)
+        r = _evaluate_and_apply_one('CLAMP_A', {})
+        assert r['action'] == 'skip_below_floor'
+        # message は raw target ($45.00) を報告 (clamp 前で判定されている痕跡)
+        assert 'target=$45.00' in r['message']
+        assert 'floor=$50.00' in r['message']
+
+    def test_raw_target_equals_floor_boundary_passes_then_clamps(
+            self, tmp_db, monkeypatch):
+        """境界: raw target がちょうど floor と同額の時は floor 通過
+        (`<`, not `<=`)、その後 clamp が適用される (旧挙動 = 通過を維持)."""
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        _seed_listing('CLAMP_A_EQ', current_price=120.0, shipping_cost=0.0,
+                      lp_min_price=50.0)
+        # comp_price=$50.01 → raw target=$50.00 == floor $50.00 → 通過
+        # 5% clamp: $50.00 << $114.00 (95% of $120) → clamp
+        _seed_competitor('CLAMP_A_EQ', 'C1', price_usd=50.01, shipping_usd=0.0)
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        r = _evaluate_and_apply_one('CLAMP_A_EQ', {'ebay': {}})
+        assert r['action'] == 'reduced'
+        assert r['new_price'] == 114.0
+
+    def test_raw_target_above_floor_and_over_5pct_clamps_to_95pct(
+            self, tmp_db, monkeypatch):
+        """raw が床以上、かつ 5% 超の下げ → clamp が適用され current * 0.95 に着地."""
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        _seed_listing('CLAMP_B', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        # comp_total=$90 → raw target=$79.99 > floor $50 → clamp で $114.00
+        _seed_competitor('CLAMP_B', 'C1', price_usd=80.0, shipping_usd=10.0)
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        r = _evaluate_and_apply_one('CLAMP_B', {'ebay': {}})
+        assert r['action'] == 'reduced'
+        assert r['new_price'] == 114.0
+
+    def test_clamp_logged_in_rule_applied_column(self, tmp_db, monkeypatch, caplog):
+        """Q0: clamp 発動が scheduler.log (logger.info) + DB (rule_applied) に残る."""
+        import logging
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+
+        _seed_listing('CLAMP_C', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('CLAMP_C', 'C1', price_usd=80.0, shipping_usd=10.0)
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        with caplog.at_level(logging.INFO):
+            r = _evaluate_and_apply_one('CLAMP_C', {'ebay': {}})
+        assert r['action'] == 'reduced'
+        assert r['new_price'] == 114.0
+        assert any('5%clamp' in rec.message for rec in caplog.records), \
+            "Q0: clamp 発動が scheduler.log に残っていない"
+        with get_conn() as c:
+            rule_applied = c.execute(
+                "SELECT rule_applied FROM price_change_log "
+                "WHERE ebay_item_id=? AND success=1", ('CLAMP_C',)
+            ).fetchone()[0]
+        assert 'clamp' in rule_applied, "Q0: clamp 発動が DB (rule_applied) に残っていない"
+
+    def test_no_clamp_no_marker_in_rule_applied(self, tmp_db, monkeypatch):
+        """clamp 非発動時は rule_applied に clamp マーカーが付かない (誤爆確認)."""
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+
+        # raw target が 5% 以内に収まるよう競合価格を調整
+        # our=120, shipping=10 → floor(5%)=$114.00
+        # comp shipping=0, comp_price=125 → comp_total=125, target=124.99-10=114.99
+        # (>= our_price(120)? いいえ、114.99 < 120 = 値下げ方向、かつ 5%以内)
+        _seed_listing('CLAMP_D', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('CLAMP_D', 'C1', price_usd=125.0, shipping_usd=0.0)
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        r = _evaluate_and_apply_one('CLAMP_D', {'ebay': {}})
+        assert r['action'] == 'reduced'
+        assert r['new_price'] == 114.99
+        with get_conn() as c:
+            rule_applied = c.execute(
+                "SELECT rule_applied FROM price_change_log "
+                "WHERE ebay_item_id=? AND success=1", ('CLAMP_D',)
+            ).fetchone()[0]
+        assert 'clamp' not in rule_applied
+
+
+# ────────────────────────────────────────
+# 第 3 安全弁: 同一商品 3 連続値下げ Discord アラート
+# ────────────────────────────────────────
+
+def _seed_reduction(ebay_item_id: str, old_price: float, new_price: float,
+                    *, success: int = 1, changed_at_sql: str = "datetime('now')"):
+    """price_change_log に「old→new」の値下げ/値上げ 1 件を INSERT するヘルパ."""
+    from monitor.database import get_conn
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO price_change_log "
+            "(ebay_item_id, old_price_usd, new_price_usd, competitor_item_id, "
+            " competitor_total_usd, rule_applied, triggered_by, success, "
+            f" changed_at) "
+            f"VALUES (?, ?, ?, 'C1', 99, 'competitor - 0.01', 'auto_6h_batch', ?, "
+            f"{changed_at_sql})",
+            (ebay_item_id, old_price, new_price, success)
+        )
+
+
+class TestConsecutiveReductionStreak:
+    """第 3 安全弁: _check_consecutive_reduction_streak の判定ロジック."""
+
+    def test_fewer_than_3_no_alert(self, tmp_db):
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_A', 100.0, 95.0)
+        _seed_reduction('STK_A', 95.0, 90.0)
+        assert _check_consecutive_reduction_streak('STK_A') is None
+
+    def test_3_consecutive_reductions_fires(self, tmp_db):
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_B', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('STK_B', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        _seed_reduction('STK_B', 90.0, 85.0)
+        streak = _check_consecutive_reduction_streak('STK_B')
+        assert streak is not None
+        assert streak['count'] == 3
+        assert streak['prices'] == [85.0, 90.0, 95.0]
+
+    def test_value_increase_in_between_resets_streak(self, tmp_db):
+        """値上げを挟むとストリークがリセットされ、直後の 1 回だけでは発火しない."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_C', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-3 hours')")
+        _seed_reduction('STK_C', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('STK_C', 90.0, 100.0,   # 値上げ (increase)
+                        changed_at_sql="datetime('now','-1 hours')")
+        _seed_reduction('STK_C', 100.0, 95.0)   # 値上げ後 1 回目の値下げ
+        assert _check_consecutive_reduction_streak('STK_C') is None
+
+    def test_after_reset_needs_3_more_to_refire(self, tmp_db):
+        """値上げでリセット後、さらに値下げが 3 回連続したら再度発火する."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_D', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-5 hours')")
+        _seed_reduction('STK_D', 95.0, 100.0,   # 値上げ
+                        changed_at_sql="datetime('now','-4 hours')")
+        _seed_reduction('STK_D', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-3 hours')")
+        _seed_reduction('STK_D', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('STK_D', 90.0, 85.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        streak = _check_consecutive_reduction_streak('STK_D')
+        assert streak is not None
+        assert streak['count'] == 3
+
+    def test_outside_7day_window_no_alert(self, tmp_db):
+        """3 連続値下げだが最も古い 1 件が 7 日超前 → window 外で非発火."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_E', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-8 days')")
+        _seed_reduction('STK_E', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-4 days')")
+        _seed_reduction('STK_E', 90.0, 85.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        assert _check_consecutive_reduction_streak('STK_E') is None
+
+    def test_within_7day_window_boundary_fires(self, tmp_db):
+        """最も古い 1 件がちょうど 7 日以内 (境界内) なら発火する."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_F', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-6 days','-23 hours')")
+        _seed_reduction('STK_F', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-3 days')")
+        _seed_reduction('STK_F', 90.0, 85.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        assert _check_consecutive_reduction_streak('STK_F') is not None
+
+    def test_equal_price_not_counted_as_reduction(self, tmp_db):
+        """同額 (値下げでない) が混ざるとストリーク非成立."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_G', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('STK_G', 95.0, 95.0,   # 同額
+                        changed_at_sql="datetime('now','-1 hours')")
+        _seed_reduction('STK_G', 95.0, 90.0)
+        assert _check_consecutive_reduction_streak('STK_G') is None
+
+    def test_same_second_tie_breaks_by_id_desc(self, tmp_db):
+        """changed_at が同一秒 (CURRENT_TIMESTAMP tie) の時、id 降順で新しい行が
+        優先されて「直近 3 件」が決定的に選ばれる (Codex Finding 1 hardening)。
+
+        シナリオ: 4 件全て changed_at='2026-07-02 05:00:00' を明示指定。
+        SQL 上の挿入順 (= id 昇順) は
+          id1: old=90 new=95  (値上げ)
+          id2: old=100 new=95 (値下げ)
+          id3: old=95 new=90  (値下げ)
+          id4: old=90 new=85  (値下げ)
+        id DESC で LIMIT 3 なら [id4, id3, id2] = 全て値下げ → 発火。
+        id タイブレークが無いと id1 (値上げ) が混ざる非決定順が起き得た。
+        """
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        same_ts = "'2026-07-02 05:00:00'"
+        # 挿入順が id 昇順になる。id1 が最古扱いの「値上げ」ダミー行。
+        _seed_reduction('STK_TIE', 90.0, 95.0, changed_at_sql=same_ts)   # id1 値上げ
+        _seed_reduction('STK_TIE', 100.0, 95.0, changed_at_sql=same_ts)  # id2 値下げ
+        _seed_reduction('STK_TIE', 95.0, 90.0, changed_at_sql=same_ts)   # id3 値下げ
+        _seed_reduction('STK_TIE', 90.0, 85.0, changed_at_sql=same_ts)   # id4 値下げ
+        streak = _check_consecutive_reduction_streak('STK_TIE')
+        assert streak is not None, "id 降順 tie-break が効いていない (id1 値上げが混入)"
+        assert streak['count'] == 3
+        # id4, id3, id2 の new_price_usd (新しい順)
+        assert streak['prices'] == [85.0, 90.0, 95.0]
+
+    def test_failed_rows_not_counted(self, tmp_db):
+        """success=0 の失敗行は判定対象に含まれない."""
+        from tasks.task_rival_pricing import _check_consecutive_reduction_streak
+        _seed_reduction('STK_H', 100.0, 95.0,
+                        changed_at_sql="datetime('now','-3 hours')")
+        _seed_reduction('STK_H', 95.0, 90.0, success=0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('STK_H', 95.0, 90.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        _seed_reduction('STK_H', 90.0, 85.0)
+        # success=1 な行だけ数えると [85,90,95] の 3 連続 → 発火
+        streak = _check_consecutive_reduction_streak('STK_H')
+        assert streak is not None
+        assert streak['count'] == 3
+
+
+class TestSpiralAlertDedupeAndDiscord:
+    """第 3 安全弁: Discord 通知 + dedupe (_send_discord_spiral_alert)."""
+
+    _CFG = {'ebay': {}, 'discord': {'webhook_url': 'https://discord.test/hook'}}
+
+    @staticmethod
+    def _capture_discord(monkeypatch):
+        sent = []
+
+        class _FakeNotifier:
+            def __init__(self, webhook, bypass_env=False):
+                self.webhook = webhook
+
+            def send_message(self, content):
+                sent.append(content)
+                return True
+
+        monkeypatch.setattr(
+            'notifiers.discord_notifier.DiscordNotifier', _FakeNotifier
+        )
+        return sent
+
+    def test_sends_alert_with_price_history(self, tmp_db, monkeypatch):
+        from tasks.task_rival_pricing import _send_discord_spiral_alert
+        sent = self._capture_discord(monkeypatch)
+        streak = {'count': 3, 'oldest_changed_at': 'x', 'newest_changed_at': 'y',
+                  'prices': [85.0, 90.0, 95.0]}
+        _send_discord_spiral_alert(self._CFG, 'STK_ALERT_1', streak)
+        assert len(sent) == 1
+        assert '値下げ合戦アラート' in sent[0]
+        assert '$85.00' in sent[0] and '$95.00' in sent[0]
+
+    def test_dedupe_suppresses_second_call_same_day(self, tmp_db, monkeypatch):
+        """同一 ebay_item_id への 2 回目通知は同日中 dedupe で抑制される."""
+        from tasks.task_rival_pricing import _send_discord_spiral_alert
+        sent = self._capture_discord(monkeypatch)
+        streak = {'count': 3, 'oldest_changed_at': 'x', 'newest_changed_at': 'y',
+                  'prices': [85.0, 90.0, 95.0]}
+        _send_discord_spiral_alert(self._CFG, 'STK_ALERT_2', streak)
+        _send_discord_spiral_alert(self._CFG, 'STK_ALERT_2', streak)
+        assert len(sent) == 1, "同一商品への重複通知が dedupe されていない"
+
+    def test_different_items_not_deduped_against_each_other(self, tmp_db, monkeypatch):
+        """別商品への通知は互いに dedupe されない (per-item dedupe)."""
+        from tasks.task_rival_pricing import _send_discord_spiral_alert
+        sent = self._capture_discord(monkeypatch)
+        streak = {'count': 3, 'oldest_changed_at': 'x', 'newest_changed_at': 'y',
+                  'prices': [85.0, 90.0, 95.0]}
+        _send_discord_spiral_alert(self._CFG, 'STK_ALERT_3', streak)
+        _send_discord_spiral_alert(self._CFG, 'STK_ALERT_4', streak)
+        assert len(sent) == 2
+
+    def test_no_webhook_no_crash(self, tmp_db, monkeypatch):
+        from tasks.task_rival_pricing import _send_discord_spiral_alert
+        sent = self._capture_discord(monkeypatch)
+        streak = {'count': 3, 'oldest_changed_at': 'x', 'newest_changed_at': 'y',
+                  'prices': [85.0, 90.0, 95.0]}
+        _send_discord_spiral_alert({'discord': {}}, 'STK_ALERT_5', streak)
+        assert sent == []
+
+
+class TestSpiralAlertIntegration:
+    """_evaluate_and_apply_one 経由で reduced 後に spiral streak が検知され
+    Discord に飛ぶ end-to-end 確認 (値下げ自体は継続すること = 通知のみ)."""
+
+    _CFG = {'ebay': {}, 'discord': {'webhook_url': 'https://discord.test/hook'}}
+
+    @staticmethod
+    def _capture_discord(monkeypatch):
+        sent = []
+
+        class _FakeNotifier:
+            def __init__(self, webhook, bypass_env=False):
+                self.webhook = webhook
+
+            def send_message(self, content):
+                sent.append(content)
+                return True
+
+        monkeypatch.setattr(
+            'notifiers.discord_notifier.DiscordNotifier', _FakeNotifier
+        )
+        return sent
+
+    def test_third_consecutive_reduction_triggers_alert_and_still_reduces(
+            self, tmp_db, monkeypatch):
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        sent = self._capture_discord(monkeypatch)
+        _seed_listing('E2E_STK1', current_price=100.0, shipping_cost=0.0,
+                      lp_min_price=10.0)
+        _seed_competitor('E2E_STK1', 'C1', price_usd=97.0, shipping_usd=0.0)
+        # 過去 2 回の成功値下げ (直近 7 日以内) を仕込む
+        _seed_reduction('E2E_STK1', 110.0, 105.0,
+                        changed_at_sql="datetime('now','-2 hours')")
+        _seed_reduction('E2E_STK1', 105.0, 100.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        r = _evaluate_and_apply_one('E2E_STK1', self._CFG)
+        # 値下げ自体は止まらない (通知のみ、停止判断は user)
+        assert r['action'] == 'reduced'
+        assert len(sent) == 1
+        assert '値下げ合戦アラート' in sent[0]
+
+    def test_second_consecutive_reduction_does_not_trigger_alert(
+            self, tmp_db, monkeypatch):
+        """2 回連続 (閾値未満) では通知しない."""
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        sent = self._capture_discord(monkeypatch)
+        _seed_listing('E2E_STK2', current_price=100.0, shipping_cost=0.0,
+                      lp_min_price=10.0)
+        _seed_competitor('E2E_STK2', 'C1', price_usd=97.0, shipping_usd=0.0)
+        _seed_reduction('E2E_STK2', 105.0, 100.0,
+                        changed_at_sql="datetime('now','-1 hours')")
+        monkeypatch.setattr(
+            'monitor.credentials.get_ebay_credentials',
+            lambda config: {'app_id': 'A', 'dev_id': 'D', 'cert_id': 'C',
+                            'user_token': 'T'}
+        )
+        monkeypatch.setattr(
+            'monitor.credentials.ebay_credentials_ok', lambda creds: True
+        )
+        monkeypatch.setattr(
+            'monitor.ebay_client.revise_fixed_price_item',
+            lambda *a, **k: {'success': True, 'ack': 'Success', 'raw': '<ok/>'}
+        )
+        r = _evaluate_and_apply_one('E2E_STK2', self._CFG)
+        assert r['action'] == 'reduced'
+        assert sent == []
