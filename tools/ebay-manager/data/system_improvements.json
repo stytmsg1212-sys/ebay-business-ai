@@ -2758,11 +2758,11 @@
     "id": 364,
     "tag": "W299",
     "title": "リサーチ対決に1件ずつ登録/下書き一時保存+完了ボタンを追加",
-    "description": "リサーチ対決で5品を提示する運用中、候補探索の合間に利益計算など他タブへ移動すると入力が消える(現状は一時保存が無い認識)。他タブ移動(Streamlit rerun)を跨いで残る下書き保存、または1件ずつ確定登録を可能にし、5品揃ったら『完了』ボタンで確定するフローを追加。詳細UX(1件ずつ確定 vs 全部下書き→一括確定)は Phase 3 Clarify で確定。",
-    "status": "未着手",
+    "description": "リサーチ対決で5品を提示する運用中、候補探索の合間に利益計算など他タブへ移動すると入力が消える問題を解消。方式A採用: 各品に個別『保存』ボタン(save_user_pick upsert、既存UNIQUE(round_id,rank)利用でスキーマ変更なし)→DB永続でタブ移動しても既存prefillで復元。『確定』(ai_done→user_done)/『完了』(既存流用)は不変。commit 40c05c2。code-reviewer HIGH=0 + pytest7 + Streamlit実機E2E(保存済みprefill表示・console0errors)で検証。",
+    "status": "完了",
     "priority": "通常",
     "created": "2026-07-01",
-    "completed": null,
+    "completed": "2026-07-01",
     "category": "business"
   }
 ]
