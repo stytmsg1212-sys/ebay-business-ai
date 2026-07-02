@@ -32,6 +32,7 @@ from datetime import datetime, timedelta
 from monitor.credentials import get_ebay_credentials
 from monitor.database import (
     get_conn,
+    get_self_ebay_item_ids,
     record_rival_discovery,
     enrich_rival_discovery_shipping,
 )
@@ -95,19 +96,29 @@ def run_rival_per_listing_detection_one(
     query_override: Optional[str] = None,
     sleep_between: float = 2.0,  # M-internal-7: UI 経路 0.0、cron 2.0
     max_requests_remaining: Optional[int] = None,
+    self_item_ids: Optional[frozenset] = None,
 ) -> dict:
     """単一 listing の検索. UI/cron 双方から呼ぶ.
 
     v2 (2026-05-22 PM): 引数 keywords_override: list[str] → query_override: str
     (空白区切り 1 query AND 検索に統一).
 
+    self_item_ids: W308 自己マッチ遮断用 (自社 ebay_listings.ebay_item_id の集合)。
+      None = 遮断しない (既存呼出側/テスト互換のデフォルト)。呼出側
+      (run_rival_detection / UI) が `monitor.database.get_self_ebay_item_ids()`
+      で読んで渡す想定。既存のセラー名一致除外 (`seller == my_seller`) は
+      config['ebay']['seller_id'] 未設定 (本番で常に None) のため機能していな
+      かった (77 件混入の根本原因)。item_id 一致は seller_id 設定に依存しない
+      decisive 判定のため、これを主防御とする。
+
     Returns: {success, ebay_item_id, new_discoveries, refreshed, errors,
-              skipped_bad_item_id, requests_used, message}
+              skipped_bad_item_id, skipped_self_listing, requests_used, message}
     """
     summary = {
         "success": False, "ebay_item_id": eid,
         "new_discoveries": 0, "refreshed": 0, "errors": 0,
         "skipped_bad_item_id": 0,
+        "skipped_self_listing": 0,  # W308: 自社出品との自己マッチ
         "skipped_keywords_null": 0,  # W153-UX (Codex 推奨 2026-05-26): keywords 未設定 = failure ではなく skipped
         "requests_used": 0,
         "message": "",
@@ -227,6 +238,15 @@ def run_rival_per_listing_detection_one(
                 )
                 summary["skipped_bad_item_id"] += 1
                 continue
+            # W308: 自社出品との自己マッチ遮断 (item_id 一致は seller_id 設定に
+            # 依存しない decisive 判定、上記 self_item_ids 説明参照)。
+            if self_item_ids and competitor_iid in self_item_ids:
+                logger.info(
+                    f"[W308] {eid}: competitor_item_id={competitor_iid} が "
+                    f"自社出品と一致、記録をスキップ"
+                )
+                summary["skipped_self_listing"] += 1
+                continue
             new_id = record_rival_discovery(
                 ebay_item_id=eid,
                 competitor_seller=seller,
@@ -274,7 +294,8 @@ def run_rival_per_listing_detection_one(
             f"new={summary['new_discoveries']} "
             f"refreshed={summary['refreshed']} "
             f"err={summary['errors']} "
-            f"bad_iid={summary['skipped_bad_item_id']}"
+            f"bad_iid={summary['skipped_bad_item_id']} "
+            f"self={summary['skipped_self_listing']}"
         )
         if sleep_between > 0:
             time.sleep(sleep_between)
@@ -301,6 +322,7 @@ def run_rival_detection(config: dict) -> dict:
         "success": False, "new_sellers_count": 0, "total_scanned": 0,
         "listings_processed": 0, "new_discoveries_total": 0,
         "errors": 0, "skipped_bad_item_id": 0,
+        "skipped_self_listing": 0,  # W308: 自社出品との自己マッチ
         "skipped_keywords_null": 0,  # W153-UX (Codex 推奨 2026-05-26): UI 生成待ち listing
         "requests_used": 0,
         "sellers": [], "message": "",
@@ -346,6 +368,9 @@ def run_rival_detection(config: dict) -> dict:
                         logger.warning(f"[W153] truncate notify failed: {e}")
             listings = listings[:max_listings]
         requests_remaining = max_requests
+        # W308: 1 run につき 1 回だけ読み、全 listing の巡回で使い回す
+        # (自社 ebay_item_id 集合は 1 run の途中で変化しない前提)。
+        self_item_ids = get_self_ebay_item_ids()
 
         for lst in listings:
             eid = lst["ebay_item_id"]
@@ -360,12 +385,14 @@ def run_rival_detection(config: dict) -> dict:
                 eid, config,
                 sleep_between=2.0,
                 max_requests_remaining=requests_remaining,
+                self_item_ids=self_item_ids,
             )
             per_listing_summaries.append(res)
             summary["listings_processed"] += 1
             summary["new_discoveries_total"] += res["new_discoveries"]
             summary["errors"] += res["errors"]
             summary["skipped_bad_item_id"] += res["skipped_bad_item_id"]
+            summary["skipped_self_listing"] += res.get("skipped_self_listing", 0)
             # W153-UX (Codex 推奨 2026-05-26): keywords NULL skipped を集計 (errors と分離)
             summary["skipped_keywords_null"] += res.get("skipped_keywords_null", 0)
             summary["requests_used"] += res["requests_used"]
@@ -386,6 +413,7 @@ def run_rival_detection(config: dict) -> dict:
             f"new={summary['new_discoveries_total']} "
             f"err={summary['errors']} "
             f"bad_iid={summary['skipped_bad_item_id']} "
+            f"skip_self={summary['skipped_self_listing']} "
             f"skip_kw_null={summary['skipped_keywords_null']} "
             f"reqs={summary['requests_used']}"
         )

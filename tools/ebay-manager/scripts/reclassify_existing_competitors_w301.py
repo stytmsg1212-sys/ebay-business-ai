@@ -61,6 +61,9 @@ from typing import Optional
 if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# scripts/ 直下実行時に repo(tools/ebay-manager) を import path へ (backfill_w301 と同パターン、2026-07-02 fix)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from monitor.database import get_conn, get_ddu_seller_ids, get_warning_brand_names
 from monitor.rival_classifier import (
     DEFAULT_THRESHOLDS,

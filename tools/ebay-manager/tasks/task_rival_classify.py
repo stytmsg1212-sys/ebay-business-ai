@@ -56,6 +56,7 @@ from monitor.database import (
     add_or_reactivate_competitor,
     get_conn,
     get_ddu_seller_ids,
+    get_self_ebay_item_ids,
     get_warning_brand_names,
     update_rival_discovery_status,
 )
@@ -165,7 +166,7 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
     task_cfg = (cfg.get('tasks_enabled') or {}).get('rival_classify') or {}
     result: dict = {
         "success": False, "processed": 0, "real": 0, "noise": 0, "review": 0,
-        "ai_calls_used": 0, "issues": 0, "message": "",
+        "ai_calls_used": 0, "issues": 0, "self_excluded": 0, "message": "",
     }
 
     # ── kill switch (Q0: skip も痕跡) ──
@@ -185,6 +186,9 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
 
         dou_blacklist = get_ddu_seller_ids()
         warning_brands = get_warning_brand_names()
+        # W308: 自社出品との自己マッチ遮断 (competitor_item_id が自社 ebay_item_id
+        # と一致する discovery を AI を呼ばず noise 直行させる)。
+        self_item_ids = get_self_ebay_item_ids()
 
         thresholds = dict(DEFAULT_THRESHOLDS)
         max_ai_calls = task_cfg.get('max_ai_calls_per_run')
@@ -203,6 +207,7 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
             thresholds=thresholds,
             shadow_mode=shadow_mode,
             persist=True,
+            self_item_ids=self_item_ids,
         )
 
         issue_items: list[dict] = []
@@ -210,6 +215,8 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
             discovery_id = signals["discovery_id"]
             if res.route in _AI_ATTEMPTED_ROUTES:
                 result["ai_calls_used"] += 1
+            if res.exclude_reason == "self_listing":
+                result["self_excluded"] += 1
 
             if res.classification == "noise":
                 update_rival_discovery_status(discovery_id, "dismissed")
@@ -258,7 +265,8 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
         result["message"] = (
             f"processed={result['processed']} real={result['real']} "
             f"noise={result['noise']} review={result['review']} "
-            f"ai_calls={result['ai_calls_used']} issues={result['issues']}"
+            f"ai_calls={result['ai_calls_used']} issues={result['issues']} "
+            f"self_excluded={result['self_excluded']}"
         )
         logger.info(f"[W301 S4] {result['message']}")
 

@@ -3596,6 +3596,7 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
             else:
                 st.session_state[cooldown_key] = now_s
                 with st.spinner("Browse API 巡回中..."):
+                    from monitor.database import get_self_ebay_item_ids
                     from tasks.task_rival_detection import (
                         run_rival_per_listing_detection_one,
                     )
@@ -3603,6 +3604,7 @@ def _render_rival_watch_section(p: dict, config: dict) -> None:
                         eid, config,
                         query_override=q,
                         sleep_between=0.0,  # M-internal-7: UI 経路 0
+                        self_item_ids=get_self_ebay_item_ids(),  # W308
                     )
                 if res["success"]:
                     st.success(

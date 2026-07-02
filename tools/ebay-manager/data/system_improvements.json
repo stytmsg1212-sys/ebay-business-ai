@@ -2799,6 +2799,28 @@
     "category": "ops"
   },
   {
+    "id": 372,
+    "tag": "W307",
+    "title": "MonoDeck 起動ショートカット (デスクトップ、二重起動防止付き)",
+    "description": "PC再起動後に MonoDeck (Streamlit) が落ちたままになる問題への user 依頼対応。デスクトップに「MonoDeck 起動.lnk」を設置。実体 = scripts/monodeck_launch.ps1 (port 8501 LISTENING なら ブラウザを開くだけ / 未起動なら実績ある streamlit_start.ps1 で fresh start → ブラウザ)。実機E2E済 (cold start 経路で起動+ブラウザ表示確認 2026-07-02)。",
+    "status": "完了",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": "2026-07-02",
+    "category": "ops"
+  },
+  {
+    "id": 373,
+    "tag": "W308",
+    "title": "自社セラー除外: ライバル発見/AI分類の自己マッチ遮断",
+    "description": "W305試験で発覚: listing_rival_discoveries に自社ストア (mono_honpo_japan) の出品77件が競合として記録されていた (competitor_item_id が自社 ebay_listings と100%一致、採用0件で金銭影響は未発生)。W301 AI分類には自社セラー除外が無く、放置すると03:00初回分類でreal判定→監視採用→Shadow突合汚染→将来は自分と値下げ合戦のリスク。対策: ①rival_classifier のハード除外に self_listing (competitor_item_id が自社listing / competitor_seller が自社ID) を追加 ②既存77件の一括dismiss one-shot ③発見側 (rival_detection/sweep) にも自社除外。2026-07-02 即日対応。",
+    "status": "対応中",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
+  },
+  {
     "id": 367,
     "tag": "W303",
     "title": "7/7 Fable→Opus4.8 切替戻し + モデル体制の総点検C項目",

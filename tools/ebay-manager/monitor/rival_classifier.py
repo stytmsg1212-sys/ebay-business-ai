@@ -202,6 +202,7 @@ def classify_discovery(
     dou_blacklist=frozenset(),
     warning_brands=frozenset(),
     thresholds: Optional[dict] = None,
+    self_item_ids=frozenset(),
 ) -> ClassifyResult:
     """ハード除外 → スコア足切りのみを行う純ロジック (AI 不使用)。
 
@@ -219,6 +220,8 @@ def classify_discovery(
     dou_blacklist: DDU セラー ID の集合 (ddu_sellers テーブルから呼出側が読んで渡す)。
     warning_brands: warning_brand_watchlist のブランド名集合 (呼出側が読んで渡す)。
     thresholds: DEFAULT_THRESHOLDS を上書きする dict (省略時デフォルト)。
+    self_item_ids: 自社 ebay_listings.ebay_item_id の集合 (W308: 自己マッチ遮断用、
+      呼出側が `monitor.database.get_self_ebay_item_ids()` で読んで渡す)。
 
     戻り値の classification は 'noise' (hard-exclude/score 起因) / 'review'
     (farmer safety valve) / None 相当 (needs_ai=True、呼出側が AI 判定へ進める)。
@@ -234,6 +237,26 @@ def classify_discovery(
     price_ratio = compute_price_ratio(our_price, competitor_price)
 
     warning_brand_flag = _matches_warning_brand(our_title, competitor_title, warning_brands)
+
+    # 0. 自社出品との自己マッチ (W308): competitor_item_id が自社 ebay_listings に
+    #    実在する = 100% 自社出品 (同一 listing が Browse API 検索結果に自社の
+    #    出品として混入したケース)。セラー名 (competitor_seller) には依存しない
+    #    decisive 判定 — セラー名照合は表記揺れ / config 未設定で機能しないリスクが
+    #    あるが、item_id 一致は確実 (K0: 実コード調査で config['ebay']['seller_id']
+    #    が本番未設定と判明、既存の task_rival_detection.py セラー名除外が無力化
+    #    していたことが 77 件混入の根本原因)。国判定より前 = 最優先で弾く。
+    competitor_item_id = signals.get("competitor_item_id")
+    if competitor_item_id and competitor_item_id in self_item_ids:
+        return ClassifyResult(
+            classification="noise", route="hard_exclude",
+            exclude_reason="self_listing",
+            title_similarity=title_similarity, price_ratio=price_ratio,
+            reason=(
+                f"competitor_item_id が自社 ebay_listings と一致 "
+                f"(self match, item_id={competitor_item_id})"
+            ),
+            warning_brand_flag=warning_brand_flag,
+        )
 
     # 1. 国 ≠ JP 確定 (不明は除外しない = 保守的)
     country = (signals.get("competitor_country") or "").strip().upper()
@@ -559,15 +582,17 @@ def classify_rival(
     discovery_id: Optional[int] = None,
     shadow_mode: bool = True,
     persist: bool = True,
+    self_item_ids=frozenset(),
 ) -> ClassifyResult:
     """1 件分を分類し (必要なら Claude 判定)、persist=True なら rival_classifications へ保存。
 
     ai_calls_used: この run (1 回の task_rival_classify 実行) で既に消費した AI 呼出数。
       呼出側 (classify_batch や task_rival_classify.py) が管理して渡す。
       max_ai_calls_per_run に達している場合は AI を呼ばず review + 痕跡 (Q0)。
+    self_item_ids: W308 自己マッチ遮断用 (classify_discovery へ透過)。
     """
     th = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
-    pre = classify_discovery(signals, dou_blacklist, warning_brands, th)
+    pre = classify_discovery(signals, dou_blacklist, warning_brands, th, self_item_ids=self_item_ids)
 
     if not pre.needs_ai:
         result = pre
@@ -614,11 +639,13 @@ def classify_batch(
     thresholds: Optional[dict] = None,
     shadow_mode: bool = True,
     persist: bool = True,
+    self_item_ids=frozenset(),
 ) -> list:
     """複数件を 1 run として分類。AI 呼出数を run 全体で累積カウントし cap を適用する。
 
     discoveries: 各要素は signals dict に加えて discovery_id キーを含めてよい
       (例: {"discovery_id": 1, "ebay_item_id": ..., ...})。
+    self_item_ids: W308 自己マッチ遮断用 (classify_rival へ透過)。
     """
     th = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     results = []
@@ -635,6 +662,7 @@ def classify_batch(
             discovery_id=discovery_id,
             shadow_mode=shadow_mode,
             persist=persist,
+            self_item_ids=self_item_ids,
         )
         if result.route in _ai_attempt_routes:
             ai_calls_used += 1

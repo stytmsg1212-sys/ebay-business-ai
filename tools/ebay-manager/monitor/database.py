@@ -45,7 +45,7 @@ DEFAULT_SITE_CONFIGS = [
     },
     {
         "site_name": "Paypayフリマ",
-        "url_keyword": "paypayflexmarket",
+        "url_keyword": "paypayfleamarket",  # 2026-07-02 fix: 旧 "paypayflexmarket" はタイポ (本番 DB 行は元から正値、seed 用定数のみ修正)
         "in_stock_text1": "購入手続きへ",
         "in_stock_text2": "",
         "sold_out_text": "関連商品をアプリで探す",
@@ -5059,6 +5059,18 @@ def get_warning_brand_names() -> set:
     """警告ブランド watchlist のブランド名を集合で返す (Holbein 等)."""
     with get_conn() as conn:
         rows = conn.execute("SELECT brand FROM warning_brand_watchlist").fetchall()
+    return {r[0] for r in rows if r[0]}
+
+
+def get_self_ebay_item_ids() -> set:
+    """自社 ebay_listings の ebay_item_id 全件 (W308: 自己マッチ遮断用).
+
+    competitor_item_id がこの集合に含まれる = 100% 自社出品 (Browse API 検索に
+    自社の listing が競合として混入したケース)。セラー名に依存しない decisive
+    判定のため、listing 識別は ebay_item_id のみ使用する (sku-rules.md 準拠)。
+    """
+    with get_conn() as conn:
+        rows = conn.execute("SELECT ebay_item_id FROM ebay_listings").fetchall()
     return {r[0] for r in rows if r[0]}
 
 
