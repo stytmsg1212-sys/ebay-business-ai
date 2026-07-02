@@ -377,6 +377,33 @@ def run_morning_discovery(
     config: Optional[dict] = None, dry_run: bool = False
 ) -> dict:
     """daily_scheduler から呼ばれる. 1 日 1 回のみ生成."""
+    # ── enabled ゲート (2026-07-03 user承認で生成停止、task_research_harvest と同パターン) ──
+    cfg = config or {}
+    md_cfg = (cfg.get("tasks_enabled") or {}).get("morning_discovery") or {}
+    if not md_cfg.get("enabled", True):
+        msg = "morning_discovery: enabled=false → skip (2026-07-03 user承認で生成停止, Q0 痕跡)"
+        logger.info(msg)
+        try:
+            from daily_scheduler import _batch_ctx
+            from monitor.task_execution_log import log_task_skip
+            _bid = _batch_ctx.get("id")
+            _bhr = _batch_ctx.get("hour")
+            if _bid is not None and _bhr is not None:
+                log_task_skip(
+                    task_key="morning_discovery",
+                    display_name="W122 朝の新商品発掘",
+                    batch_id=_bid,
+                    batch_hour=int(_bhr),
+                    reason="disabled_by_config",
+                    skip_kind="skip_disabled",
+                )
+        except Exception as _le:  # noqa: BLE001
+            logger.warning(f"morning_discovery: log_task_skip 失敗: {_le}")
+        return {
+            "success": True,  # skip は正常終了 (偽装成功ではない)
+            "skipped": True,
+            "message": msg,
+        }
     if _today_discovery_exists() and not dry_run:
         logger.info("morning_discovery: 本日分は既に生成済 (skip)")
         return {

@@ -331,6 +331,11 @@
       "description": "W286 リサーチ対戦アリーナ: AI が 6 日ローテ×3 カテゴリで 5 品リサーチ → duel_round 保存 (毎日 05:00)",
       "note": "CDP Chrome (port 9222) + eBay ログイン必須。cycle_categories 未指定時は task_research_duel._default_cycle_categories() fallback。CDP 不在時は痕跡 skip (Q0)。"
     },
+    "morning_discovery": {
+      "enabled": false,
+      "description": "W122 朝の新商品発掘 (今日の発掘): 毎朝 07:00 Opus が新商品候補 3 件生成 → morning_discovery_candidates 保存",
+      "note": "2026-07-03 user承認: 30日以上未使用のため生成停止 (アーカイブページ化済)。再開は enabled=true + scheduler 再起動。task 側ゲートは tasks/task_morning_discovery.py run_morning_discovery 冒頭 (skip_disabled 痕跡あり)。"
+    },
     "ebaymag_policy_assign": {
       "enabled": false,
       "description": "W284 Phase 2-3: eBaymag 送料ポリシー付替 (assign_policy) の有効化フラグ。反映キュー消化 (ebaymag_apply_queue) の軸2 = 送料ポリシー付替を実行するかを制御する。OFF の間は band の付替要否を検出しても CDP 付替を実行せず痕跡ログのみ (Q0)。",
