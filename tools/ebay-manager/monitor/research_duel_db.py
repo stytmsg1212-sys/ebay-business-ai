@@ -50,6 +50,11 @@ _VALID_PATTERNS: frozenset[str] = frozenset({"new", "echo"})
 # 失点採点で理由を必須化する閾値 (これ未満は「なぜ低いか」が学習の核)。
 _REASON_REQUIRED_BELOW = 60
 
+# save_ai_picks の上書きを拒否する round status (採点確定後/終端 — 無警告で消さない / Q0)。
+_AI_PICKS_LOCKED_STATUSES: frozenset[str] = frozenset({
+    STATUS_USER_DONE, STATUS_COMPLETED, STATUS_INVALIDATED,
+})
+
 
 def can_transition(old: str, new: str) -> bool:
     """round status の遷移可否 (純関数)."""
@@ -185,18 +190,36 @@ def invalidate_round(round_id: int, reason: str) -> bool:
 # picks (AI / user)
 # ============================================================================
 
-def save_ai_picks(round_id: int, picks: list[dict]) -> None:
+def save_ai_picks(round_id: int, picks: list[dict]) -> bool:
     """AI の 5 品を保存 (rc_id 参照 + rank + 表示スナップショット title)。
 
     picks: [{"rc_id": int|None, "rank": int, "title_ja": str}, ...]
     冪等: 同 round の既存 ai_picks を置換。status が ai_pending なら ai_done へ自動前進。
     profit は保存しない (rc_id 側が真値 / Fugu A2)。
+
+    状態ガード (Q0 / 総点検 HIGH): status が user_done/completed/invalidated
+    (オーナー採点済 or 終端) の round は削除・上書きを拒否する。ai_pending/ai_done への
+    保存 (同日リトライの正常経路) は引き続き許可する。
+
+    Returns:
+        True  = 保存した (delete→insert 実施)。
+        False = 状態ガードで拒否した (既存 picks は無傷)。呼び出し側は必ず結果を確認し、
+                False 時は握り潰さず警告を出すこと (Q0: silent skip 禁止)。
     """
     with get_conn() as conn:
-        if not conn.execute(
-            "SELECT 1 FROM duel_rounds WHERE round_id=?", (round_id,)
-        ).fetchone():
+        row = conn.execute(
+            "SELECT status FROM duel_rounds WHERE round_id=?", (round_id,)
+        ).fetchone()
+        if not row:
             raise ValueError(f"save_ai_picks: round_id={round_id} not found")
+        status = row[0]
+        if status in _AI_PICKS_LOCKED_STATUSES:
+            logger.warning(
+                "[research_duel_db] save_ai_picks: round_id=%s status=%s のため "
+                "上書きを拒否 (採点済/完了/無効化済データを保護、削除・INSERT は未実施)。",
+                round_id, status,
+            )
+            return False
         conn.execute("DELETE FROM duel_ai_picks WHERE round_id=?", (round_id,))
         for p in picks:
             conn.execute(
@@ -204,12 +227,10 @@ def save_ai_picks(round_id: int, picks: list[dict]) -> None:
                 "VALUES (?,?,?,?)",
                 (round_id, p.get("rc_id"), p.get("rank"), p.get("title_ja")),
             )
-        # ai_pending からのみ自動前進 (それ以降の再保存は status を動かさない)。
-        st = conn.execute(
-            "SELECT status FROM duel_rounds WHERE round_id=?", (round_id,)
-        ).fetchone()
-        if st and st[0] == STATUS_AI_PENDING:
+        # ai_pending からのみ自動前進 (ai_done への再保存は status を動かさない)。
+        if status == STATUS_AI_PENDING:
             _apply_round_status_in_conn(conn, round_id, STATUS_AI_DONE)
+        return True
 
 
 def save_user_picks(round_id: int, picks: list[dict]) -> None:

@@ -35,10 +35,24 @@ from . import research_duel_db
 
 logger = logging.getLogger(__name__)
 
+def _default_memory_dir() -> Path:
+    """~/.claude/projects/<project-slug>/memory を環境非依存に解決する (設計書 / タスク指定).
+
+    Claude Code の SessionStart hook が使う slug 規則 (repo root の ':' '\\' '/' を
+    '-' に置換、`.claude/hooks/session-start-load-incantation.sh` L17 / test 済:
+    `tests/test_session_start_hook_slug.py`) を repo root から再現し、Path.home() と
+    組み合わせて絶対パスを導出する。ハードコードされたユーザ名/repo path に依存しない
+    (総点検 LOW-b)。挙動は従来のハードコード値と同一パスに解決される。
+    """
+    # __file__ = <repo root>/tools/ebay-manager/monitor/research_duel_learning.py
+    #   parents[0]=monitor / [1]=ebay-manager / [2]=tools / [3]=<repo root>
+    repo_root = Path(__file__).resolve().parents[3]
+    slug = str(repo_root).replace(":", "-").replace("\\", "-").replace("/", "-")
+    return Path.home() / ".claude" / "projects" / slug / "memory"
+
+
 # auto-memory の物理ディレクトリ (設計書 / タスク指定)。
-MEMORY_DIR = Path(
-    r"C:\Users\gucch\.claude\projects\C--Users-gucch-projects-claude\memory"
-)
+MEMORY_DIR = _default_memory_dir()
 RUBRIC_PATH = MEMORY_DIR / "reference_research_rubric.md"
 
 # research_brain.ask の source タグ (research_qa.source は自由テキスト = 制約なし)。

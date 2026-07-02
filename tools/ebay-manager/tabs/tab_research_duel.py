@@ -41,6 +41,11 @@ from typing import Optional
 
 import streamlit as st
 
+# research_duel_db は DB 接続を伴わない純粋な定数/CRUD 関数の集合 (import 時に DB は開かない)。
+# _REASON_REQUIRED_BELOW は多数の純関数から参照するため、他 DB CRUD (lazy import 規約) とは
+# 別に定数のみ module 冒頭で import する (db 側を正とし、重複定義を避ける / 総点検 LOW-a)。
+from monitor.research_duel_db import _REASON_REQUIRED_BELOW
+
 logger = logging.getLogger(__name__)
 
 # session_state プレフィクス (UI 衝突回避、tab_research_brain の _SS 流儀)
@@ -69,9 +74,6 @@ _STATUS_JA = {
 }
 
 _PATTERN_JA = {"new": "🆕 新着", "echo": "📈 2年前 (エコー)"}
-
-# 失点採点で理由必須となる閾値 (research_duel_db._REASON_REQUIRED_BELOW と同値)。
-_REASON_REQUIRED_BELOW = 60
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1194,6 +1196,18 @@ def render_research_duel_tab(s: dict) -> None:
             "MONOペンギン (AI) のリサーチがまだ完了していません "
             "(夜間タスク待ち)。先に自分の品を入力しておけます。"
         )
+
+    # ── 取得品不足の明示 (期待数は task 側の実値 _AI_PICKS を参照、総点検 3) ──
+    if not _blind and ai_picks:
+        try:
+            from tasks.task_research_duel import _AI_PICKS as _expected_ai_picks
+        except Exception:  # noqa: BLE001 — import 失敗時は既定 5 品にフォールバック
+            _expected_ai_picks = 5
+        if len(ai_picks) < _expected_ai_picks:
+            st.warning(
+                f"本日は {len(ai_picks)} 品のみ取得 (期待 {_expected_ai_picks} 品)。"
+                "harvest 件数が少なかった可能性があります。"
+            )
 
     # ── 提示用 chrome を逐語 HTML で 1 ブロック描画 ──
     _chrome = (

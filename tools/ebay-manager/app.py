@@ -231,6 +231,25 @@ s = st.session_state.settings
 # st.sidebar 内のグループ別 button 群に再構成。
 # W134 contract (downstream 21 箇所 `if _w134_sel == "<ラベル>":` 機械置換) は
 # 変数 _w134_sel を維持することで保つ。各タブ本体への影響なし。
+#
+# W303 (2026-07-02) ナビ簡素化: 4 グループ (毎日/リサーチ/出品/運用) に再編し、
+# 使用頻度の低い 9 ページを「アーカイブ」カテゴリへ退避 (設定タブのトグルで
+# ON にした時だけ出現)。定時実行/手動実行/エージェント監視は「システム運用」
+# 統合タブ (st.tabs ラッパー) に集約。各ページの render 分岐 (`if _w134_sel ==
+# "<ラベル>":`) は 1 行も削除しない (K2 surgical、非表示化のみ)。
+_ARCHIVE_PAGES = [
+    "入荷確認",         # W133 (2026-05-16)
+    "ライバルセラー監視",  # W#3 (2026-06-07)
+    "SKU変換",
+    "今日の発掘",       # W122 (2026-05-13)
+    "市場戦略",         # W7-A (2026-04-27)
+    "動画学習",
+    "モデル比較",       # W86 (2026-05-01)
+    "利益計算",
+    "eBay連携",
+]
+_ARCHIVE_GROUP_LABEL = "🗄 アーカイブ"
+
 _W134_GROUPS = {
     "★ 毎日": [
         "DASHBOARD",
@@ -239,35 +258,33 @@ _W134_GROUPS = {
         "商品管理",         # W119 (2026-05-11)
         "在庫監視",
         "仕入先候補",
-        "入荷確認",         # W133 (2026-05-16)
     ],
     "⚲ リサーチ": [
         "リサーチ脳",       # W24 (2026-04-26)
         "リサーチ対戦",     # W286 (2026-06-27)
-        "今日の発掘",       # W122 (2026-05-13)
-        "キーワード新着監視",  # W148 (2026-05-21)
-        "ライバルセラー監視",  # W#3 (2026-06-07)
-        "最安値チェック",   # W98 (2026-05-05)
-        "利益計算",
         "商品リサーチ(W228)",  # W228 (2026-06-07)
+        "キーワード新着監視",  # W148 (2026-05-21)
+        "最安値チェック",   # W98 (2026-05-05)
     ],
-    "⏺ 出品・関連": [
+    "⏺ 出品": [
         "個別出品",
-        "eBay連携",
-        "市場戦略",         # W7-A (2026-04-27)
         "通関対応",         # W14 (2026-04-24)
     ],
-    "⛭ 設定・ops": [
-        "手動実行",
-        "定時実行",         # 2026-04-25
-        "SKU変換",
-        "動画学習",
-        "モデル比較",       # W86 (2026-05-01)
-        "エージェント監視",
+    "⛭ 運用": [
+        "システム運用",     # W303 (2026-07-02): 定時実行/手動実行/エージェント監視 統合
         "設定",
     ],
 }
+_W303_SHOW_ARCHIVE = bool(s.get("show_archive_pages", False))
+if _W303_SHOW_ARCHIVE:
+    _W134_GROUPS[_ARCHIVE_GROUP_LABEL] = list(_ARCHIVE_PAGES)
+
+# legacy session_state migration (下記) の妥当性判定は、トグル OFF でも
+# アーカイブページ名を有効な遷移先として扱う (deep-link 経由の旧 state を
+# 「無効」と誤判定して DASHBOARD に強制送還しないため)。
 _W134_TABS = [page for pages in _W134_GROUPS.values() for page in pages]
+if not _W303_SHOW_ARCHIVE:
+    _W134_TABS = _W134_TABS + _ARCHIVE_PAGES
 
 # session_state migration: 旧 horizontal radio key (_w134_nav) があれば値を継承。
 if "_w134_sel" not in st.session_state:
@@ -516,6 +533,27 @@ if _cur_view != "★ 毎日":
     _render_nav_row(_W134_GROUPS.get(_cur_view, []))
 
 _w134_sel = st.session_state._w134_sel
+
+# ── W303 (2026-07-02) 軽量ナビログ: ページ選択確定のたび data/ui_nav_log.jsonl
+# へ 1 行 append する。DB は使わない (jsonl append のみ)。失敗しても UI は
+# 落とさない (try/except、Q0 silent skip 防止のため except 側は logger.debug で
+# 痕跡を残す)。
+# W303 code review fix: Streamlit は全 widget 操作で rerun が走るため、素朴に
+# append すると同一ページ滞在中も無制限に成長する。session_state に最後に
+# 記録したページ名を保持し、直前と異なる時だけ書き出す (dedup)。
+if st.session_state.get("_w303_last_logged_page") != _w134_sel:
+    try:
+        from datetime import datetime as _navlog_dt, timezone as _navlog_tz
+        _navlog_path = Path(__file__).parent / "data" / "ui_nav_log.jsonl"
+        with _navlog_path.open("a", encoding="utf-8") as _navlog_f:
+            _navlog_f.write(json.dumps(
+                {"page": _w134_sel, "at": _navlog_dt.now(_navlog_tz.utc).isoformat()},
+                ensure_ascii=False,
+            ) + "\n")
+        st.session_state["_w303_last_logged_page"] = _w134_sel
+    except Exception as _navlog_e:  # noqa: BLE001 — UI 起動を絶対に止めない
+        logger.debug(f"ui_nav_log.jsonl append failed: {_navlog_e}")
+
 # 2026-04-22: MAIL タブを削除 (ダッシュボードに統合)。
 # DASHBOARD には緊急メール (urgent/buyer_message/sale/offer/return) を常時表示し、
 # その下の expander 代替セクションで「非緊急・参考メール」を表示する。
@@ -583,6 +621,22 @@ if _w134_sel == "商品管理":
 if _w134_sel == "最安値チェック":
     from tabs.tab_lowest_price import render_lowest_price_tab
     render_lowest_price_tab(s)
+
+
+# ========== システム運用タブ (W303 / 2026-07-02 統合) ==========
+# 定時実行 / 手動実行 / エージェント監視 の既存 render 関数を st.tabs でまとめる
+# 薄いラッパー。3 関数の中身・下記の個別 `if _w134_sel == "..."` 分岐は変更しない
+# (K2 surgical、非表示化のみでコード削除禁止)。
+if _w134_sel == "システム運用":
+    _sysops_t1, _sysops_t2, _sysops_t3 = st.tabs(["定時実行", "手動実行", "エージェント監視"])
+    with _sysops_t1:
+        render_scheduled_execution_tab()
+    with _sysops_t2:
+        from tabs.tab_manual_run import render_manual_run_tab
+        render_manual_run_tab(s)
+    with _sysops_t3:
+        from tabs.tab_agent_monitor import render_agent_monitor_tab
+        render_agent_monitor_tab()
 
 
 # ========== 手動実行タブ ==========
@@ -692,6 +746,23 @@ if _w134_sel == "定時実行":
 
 # ========== 設定タブ ==========
 if _w134_sel == "設定":
+    # ── W303 (2026-07-02) ナビ簡素化: アーカイブページ表示トグル ──
+    # ON にすると「🗄 アーカイブ」カテゴリ (入荷確認/ライバルセラー監視/SKU変換/
+    # 今日の発掘/市場戦略/動画学習/モデル比較/利益計算/eBay連携) がナビに出現し、
+    # 最安値チェック内の隠しサブタブ (商品データFIX/商品リサーチwizard) も表示される。
+    st.subheader("ナビゲーション")
+    new_show_archive = st.checkbox(
+        "アーカイブページを表示",
+        value=bool(s.get("show_archive_pages", False)),
+        key="s_show_archive",
+        help=(
+            "ON: 入荷確認 / ライバルセラー監視 / SKU変換 / 今日の発掘 / 市場戦略 / "
+            "動画学習 / モデル比較 / 利益計算 / eBay連携 をナビに表示し、"
+            "最安値チェック内の商品データFIX・商品リサーチwizardも表示します。"
+        ),
+    )
+    st.divider()
+
     st.subheader("基本設定")
     c1, c2 = st.columns(2)
     with c1:
@@ -912,6 +983,7 @@ if _w134_sel == "設定":
                 "notify_on_restock": new_notify_restock,
                 "ebay_app_id": new_app_id, "ebay_dev_id": new_dev_id,
                 "ebay_cert_id": new_cert_id, "ebay_user_token": new_user_token,
+                "show_archive_pages": bool(new_show_archive),
             })
             if _fuel_changed:
                 from datetime import datetime as _dt_fuel
@@ -944,3 +1016,7 @@ if _w134_sel == "設定":
 
             st.write("▸ 保存完了")
             status.update(label="設定を保存しました", state="complete")
+        # W303 (2026-07-02) E2E fix: アーカイブトグル等 nav 依存の設定変更を保存直後の
+        # ナビ再描画に反映するため rerun。session_state は上の s.update() で更新済み、
+        # rerun で _W134_GROUPS 再構築 → 新カテゴリ (アーカイブ) が即座に出現する。
+        st.rerun()

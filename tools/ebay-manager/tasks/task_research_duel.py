@@ -142,6 +142,42 @@ def _freeze_snapshot(
     return json.dumps(bundle, ensure_ascii=False)
 
 
+def _invalidate_stale_rounds(today: date) -> list[int]:
+    """過去日付のまま ai_pending/ai_done で放置された round を invalidated へ遷移させる.
+
+    round_id=4 (6/28, ai_done のまま放置) 型の「死んだラウンド」対策。新ラウンド開始の
+    たびに呼び、状態機械の invalidated 終端へ寄せる (DB 直接 UPDATE はしない、状態機械の
+    遷移検証 = research_duel_db.invalidate_round 経由 / Q2 スコープ外遵守)。
+    1 件の遷移失敗で batch を止めない (Q0: 痕跡は logger.warning に残す)。
+    """
+    from monitor import research_duel_db as duel
+    stale_statuses = {duel.STATUS_AI_PENDING, duel.STATUS_AI_DONE}
+    today_iso = today.isoformat()
+    invalidated: list[int] = []
+    for rnd in duel.list_rounds(limit=60):
+        if rnd.get("status") not in stale_statuses:
+            continue
+        if str(rnd.get("jst_date") or "")[:10] >= today_iso:
+            continue
+        rid = int(rnd["round_id"])
+        try:
+            if duel.invalidate_round(
+                rid,
+                reason=(
+                    f"stale round (jst_date={rnd.get('jst_date')}, "
+                    f"status={rnd.get('status')}) — 新ラウンド開始時に自動無効化"
+                ),
+            ):
+                invalidated.append(rid)
+        except ValueError as e:  # noqa: BLE001 — 1 件の失敗で batch を止めない (Q0 痕跡)
+            logger.warning(
+                "[research_duel] stale round invalidate 失敗 round_id=%s: %s", rid, e
+            )
+    if invalidated:
+        logger.info("[research_duel] stale round 自動 invalidated: %s", invalidated)
+    return invalidated
+
+
 def run_research_duel(
     config: Optional[dict] = None, today: Optional[date] = None
 ) -> dict:
@@ -166,6 +202,9 @@ def run_research_duel(
     pattern, cat = cell["pattern"], cell["category"]
     result["cell"] = f"Day{cell['day_of_cycle']}/6 {pattern}×{cat.get('label')}"
     logger.info("[research_duel] cell=%s", result["cell"])
+
+    # ── 死んだラウンドの自動無効化 (過去日付のまま ai_pending/ai_done で放置) ──
+    _invalidate_stale_rounds(today)
 
     # ── CDP 疎通 (harvest と同じ前提、再利用) ──
     from tasks.task_research_harvest import _check_cdp_available
@@ -238,13 +277,22 @@ def run_research_duel(
                            i, title[:40], e)
         picks.append({"rc_id": rc_id, "rank": i, "title_ja": title})
 
+    saved = True
     if picks:
-        duel.save_ai_picks(round_id, picks)  # → status ai_done
-    result["ai_picks"] = len(picks)
+        saved = duel.save_ai_picks(round_id, picks)  # → status ai_done (ai_pending 時のみ前進)
+        if not saved:
+            skip_msg = (
+                f"round_id={round_id} は採点確定済/完了/無効化済のため "
+                "AI picks 上書きをスキップしました。"
+            )
+            result["errors"].append(skip_msg)
+            logger.warning("[research_duel] %s", skip_msg)
+    result["ai_picks"] = len(picks) if saved else 0
     result["success"] = True
     result["message"] = (
         f"research_duel: round_id={round_id} {result['cell']} "
-        f"picks={len(picks)} (harvest {len(products)} 件中)"
+        f"picks={len(picks) if saved else 0} (harvest {len(products)} 件中)"
+        + ("" if saved else " [picks保存スキップ: 採点確定済]")
     )
     logger.info(result["message"])
     return result

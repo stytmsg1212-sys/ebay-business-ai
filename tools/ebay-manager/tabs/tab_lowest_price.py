@@ -178,18 +178,21 @@ def render_lowest_price_tab(s: dict) -> None:
             st.error(f"Shadow 突合レポート読込エラー: {e}")
 
     # ── W119: 商品データ FIX (per-listing 編集) ──
-    try:
-        from tabs.tab_data_fix import render_data_fix
-        render_data_fix(_lp_cfg)
-    except Exception as _e:
-        st.warning(f"商品データ FIX 描画エラー: {_e}")
+    # W303 (2026-07-02): 設定タブの「アーカイブページを表示」トグルに連動する隠し
+    # サブタブ化。デフォルト非表示 (機能コードは削除せず条件分岐で囲むのみ、K2 surgical)。
+    if s.get("show_archive_pages", False):
+        try:
+            from tabs.tab_data_fix import render_data_fix
+            render_data_fix(_lp_cfg)
+        except Exception as _e:
+            st.warning(f"商品データ FIX 描画エラー: {_e}")
 
-    # ── W119: 商品リサーチ自動化 wizard (最安値チェックの前段) ──
-    try:
-        from tabs.tab_research_wizard import render_research_wizard
-        render_research_wizard(_lp_cfg)
-    except Exception as _e:
-        st.warning(f"商品リサーチ wizard 描画エラー: {_e}")
+        # ── W119: 商品リサーチ自動化 wizard (最安値チェックの前段) ──
+        try:
+            from tabs.tab_research_wizard import render_research_wizard
+            render_research_wizard(_lp_cfg)
+        except Exception as _e:
+            st.warning(f"商品リサーチ wizard 描画エラー: {_e}")
 
     # ── 出品中の商品取得 ──
     _lp_my_items = _cd_listings_by_rank(get_db_version(), True)

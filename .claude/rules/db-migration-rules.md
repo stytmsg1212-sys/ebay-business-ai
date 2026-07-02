@@ -82,6 +82,8 @@ def init_db():
 
 ### やむを得ず直接実行する時の 6 step
 
+⚠️ **安全ゲート (COUNT 確認 / rowcount 確認 / 中断条件) は `assert` でなく明示 `if not cond: raise` で書く** — `python -O` 実行で assert はバイトコードから除去され、破壊系 one-shot が無防備になる (出典: 2026-07-02 idem1 削除 retrospective review M1)。
+
 1. SELECT で対象行を dump (rollback 用 snapshot)
 2. WHERE を 1 件に絞って試行 → 期待通り 1 件更新を確認
 3. 残りを実行

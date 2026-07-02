@@ -2863,5 +2863,49 @@
     "created": "2026-07-02",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 374,
+    "tag": "W309",
+    "title": "CDP Chrome 死活監視の自動復旧",
+    "description": "W293 heartbeat は cdp_absent を検知するだけで自動復旧しない。6/30夜〜7/2の47時間ダウンで research_harvest / research_duel が連続 failed した。恒久対策 = heartbeat が cdp_absent を N 回連続検知したら start_chrome_cdp を自動起動 + Discord「要対応」通知 (再ログイン要否の判定込み)。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "ops"
+  },
+  {
+    "id": 375,
+    "tag": "W310",
+    "title": "keyword_watch_crawl の 600秒 timeout 慢性 flaky 根治",
+    "description": "daily_scheduler.py の subprocess timeout 600s を Mercari/Yahoo/PayPay 30 watch 巡回が累積超過、週20回前後 failed が常態化。恒久対策候補 = 巡回の分割実行 / watch 別 timeout / 部分成功の commit (全滅 fail にしない)。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "ops"
+  },
+  {
+    "id": 376,
+    "tag": "W311",
+    "title": "リサーチ対戦 evidence bundle + drift 検知の実装",
+    "description": "設計書 v2 §1 (.company/engineering/docs/2026-06-27-research-duel-arena-system-design.md 系の v2) で定義済みだが未実装。AI 選定品の凍結証拠束 (item_id / sold 数 / top-N hash) を duel_ai_picks に保存し、採点時に市場状態の重複率 < 80% なら採点無効化 (invalidated) する安全弁。DB スキーマ変更 (カラム追加 migration) を伴うため T3 相当のレビューが必要。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "research"
+  },
+  {
+    "id": 377,
+    "tag": "W312",
+    "title": "enrich_listings_physical の無効 ItemID 恒久ガード",
+    "description": "GetItem が恒久拒否する行 (例: 2026-06-21 混入のダミー行 idem1、12日間毎日 failed) を連続 N 回 (例 3 回) 失敗で選出対象から除外またはフラグ化し、task_execution_log / Discord で可視化する (現状は errors += 1 のみでサイレント)。併せて idem1 の混入経路 (冪等性テスト fixture が本番 monitor.db に漏れた疑い) の特定と、テスト DB / 本番 DB 分離の甘い箇所の是正を含む。出典 = 2026-07-02 idem1 削除の retrospective review M3。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "ops"
   }
 ]
