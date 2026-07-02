@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI店長 Phase1 仕様書 + 操作手順書 (v1.0 / 2026-07-02)</title>
+<style>
+  :root {
+    --ink: #1f2933;
+    --sub: #52606d;
+    --line: #d9e2ec;
+    --bg: #ffffff;
+    --bg-soft: #f5f7fa;
+    --accent: #1565c0;
+    --accent-soft: #e3f2fd;
+    --ok: #2e7d32;
+    --ok-soft: #e8f5e9;
+    --warn: #b45309;
+    --warn-soft: #fff7e0;
+    --ng: #c62828;
+    --ng-soft: #fdecea;
+    --review: #6d28d9;
+    --review-soft: #f0e9fb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-soft);
+    color: var(--ink);
+    font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+  }
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+  header.doc-head {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 28px;
+  }
+  header.doc-head h1 { margin: 0 0 8px; font-size: 26px; }
+  header.doc-head .meta { color: var(--sub); font-size: 13px; }
+  nav.toc {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 28px;
+    margin-bottom: 28px;
+  }
+  nav.toc ol { margin: 8px 0 0; padding-left: 22px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  section.chapter {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 28px;
+  }
+  h2 {
+    font-size: 21px;
+    margin: 0 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid var(--accent);
+  }
+  h3 {
+    font-size: 17px;
+    margin: 28px 0 10px;
+    padding-left: 10px;
+    border-left: 4px solid var(--accent);
+  }
+  h4 { font-size: 15px; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 14px;
+    background: var(--bg);
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--accent-soft); font-weight: 600; }
+  tr:nth-child(even) td { background: #fafcfe; }
+  code {
+    background: #eef2f6;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: #f4f6f8;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    background: var(--bg);
+  }
+  .card.note { background: var(--accent-soft); border-color: #90caf9; }
+  .card.warn { background: var(--warn-soft); border-color: #f6d47f; }
+  .card.ok { background: var(--ok-soft); border-color: #a5d6a7; }
+  .card .card-title { font-weight: 700; margin-bottom: 6px; }
+  .pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 1px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.real { background: var(--ok-soft); color: var(--ok); border: 1px solid #a5d6a7; }
+  .pill.noise { background: var(--ng-soft); color: var(--ng); border: 1px solid #ef9a9a; }
+  .pill.review { background: var(--review-soft); color: var(--review); border: 1px solid #c4b5fd; }
+  .pill.shadow { background: var(--warn-soft); color: var(--warn); border: 1px solid #f6d47f; }
+
+  /* ── パイプライン図 (CSS のみ) ── */
+  .flow { margin: 20px 0; }
+  .flow-stage {
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+    background: var(--bg);
+  }
+  .flow-stage .stage-name { font-weight: 700; font-size: 15px; }
+  .flow-stage .stage-desc { font-size: 13.5px; color: var(--sub); margin-top: 4px; }
+  .flow-stage.s1 { border-color: #90a4ae; }
+  .flow-stage.s2 { border-color: #ef9a9a; }
+  .flow-stage.s3 { border-color: #ffcc80; }
+  .flow-stage.s4 { border-color: #90caf9; }
+  .flow-arrow {
+    text-align: center;
+    font-size: 22px;
+    color: var(--sub);
+    line-height: 1.4;
+    padding: 2px 0;
+  }
+  .flow-arrow .arrow-label { font-size: 12.5px; color: var(--sub); }
+  .branch-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .branch {
+    flex: 1 1 240px;
+    border-radius: 10px;
+    padding: 12px 16px;
+    border: 2px solid;
+  }
+  .branch .b-title { font-weight: 700; margin-bottom: 4px; }
+  .branch .b-desc { font-size: 13px; }
+  .branch.real { background: var(--ok-soft); border-color: #81c784; }
+  .branch.noise { background: var(--ng-soft); border-color: #e57373; }
+  .branch.review { background: var(--review-soft); border-color: #b39ddb; }
+  .exit-tag {
+    display: inline-block;
+    background: var(--ng-soft);
+    color: var(--ng);
+    border: 1px dashed #ef9a9a;
+    border-radius: 6px;
+    font-size: 12.5px;
+    padding: 1px 8px;
+    margin-left: 8px;
+  }
+
+  /* Shadow 図 */
+  .shadow-compare { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+  .shadow-col {
+    flex: 1 1 320px;
+    border-radius: 10px;
+    border: 2px solid var(--line);
+    padding: 16px 18px;
+  }
+  .shadow-col.now { border-color: #f6d47f; background: #fffdf4; }
+  .shadow-col.future { border-color: #90caf9; background: #f7fbff; }
+  .shadow-col .col-head { font-weight: 700; margin-bottom: 8px; }
+  .mini-flow { font-size: 13.5px; }
+  .mini-flow .step { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); margin: 6px 0; }
+  .mini-flow .cut { border-style: dashed; border-color: #e57373; color: var(--ng); background: var(--ng-soft); }
+  .mini-flow .go { border-color: #81c784; background: var(--ok-soft); }
+  .mini-arrow { text-align: center; color: var(--sub); font-size: 15px; }
+
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: 10px 14px 10px 52px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 10px 0;
+    background: var(--bg);
+  }
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  details.faq {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 10px 0;
+    background: var(--bg);
+  }
+  details.faq summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 600;
+    list-style: none;
+  }
+  details.faq summary::before { content: "Q. "; color: var(--accent); font-weight: 700; }
+  details.faq .a {
+    border-top: 1px solid var(--line);
+    padding: 12px 16px;
+    background: #fbfdff;
+  }
+  details.faq .a::before { content: "A. "; color: var(--ok); font-weight: 700; }
+  footer.doc-foot {
+    color: var(--sub);
+    font-size: 13px;
+    text-align: left;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 28px;
+  }
+  .kbd {
+    border: 1px solid #b0bec5;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: #fafafa;
+    padding: 0 6px;
+    font-size: 12.5px;
+    font-family: Consolas, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-head">
+  <h1>AI店長 Phase1 仕様書 + 操作手順書</h1>
+  <div class="meta">
+    版数 v1.0 / 2026-07-02 作成 / 対象: 事業オーナー (user) 向け<br>
+    対象システム: eBay Manager (MonoDeck) — W301 AI店長 Phase1 (ライバル自動分類 + 値下げ適格ゲート + Shadow 運用)
+  </div>
+</header>
+
+<nav class="toc">
+  <strong>目次</strong>
+  <ol>
+    <li><a href="#ch1">概要 — AI店長とは何か / Phase1 で出来ること・出来ないこと</a></li>
+    <li><a href="#ch2">仕様 — 分類パイプライン / Shadow モード / 安全弁 / 定時スケジュール</a></li>
+    <li><a href="#ch3">user 手順書 — 画面操作・アラート対応・kill switch・スクリプト実行</a></li>
+    <li><a href="#ch4">FAQ — よくある質問</a></li>
+    <li><a href="#ch5">版数・情報源</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ch1">
+<h2>1. 概要</h2>
+
+<h3>1-1. AI店長とは</h3>
+<p>
+AI店長は、<strong>1,200 品を超える eBay 出品ページの「値付けとライバル対応」を自動でメンテナンスする仕組み</strong>です。
+これまで人間が 1 品ずつ「この競合は本物のライバルか? 値段を追うべきか?」を目で見て判断していた作業を、AI が肩代わりします。
+</p>
+<p>
+判断の背骨は、2026-06-22〜23 のヒアリングで言語化されたオーナー自身のルールです:
+</p>
+<div class="card note">
+  <div class="card-title">値付けの背骨 (最重要原則)</div>
+  「<strong>有効な競合の中で、利益が出る範囲での実質最安を取れるか?</strong>」<br>
+  取れるなら $0.1 差で最安を取る (有在庫なら 1 日発送でさらに優位)。ソールド数で圧倒して Best Match の一番上を取れるなら据え置き。
+  利益が出る最安が存在しないなら撤退または放置。値上げ・値下げ・撤退はすべてこの 1 本のルールの上下動です。
+</div>
+<p>
+ここで重要なのが「<strong>有効な競合</strong>」という限定です。検索結果の生の最安値には、
+海外セラー・ジャンク品 (JUNK / AS-IS)・評価稼ぎの弱小セラー・DDU セラー (関税を買い手に払わせる業者) といった
+「<strong>偽ライバル</strong>」が混ざっています。偽ライバルの安値に自動で追従すると、利益だけが削られて損をします。
+Phase1 の主目的は、<strong>この偽ライバルを自動で門前払いし、自動値下げが本物のライバルにしか反応しないようにするゲートを作ること</strong>です。
+</p>
+
+<h3>1-2. Phase1 で出来ること</h3>
+<ul>
+  <li><strong>ライバル候補の自動分類</strong>: 毎日発見される競合候補を「真ライバル (real) / ノイズ (noise) / 要確認 (review)」に 3 分類。
+      ハード除外 → スコア足切り → グレーだけ AI 判定、の 3 段構えで AI コストも最小化。</li>
+  <li><strong>値下げ適格フラグ (pricing_eligible) の分離</strong>: 「ライバルとして登録されている (採用 = is_active)」と
+      「自動値下げが追いかけてよい (適格 = pricing_eligible)」を別のフラグにし、
+      自動値下げ (W183) は<strong>両方 ON の競合しか見ない</strong>ようにした (偽ライバル追従の構造的遮断)。</li>
+  <li><strong>Shadow モード運用</strong>: AI の判定は全部記録するが、値段には一切反映しない。
+      AI と人間の判断がどれだけ一致するかを 2 週間かけて実測してから本番昇格を判断する。</li>
+  <li><strong>値下げ合戦への安全弁</strong> (2026-07-02 稼働開始): 1 回の値下げは現価格の 5% まで + 同一商品の 3 連続値下げで Discord アラート。</li>
+  <li><strong>競合の定点観測データ蓄積</strong>: 競合のソールド数・在庫残・評価・国を毎日 API で取得して貯める
+      (Phase2 のキーセラー判定の土台。Phase1 では貯めるだけ)。</li>
+</ul>
+
+<h3>1-3. Phase1 に含まれないこと (Phase2 以降の予定)</h3>
+<table>
+  <tr><th>Phase2 以降の予定項目</th><th>内容</th></tr>
+  <tr><td>商品ごとのアクション判断エンジン</td><td>「この商品は値下げ / 据え置き / 撤退」を商品単位で総合判断する頭脳</td></tr>
+  <tr><td>キーセラー・Best Match 実順位判定</td><td>評価数 1,000 以上かつ評価率 98% 以上の「強豪」との勝負判断、検索順位の実測</td></tr>
+  <tr><td>状態ポジショニング値付け</td><td>USED 同士で「汚い安品と綺麗な高品の間に置く」等の細かい値付け</td></tr>
+  <tr><td>撤退判断の自動化</td><td>仕入元消滅 / eBay 警告 / 問い合わせ過多による撤退の自動化</td></tr>
+  <tr><td>DDU セラーの説明文自動検証</td><td>疑いセラーの商品説明文を自動取得して DDU 確定させる処理</td></tr>
+  <tr><td>snapshot データの消費</td><td>販売速度レーダー・在庫枯渇予測など、蓄積した観測データの活用</td></tr>
+  <tr><td>Shadow からの自動昇格</td><td><strong>ありません</strong>。本番昇格は必ず user が UI のボタンで合意する設計 (AI が勝手に昇格しない)</td></tr>
+</table>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ch2">
+<h2>2. 仕様</h2>
+
+<h3>2-1. 分類パイプライン (3 段ハイブリッド + 3 分岐)</h3>
+<p>
+毎日 03:00 に、前日までに発見された未分類のライバル候補が次の流れで処理されます
+(実装: <code>monitor/rival_classifier.py</code> + <code>tasks/task_rival_classify.py</code>)。
+</p>
+
+<div class="flow">
+  <div class="flow-stage s1">
+    <div class="stage-name">入口: ライバル候補 (毎日 02:30 の自動発見で蓄積)</div>
+    <div class="stage-desc">監視対象の自社商品ごとに eBay を検索し、競合候補を無差別に貯めたもの (status='new')</div>
+  </div>
+  <div class="flow-arrow">▼</div>
+
+  <div class="flow-stage s2">
+    <div class="stage-name">STEP 1: 門前払い (ハード除外) — AI を呼ばず即ノイズ判定 <span class="exit-tag">→ noise 直行</span></div>
+    <div class="stage-desc">
+      次のどれかに当たれば、その場で「ノイズ」確定 (理由も必ず記録):<br>
+      ① 出品国が日本以外と<strong>確定</strong> (不明なら除外しない = 保守的) /
+      ② 売り切れ /
+      ③ 自社が動作品なのに相手が JUNK・AS-IS 表記 /
+      ④ DDU セラーブラックリスト一致<br>
+      ※「評価稼ぎの弱小セラー疑い」(評価数 50 以下 × 自社価格の半額未満) は、Phase1 では実売データ未取得のため
+      ノイズにせず<strong>要確認 (review)</strong> へ回す安全弁 (真ライバルを誤って捨てない)
+    </div>
+  </div>
+  <div class="flow-arrow">▼</div>
+
+  <div class="flow-stage s3">
+    <div class="stage-name">STEP 2: スコア足切り — タイトル類似度と価格比で明白な別物を弾く <span class="exit-tag">→ noise 直行</span></div>
+    <div class="stage-desc">
+      タイトル類似度 (単語の重なり + 型番一致で底上げ) が <strong>0.15 未満</strong> = 明白な別商品 → ノイズ。<br>
+      価格比 (競合÷自社) が <strong>0.2〜5.0 の範囲外</strong> = 極端な価格乖離 → ノイズ。<br>
+      ここを通過したものが「グレー」= AI 判定行き。
+    </div>
+  </div>
+  <div class="flow-arrow">▼</div>
+
+  <div class="flow-stage s4">
+    <div class="stage-name">STEP 3: AI 判定 (グレーのみ Claude Haiku、1 回の実行で最大 50 件)</div>
+    <div class="stage-desc">
+      自社と競合のタイトル・価格を渡し、「同一商品か (same_product)」「見抜きにくい仕様差の疑い
+      (variant_risk: 電圧 / ケーブル長 / 言語版 / 付属品)」「状態 (NEW/USED/AS-IS/JUNK、タイトル文字列のみで判定)」
+      「確信度 (confidence 0.0〜1.0)」を構造化 JSON で回答させる。1 件あたり約 $0.007。
+    </div>
+  </div>
+  <div class="flow-arrow">▼ <span class="arrow-label">確信度で 3 分岐</span></div>
+
+  <div class="branch-row">
+    <div class="branch real">
+      <div class="b-title">✅ real (真ライバル)</div>
+      <div class="b-desc">
+        同一商品 = はい かつ <strong>確信度 0.85 以上</strong>。<br>
+        → ライバル台帳に自動登録 (採用)。ただし <strong>Shadow 中は値下げ適格を立てない</strong>
+        (「もし本番なら適格」の記録のみ)。
+      </div>
+    </div>
+    <div class="branch review">
+      <div class="b-title">❓ review (要確認)</div>
+      <div class="b-desc">
+        同一商品 = はい だが <strong>確信度 0.6〜0.85</strong>。<br>
+        AI エラー・データ不足・判定不能も<strong>すべてここに倒す</strong> (fail-closed)。<br>
+        → 未分類のまま残り、人間の確認キューへ。
+      </div>
+    </div>
+    <div class="branch noise">
+      <div class="b-title">🚫 noise (ノイズ)</div>
+      <div class="b-desc">
+        同一商品 = いいえ、または<strong>確信度 0.6 未満</strong>。門前払い・スコア足切りもここ。<br>
+        → 候補リストから除外 (dismissed)。判定理由は全部ログに残るので復活可能。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card note">
+  <div class="card-title">非対称設計: 採用は保守的に、却下は積極的に、曖昧は全部 review</div>
+  真ライバルとして自動採用するのは確信度 0.85 以上だけ (高いハードル)。明白なノイズは積極的に弾く。
+  そして少しでも曖昧なもの (AI エラー・タイトルデータ欠落・国不明を含む) は全部 review に倒して人間に委ねます。
+  「間違って偽ライバルを採用して値下げ追従で損をする」方向のミスを構造的に起こしにくくした設計です。
+</div>
+
+<h3>2-2. Shadow モードの仕組み (判定は記録する、値段は変えない)</h3>
+<p>
+Phase1 は <strong>Shadow モード固定</strong>です (コード側で固定しており、設定ファイルの値では解除できません)。
+AI の判定はすべて判定ログ (rival_classifications テーブル) に記録されますが、
+値下げ適格フラグは一切立たないので、<strong>AI の判定が値段に影響することはゼロ</strong>です。
+</p>
+
+<div class="shadow-compare">
+  <div class="shadow-col now">
+    <div class="col-head">🔶 いま (Shadow モード)</div>
+    <div class="mini-flow">
+      <div class="step">AI が「real (真ライバル)」と判定</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step">判定ログに記録 + 「もし本番なら適格 (would_be_eligible=1)」とメモ</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step cut">値下げ適格 (pricing_eligible) は <strong>0 のまま</strong> — 自動値下げは反応しない</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step">値段が動くのは、人間が UI トグルで適格 ON にした競合だけ</div>
+    </div>
+  </div>
+  <div class="shadow-col future">
+    <div class="col-head">🔷 将来 (本番昇格後 / Phase2)</div>
+    <div class="mini-flow">
+      <div class="step">AI が「real (真ライバル)」と判定</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step">高確信のものだけ値下げ適格 = 1 を自動セット</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step go">自動値下げ (W183) がその競合を追従対象に含める</div>
+      <div class="mini-arrow">▼</div>
+      <div class="step">昇格は user の合意ボタン + コード対応が前提 (自動では昇格しない)</div>
+    </div>
+  </div>
+</div>
+
+<h4>Shadow 卒業基準 (本番昇格の条件)</h4>
+<ul>
+  <li><strong>Shadow 運用開始から 2 週間経過</strong>、かつ</li>
+  <li><strong>real 側不一致率 5% 以下</strong> (AI が「真ライバル」と判定した競合のうち、人間が実際には採用していない割合)</li>
+</ul>
+<p>
+両方を満たすと、UI の昇格ボタンが押せるようになります (押すのは必ず user。詳細は 3-3 節)。
+参考指標として「noise 誤棄却率」(AI がノイズと判定したのに人間が適格を維持している割合 = AI が真ライバルを捨てていないかのチェック) も表示されますが、卒業基準には含めません。
+データが足りない場合は「未達」扱いです (データ不足を達成と偽らない fail-closed)。
+</p>
+
+<h3>2-3. 既存の採用済みライバル 178 件の扱い</h3>
+<ul>
+  <li>過去に人間が手動採用した active なライバル (約 178 件) は、<strong>値下げ適格 = 1 のまま温存</strong>
+      (one-shot スクリプトで backfill 処理済み)。今まで通り自動値下げの対象です。運用が後退しません。</li>
+  <li><strong>新規に発見される競合、および一度停止して復活した競合は、全部 適格 = 0 (Shadow 起点) からスタート</strong>。
+      AI が real と判定しても Shadow 中は適格が立たず、人間が UI トグルで ON にした時だけ値下げ対象になります。</li>
+  <li>温存した 178 件に偽ライバルが混ざっていないかは、別の one-shot スクリプト (3-6 節) で AI に一括再判定させ、
+      疑いリストを出せます (この再判定は<strong>フラグを一切変更しません</strong>。外すかどうかは user の判断)。</li>
+</ul>
+
+<h3>2-4. 値下げ適格 (pricing_eligible) のライフサイクル — 4 経路</h3>
+<p>フラグの立ち方・消え方は次の 4 経路に完全に限定されています (これ以外の経路はコード上に存在しません):</p>
+<table>
+  <tr><th>#</th><th>経路</th><th>ルール</th><th>実装</th></tr>
+  <tr>
+    <td>1</td><td><strong>立てる</strong></td>
+    <td>user の UI トグル操作 (「値下げ適格」チェックボックス) <strong>のみ</strong>。AI もスケジューラも立てられない (Shadow 中)。</td>
+    <td><code>set_competitor_pricing_eligible()</code> (monitor/database.py)</td>
+  </tr>
+  <tr>
+    <td>2</td><td><strong>停止時クリア</strong></td>
+    <td>ライバルを停止 (削除) すると適格は<strong>必ず 0 にクリア</strong>される。「停止したのに適格だけ残る」状態を作らない。</td>
+    <td><code>delete_competitor_product()</code> — 記録名 <code>deactivate_clear</code></td>
+  </tr>
+  <tr>
+    <td>3</td><td><strong>復活時リセット</strong></td>
+    <td>停止 → 復活 (inactive → active) の遷移時<strong>のみ</strong> 0 にリセット (復活 = 新規再採用と同じ Shadow 起点)。
+        すでに採用中 (active) の競合が再発見されても適格は<strong>触らない</strong> (採用中競合が黙って値下げ対象から脱落する事故の防止)。</td>
+    <td><code>add_or_reactivate_competitor()</code> — 記録名 <code>reactivate_reset</code></td>
+  </tr>
+  <tr>
+    <td>4</td><td><strong>監査ログ</strong></td>
+    <td>上記すべての変更 (誰が・いつ・0→1 / 1→0) が <code>pricing_eligible_change_log</code> テーブルに対称に記録される。</td>
+    <td>migration v87</td>
+  </tr>
+</table>
+
+<h3>2-5. 安全弁一覧</h3>
+<table>
+  <tr><th>安全弁</th><th>働き</th><th>実装箇所 (コード確認済)</th></tr>
+  <tr>
+    <td><strong>床 (lp_min_price)</strong></td>
+    <td>商品ごとに設定した最低価格 (未設定なら損益分岐価格)。目標価格が床を割るなら値下げしない。
+        <strong>Phase1 でも一切変更なし</strong>。床も損益分岐も未設定なら安全側で値下げスキップ。</td>
+    <td><code>tasks/task_rival_pricing.py</code> <code>_decide_floor_price()</code> (L491)</td>
+  </tr>
+  <tr>
+    <td><strong>値下げ 5% 上限 (第 2 安全弁)</strong></td>
+    <td>1 回の値下げ幅は現価格の 5% まで (それより深い目標は 5% 位置で止め、次回また最大 5% の段階的降下)。
+        床の判定は clamp 前の生の目標価格で行う (「clamp のおかげで床割れ値下げが解禁される」ことは構造的に不可能)。</td>
+    <td>同上 <code>MAX_SINGLE_DROP_PCT = 0.05</code> (L58) / <code>_apply_max_drop_clamp()</code> (L513)</td>
+  </tr>
+  <tr>
+    <td><strong>3 連続値下げアラート (第 3 安全弁)</strong></td>
+    <td>同一商品が直近 7 日以内に 3 回連続値下げ (間に値上げなし) されたら Discord に「値下げ合戦アラート」。
+        <strong>通知のみで値下げは止めない</strong> (止める判断は user)。同一商品への通知は 1 日 1 回に抑制。</td>
+    <td>同上 <code>_check_consecutive_reduction_streak()</code> (L534) / <code>_send_discord_spiral_alert()</code> (L857)</td>
+  </tr>
+  <tr>
+    <td><strong>pricing_eligible ゲート</strong></td>
+    <td>自動値下げは「採用中 (is_active=1) <strong>かつ</strong> 値下げ適格 (pricing_eligible=1)」の競合しか見ない。
+        ゲートで除外された件数は毎回ログに出す (黙って減らない)。</td>
+    <td>同上 <code>_get_listings_with_active_competitors()</code> (L77) / <code>_get_min_competitor()</code> (L183)</td>
+  </tr>
+  <tr>
+    <td><strong>fail-closed</strong></td>
+    <td>AI エラー・応答パース失敗・API キー未設定・AI 呼出上限超過・競合タイトルデータ欠落・国不明 —
+        すべて「real にしない」方向 (review 据え置き) に倒す。判定不能を採用と偽らない。</td>
+    <td><code>monitor/rival_classifier.py</code> <code>_merge_ai_result()</code> ほか</td>
+  </tr>
+  <tr>
+    <td><strong>kill switch</strong></td>
+    <td>AI 分類は <code>rival_classify.enabled=false</code>、定点観測は <code>competitor_snapshot.enabled=false</code> で個別停止可能 (3-5 節)。</td>
+    <td><code>config/schedule_config.json</code> の <code>tasks_enabled</code></td>
+  </tr>
+  <tr>
+    <td><strong>1 日 4 回上限 (既存)</strong></td>
+    <td>1 商品につき 1 日 (日本時間) の値下げは最大 4 回。二重実行にも予約方式で耐性あり。</td>
+    <td>同上 <code>DAILY_PRICE_CHANGE_CAP = 4</code> (L45)</td>
+  </tr>
+</table>
+
+<div class="card warn">
+  <div class="card-title">2026-07-02 の方針改訂 (旧見解との違い)</div>
+  2026-06-23 のヒアリング時点では「<strong>床 (lp_min_price) さえ守れば十分。値下げ幅の数値上限は設けない</strong>」という見解でした。
+  しかしその後、<strong>ライバル側も自動値下げシステムを使っている想定</strong>に立つと、双方の自動値下げが噛み合って
+  短時間で床まで一直線に落ちる「値下げスパイラル」が起こり得ると判断。2026-07-02 に方針を改め、
+  <strong>1 回 5% 上限 (降下を段階化してスパイラルの速度を落とす) + 3 連続値下げの Discord アラート (スパイラルの検知)</strong>
+  を第 2・第 3 の安全弁として追加しました。床は従来通り最後の防衛線として無変更です。
+</div>
+
+<h3>2-6. 定時スケジュール (コードで確認済みの実時刻)</h3>
+<table>
+  <tr><th>時刻 (日本時間)</th><th>タスク</th><th>やること</th></tr>
+  <tr>
+    <td><strong>02:30</strong></td>
+    <td>ライバル発見 (rival_detection)</td>
+    <td>監視 ON の自社商品ごとに eBay を検索し、競合候補を無差別に蓄積 (既存 W153)</td>
+  </tr>
+  <tr>
+    <td><strong>03:00</strong></td>
+    <td>AI 分類 (rival_classify)</td>
+    <td>未分類の候補を 3 段パイプラインで real / noise / review に分類。real は台帳登録 (Shadow なので適格は立てない)、noise は除外、review は残す</td>
+  </tr>
+  <tr>
+    <td><strong>05:30</strong></td>
+    <td>競合定点観測 (competitor_snapshot)</td>
+    <td>値下げ適格の競合 + real/review 判定の競合について、ソールド数・在庫残・評価・国・価格送料を API 取得して蓄積 (1 回最大 100 コール、残りは翌日へ持ち越し)</td>
+  </tr>
+  <tr>
+    <td><strong>00:45 / 06:45 / 12:45 / 18:45</strong></td>
+    <td>自動値下げ (rival_pricing_refresh = W183)</td>
+    <td>採用中かつ値下げ適格の競合の最新価格を取得 → 自社が最安でなければ「競合合計 − $0.01」を目標に値下げ (床 / 5% 上限 / 1 日 4 回上限 / 3 連続アラート付き)</td>
+  </tr>
+</table>
+<p class="meta" style="color: var(--sub); font-size: 13px;">
+※ 値下げの実行時刻は <code>daily_scheduler.py</code> (L967: hours=[0,6,12,18], minute=45)、
+分類 03:00 と観測 05:30 は同ファイル L1070 / L1087 の cron 登録で確認。
+</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ch3">
+<h2>3. user 手順書</h2>
+<p>操作はすべて MonoDeck (Streamlit) の<strong>「最安値チェック」タブ</strong>が起点です。</p>
+
+<h3>3-1. 疑いリスト (review) の確認と、競合をライバルから外す / 採用する操作</h3>
+<ol class="steps">
+  <li>MonoDeck を開き、<strong>最安値チェック</strong>タブへ移動します。Shadow 運用中は上部に
+      「🔶 <strong>Shadow 運用中</strong> — AI 判定は記録のみ」という黄色いバッジが出ています。</li>
+  <li>商品を選択すると、その商品に登録されている競合の一覧表「<strong>ライバル価格・送料 + AI 判定</strong>」が表示されます。
+      各行に次の列があります:
+      <ul>
+        <li><strong>AI判定</strong>: <span class="pill real">✅ real</span> <span class="pill noise">🚫 noise</span>
+            <span class="pill review">❓ review</span> + 確信度 (例: <code>✅ real (0.92)</code>)。未判定なら「未判定」</li>
+        <li><strong>警告</strong>: 警告ブランド (Holbein 等) に一致した場合 ⚠️ 表示</li>
+        <li><strong>AI理由</strong>: AI の判定理由 (日本語 1〜2 文)</li>
+        <li><strong>値下げ適格</strong>: ON/OFF チェックボックス (これだけが編集可能)</li>
+      </ul>
+  </li>
+  <li><span class="pill review">❓ review</span> の行を優先的に確認します。競合の「リンク → 開く」で eBay の実ページを見て、
+      本当に同じ商品・本当のライバルかを目で判断してください。</li>
+  <li><strong>ライバルから外す</strong> = 「値下げ適格」チェックを OFF にする。
+      <strong>値下げ対象として採用する</strong> = ON にする。</li>
+  <li>変更すると「未保存の変更 N 件」の警告が出ます。<strong>確認チェックボックスにチェック → 「値下げ適格の変更を反映」ボタン</strong>で確定します
+      (2 段階確認。反映内容はすべて監査ログに記録されます)。</li>
+</ol>
+<div class="card note">
+  「値下げ適格 OFF」はその競合を自動値下げの追従対象から外すだけで、競合の登録自体 (価格の観測) は残ります。
+  登録ごと消したい場合は従来どおり競合の削除操作を使ってください (削除時は適格も自動でクリアされます)。
+</div>
+
+<h3>3-2. Shadow 突合レポートの見方</h3>
+<ol class="steps">
+  <li>最安値チェックタブ上部の「<strong>AI 判定 Shadow 突合レポート (W301)</strong>」を開きます (折りたたみパネル)。</li>
+  <li>4 つの数字が並びます:
+    <table>
+      <tr><th>指標</th><th>意味</th><th>見方</th></tr>
+      <tr><td><strong>Shadow 運用日数</strong></td><td>AI 判定の記録が始まってからの経過日数</td><td>14 日 (2 週間) 以上が卒業条件の 1 つ</td></tr>
+      <tr><td><strong>real 不一致率</strong></td><td>AI が「真ライバル」と判定した競合のうち、あなたが実際には採用していない割合</td>
+          <td><strong>5% 以下</strong>が卒業条件のもう 1 つ。高い = AI がまだ偽ライバルを掴んでいる</td></tr>
+      <tr><td><strong>noise 誤棄却率</strong></td><td>AI が「ノイズ」と判定したのに、あなたが値下げ適格を維持している割合</td>
+          <td>参考指標 (卒業基準外)。高い = AI が真ライバルを捨てすぎている可能性</td></tr>
+      <tr><td><strong>卒業基準</strong></td><td>上記 2 条件 (2 週間 + 5% 以下) の達成状況</td><td>「達成」になると昇格ボタンが有効化</td></tr>
+    </table>
+  </li>
+  <li>日々の運用で意識することは 1 つだけ: <strong>3-1 の適格 ON/OFF 操作を正直に続けること</strong>。
+      その操作の積み重ねが「人間の正解データ」となり、AI との一致率が測られます。</li>
+</ol>
+
+<h3>3-3. 昇格ボタンの押し方と、押すと何が変わるか</h3>
+<ol class="steps">
+  <li>突合レポート内の卒業基準が「達成」になると、
+      「卒業基準を確認した上で Shadow 解除の承認記録を残す」チェックボックスと
+      「<strong>Shadow 解除を承認 (config 記録)</strong>」ボタンが押せるようになります (未達成の間は灰色で押せません)。</li>
+  <li>チェック → ボタン押下で、設定ファイルに「user が Shadow 解除を承認した」記録
+      (<code>shadow_mode=false</code> + 日時 + 承認者) が書き込まれます。</li>
+  <li><strong>重要: このボタンだけでは自動値下げの対象はまだ広がりません。</strong>
+      Phase1 は安全設計として Shadow をコード側でも固定しているため、実際の解除には別途コード対応 (Phase2 作業) が必要です。
+      ボタンは「オーナーの正式な承認記録を残す」ためのものです (UI 上にも同じ注意書きが表示されます)。
+      承認記録が入ったらエンジニアリング側に Shadow 解除の実装を依頼してください。</li>
+</ol>
+
+<h3>3-4. 値下げ合戦アラートが来た時の対処</h3>
+<p>Discord に次のような通知が来ることがあります:</p>
+<pre>⚠️ W183 値下げ合戦アラート: (商品タイトル) (item_id 末尾4桁)
+直近 3 回連続値下げ (間に値上げなし、7 日以内): $45.00 → $42.80 → $40.70
+値下げは継続中 (床 lp_min_price / 1 回 5% 上限は既存通り適用)。
+ライバルとの値下げ合戦の疑いあり、必要なら手動確認をお願いします。</pre>
+<ol class="steps">
+  <li><strong>慌てなくて大丈夫です。</strong>床 (最低価格) と 5% 上限は効き続けており、赤字方向には落ちません。
+      このアラートは「その商品でスパイラルの兆候がある」という早期警報です (値下げ自体は止まっていません)。</li>
+  <li>MonoDeck の最安値チェックタブで該当商品を開き、競合一覧を確認します。
+      相手も機械的に下げ続けているようなら、値下げ合戦になっています。</li>
+  <li>対処の選択肢 (どれもあなたの判断):
+    <ul>
+      <li><strong>降りる</strong>: その競合の「値下げ適格」を OFF にする → 自動値下げがその相手を追わなくなる (推奨の第一手)</li>
+      <li><strong>床を上げる</strong>: 商品の lp_min_price を「これ以上は付き合わない」水準に設定し直す</li>
+      <li><strong>静観</strong>: 床までの余裕があり最安を取り切りたいなら、何もしない (アラートは同一商品 1 日 1 回しか来ません)</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>3-5. kill switch の使い方 (AI 分類を止める)</h3>
+<ol class="steps">
+  <li><code>tools\ebay-manager\config\schedule_config.json</code> をエディタで開きます。</li>
+  <li><code>"tasks_enabled"</code> の中の <code>"rival_classify"</code> ブロックを探し、<code>"enabled": true</code> を <code>false</code> に変えて保存します:
+<pre>"rival_classify": {
+  "enabled": false,   ← ここを true から false に
+  ...
+}</pre>
+  </li>
+  <li>定点観測も止めたい場合は同様に <code>"competitor_snapshot"</code> の <code>"enabled"</code> を <code>false</code> にします。</li>
+  <li>確実に反映させるため、scheduler を再起動します (PowerShell):
+<pre>powershell -File C:\Users\gucch\projects\claude\tools\ebay-manager\scripts\scheduler_restart_w133.ps1</pre>
+  </li>
+  <li>停止中も「enabled=false のためスキップした」という痕跡がログに残ります (黙って消えません)。
+      再開はこの逆 (<code>true</code> に戻して再起動) です。</li>
+</ol>
+<div class="card note">
+  <div class="card-title">それぞれ独立に止められます</div>
+  <code>rival_classify.enabled=false</code> は「AI 分類」だけを止めます。自動値下げ (W183) 自体はこれとは独立に動き続けます
+  (対象は引き続き「値下げ適格 ON の競合」のみ)。逆に自動値下げの動きを狭めたい場合は、UI で値下げ適格を OFF にするのが正規の方法です。
+</div>
+
+<h3>3-6. one-shot スクリプトの実行コマンド</h3>
+<p>
+どちらも <code>tools\ebay-manager</code> ディレクトリから実行します。<strong>引数なし = dry-run (何も書き込まない・AI も呼ばない見積もりだけ)</strong>、
+<code>--apply</code> を付けた時だけ実行される安全設計です。
+</p>
+
+<h4>(a) 既存採用 178 件の値下げ適格温存 backfill (実行済み)</h4>
+<pre># 1. dry-run: 対象件数と内容を確認 (書き込みなし、rollback 用スナップショットは保存される)
+python scripts\backfill_pricing_eligible_w301.py
+
+# 2. まず 1 件だけ試行
+python scripts\backfill_pricing_eligible_w301.py --apply --limit 1
+
+# 3. 全件適用
+python scripts\backfill_pricing_eligible_w301.py --apply</pre>
+<p>
+対象 = 「採用中 (is_active=1) かつ 適格 = 0」の行だけを 1 に立てる (新規 Shadow 分には触らない)。
+実行前に <code>data\backup_pricing_eligible_w301_*.json</code> に対象行のスナップショットが自動保存されます (巻き戻し用)。
+</p>
+
+<h4>(b) 既存採用競合の一括 AI 再判定 (疑いリスト出し)</h4>
+<pre># 1. dry-run: AI を呼ばずに「何件が AI 判定行きになるか・概算コスト」だけ表示
+python scripts\reclassify_existing_competitors_w301.py
+
+# 2. 実行: AI 再判定 + 疑いリスト markdown を出力 (適格フラグは一切変更しない)
+python scripts\reclassify_existing_competitors_w301.py --apply
+
+# オプション: --limit N (先頭N件のみ) / --max-ai-calls N (AI 呼出上限、既定 200)</pre>
+<p>
+結果は <code>data\tmp\w301_suspicious_rivals_日付.md</code> に「疑いリスト」(AI が noise/review と判定したもの) として出力されます。
+このスクリプトは<strong>読み取り + 判定ログ記録のみ</strong>で、値下げ適格は 1 件も変更しません。
+リストを見て外すかどうかは 3-1 の UI トグルであなたが判断します。
+なお、古い採用分の一部 (2026-07-02 時点で 178 件中 60 件) は競合タイトルの記録が残っていないため AI 判定ができず、
+「目視確認推奨」として review 扱いでリストに載ります。
+</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ch4">
+<h2>4. FAQ</h2>
+
+<details class="faq" open>
+  <summary>値下げが急に止まった (または始まった) 時、どこを見ればいい?</summary>
+  <div class="a">
+    確認順は次の通りです。
+    ① <strong>Discord 通知</strong>: 値下げが実行された run は「💲 W183 自動値下げ実行」、失敗時は「⚠️ W183 … 失敗」が届きます。
+    ② <strong>最安値チェックタブ</strong>: 該当商品の競合一覧で「値下げ適格」が ON の競合が残っているか
+    (Phase1 導入で、適格 OFF の競合は追従対象外になりました。新規競合は全部 OFF スタートです)。
+    ③ <strong>床の設定</strong>: lp_min_price / 損益分岐が未設定だと安全側で値下げしません。目標価格が床未満でもスキップします。
+    ④ <strong>1 日 4 回上限</strong>: その日はもう上限まで下げた可能性。
+    ⑤ それでも不明なら <code>logs\scheduler.log</code> の「W183 完了:」行に、
+    スキップ理由の内訳 (cheapest / below_floor / cap / gated_out_ineligible 等) が毎回出ています。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>「値下げ適格 (pricing_eligible)」と「採用 (is_active)」の違いは何?</summary>
+  <div class="a">
+    <strong>採用 (is_active)</strong> = 「この競合をライバル台帳に載せて価格をウォッチする」。
+    <strong>値下げ適格 (pricing_eligible)</strong> = 「この競合の価格に自動値下げが追従してよい」。
+    自動値下げは<strong>両方 ON の競合しか見ません</strong>。
+    分けた理由は、「ウォッチはしたいが値段は追いたくない競合」(偽ライバル疑い・要確認中) を安全に持てるようにするためです。
+    Phase1 では、既存採用 178 件だけ両方 ON、新規は採用されても適格 OFF (Shadow) から始まります。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>AI が「real (真ライバル)」と判定したのに値下げが動かないのはなぜ?</summary>
+  <div class="a">
+    それが Shadow モードの正常動作です。AI の real 判定は記録され、競合はライバル台帳に自動登録されますが、
+    値下げ適格は 0 のままです (「もし本番なら適格だった」というメモだけ残る)。
+    値下げまで動かしたい場合は、あなたが UI トグルで適格 ON にしてください (それが Shadow 期間中の正解データにもなります)。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>競合の「AI判定」が review で、理由に「タイトルデータなし」と出ている。これは?</summary>
+  <div class="a">
+    古くに採用された競合の一部は、競合タイトルの記録がどのテーブルにも残っていません。
+    タイトルが無いと AI は同一商品かどうかを判定できないため、<strong>推測で判定させず、自動的に review (要確認・目視確認推奨) に倒しています</strong>
+    (fail-closed 原則: データが無いことを AI の想像で埋めない)。eBay の実ページを開いて目で確認してください。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>昇格ボタンを押したのに、何も変わっていないように見える。</summary>
+  <div class="a">
+    仕様通りです。Phase1 の昇格ボタンは「オーナーが卒業基準を確認して Shadow 解除を承認した」という<strong>記録を設定ファイルに残すだけ</strong>で、
+    実際の Shadow 解除 (AI の real 判定が値下げ適格に直結する動作) には別途コード対応が必要です。
+    AI が誤って昇格したり、設定値の書き換えだけで本番化してしまう事故を防ぐため、二重にロックされています。
+    承認記録を入れたら、Shadow 解除実装 (Phase2) を開発側に依頼してください。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>値下げ合戦アラートが来たが、値下げは止まっているの?</summary>
+  <div class="a">
+    止まっていません。アラートは<strong>通知のみ</strong>で、値下げは床 (lp_min_price) と 1 回 5% 上限の範囲内で継続します。
+    「止める」判断はあなた専用です — 該当競合の値下げ適格を OFF にするのが最も簡単な降り方です (3-4 節参照)。
+    同じ商品のアラートは 1 日 1 回に抑制されるので、通知が来ない日も合戦が終わったとは限りません。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>AI 分類が偽ライバルを間違って noise (除外) にしてしまったら、取り返しがつかない?</summary>
+  <div class="a">
+    つきます。noise 判定はすべて理由付きで判定ログ (rival_classifications) に残っており、候補リスト上も「除外 (dismissed)」の
+    ステータス変更だけでデータは消えません。また Shadow 中の noise 判定は値段に影響しないので実害もゼロです。
+    突合レポートの「noise 誤棄却率」で捨てすぎ傾向をモニタしており、高止まりする場合は閾値 (確信度 0.85 / 0.6、類似度 0.15 等) の調整対象になります。
+  </div>
+</details>
+
+<details class="faq">
+  <summary>AI の利用コストはどれくらいかかる?</summary>
+  <div class="a">
+    分類 AI (Claude Haiku) はグレー案件のみに使われ、1 件あたり約 $0.007。さらに 1 回の実行 (毎日 03:00) で最大 50 件の上限付きです
+    (超えた分は review に倒して翌日以降に持ち越し)。門前払いとスコア足切りで大半は AI を呼ばずに処理されるため、
+    日次コストは最大でも $0.35 程度、通常はそれ以下です。
+  </div>
+</details>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ch5">
+<h2>5. 版数・情報源</h2>
+<p><strong>版数</strong>: v1.0 (2026-07-02 作成)</p>
+<p><strong>情報源</strong> (プロジェクトルートからの相対パス):</p>
+<ul>
+  <li>設計書: <code>.company/engineering/docs/2026-06-24-ai-manager-phase1-design.md</code></li>
+  <li>ヒアリング議事録 (判断ロジックの業務根拠): <code>.company/engineering/docs/2026-06-22-ai-manager-hearing-minutes.md</code></li>
+  <li>実装 (本書はコードを正として記述):
+    <code>tools/ebay-manager/monitor/rival_classifier.py</code> /
+    <code>tools/ebay-manager/tasks/task_rival_classify.py</code> /
+    <code>tools/ebay-manager/tasks/task_competitor_snapshot.py</code> /
+    <code>tools/ebay-manager/tasks/task_rival_pricing.py</code> /
+    <code>tools/ebay-manager/tabs/tab_lowest_price.py</code> /
+    <code>tools/ebay-manager/scripts/backfill_pricing_eligible_w301.py</code> /
+    <code>tools/ebay-manager/scripts/reclassify_existing_competitors_w301.py</code> /
+    <code>tools/ebay-manager/config/schedule_config.json</code> /
+    <code>tools/ebay-manager/monitor/database.py</code> (migration v86/v87)
+  </li>
+</ul>
+<div class="card note">
+  <div class="card-title">設計書とコード実装の主な相違点 (コードを正として本書に反映済み)</div>
+  <ul>
+    <li>DB migration は設計書の <strong>v81</strong> ではなく実装は <strong>v86</strong> (pricing_eligible 列 + rival_classifications / competitor_snapshots / ddu_sellers / warning_brand_watchlist) +
+        <strong>v87</strong> (pricing_eligible_change_log 監査ログ)。v82〜85 は他機能で先に消費されたため。</li>
+    <li>AI 判定モジュールは設計書では <code>rival_ai_judge.py</code> として別ファイル予定だったが、<code>rival_classifier.py</code> に統合実装。</li>
+    <li>競合定点観測は設計書の Shopping API GetMultipleItems (20 件/コール) ではなく Trading API GetItem (<strong>1 件/コール</strong>) で実装
+        (本 codebase に Shopping API クライアントが無いため)。上限は 1 回 100 コール = 100 件。</li>
+    <li>昇格ボタンは「shadow_mode=false に切替」ではなく「<strong>承認記録の書込のみ</strong>」(実際の解除は Phase2 のコード対応が必要)。</li>
+  </ul>
+</div>
+</section>
+
+<footer class="doc-foot">
+  AI店長 Phase1 仕様書 + 操作手順書 v1.0 — 2026-07-02 / eBay Manager (MonoDeck) engineering docs
+</footer>
+
+</div>
+</body>
+</html>

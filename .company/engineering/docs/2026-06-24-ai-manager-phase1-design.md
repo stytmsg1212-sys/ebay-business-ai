@@ -10,7 +10,7 @@ W153が`listing_rival_discoveries`に**全件無差別蓄積**するライバル
 
 ## 2. スコープ
 **含む(Phase1)**: ハード除外(国≠JP/JUNK・AS-IS/売切れ/評価稼ぎ)/スコア足切り/グレーのみClaude判定(商品同一性)/構造化JSON保存/3分岐ルーティング/`pricing_eligible`分離+W183抽出変更/Shadow/DDU育つリストのDB化/GetItem snapshot最小蓄積。
-**含まない(Phase2+)**: per-productアクション判断エンジン/キーセラー・Best Match実順位/状態ポジショニング値付け/撤退判断/警告ブランド業務運用(結線のみPhase1)/DDU Description自動取得/snapshot消費(販売速度レーダー等)/自動昇格(Shadow→自動はuser合意ボタン)。
+**含まない(Phase2+)**: per-productアクション判断エンジン/キーセラー・Best Match実順位/状態ポジショニング値付け/撤退判断/警告ブランド業務運用(結線のみPhase1)/DDU Description自動取得/snapshot消費(販売速度レーダー等)/自動昇格(Shadow→自動はuser合意ボタン)/**Best Offer (値引きオファー) 自動応対 = Phase3 候補** (利益床エンジン共用・提案モードから開始、2026-07-02 総点検⑤-2)。
 
 ## 3. 作成/修正ファイル
 **新規**: `monitor/rival_classifier.py`(純ロジック3分岐) / `monitor/rival_ai_judge.py`(グレーのみClaude Haiku) / `tasks/task_rival_classify.py`(定時タスク) / `monitor/competitor_snapshot.py`(GetItem蓄積) / `data/dou_blacklist.json`(DDUセラー育つリスト) / tests×3。

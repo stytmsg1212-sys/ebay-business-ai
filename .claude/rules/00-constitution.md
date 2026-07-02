@@ -17,7 +17,7 @@
 - **Q1** UI / 定時実行バグ修正 DoD = 11 ステップ Phase 0-3 (pytest だけ NG、Streamlit + Playwright + DB + scheduler.log 必須)
 - **Q2** DB migration 冪等性必須 (try/except OperationalError、DROP/DELETE 別 one-shot、本番直接書込 24h retrospective) → `db-migration-rules.md`
 - **Q3** 新機能 / 外部 API / 不確実変更は構造化設計フロー必須 (Clarify → 設計 → 2 段 review → 実装 → Q1)
-- **Q4** コード変更後 code-reviewer agent で HIGH=0 まで修正ループ
+- **Q4** レビューはリスク 3 段階 (2026-07-02 総点検で段階化、モデル非依存): **T3 money-direct** (価格/送料/SKU/関税/DB migration・直接書込/eBay API 書込/scheduler 実行経路) = code-reviewer HIGH=0 + Codex/Fugu 外部 2 段 + live 検証 / **T2 通常ロジック** (UI 挙動・集計・内部ツール) = code-reviewer HIGH=0 のみ / **T1 軽微** (文言・docs・rule/memory・表示微調整) = 実装者 self-review + テスト PASS。迷ったら上位 tier。DB 直接書込後 retrospective は従来通り
 - **Q5** 完了報告: 「使用したモデル」明示、未実施フェーズ明記、Phase 0 発見併記
 - **Q6** モデル選定: Opus 4.8 (業務判断・Research 1日30) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk・デフォルト)
 - **Q7** 知識利用順序 (LLM Wiki): compiled wiki を read-first、ゼロ再導出禁止 → `.claude/rule-snippets/llm-wiki-compilation.md`

@@ -2786,5 +2786,60 @@
     "created": "2026-07-02",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 371,
+    "tag": "W302",
+    "title": "定時実行の完全無人化 (Startup VBS で logon 時に scheduler 自動起動)",
+    "description": "PC再起動後にuserが手動で scheduler_restart_w133.ps1 を実行していた問題を解消。Startupフォルダに ebay-scheduler-autostart.vbs を設置 (ASCII-only、scheduler_restart_w133.ps1 を hidden 実行、stale PID なら fresh start)。フルE2E検証済 (VBS実行→旧PID停止→新PID起動確認 2026-07-02)。無効化=VBS削除。総点検 攻め④-3 (優先度A・手軽さ最強)。",
+    "status": "完了",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": "2026-07-02",
+    "category": "ops"
+  },
+  {
+    "id": 367,
+    "tag": "W303",
+    "title": "7/7 Fable→Opus4.8 切替戻し + モデル体制の総点検C項目",
+    "description": "Fableサブスク終了(2026-07-07)までに .claude/settings.json の model を claude-opus-4-8 へ戻す (戻し忘れ=高額従量課金事故、MEMORY.md索引に⚠️記録済)。併せて総点検C項目: research_router の未使用2経路 (supplier_escalation/feature_dev ルート定義のみで呼び出し側なし) の削除、モデル振り分けの簡素化検討。期限: 2026-07-07。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "ops"
+  },
+  {
+    "id": 368,
+    "tag": "W304",
+    "title": "CS返信の自動下書き (新着メッセージ検知→分類→ドラフト生成)",
+    "description": "eBay買い手メッセージ (発送状況/値引き交渉/クレーム) の自動下書き。新着検知→分類→過去取引情報を踏まえたドラフト生成→user通知、送信はuser (承認ゲート維持)。総点検 攻め④-2 (優先度A)。前段調査 (メッセージデータの実在/取得API/直近1ヶ月の件数) を2026-07-02に実施済み→調査結果を踏まえて設計着手。24h以内返信ルールとDefect率保護が目的。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 369,
+    "tag": "W305",
+    "title": "ライバルセラー丸ごと分析→国内仕入先の逆引きリサーチ",
+    "description": "競合セラーの出品カタログを起点に「抽出→国内仕入先照合→利益計算→候補リスト」を一気通貫で行うリサーチ入口 (セラーURL 1本入力)。@nui手法 (reference_ebay_rival_url_research_method_nui) のシステム化、W228リサーチWizardと同方向。総点検 攻め⑤-1 (優先度B)。次の一手: まず手動で1セラー分を試験実行し精度を見てから仕組み化判断。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 370,
+    "tag": "W306",
+    "title": "週次経営レポート+打ち手提案 (毎週月曜朝バッチ)",
+    "description": "売上/利益/回転率/死に筋在庫を週次自動集計し「今週やるべき3つ」まで提案する経営参謀レポート。DBの既存データで実現可能。総点検 攻め⑤-3 (優先度B)。次の一手: 2026-07-06(月) に試作1号を1回だけ手動生成しuserが内容を採点→価値があれば朝の重点提案と統合して定時化。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
   }
 ]

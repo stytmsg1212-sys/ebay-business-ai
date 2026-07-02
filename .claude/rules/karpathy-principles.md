@@ -76,3 +76,7 @@ K0-K2 は普遍的だが **K3 Goal-Driven はモデル依存度が高い** (出�
 | Haiku 4.5 | K3 ほぼ非機能 | bulk / 短文限定、K3 不要 task のみ |
 
 **本 project の対応モデル**: Opus 4.8 (CLAUDE.md 冒頭明記). 違反検知時は `feedback_model_selection_policy.md` Q6 と併せて参照.
+
+**分割補正の適用条件 (2026-07-02 総点検①-2)**: 上表の「K3 measurable goal を分割して渡す」は **Sonnet 以下に委譲する時のみ**の補正。Opus 4.8 / Fable 5 級には**大きなゴールのまま渡し、途中報告 (progress-touchpoint) で管理**する (細切れ分割は速度と一貫性を落とす)。
+
+**モデル表 最終確認日: 2026-07-02** (Sonnet 5 リリース済みだが Zenn 対応表は 4.6 準拠のまま。モデル世代交代時に本表と本日付を更新すること — 総点検②-2)

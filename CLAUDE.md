@@ -23,7 +23,7 @@
 - **Q1** UI / 定時実行バグ修正 DoD = 11 ステップ Phase 0-3 全て (pytest PASS だけ NG、Streamlit + Playwright + DB クエリ + scheduler.log 必須)。詳細: `feedback_definition_of_done_protocol.md`
 - **Q2** DB migration 冪等性必須 (try/except OperationalError、DROP/DELETE は別 one-shot script、本番直接書込時 24h retrospective review)。詳細: `.claude/rules/db-migration-rules.md`
 - **Q3** 新機能 / 外部 API / 見積不確実な変更は **構造化設計フロー必須** (Clarify → 設計 → 2 段レビュー → 実装 → Q1 検証)、Phase 3 Clarify 省略禁止。⚠️ 本 repo に `/feature-dev` skill/command は **不在** (md-files-can-be-wrong R-1、2026-05-18 確認) = `code-architect` subagent (設計 Phase) + `code-reviewer` + Codex の 2 段レビューで **等価運用**。詳細・両論併記: `feedback_feature_dev_usage.md`
-- **Q4** コード変更後 code-reviewer agent で **HIGH=0** まで修正ループ。DB 直接書込後は retrospective review。詳細: `feedback_auto_review_after_changes.md`
+- **Q4** レビューはリスク 3 段階 (2026-07-02 段階化): **money-direct=三重** (code-reviewer HIGH=0 + Codex/Fugu 2 段 + live 検証) / **通常ロジック=code-reviewer HIGH=0** / **軽微 (文言・docs)=self-review+テスト**。迷ったら上位 tier。DB 直接書込後は retrospective review。詳細: `feedback_auto_review_after_changes.md`
 - **Q5** 完了報告: 「使用したモデル」明示、多段パイプライン部分実装時は未実施フェーズ冒頭明記、Phase 0 発見併記
 - **Q6** モデル選定: Opus 4.8 (業務判断 / 動画深掘り / Research、1 日 30 calls) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk / 短文、デフォルト) / Gemini 2.5 Flash (動画ネイティブ)。詳細: `feedback_model_selection_policy.md`
 - **Q7** 知識利用順序 (LLM Wiki Compilation): 調べ物・再導出・外部調査の前に **compiled wiki を read-first** (MEMORY.md tier-1 → 関連 tier-2 → reference_*)。compiled 済みのゼロ再導出は禁止。query 新知見は §3 基準で wiki に戻す。詳細: `.claude/rule-snippets/llm-wiki-compilation.md` (2026-05-21 hybrid 化で snippet 側へ移動、router で JIT 注入)

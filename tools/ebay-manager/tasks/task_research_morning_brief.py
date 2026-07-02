@@ -52,6 +52,70 @@ def _build_brief_query() -> str:
     )
 
 
+def _ai_cost_summary_line() -> str:
+    """直近24hのAI利用コストを1行に集計 (総点検 守り③-3).
+
+    データ源: api_call_log.cost_usd (monitor/api_logger.py). called_at は SQL
+    CURRENT_TIMESTAMP 由来 = UTC 保存のため、JST 日付直書きせず相対範囲
+    datetime('now','-24 hours') で集計 (.claude/rules/sqlite-timezone.md パターン A)。
+
+    テーブル不在/空でも brief 本体を壊さない (Q0: 痕跡は logger.warning に残す、
+    空文字を返して呼出元は行を単純 skip する)。
+    """
+    try:
+        with sqlite3.connect(str(DB_PATH)) as con:
+            total_row = con.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0.0), COUNT(*) FROM api_call_log "
+                "WHERE called_at >= datetime('now', '-24 hours')"
+            ).fetchone()
+            top_rows = con.execute(
+                "SELECT model, COALESCE(SUM(cost_usd), 0.0) AS c FROM api_call_log "
+                "WHERE called_at >= datetime('now', '-24 hours') "
+                "GROUP BY model ORDER BY c DESC LIMIT 3"
+            ).fetchall()
+    except sqlite3.OperationalError as e:
+        # api_call_log 未整備 (テーブル不在) 等. brief 本体は壊さず 1 行 skip.
+        logger.warning(f"AI利用コスト集計 skip (api_call_log 未整備の可能性): {e}")
+        return ""
+
+    total_cost = float((total_row[0] if total_row else 0.0) or 0.0)
+    total_calls = int((total_row[1] if total_row else 0) or 0)
+
+    if total_calls == 0:
+        return "AI利用(直近24h): $0.00 / 0 calls"
+
+    breakdown = ", ".join(f"{m}=${float(c or 0.0):.2f}" for m, c in top_rows)
+    return (
+        f"AI利用(直近24h): ${total_cost:.2f} / {total_calls} calls "
+        f"(内訳 top3: {breakdown})"
+    )
+
+
+def _append_cost_line_to_brief(answer) -> None:
+    """morning brief 末尾に AI 利用コスト行を追記 (answer_md 更新 + DB 反映).
+
+    answer.answer_md (in-memory) と research_qa.answer_md (永続化、DASHBOARD が
+    参照) の両方を更新する。DB UPDATE 失敗時も brief 本体は既に保存済のため
+    表示欠落のみに留める (Q0: 痕跡は logger.warning)。
+    """
+    cost_line = _ai_cost_summary_line()
+    if not cost_line:
+        return
+    answer.answer_md = f"{answer.answer_md}\n\n{cost_line}"
+    try:
+        with sqlite3.connect(str(DB_PATH)) as con:
+            con.execute(
+                "UPDATE research_qa SET answer_md = ? WHERE id = ?",
+                (answer.answer_md, answer.qa_id),
+            )
+            con.commit()
+    except sqlite3.OperationalError as e:
+        logger.warning(
+            f"morning_brief: コスト行の DB 反映失敗 (qa_id={answer.qa_id}, "
+            f"表示のみ欠落): {e}"
+        )
+
+
 def _notify_budget_exceeded(config: Optional[dict], answer) -> None:
     """予算超過時に Discord 明示通知 (silent skip 防止、R-11).
 
@@ -130,6 +194,7 @@ def run_research_morning_brief(config: Optional[dict] = None) -> dict:
         f"({answer.duration_ms}ms, ${answer.cost_usd:.4f}, "
         f"citations={len(answer.citations)})"
     )
+    _append_cost_line_to_brief(answer)
     return {
         "success": True,
         "qa_id": answer.qa_id,

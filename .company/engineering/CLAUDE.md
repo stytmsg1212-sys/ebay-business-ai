@@ -42,6 +42,9 @@ eBay物販業務の自動化ツール、スクリプト、API連携を開発・�
 - **定時実行の健全性監視**: セッション開始時に `logs/scheduler.log` を確認、クラッシュあれば自動修復＆補完実行（feedback_scheduler_health_check.md）
 
 ## コード変更後の必須ワークフロー
+
+⚠️ 2026-07-02 Q4 リスク 3 段階化 (正典 = `.claude/rules/00-constitution.md` Q4): money-direct=三重 (code-reviewer HIGH=0 + Codex/Fugu 2 段 + live) / 通常ロジック=code-reviewer HIGH=0 / 軽微 (文言・docs)=self-review+テスト。以下は通常ロジック (T2) 以上の手順。
+
 1. `code-reviewer` サブエージェントでレビュー → HIGH 0件 になるまで修正
 2. 大幅修正後は `code-simplifier` も検討
 3. ユーザー報告は「HIGH 0件=100点」到達後

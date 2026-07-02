@@ -22,3 +22,17 @@
   - 条件2: **5% 上限 + 3 連続値下げアラートを W183 に先行実装** (Phase1 本体と独立、本日着手)
   - 条件3: Shadow 卒業基準 = **2 週間・would_be_eligible vs user 実採用の不一致率 5% 以下で昇格ボタン**
   - §11 残り: confidence 0.85/0.6 初期値 / cron 03:00 / DDU 手動リストのみ / 警告ブランド Holbein 第 1 号 — assistant 裁量で確定済
+
+- [決定] **総点検 残項目の一括対応 (user 指示 2026-07-02)**。前提 = **7/8 以降は Fable 不在・最上位 Opus 4.8** のため、全て**モデル非依存**の形で実装:
+  - ①-1 **Q4 レビューをリスク 3 段階化**: T3 money-direct=三重 / T2 通常ロジック=code-reviewer HIGH=0 / T1 軽微=self-review+テスト。cascade 4 file (00-constitution / CLAUDE.md / engineering CLAUDE.md / 本記録)
+  - ①-2 **分割補正の条件明文化**: 「measurable goal 分割」は Sonnet 以下委譲時のみ。Opus 4.8/Fable には大きなゴール+途中報告 (karpathy-principles.md 追記)
+  - ②-2 **モデル表に最終確認日 2026-07-02 付与** (世代交代時に更新)
+  - ①-3/②-C **W303 登録**: 7/7 settings.json 戻し + router 未使用 2 経路削除 (期限 7/7)
+  - ②-1 rehearsal 暫定処置 5 箇所 → 棚卸し調査を subagent へ委譲中 (推奨を受けて main が適用)
+  - ③-3 AI 利用量の毎朝 1 行 → 朝ブリーフへの実装を subagent へ委譲中
+  - ④-2 CS 自動下書き → **W304 登録** + データ実在調査を subagent へ委譲中
+  - ④-3 定時実行無人化 → Startup VBS 設置済み (ASCII 化 fix 済、probe OK、フル E2E はバッチ間隙で実施予定)
+  - ⑤-1 ライバル逆引き → **W305 登録** (次の一手: 手動 1 セラー試験)
+  - ⑤-2 Best Offer 自動応対 → Phase1 設計書の Phase2+ リストに「Phase3 候補」1 行追記済
+  - ⑤-3 週次経営レポート → **W306 登録** (7/6 月曜に試作 1 号)
+  - cascade scan 実施: keyword="HIGH=0 まで修正ループ", 影響 2 file + 鏡像 2 file 更新
