@@ -228,6 +228,10 @@ def test_same_product_false_is_noise_regardless_of_confidence(monkeypatch, tmp_d
 # ────────────────────────────────────────────────────────────────
 
 def test_ai_key_missing_fails_closed_to_review(monkeypatch):
+    # 2026-07-02: _get_client は monitor.credentials import (.env 読込副作用) で
+    # 鍵を復元し得るため、先に import してキャッシュ化してから delenv する
+    # (= 「.env にも鍵が無い」状況の正しいシミュレーション)
+    import monitor.credentials  # noqa: F401
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     result = judge_rival(_base_signals())
     assert result.error is not None

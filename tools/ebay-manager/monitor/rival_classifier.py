@@ -397,6 +397,14 @@ _VALID_CONDITION = {"NEW", "USED", "AS-IS", "JUNK"}
 
 
 def _get_client():
+    # 2026-07-02 fix: .env を明示ロード (monitor.credentials の import 副作用)。
+    # これが無いと fresh process (one-shot script / scheduler 単独経路) で
+    # ANTHROPIC_API_KEY が見えず全グレー判定が ai_key_missing → review 落ちする
+    # (fail-closed で安全だが分類が空回り。W301 再判定 dry-run で実発覚)。
+    try:
+        from monitor import credentials  # noqa: F401  (load_dotenv 副作用のみ)
+    except ImportError as e:
+        logger.warning(f"monitor.credentials import 失敗 (.env 未ロードの可能性): {e}")
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return None
