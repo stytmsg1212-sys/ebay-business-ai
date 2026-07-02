@@ -2907,5 +2907,17 @@
     "created": "2026-07-02",
     "completed": null,
     "category": "ops"
+  },
+  {
+    "id": 378,
+    "tag": "W313",
+    "title": "リサーチ対戦 Phase2 学習還流 (few-shot 注入 + ルーブリック承認 UI)",
+    "description": "Phase1は採点→ルーブリック候補を memory 記録のみで意図的に非配線 (money-direct 汚染防止)。目的の『AI リサーチ脳力向上』には還流が必須。実装内容: ①ルーブリック候補 (reference_research_rubric.md、現在5件candidate) の承認/棄却UI (user承認ゲート維持)、②承認済みルーブリック+過去の高/低得点例を『リサーチ選定専用』プロンプトにfew-shot注入 (仕入先同一性判定evaluateには絶対に配線しない=設計書§0遵守)、③効果測定=2週間移動平均の採点トレンド。着手条件=稼働安定(W309)後、採点サンプル2週間分蓄積後が望ましい。関連=W311(drift検知)と同時実装が効率的。",
+    "category": "research",
+    "priority": "normal",
+    "status": "未着手",
+    "created": "2026-07-02",
+    "completed": null,
+    "completed_date": null
   }
 ]

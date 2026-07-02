@@ -5218,7 +5218,7 @@ def render_product_management(config: dict) -> None:
     _focus_str = str(_focus) if _focus else ""
     if _focus_str:
         st.info(
-            f"📝 本日の作業から遷移: Item ID `{_focus_str}` を検索欄に設定しました。"
+            f"📝 午後の作業から遷移: Item ID `{_focus_str}` を検索欄に設定しました。"
             "下の表で行をクリックすると編集ゾーンが開きます。"
         )
 

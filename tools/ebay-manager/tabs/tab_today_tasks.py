@@ -293,7 +293,7 @@ def _render_topbar(streak: dict, done: int, total: int) -> None:
           <div class="tt-brand">
             <div class="tt-logo">📋</div>
             <div>
-              <h1>本日の作業</h1>
+              <h1>午後の作業</h1>
               <p>毎日10件だけ。初期登録をベイビーステップで消化 — 売れ筋・未整備 DESC</p>
             </div>
           </div>
@@ -343,7 +343,7 @@ def _render_condition_bar(done: int, total: int) -> None:
               <div class="tt-part-label">🌅 早朝の部 — リサーチ</div>
               <div class="tt-part-lead">新しい仕入れの種をさがす</div>
               <div class="tt-gobtns">
-                <span class="tt-gobtn">⚔️ リサーチ対戦へ →</span>
+                <span class="tt-gobtn">⚔️ 午前の作業へ →</span>
                 <span class="tt-gobtn">⛏️ 今日の発掘へ →</span>
                 <span class="tt-gobtn">📊 ライバル調査 →</span>
               </div>
@@ -375,9 +375,9 @@ def _render_condition_bar(done: int, total: int) -> None:
     # research タブは「⚲ リサーチ」グループ所属 → group key も set して view-sync を確実化。
     btn_c1, btn_c2, btn_c3, _spacer = st.columns([1, 1, 1, 2])
     with btn_c1:
-        if st.button("⚔️ リサーチ対戦へ →", key=f"{_SS}goto_duel", use_container_width=True):
-            st.session_state["_w134_sel"] = "リサーチ対戦"
-            st.session_state["_w217a_cat_view"] = "⚲ リサーチ"
+        if st.button("⚔️ 午前の作業へ →", key=f"{_SS}goto_duel", use_container_width=True):
+            st.session_state["_w134_sel"] = "午前の作業"
+            st.session_state["_w217a_cat_view"] = "★ 毎日"
             st.rerun()
     with btn_c2:
         if st.button("⛏️ 今日の発掘へ →", key=f"{_SS}goto_discovery", use_container_width=True):
