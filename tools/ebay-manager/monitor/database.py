@@ -4010,6 +4010,205 @@ def init_db():
                     "[init_db v85] relist_history.source 追加失敗。次回 init_db で再試行。"
                 )
 
+        # ---- v86 (AI 店長 Phase1 S1 / W301 / 2026-07-02): pricing_eligible 分離 +
+        # rival_classifications / competitor_snapshots / ddu_sellers /
+        # warning_brand_watchlist ----
+        # 設計書: .company/engineering/docs/2026-06-24-ai-manager-phase1-design.md §4/§7(S1)
+        #   - competitor_products.pricing_eligible: 採用(is_active)と値下げ適格を
+        #     分離する最重要安全策。既存行 default 0 = Shadow 安全側。既存 active
+        #     採用分の backfill は別 one-shot script
+        #     (scripts/backfill_pricing_eligible_w301.py) で行う、本 migration では
+        #     実行しない (S1 は「誰も値下げされない」状態を保つ)。
+        #   - rival_classifications: AI 判定ログ (Shadow 突合の正本)。discovery_id は
+        #     listing_rival_discoveries.id を指す (JOIN は id、sku 不使用 /
+        #     sku-rules.md)。listing 識別は ebay_item_id / competitor_item_id。
+        #   - competitor_snapshots: GetItem 定点観測の器 (Phase1 は蓄積のみ、消費は
+        #     Phase2)。
+        #   - ddu_sellers: DDU セラー育つリスト (手動追記前提、seller_id 一意)。
+        #   - warning_brand_watchlist: 警告ブランド watchlist、Holbein を第 1 号 seed
+        #     (CLAUDE.md の存在しない vero_brands.json dangling 参照とは別物 = 統合
+        #     しない、議事録§13/設計書§11 Q6)。
+        # 冪等: ALTER と CREATE TABLE 群と seed INSERT を別 try に分離 (再突入時に
+        # 1 つの OperationalError が他の未完了ステップを道連れにしないため)。
+        # 全対象存在確認後のみ user_version bump (v82/v83/v84 流儀)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 85:
+            try:
+                conn.execute(
+                    "ALTER TABLE competitor_products "
+                    "ADD COLUMN pricing_eligible INTEGER DEFAULT 0"
+                )
+                logger.info(
+                    "[init_db v86] competitor_products.pricing_eligible added"
+                )
+            except sqlite3.OperationalError:
+                pass  # 列が既に存在 = 冪等
+
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS rival_classifications (
+                        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                        discovery_id       INTEGER,       -- listing_rival_discoveries.id
+                        ebay_item_id       TEXT NOT NULL, -- listing 識別 (sku-rules.md)
+                        competitor_item_id TEXT NOT NULL,
+                        classification     TEXT NOT NULL
+                                           CHECK(classification IN ('real','noise','review')),
+                        route              TEXT,           -- hard_exclude/score/ai 等
+                        exclude_reason     TEXT,
+                        title_similarity   REAL,
+                        price_ratio        REAL,
+                        same_product       INTEGER,        -- AI 判定 0/1、NULL=未判定
+                        variant_risk       TEXT,           -- none/voltage/cable/language/accessory/unknown
+                        ai_condition       TEXT,
+                        confidence         REAL,
+                        reason             TEXT,
+                        ai_model           TEXT,
+                        shadow_mode        INTEGER NOT NULL DEFAULT 1,
+                        would_be_eligible  INTEGER NOT NULL DEFAULT 0,
+                        created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_rival_classifications_discovery "
+                    "ON rival_classifications(discovery_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_rival_classifications_item "
+                    "ON rival_classifications(ebay_item_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_rival_classifications_created "
+                    "ON rival_classifications(created_at DESC)"
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS competitor_snapshots (
+                        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                        competitor_item_id    TEXT NOT NULL,
+                        our_item_id           TEXT,
+                        quantity_sold         INTEGER,
+                        quantity_total        INTEGER,
+                        quantity_available    INTEGER,
+                        seller_feedback_score INTEGER,
+                        seller_positive_pct   REAL,
+                        seller_country        TEXT,
+                        price_usd             REAL,
+                        shipping_usd          REAL,
+                        captured_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_item "
+                    "ON competitor_snapshots(competitor_item_id, captured_at DESC)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_our_item "
+                    "ON competitor_snapshots(our_item_id)"
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS ddu_sellers (
+                        seller_id  TEXT PRIMARY KEY,
+                        reason     TEXT,
+                        added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS warning_brand_watchlist (
+                        brand      TEXT PRIMARY KEY,
+                        reason     TEXT,
+                        added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                logger.info(
+                    "[init_db v86] rival_classifications / competitor_snapshots / "
+                    "ddu_sellers / warning_brand_watchlist created"
+                )
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v86] W301 S1 table create skipped: {e}")
+
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO warning_brand_watchlist (brand, reason) "
+                    "VALUES (?, ?)",
+                    (
+                        "Holbein",
+                        "警告ブランド watchlist 第1号 (議事録§13 / 設計書§11 Q6)",
+                    ),
+                )
+                logger.info("[init_db v86] Holbein seeded into warning_brand_watchlist")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v86] Holbein seed skipped: {e}")
+
+            _v86_cols = {
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(competitor_products)"
+                ).fetchall()
+            }
+            _v86_tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name IN ('rival_classifications','competitor_snapshots',"
+                "'ddu_sellers','warning_brand_watchlist')"
+            ).fetchone()[0]
+            if "pricing_eligible" in _v86_cols and _v86_tables == 4:
+                conn.execute("PRAGMA user_version = 86")
+                logger.info("[init_db v86] schema_ver bumped to 86")
+            else:
+                logger.warning(
+                    f"[init_db v86] 未完了 (pricing_eligible列={'pricing_eligible' in _v86_cols}, "
+                    f"tables={_v86_tables}/4)。次回 init_db で再試行。"
+                )
+
+        # ---- v87 (AI 店長 Phase1 S6 / W301 / 2026-07-02): pricing_eligible の
+        # user 手動トグル変更ログ ----
+        # 設計書 §7(S6 UI)。「変更時は確認付き + 変更ログ (Q0)」の実行部。
+        # price_change_log (v33 既存) と対称構造。listing 識別は
+        # competitor_products.id (PK) + competitor_item_id/our_item_id を補助記録
+        # (SKU 不使用、sku-rules.md 準拠)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 86:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS pricing_eligible_change_log (
+                        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                        competitor_product_id INTEGER NOT NULL,
+                        our_item_id           TEXT,
+                        competitor_item_id    TEXT,
+                        old_value             INTEGER,
+                        new_value             INTEGER NOT NULL,
+                        changed_by            TEXT NOT NULL DEFAULT 'user',
+                        changed_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_pricing_eligible_change_log_cp "
+                    "ON pricing_eligible_change_log(competitor_product_id, changed_at DESC)"
+                )
+                logger.info("[init_db v87] pricing_eligible_change_log created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v87] table create skipped: {e}")
+
+            _v87_tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='pricing_eligible_change_log'"
+            ).fetchone()[0]
+            if _v87_tables == 1:
+                conn.execute("PRAGMA user_version = 87")
+                logger.info("[init_db v87] schema_ver bumped to 87")
+            else:
+                logger.warning(
+                    "[init_db v87] 未完了 (pricing_eligible_change_log 未作成)。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -4770,7 +4969,9 @@ def add_or_reactivate_competitor(
         except sqlite3.IntegrityError:
             # UNIQUE(competitor_item_id) 違反 → 既存 row 判定
             row = conn.execute(
-                "SELECT id, our_item_id, is_active FROM competitor_products "
+                "SELECT id, our_item_id, is_active, "
+                "       COALESCE(pricing_eligible, 0) AS pricing_eligible "
+                "FROM competitor_products "
                 "WHERE competitor_item_id = ?",
                 (competitor_item_id,),
             ).fetchone()
@@ -4779,19 +4980,311 @@ def add_or_reactivate_competitor(
                 raise
             existing_id = row['id']
             existing_our_iid = row['our_item_id']
+            existing_is_active = row['is_active']
+            existing_eligible = row['pricing_eligible']
             if existing_our_iid == our_item_id:
                 # 同 listing → reactivate (v2.1 MED-6: our_sku 更新も)
-                conn.execute(
-                    "UPDATE competitor_products "
-                    "SET is_active = 1, "
-                    "    our_sku = COALESCE(NULLIF(?, ''), our_sku), "
-                    "    updated_at = CURRENT_TIMESTAMP "
-                    "WHERE id = ?",
-                    (our_sku, existing_id),
-                )
+                #
+                # W301 統一方針 (MED#2, 2026-07-02): pricing_eligible のリセットは
+                # **実際に is_active=0 だった行のみ** に限定する。既に is_active=1
+                # (user が UI で採用中 = eligible=1 も許容) の場合は eligible/is_active
+                # とも現状維持し、our_sku/updated_at だけ更新する。これにより
+                # 「採用中競合が再 discovery + real 判定で W183 から黙って脱落」
+                # (money-direct、Shadow 不変条件と逆側の穴) を防ぐ。
+                # 復活時 (0→1) は Shadow 起点に戻す (「復活 = 新規再採用」ライフサイクル
+                # 統一) — eligible の復活は user の UI トグル
+                # (set_competitor_pricing_eligible) 専用。
+                if existing_is_active == 0:
+                    conn.execute(
+                        "UPDATE competitor_products "
+                        "SET is_active = 1, "
+                        "    pricing_eligible = 0, "
+                        "    our_sku = COALESCE(NULLIF(?, ''), our_sku), "
+                        "    updated_at = CURRENT_TIMESTAMP "
+                        "WHERE id = ?",
+                        (our_sku, existing_id),
+                    )
+                    # 1 → 0 の変化があった場合のみ痕跡を残す (Q0)。
+                    # 0 → 0 は no-op のためログ不要 (通常経路 = delete_competitor_product
+                    # で既に 0 にクリア済みのはずで、その場合は 0→0)。
+                    if existing_eligible == 1:
+                        try:
+                            conn.execute(
+                                """INSERT INTO pricing_eligible_change_log
+                                   (competitor_product_id, our_item_id, competitor_item_id,
+                                    old_value, new_value, changed_by)
+                                   VALUES (?,?,?,?,?,?)""",
+                                (
+                                    existing_id, our_item_id, competitor_item_id,
+                                    1, 0, 'reactivate_reset',
+                                ),
+                            )
+                        except sqlite3.OperationalError as e:
+                            # v87 未適用の極稀な状態でも reactivate 自体は成功させる
+                            # (Shadow 保護 = pricing_eligible=0 は既に UPDATE 済み)。
+                            logger.warning(
+                                f"[W301 HIGH-1] pricing_eligible_change_log INSERT "
+                                f"skipped (v87 未適用?): {e}"
+                            )
+                else:
+                    # 既に is_active=1 = user 採用中。eligible/is_active は触らない。
+                    # our_sku 補助情報と updated_at だけ更新する (v2.1 MED-6 継承)。
+                    conn.execute(
+                        "UPDATE competitor_products "
+                        "SET our_sku = COALESCE(NULLIF(?, ''), our_sku), "
+                        "    updated_at = CURRENT_TIMESTAMP "
+                        "WHERE id = ?",
+                        (our_sku, existing_id),
+                    )
                 return (existing_id, 'reactivated')
             # 別 listing → conflict (本 W では N:1 不可)
             return (existing_id, 'conflict')
+
+
+# ────────────────────────────────────────────────────────────────
+# W301 AI 店長 Phase1 S4 (2026-07-02): rival_classify / competitor_snapshot
+# 定時タスクが読む DB ヘルパ (migration v86 で新設した 4 テーブルの読み書き)。
+# listing 識別は ebay_item_id / competitor_item_id のみ (sku-rules.md 準拠、
+# SKU は一切参照しない)。
+# ────────────────────────────────────────────────────────────────
+
+def get_ddu_seller_ids() -> set:
+    """DDU セラーブラックリスト (手動追記前提) を集合で返す."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT seller_id FROM ddu_sellers").fetchall()
+    return {r[0] for r in rows if r[0]}
+
+
+def get_warning_brand_names() -> set:
+    """警告ブランド watchlist のブランド名を集合で返す (Holbein 等)."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT brand FROM warning_brand_watchlist").fetchall()
+    return {r[0] for r in rows if r[0]}
+
+
+def insert_competitor_snapshot(
+    *,
+    competitor_item_id: str,
+    our_item_id: Optional[str] = None,
+    quantity_sold: Optional[int] = None,
+    quantity_total: Optional[int] = None,
+    quantity_available: Optional[int] = None,
+    seller_feedback_score: Optional[int] = None,
+    seller_positive_pct: Optional[float] = None,
+    seller_country: Optional[str] = None,
+    price_usd: Optional[float] = None,
+    shipping_usd: Optional[float] = None,
+) -> int:
+    """GetItem 定点観測 1 件を competitor_snapshots に INSERT (蓄積のみ、Phase1 は消費しない)."""
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO competitor_snapshots
+               (competitor_item_id, our_item_id, quantity_sold, quantity_total,
+                quantity_available, seller_feedback_score, seller_positive_pct,
+                seller_country, price_usd, shipping_usd)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (competitor_item_id, our_item_id, quantity_sold, quantity_total,
+             quantity_available, seller_feedback_score, seller_positive_pct,
+             seller_country, price_usd, shipping_usd),
+        )
+        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def get_snapshot_targets(limit: Optional[int] = None) -> list:
+    """W301 S4 競合定点観測の対象を返す (competitor_item_id, our_item_id, last_captured_at).
+
+    対象 = 「値下げ適格の active 競合 (pricing_eligible=1)」 と
+    「rival_classifications で real/review と判定された競合 (競合単位で最新の
+    判定のみ参照)」 の和集合。同一 competitor_item_id が両方に該当する場合は
+    competitor_products 側の our_item_id を優先 (MAX で確定的に 1 件へ集約)。
+
+    順序は「最後に snapshot を取得した時刻が古い順 (未取得は最優先)」= 1 run の
+    cap で全件処理しきれない場合でも、複数 run にわたって公平にカバレッジが
+    進む (starvation 防止、supplier_sweep 等の staleness ORDER BY と同じ考え方)。
+    """
+    sql = """
+        WITH targets AS (
+            SELECT competitor_item_id, our_item_id
+            FROM competitor_products
+            WHERE is_active = 1 AND COALESCE(pricing_eligible, 0) = 1
+            UNION
+            SELECT rc.competitor_item_id, rc.ebay_item_id AS our_item_id
+            FROM rival_classifications rc
+            WHERE rc.classification IN ('real', 'review')
+              AND rc.id IN (
+                  SELECT MAX(id) FROM rival_classifications GROUP BY competitor_item_id
+              )
+        ),
+        dedup AS (
+            SELECT competitor_item_id, MAX(our_item_id) AS our_item_id
+            FROM targets
+            GROUP BY competitor_item_id
+        )
+        SELECT d.competitor_item_id, d.our_item_id, cs.last_captured_at
+        FROM dedup d
+        LEFT JOIN (
+            SELECT competitor_item_id, MAX(captured_at) AS last_captured_at
+            FROM competitor_snapshots
+            GROUP BY competitor_item_id
+        ) cs ON cs.competitor_item_id = d.competitor_item_id
+        ORDER BY (cs.last_captured_at IS NULL) DESC, cs.last_captured_at ASC
+    """
+    args: tuple = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        args = (int(limit),)
+    with get_conn() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_competitor_pricing_eligible(
+    competitor_product_id: int, eligible: bool, changed_by: str = "user"
+) -> None:
+    """competitor_products.pricing_eligible を 1 件 (id 指定) だけ更新し、
+    pricing_eligible_change_log に変更前後を記録する (W301 AI 店長 Phase1 S6 UI トグルの
+    書込経路。Q0: 変更ログ必須)。
+
+    listing 識別は competitor_products.id (PK)。SKU は一切参照しない
+    (sku-rules.md 準拠)。他の行 (別 competitor_product) には一切影響しない。
+    """
+    new_value = 1 if eligible else 0
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT our_item_id, competitor_item_id, "
+            "COALESCE(pricing_eligible, 0) AS pricing_eligible "
+            "FROM competitor_products WHERE id=?",
+            (competitor_product_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"competitor_products id={competitor_product_id} が見つかりません"
+            )
+        old_value = row["pricing_eligible"]
+        conn.execute(
+            "UPDATE competitor_products SET pricing_eligible=? WHERE id=?",
+            (new_value, competitor_product_id),
+        )
+        conn.execute(
+            """INSERT INTO pricing_eligible_change_log
+               (competitor_product_id, our_item_id, competitor_item_id,
+                old_value, new_value, changed_by)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                competitor_product_id, row["our_item_id"], row["competitor_item_id"],
+                old_value, new_value, changed_by,
+            ),
+        )
+    logger.info(
+        f"[W301 S6] pricing_eligible 変更: competitor_products.id="
+        f"{competitor_product_id} competitor_item_id={row['competitor_item_id']} "
+        f"{old_value} -> {new_value} (by={changed_by})"
+    )
+
+
+def get_shadow_reconciliation_report() -> dict:
+    """Shadow 突合レポート (W301 AI 店長 Phase1 S6): rival_classifications の
+    最新判定 (競合単位) と competitor_products.pricing_eligible の食い違いを集計する。
+
+    設計書 §5/§12 (S6 UI 要件): 「would_be_eligible (AI が real と言った) vs
+    user 実採用 (pricing_eligible=1) の不一致率」+「AI が noise と言ったが user が
+    eligible=1 を維持している件数 (noise 誤棄却率、参考視点)」+ 卒業基準
+    (2 週間経過 + 不一致率 5% 以下、real 側のみが卒業基準の判定対象)。
+
+    分子/分母 (逐語):
+      mismatch_rate (real側)   = ai_real_user_not_adopted / ai_real_count
+                                  (AI が real=would_be_eligible=1 と判定した競合の
+                                   うち、user が pricing_eligible=1 かつ is_active=1
+                                   で採用していない件数の割合)
+      noise_false_reject_rate  = ai_noise_user_kept_eligible / ai_noise_count
+                                  (AI が noise と判定した競合のうち、user が
+                                   pricing_eligible=1 かつ is_active=1 を維持している
+                                   件数の割合。AI の noise 誤棄却を user が救っている
+                                   度合いの参考指標であり卒業基準には含めない)
+      days_since_shadow_start  = 現在時刻 (UTC) - rival_classifications
+                                  (shadow_mode=1) の created_at 最古値
+                                  (sqlite-timezone.md: created_at は
+                                  CURRENT_TIMESTAMP 由来の UTC、julianday 差分)
+
+    graduation_met: 卒業基準 (2 週間経過 AND real 側不一致率 5% 以下) を満たすか。
+      real 側データが 0 件 (mismatch_rate=None) または経過日数不明なら False
+      (データ不足を「達成」扱いにしない、fail-closed)。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            WITH latest_rc AS (
+                SELECT rc.competitor_item_id, rc.classification, rc.would_be_eligible
+                FROM rival_classifications rc
+                WHERE rc.id IN (
+                    SELECT MAX(id) FROM rival_classifications GROUP BY competitor_item_id
+                )
+            ),
+            joined AS (
+                SELECT
+                    lrc.classification,
+                    lrc.would_be_eligible,
+                    COALESCE(cp.pricing_eligible, 0) AS pricing_eligible,
+                    COALESCE(cp.is_active, 0) AS is_active
+                FROM latest_rc lrc
+                LEFT JOIN competitor_products cp
+                    ON cp.competitor_item_id = lrc.competitor_item_id
+            )
+            SELECT
+                SUM(CASE WHEN would_be_eligible = 1 THEN 1 ELSE 0 END) AS ai_real_count,
+                SUM(CASE WHEN would_be_eligible = 1
+                          AND pricing_eligible = 1 AND is_active = 1
+                     THEN 1 ELSE 0 END) AS ai_real_user_adopted,
+                SUM(CASE WHEN classification = 'noise' THEN 1 ELSE 0 END) AS ai_noise_count,
+                SUM(CASE WHEN classification = 'noise'
+                          AND pricing_eligible = 1 AND is_active = 1
+                     THEN 1 ELSE 0 END) AS ai_noise_user_kept_eligible
+            FROM joined
+            """
+        ).fetchone()
+        shadow_start_row = conn.execute(
+            "SELECT MIN(created_at) FROM rival_classifications WHERE shadow_mode = 1"
+        ).fetchone()
+        shadow_start_at = shadow_start_row[0] if shadow_start_row else None
+        days_since_shadow_start = None
+        if shadow_start_at:
+            days_row = conn.execute(
+                "SELECT (julianday('now') - julianday(?))", (shadow_start_at,)
+            ).fetchone()
+            days_since_shadow_start = days_row[0] if days_row else None
+
+    ai_real_count = row["ai_real_count"] or 0
+    ai_real_user_adopted = row["ai_real_user_adopted"] or 0
+    ai_real_user_not_adopted = ai_real_count - ai_real_user_adopted
+    ai_noise_count = row["ai_noise_count"] or 0
+    ai_noise_user_kept_eligible = row["ai_noise_user_kept_eligible"] or 0
+
+    mismatch_rate = (
+        ai_real_user_not_adopted / ai_real_count if ai_real_count > 0 else None
+    )
+    noise_false_reject_rate = (
+        ai_noise_user_kept_eligible / ai_noise_count if ai_noise_count > 0 else None
+    )
+
+    graduation_met = bool(
+        mismatch_rate is not None
+        and mismatch_rate <= 0.05
+        and days_since_shadow_start is not None
+        and days_since_shadow_start >= 14
+    )
+
+    return {
+        "ai_real_count": ai_real_count,
+        "ai_real_user_adopted": ai_real_user_adopted,
+        "ai_real_user_not_adopted": ai_real_user_not_adopted,
+        "mismatch_rate": mismatch_rate,
+        "ai_noise_count": ai_noise_count,
+        "ai_noise_user_kept_eligible": ai_noise_user_kept_eligible,
+        "noise_false_reject_rate": noise_false_reject_rate,
+        "shadow_start_at": shadow_start_at,
+        "days_since_shadow_start": days_since_shadow_start,
+        "graduation_met": graduation_met,
+    }
 
 
 def update_ebay_listing_status(ebay_item_id: str, source_status: str):
@@ -5029,12 +5522,45 @@ def get_all_competitors() -> list[dict]:
 
 
 def delete_competitor_product(competitor_item_id: str):
-    """競合商品を削除"""
+    """競合商品を削除 (soft delete: is_active=0 + pricing_eligible=0 に必ずクリア).
+
+    W301 HIGH-1 統一方針 (2026-07-02): 停止 (is_active 1→0) 時は pricing_eligible を
+    必ず 0 にする。W183 ゲート `is_active=1 AND pricing_eligible=1` の表と裏を
+    ライフサイクル 1 方針で閉じるため。1→0 の変化があれば
+    pricing_eligible_change_log に changed_by='deactivate_clear' で記録
+    (Q0 silent-skip-prevention)。
+    """
     with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, our_item_id, COALESCE(pricing_eligible, 0) AS pricing_eligible "
+            "FROM competitor_products WHERE competitor_item_id=?",
+            (competitor_item_id,),
+        ).fetchone()
+        if row is None:
+            return
         conn.execute(
-            "UPDATE competitor_products SET is_active=0 WHERE competitor_item_id=?",
-            (competitor_item_id,)
+            "UPDATE competitor_products SET is_active=0, pricing_eligible=0 "
+            "WHERE id=?",
+            (row["id"],),
         )
+        if row["pricing_eligible"] == 1:
+            try:
+                conn.execute(
+                    """INSERT INTO pricing_eligible_change_log
+                       (competitor_product_id, our_item_id, competitor_item_id,
+                        old_value, new_value, changed_by)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        row["id"], row["our_item_id"], competitor_item_id,
+                        1, 0, 'deactivate_clear',
+                    ),
+                )
+            except sqlite3.OperationalError as e:
+                # v87 未適用の稀な race を保護 (UPDATE 自体は必ず成功)
+                logger.warning(
+                    f"[W301 HIGH-1] pricing_eligible_change_log INSERT skipped "
+                    f"(v87 未適用?): {e}"
+                )
 
 
 # ---- 新規ライバルアラート ----

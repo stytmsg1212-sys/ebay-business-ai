@@ -341,6 +341,17 @@
       "interval_minutes": 15,
       "description": "W293 eBaymag セッション維持: 15 分ごとにセッション生死を確認し、切れ/復活時に action_required ch へ Discord 通知。CDP 不在時は cdp_absent で痕跡記録 (Q0)。",
       "_note": "CDP Chrome (port 9222) 不在は正常な非在席状態として扱う (skip ではなく cdp_absent で記録)。mutating 操作 (apply_site_changes 等) が実行中は skip_busy で skip。scheduler 再起動後に有効化される。"
+    },
+    "rival_classify": {
+      "enabled": true,
+      "description": "W301 AI店長 Phase1 S4: listing_rival_discoveries (status='new') を rival_classifier で分類 (ハード除外→スコア→グレーのみ Claude Haiku) → rival_classifications 保存。Shadow 固定 (pricing_eligible は本タスクから一切変更しない)。",
+      "note": "毎日 03:00 JST (daily_codex_lint と同時刻、既存 thread-local batch ctx 対策済で共存可)。max_ai_calls_per_run 未指定時は rival_classifier.DEFAULT_THRESHOLDS の 50 を使用。cap 超過 / AI 例外は review へ倒し Discord 通知 (rival_webhook_url 優先, 無ければ既定 webhook_url)。"
+    },
+    "competitor_snapshot": {
+      "enabled": true,
+      "max_calls_per_run": 100,
+      "description": "W301 AI店長 Phase1 S4: pricing_eligible=1 の active 競合 + rival_classifications real/review 競合を対象に GetItem で QuantitySold/在庫/評価/国/価格/送料を取得し competitor_snapshots へ蓄積 (Phase1 は消費しない)。",
+      "note": "毎日 05:30 JST。設計書は Shopping API GetMultipleItems (20件/コール) 前提だったが本 codebase は Trading API GetItem (1件/コール) のみ実装済のため max_calls_per_run=1件/コールとして運用 (design doc との差異は tasks/task_competitor_snapshot.py docstring 参照)。cap 超過分は最終取得が古い順に並べ直され翌回以降へ自然に持ち越し (starvation なし)。"
     }
   },
   "rate_table_batch": {

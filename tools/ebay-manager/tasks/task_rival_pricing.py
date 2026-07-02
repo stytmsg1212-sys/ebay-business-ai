@@ -11,8 +11,13 @@ Phase 3 Clarify (2026-05-10) で確定した user 回答:
 - L4: price_rule デフォルト 'competitor - 0.01' USD
 - L5: min_price 算出 = lp_min_price (user 設定) > 0 ? lp_min_price : lp_breakeven_usd
 
+W301 S3 (2026-07-02, AI 店長 Phase1): 抽出は「active (is_active=1) かつ値下げ
+適格 (pricing_eligible=1)」の競合のみに限定 (`.company/engineering/docs/
+2026-06-24-ai-manager-phase1-design.md` §8)。Shadow / 未分類 (pricing_eligible
+NULL/0) の競合は値下げ対象から除外される (除外件数は run summary ログに出す)。
+
 Pipeline:
-1. active competitor を持つ全 listing を抽出
+1. active かつ値下げ適格 (pricing_eligible=1) の competitor を持つ全 listing を抽出
 2. refresh_competitor_pricing で Browse API から価格・送料を更新
 3. 各 listing について:
     a. 我々の合計 (current_price + shipping_cost) を計算
@@ -70,14 +75,37 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────
 
 def _get_listings_with_active_competitors() -> list[str]:
-    """active competitor を 1 件以上持つ our_item_id のリストを返す."""
+    """active かつ値下げ適格 (pricing_eligible=1) の competitor を 1 件以上持つ
+    our_item_id のリストを返す.
+
+    W301 S3 (2026-07-02, AI 店長 Phase1): `pricing_eligible` は採用(is_active)
+    とは独立した値下げ適格フラグ (migration v86)。Shadow / 未分類 (NULL/0) の
+    競合は W183 の対象から除外する (設計書 §8「pricing_eligible分離」)。
+    """
     from monitor.database import get_conn
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT DISTINCT our_item_id FROM competitor_products "
-            "WHERE is_active=1 AND our_item_id IS NOT NULL AND our_item_id != ''"
+            "WHERE is_active=1 AND COALESCE(pricing_eligible,0)=1 "
+            "  AND our_item_id IS NOT NULL AND our_item_id != ''"
         ).fetchall()
     return [r[0] for r in rows]
+
+
+def _count_gated_out_competitors() -> int:
+    """active (is_active=1) だが値下げ適格でない (pricing_eligible!=1) 競合の件数.
+
+    Q0 (silent-skip-prevention): ゲートで W183 対象から除外された競合が
+    存在する run では、対象が黙って減ったように見えないよう run summary に
+    必ず件数を出す (呼出元で 0 件でもログに残す運用と合わせる)。
+    """
+    from monitor.database import get_conn
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM competitor_products "
+            "WHERE is_active=1 AND COALESCE(pricing_eligible,0)!=1"
+        ).fetchone()
+    return int(row[0]) if row else 0
 
 
 def _count_today_changes_jst(ebay_item_id: str) -> int:
@@ -153,10 +181,15 @@ def _get_listing_state(ebay_item_id: str) -> Optional[dict]:
 
 
 def _get_min_competitor(ebay_item_id: str) -> Optional[dict]:
-    """active ライバルのうち competitor_total が最小の 1 件を返す.
+    """active かつ値下げ適格 (pricing_eligible=1) なライバルのうち
+    competitor_total が最小の 1 件を返す.
+
+    W301 S3 (2026-07-02): pricing_eligible ゲート (`_get_listings_with_active_
+    competitors` と同一趣旨、両方に必要 — 前者は listing 単位の一次フィルタ、
+    本関数は listing 内の競合単位フィルタ)。
 
     Returns: {competitor_id, competitor_item_id, price_usd, shipping_usd, total_usd}
-    or None (価格未取得).
+    or None (価格未取得 / 値下げ適格な競合なし).
     """
     from monitor.database import get_conn
     with get_conn() as conn:
@@ -165,6 +198,7 @@ def _get_min_competitor(ebay_item_id: str) -> Optional[dict]:
             "       competitor_shipping_usd "
             "FROM competitor_products "
             "WHERE our_item_id=? AND is_active=1 "
+            "  AND COALESCE(pricing_eligible,0)=1 "
             "  AND competitor_price_usd IS NOT NULL",
             (ebay_item_id,)
         ).fetchall()
@@ -908,14 +942,28 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
             'skipped_daily_cap': int,
             'skipped_other': int,
             'failed_api': int,
+            'gated_out_ineligible': int,  # W301 S3: pricing_eligible ゲートで
+                                           # 除外された active 競合数 (Q0 可視化)
             'message': str,
         }
     """
     logger.info("【開始】W183 ライバル価格 refresh + 値下げ判定")
 
+    # W301 S3 (2026-07-02): pricing_eligible ゲートで対象外になった競合件数を
+    # run 開始時に必ず計上する (Q0: 対象が黙って減ったように見えない)。
+    gated_out = _count_gated_out_competitors()
+    if gated_out:
+        logger.info(
+            f"W183 pricing_eligible gate: active だが値下げ対象外の競合 "
+            f"{gated_out} 件 (Shadow/未分類、W183 対象から除外)"
+        )
+
     listing_ids = _get_listings_with_active_competitors()
     if not listing_ids:
-        logger.info("active ライバルを持つ listing なし — skip")
+        logger.info("値下げ適格な active ライバルを持つ listing なし — skip")
+        msg = 'no listings with pricing-eligible active competitors'
+        if gated_out:
+            msg += f' (gated_out_ineligible={gated_out})'
         return {
             'success': True,
             'listings_processed': 0,
@@ -929,7 +977,8 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
             'skipped_lock': 0,
             'skipped_other': 0,
             'failed_api': 0,
-            'message': 'no listings with active competitors',
+            'gated_out_ineligible': gated_out,
+            'message': msg,
         }
 
     fetched_total = 0
@@ -1006,6 +1055,10 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
         f"lock={counts['skipped_lock']} cap={counts['skipped_daily_cap']} "
         f"api_fail={counts['failed_api']} other={counts['skipped_other']}"
     )
+    if gated_out:
+        # W301 S3: pricing_eligible ゲートで対象外の競合件数を summary にも残す
+        # (Q0: DB を能動的に見ない限り不可視にしない)。
+        summary += f" | gated_out_ineligible={gated_out}"
 
     # W245 (2026-06-10): 偽装成功の根絶。従来は全 API 失敗 / Browse fetch 全滅でも
     # 無条件 success: True を返し、6/4-6/8 の OAuth トークン破損時に money-direct
@@ -1037,5 +1090,6 @@ def run_rival_pricing_refresh(config: Dict) -> Dict:
         'fetched_total': fetched_total,
         'failed_total': failed_total,
         **counts,
+        'gated_out_ineligible': gated_out,
         'message': summary,
     }

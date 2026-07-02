@@ -2775,5 +2775,16 @@
     "created": "2026-07-02",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 366,
+    "tag": "W301",
+    "title": "AI店長 Phase1: 競合分類エンジン + Shadow + snapshot蓄積",
+    "description": "設計書 2026-06-24-ai-manager-phase1-design.md の実装。ハード除外(国≠JP/JUNK/売切れ/評価稼ぎ)→スコア足切り→グレーのみClaude判定(商品同一性)→real/review/noise 3分岐、pricing_eligible分離でW183自動値下げと接続、Shadowモード(提案のみ・would_be_eligible記録)、DDUセラーリストDB化、GetItem競合snapshot最小蓄積。user承認済み条件: 既存採用178件はeligible温存+裏で一括再判定し疑い分のみ提示 / Shadow卒業=2週間・不一致率5%以下で昇格ボタン / confidence 0.85/0.6 / 警告ブランドHolbein第1号。GO確定 2026-07-02。",
+    "status": "対応中",
+    "priority": "高",
+    "created": "2026-07-02",
+    "completed": null,
+    "category": "business"
   }
 ]

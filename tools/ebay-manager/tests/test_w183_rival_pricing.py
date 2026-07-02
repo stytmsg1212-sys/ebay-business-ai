@@ -70,17 +70,26 @@ def _seed_listing(ebay_item_id: str, *, current_price: float = 120.0,
 
 def _seed_competitor(our_item_id: str, competitor_item_id: str,
                      price_usd=None, shipping_usd=None,
-                     rule: str = 'competitor - 0.01'):
-    """competitor_products に test 用 row を 1 件 INSERT."""
+                     rule: str = 'competitor - 0.01',
+                     pricing_eligible: int = 1):
+    """competitor_products に test 用 row を 1 件 INSERT.
+
+    W301 S3 (2026-07-02): pricing_eligible ゲート追加後も既存 test の期待値
+    (値下げロジックそのものの検証) を変えないため、default で eligible=1 を
+    明示 seed する (design doc 通り実運用の新規行は 0 だが、本 fixture は
+    「ゲート通過後」の挙動を検証する既存 test 群のための helper)。ゲート自体
+    の挙動は `pricing_eligible=0` を明示指定して別途検証する.
+    """
     from monitor.database import get_conn
     with get_conn() as c:
         c.execute(
             "INSERT INTO competitor_products "
             "(our_item_id, competitor_item_id, price_rule, min_price, "
             " max_discount, is_active, competitor_price_usd, "
-            " competitor_shipping_usd) "
-            "VALUES (?, ?, ?, 0.0, 10.0, 1, ?, ?)",
-            (our_item_id, competitor_item_id, rule, price_usd, shipping_usd)
+            " competitor_shipping_usd, pricing_eligible) "
+            "VALUES (?, ?, ?, 0.0, 10.0, 1, ?, ?, ?)",
+            (our_item_id, competitor_item_id, rule, price_usd, shipping_usd,
+             pricing_eligible)
         )
 
 
@@ -370,6 +379,133 @@ class TestEvaluateAndApply:
         assert log_cnt == 1
         # Q0: clamp 発動が rule_applied 列に痕跡として残る
         assert 'clamp' in rule_applied
+
+
+# ────────────────────────────────────────
+# W301 S3 (2026-07-02): pricing_eligible ゲート
+# ────────────────────────────────────────
+
+class TestPricingEligibleGate:
+    """AI 店長 Phase1 S1 (migration v86) の pricing_eligible 列を W183 抽出に
+    ゲートとして結線した挙動の検証 (design doc §8)。
+    """
+
+    def test_get_min_competitor_excludes_ineligible(self, tmp_db):
+        from tasks.task_rival_pricing import _get_min_competitor
+        _seed_listing('TEST_W301_G1', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G1', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+        assert _get_min_competitor('TEST_W301_G1') is None
+
+    def test_get_min_competitor_excludes_null_eligible(self, tmp_db):
+        """pricing_eligible が NULL (未分類) も対象外 (COALESCE(...,0)=1 判定)."""
+        from monitor.database import get_conn
+        from tasks.task_rival_pricing import _get_min_competitor
+        _seed_listing('TEST_W301_G2', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        with get_conn() as c:
+            c.execute(
+                "INSERT INTO competitor_products "
+                "(our_item_id, competitor_item_id, price_rule, min_price, "
+                " max_discount, is_active, competitor_price_usd, "
+                " competitor_shipping_usd, pricing_eligible) "
+                "VALUES ('TEST_W301_G2', 'C1', 'competitor - 0.01', 0.0, 10.0, "
+                "        1, 80.0, 10.0, NULL)"
+            )
+        assert _get_min_competitor('TEST_W301_G2') is None
+
+    def test_get_min_competitor_includes_eligible(self, tmp_db):
+        from tasks.task_rival_pricing import _get_min_competitor
+        _seed_listing('TEST_W301_G3', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G3', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=1)
+        result = _get_min_competitor('TEST_W301_G3')
+        assert result is not None
+        assert result['competitor_item_id'] == 'C1'
+
+    def test_get_listings_with_active_competitors_excludes_all_ineligible(self, tmp_db):
+        """全競合が ineligible な listing は抽出対象に出てこない."""
+        from tasks.task_rival_pricing import _get_listings_with_active_competitors
+        _seed_listing('TEST_W301_G4', lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G4', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+        assert 'TEST_W301_G4' not in _get_listings_with_active_competitors()
+
+    def test_get_listings_with_active_competitors_includes_eligible(self, tmp_db):
+        from tasks.task_rival_pricing import _get_listings_with_active_competitors
+        _seed_listing('TEST_W301_G5', lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G5', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=1)
+        assert 'TEST_W301_G5' in _get_listings_with_active_competitors()
+
+    def test_evaluate_and_apply_one_skips_when_all_ineligible(self, tmp_db):
+        """listing 単位ではなく _evaluate_and_apply_one 経由でも
+        competitor_price_unknown (= 値下げ対象なし) として skip される."""
+        from tasks.task_rival_pricing import _evaluate_and_apply_one
+        _seed_listing('TEST_W301_G6', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G6', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+        r = _evaluate_and_apply_one('TEST_W301_G6', {})
+        assert r['action'] == 'skip_competitor_price_unknown'
+
+    def test_count_gated_out_competitors(self, tmp_db):
+        from tasks.task_rival_pricing import _count_gated_out_competitors
+        _seed_listing('TEST_W301_G7', lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G7', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+        _seed_competitor('TEST_W301_G7', 'C2', price_usd=81.0, shipping_usd=10.0,
+                         pricing_eligible=1)
+        # C1 のみ ineligible (is_active=1 かつ pricing_eligible!=1)
+        assert _count_gated_out_competitors() == 1
+
+    def test_count_gated_out_competitors_zero_when_all_eligible(self, tmp_db):
+        from tasks.task_rival_pricing import _count_gated_out_competitors
+        _seed_listing('TEST_W301_G8', lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G8', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=1)
+        assert _count_gated_out_competitors() == 0
+
+    def test_run_returns_gated_out_count_when_all_zero(self, tmp_db):
+        """全 active 競合が eligible=0 でも run_rival_pricing_refresh は例外に
+        ならず正常完走し (success=True)、gated_out_ineligible で件数が
+        report される (Q0: 対象なしが silent にならない)."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+        _seed_listing('TEST_W301_G9', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G9', 'C1', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+        r = run_rival_pricing_refresh({'ebay': {}})
+        assert r['success'] is True
+        assert r['listings_processed'] == 0
+        assert r['gated_out_ineligible'] == 1
+        assert 'gated_out_ineligible=1' in r['message']
+
+    def test_run_processes_only_eligible_listing(self, tmp_db, monkeypatch):
+        """eligible=1 の listing だけが処理され、eligible=0 の listing は
+        listings_processed に含まれない (混在ケース)."""
+        from tasks.task_rival_pricing import run_rival_pricing_refresh
+
+        monkeypatch.setattr(
+            'tasks.task_rival_pricing.refresh_competitor_pricing',
+            lambda our_item_id, config: {'fetched': 1, 'failed': 0}
+        )
+
+        _seed_listing('TEST_W301_G10A', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G10A', 'CA', price_usd=200.0, shipping_usd=0.0,
+                         pricing_eligible=1)  # our_total=$130 <= comp=$200 → cheapest
+
+        _seed_listing('TEST_W301_G10B', current_price=120.0, shipping_cost=10.0,
+                      lp_min_price=50.0)
+        _seed_competitor('TEST_W301_G10B', 'CB', price_usd=80.0, shipping_usd=10.0,
+                         pricing_eligible=0)
+
+        r = run_rival_pricing_refresh({'ebay': {}})
+        assert r['listings_processed'] == 1
+        assert r['gated_out_ineligible'] == 1
 
 
 # ────────────────────────────────────────

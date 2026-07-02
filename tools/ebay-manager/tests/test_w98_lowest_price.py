@@ -224,6 +224,33 @@ def test_upsert_reactivation_resets_old_owner_rule(tmp_db):
 
 
 # ─────────────────────────────────
+# W301 S3 (2026-07-02): 新規採用 INSERT が pricing_eligible を明示指定せず
+# default 0 (= Shadow 整合、値下げ対象外) に落ちることの確認
+# ─────────────────────────────────
+
+def test_upsert_new_competitor_defaults_pricing_eligible_zero(tmp_db):
+    """手動採用の新規 INSERT が pricing_eligible=1 を暗黙に立てないこと
+    (design doc §8 「lowest_price.py 手動採用も default 0」)。
+    採用 (is_active=1) と値下げ適格は独立 — W183 は別途 pricing_eligible=1 の
+    競合のみを抽出する (task_rival_pricing.py)。"""
+    from monitor.database import get_conn
+    from monitor.lowest_price import upsert_listing_competitors
+
+    with get_conn() as c:
+        _insert_listing(c, "200000000040")
+
+    upsert_listing_competitors("200000000040", ["285999999200"])
+
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT is_active, pricing_eligible FROM competitor_products "
+            "WHERE competitor_item_id='285999999200'"
+        ).fetchone()
+    assert row[0] == 1
+    assert (row[1] or 0) == 0
+
+
+# ─────────────────────────────────
 # H-A2: fetch_supplier_purchase_yen 上書き warning
 # ─────────────────────────────────
 

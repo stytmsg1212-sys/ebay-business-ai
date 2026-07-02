@@ -22,6 +22,7 @@
 - **Q6** モデル選定: Opus 4.8 (業務判断・Research 1日30) / Sonnet 4.6 (多制約) / Haiku 4.5 (bulk・デフォルト)
 - **Q7** 知識利用順序 (LLM Wiki): compiled wiki を read-first、ゼロ再導出禁止 → `.claude/rule-snippets/llm-wiki-compilation.md`
 - **進捗 touchpoint**: マイルストーン完了=即報告 / 長時間待ちは事前宣言 / 無言区間上限 ~15 分 → `progress-touchpoint.md` (2026-06-10 制定、無応答事故 2 件で昇格)
+- **dispatcher / orchestration**: 最上位 main agent = 窓口/オーケストレーター。手を動かす作業 (実装/実行/探索/検証) は自分でやらず subagent に委譲。「自走/autonomous」= orchestrate autonomously (main 全実行ではない)。重い実装は着手前に **委譲プラン** を第一成果物として出す。**subagent 完了後は成果物を必ず検証 (main or reviewer)、検証なし完了 = 偽装成功 / Q0** → `dispatcher-orchestration.md` (2026-06-27 W286 incident で昇格)
 
 ## 金銭直結 rule (常時 always-load、違反 = 品質事故)
 

@@ -283,11 +283,36 @@ def upsert_listing_competitors(our_item_id: str, competitor_item_ids: list[str])
         existing_set = set(existing_active.keys())
 
         # 削除対象 (active → inactive)
+        # W301 HIGH-1 統一方針 (2026-07-02): 停止 (is_active 1→0) 時は
+        # pricing_eligible も必ず 0 にクリア。1→0 の変化時のみ
+        # pricing_eligible_change_log に changed_by='deactivate_clear' で記録
+        # (Q0 痕跡)。W183 ゲート表と裏をライフサイクル 1 方針で閉じる。
         for cid in existing_set - new_set:
+            cp_id = existing_active[cid]
+            prev_row = conn.execute(
+                "SELECT our_item_id, COALESCE(pricing_eligible, 0) AS pricing_eligible "
+                "FROM competitor_products WHERE id=?",
+                (cp_id,),
+            ).fetchone()
             conn.execute(
-                "UPDATE competitor_products SET is_active=0 WHERE id=?",
-                (existing_active[cid],)
+                "UPDATE competitor_products SET is_active=0, pricing_eligible=0 "
+                "WHERE id=?",
+                (cp_id,)
             )
+            if prev_row is not None and prev_row[1] == 1:
+                try:
+                    conn.execute(
+                        """INSERT INTO pricing_eligible_change_log
+                           (competitor_product_id, our_item_id, competitor_item_id,
+                            old_value, new_value, changed_by)
+                           VALUES (?,?,?,?,?,?)""",
+                        (cp_id, prev_row[0], cid, 1, 0, 'deactivate_clear'),
+                    )
+                except sqlite3.OperationalError as e:
+                    logger.warning(
+                        f"[W301 HIGH-1] pricing_eligible_change_log INSERT "
+                        f"skipped (v87 未適用?): {e}"
+                    )
 
         # 追加対象
         for cid in cleaned:
@@ -296,17 +321,45 @@ def upsert_listing_competitors(our_item_id: str, competitor_item_ids: list[str])
             # competitor_item_id UNIQUE 制約のため、過去 inactive 行があれば再 active 化.
             # 旧 our_item_id 用の price_rule / min_price / max_discount は **デフォルト値で
             # 上書き** する (review H2). 旧 owner のカスタム設定が黙って引き継がれる事故を防ぐ.
+            # W301 HIGH-1 統一方針 (2026-07-02): この再活性化経路 (第 2 復活経路) にも
+            # pricing_eligible=0 を明示追加。past 行が別 our_item_id 経由で以前
+            # eligible=1 だったとしても、UI 経由の再登録は「新規再採用 = Shadow 起点」
+            # として扱う (add_or_reactivate_competitor と統一の 1 方針)。
             past = conn.execute(
-                "SELECT id FROM competitor_products WHERE competitor_item_id=?",
+                "SELECT id, our_item_id, COALESCE(pricing_eligible, 0) AS pricing_eligible "
+                "FROM competitor_products WHERE competitor_item_id=?",
                 (cid,)
             ).fetchone()
             if past:
+                past_id = past[0]
+                past_prev_our_iid = past[1]
+                past_prev_eligible = past[2]
                 conn.execute(
-                    "UPDATE competitor_products SET is_active=1, our_item_id=?, "
+                    "UPDATE competitor_products SET is_active=1, "
+                    "pricing_eligible=0, our_item_id=?, "
                     "price_rule='competitor - 0.01', min_price=0.0, max_discount=10.0 "
                     "WHERE id=?",
-                    (our_item_id, past[0])
+                    (our_item_id, past_id)
                 )
+                # W301 MEDIUM fix (2026-07-02): 監査痕跡の対称化. add_or_reactivate
+                # の reactivate_reset ログと同型で、prev eligible=1 → 0 の遷移を必ず
+                # 記録する (Q0 silent-skip-prevention)。旧 owner が別 our_item_id で
+                # 採用中 (eligible=1) だった行を UI 経由で別 owner へ再割当てるケースは
+                # 稀だが、監査ログが片側だけ空欄になる非対称性を解消する。
+                if past_prev_eligible == 1:
+                    try:
+                        conn.execute(
+                            """INSERT INTO pricing_eligible_change_log
+                               (competitor_product_id, our_item_id, competitor_item_id,
+                                old_value, new_value, changed_by)
+                               VALUES (?,?,?,?,?,?)""",
+                            (past_id, past_prev_our_iid, cid, 1, 0, 'reactivate_reset'),
+                        )
+                    except sqlite3.OperationalError as e:
+                        logger.warning(
+                            f"[W301 MEDIUM] pricing_eligible_change_log INSERT "
+                            f"skipped (v87 未適用?): {e}"
+                        )
             else:
                 conn.execute(
                     "INSERT INTO competitor_products "
@@ -446,32 +499,62 @@ def refresh_competitor_pricing(
 
 def get_competitors_with_pricing(our_item_id: str) -> list[dict]:
     """
-    指定 our_item_id の active ライバル詳細 (id + 価格 + 送料 + 合計 + 配送日).
-    UI 表示用.
+    指定 our_item_id の active ライバル詳細 (id + 価格 + 送料 + 合計 + 配送日 +
+    値下げ適格 + AI 判定). UI 表示用.
+
+    W301 AI 店長 Phase1 S6 (2026-07-02): pricing_eligible (competitor_products) と
+    rival_classifications の競合単位最新判定 (LEFT JOIN、MAX(id) GROUP BY
+    competitor_item_id) を追加。listing 識別は competitor_products.id / SKU 不使用
+    (sku-rules.md 準拠)。既存呼出元 (tab_product_management.py) は追加キーを
+    参照しないため後方互換 (K2 surgical、既存挙動不変)。
     """
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, competitor_item_id, competitor_price_usd, "
-            "       competitor_shipping_usd, last_priced_at, "
-            "       min_delivery_date, max_delivery_date "
-            "FROM competitor_products "
-            "WHERE our_item_id=? AND is_active=1 ORDER BY id",
+            """
+            SELECT cp.id, cp.competitor_item_id, cp.competitor_price_usd,
+                   cp.competitor_shipping_usd, cp.last_priced_at,
+                   cp.min_delivery_date, cp.max_delivery_date,
+                   COALESCE(cp.pricing_eligible, 0) AS pricing_eligible,
+                   rc.classification AS ai_classification,
+                   rc.confidence AS ai_confidence,
+                   rc.reason AS ai_reason,
+                   rc.would_be_eligible AS ai_would_be_eligible,
+                   rc.created_at AS ai_classified_at
+            FROM competitor_products cp
+            LEFT JOIN (
+                SELECT * FROM rival_classifications
+                WHERE id IN (
+                    SELECT MAX(id) FROM rival_classifications GROUP BY competitor_item_id
+                )
+            ) rc ON rc.competitor_item_id = cp.competitor_item_id
+            WHERE cp.our_item_id=? AND cp.is_active=1
+            ORDER BY cp.id
+            """,
             (our_item_id,)
         ).fetchall()
     result = []
     for r in rows:
-        price = r[2]
-        ship = r[3]
+        price = r["competitor_price_usd"]
+        ship = r["competitor_shipping_usd"]
         total = (price or 0) + (ship or 0) if (price is not None) else None
+        ai_would_be_eligible = r["ai_would_be_eligible"]
         result.append({
-            'id': r[0],
-            'competitor_item_id': r[1],
+            'id': r["id"],
+            'competitor_item_id': r["competitor_item_id"],
             'price_usd': price,
             'shipping_usd': ship,
             'total_usd': total,
-            'last_priced_at': r[4],
-            'min_delivery_date': r[5],
-            'max_delivery_date': r[6],
+            'last_priced_at': r["last_priced_at"],
+            'min_delivery_date': r["min_delivery_date"],
+            'max_delivery_date': r["max_delivery_date"],
+            'pricing_eligible': bool(r["pricing_eligible"]),
+            'ai_classification': r["ai_classification"],
+            'ai_confidence': r["ai_confidence"],
+            'ai_reason': r["ai_reason"],
+            'ai_would_be_eligible': (
+                bool(ai_would_be_eligible) if ai_would_be_eligible is not None else None
+            ),
+            'ai_classified_at': r["ai_classified_at"],
         })
     return result
 

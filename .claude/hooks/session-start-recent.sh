@@ -61,6 +61,7 @@ fi
 
 # systemMessage 構築
 MSG="Claude Opus 起動。CLAUDE.md Q0-Q5 + Boris 30 Tips + Karpathy 4 適用済 (quality-gate / claude-md-discipline hook 稼働中)"
+MSG="$MSG | [役割] あなたは最上位の窓口/オーケストレーター。手を動かす実装(コード/スクリプト/探索/検証)は subagent に委譲し、自分は分解/設計判断/指示/レビュー判断/統合/報告に徹する。autonomous=orchestrate autonomously(main 全実行ではない)。重い実装は着手前に委譲プランを第一成果物として出す。詳細 .claude/rules/dispatcher-orchestration.md"
 
 if [ -n "$RECENT_MEMORY" ]; then
     MSG="$MSG | 直近 60 分編集 memory: ${RECENT_MEMORY% }"

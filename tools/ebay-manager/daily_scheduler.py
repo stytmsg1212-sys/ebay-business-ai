@@ -1062,6 +1062,41 @@ def setup_scheduler():
     _rd_enabled = config.get('tasks_enabled', {}).get('research_duel', {}).get('enabled', False)
     logger.info(f"W286 リサーチ対戦アリーナ 発火: 毎日 05:00 JST (enabled={_rd_enabled})")
 
+    # ── W301 AI 店長 Phase1 S4 競合分類 (2026-07-02 追加) ──
+    # 毎日 03:00 JST に listing_rival_discoveries (status='new') を rival_classifier
+    # (ハード除外→スコア→グレーのみ Claude Haiku) で分類. daily_codex_lint (03:00) と
+    # 同時刻だが別 job id + thread-local batch ctx (既存対策済) で共存可.
+    # Shadow 固定 (pricing_eligible は本タスクから一切変更しない、設計書 §8).
+    # enabled は config (tasks_enabled.rival_classify.enabled) で制御.
+    scheduler.add_job(
+        _run_rival_classify,
+        trigger=CronTrigger(hour=3, minute=0, second=0),
+        args=[config, 3],
+        id='rival_classify_03_00',
+        name='W301 AI店長 競合分類 (03:00)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _rc_enabled = config.get('tasks_enabled', {}).get('rival_classify', {}).get('enabled', True)
+    logger.info(f"W301 AI店長 競合分類 発火: 毎日 03:00 JST (enabled={_rc_enabled})")
+
+    # ── W301 AI 店長 Phase1 S4 競合 GetItem 定点観測 (2026-07-02 追加) ──
+    # 毎日 05:30 JST に pricing_eligible=1 の active 競合 + rival_classifications
+    # real/review 競合を対象に GetItem で定点観測データを competitor_snapshots へ蓄積
+    # (Phase1 は蓄積のみ、消費は Phase2). research_duel (05:00) 完了後の空き枠.
+    # enabled は config (tasks_enabled.competitor_snapshot.enabled) で制御.
+    scheduler.add_job(
+        _run_competitor_snapshot,
+        trigger=CronTrigger(hour=5, minute=30, second=0),
+        args=[config, 5],
+        id='competitor_snapshot_05_30',
+        name='W301 AI店長 競合定点観測 (05:30)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _cs_enabled = config.get('tasks_enabled', {}).get('competitor_snapshot', {}).get('enabled', True)
+    logger.info(f"W301 AI店長 競合定点観測 発火: 毎日 05:30 JST (enabled={_cs_enabled})")
+
     # ── W283 Phase 9 月次送料 rate table 自動更新 (2026-06-19 追加) ──
     # 毎月1日 03:00 JST に FedEx/DHL 実費差額式で rate table 金額を自動追従.
     # 前月為替確定後・主 batch (02:30) 後. codex_lint(03:00) と同時刻だが別 owner・
@@ -1368,6 +1403,30 @@ def _run_research_duel(config: dict, scheduled_hour: int = 5):
         return
     _run_isolated_task('research_duel', 'W286 リサーチ対戦アリーナ',
                        lambda: run_research_duel(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_rival_classify(config: dict, scheduled_hour: int = 3):
+    """W301 AI 店長 Phase1 S4 — 毎日 03:00 JST に競合分類 (Shadow 固定)."""
+    try:
+        from tasks.task_rival_classify import run_rival_classify
+    except ImportError as e:
+        logger.error(f"task_rival_classify import 失敗: {e}")
+        return
+    _run_isolated_task('rival_classify', 'W301 AI店長 競合分類',
+                       lambda: run_rival_classify(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_competitor_snapshot(config: dict, scheduled_hour: int = 5):
+    """W301 AI 店長 Phase1 S4 — 毎日 05:30 JST に競合 GetItem 定点観測 (蓄積のみ)."""
+    try:
+        from tasks.task_competitor_snapshot import run_competitor_snapshot
+    except ImportError as e:
+        logger.error(f"task_competitor_snapshot import 失敗: {e}")
+        return
+    _run_isolated_task('competitor_snapshot', 'W301 AI店長 競合定点観測',
+                       lambda: run_competitor_snapshot(config),
                        scheduled_hour=scheduled_hour)
 
 

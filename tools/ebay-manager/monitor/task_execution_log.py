@@ -91,6 +91,10 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # W293 (2026-06-29): eBaymag セッション維持 heartbeat. 15 分ごと interval.
     # kind=interval で get_today_expected_tasks の missed 判定から除外 (毎時 false-positive 回避)。
     {"key": "ebaymag_session_heartbeat", "display": "W293 eBaymag セッション維持", "hours": None, "weekdays": None, "owner": "ebaymag_heartbeat", "kind": "interval", "interval_minutes": 15},
+    # W301 AI 店長 Phase1 S4 (2026-07-02): 競合分類 (Shadow 固定, pricing_eligible 不変).
+    {"key": "rival_classify", "display": "W301 AI店長 競合分類 (毎日 03:00, Shadow)", "hours": [3], "weekdays": None, "owner": "rival_classify"},
+    # W301 AI 店長 Phase1 S4 (2026-07-02): 競合 GetItem 定点観測 (蓄積のみ、消費は Phase2).
+    {"key": "competitor_snapshot", "display": "W301 AI店長 競合定点観測 (毎日 05:30)", "hours": [5], "weekdays": None, "owner": "competitor_snapshot"},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

@@ -13,6 +13,10 @@
 
 詳細: `.claude/rules/karpathy-principles.md`
 
+## 立ち位置: dispatcher / orchestration (常時)
+
+最上位 main agent (= user と対話する agent) は **窓口 / オーケストレーター**。手を動かす作業 (コード/スクリプト/バッチ/探索/検証クエリ/定型実装/逐語 diff 適用) は自分でやらず **subagent に委譲**。main がやるのは 分解 / 設計判断 / 指示 / レビュー判断 / 統合 / user 対話・報告 のみ。user の「**自走 / autonomous / 承認不要**」= 「**subagent でオーケストレートして自走**」(main が全実行ではない)。**重い実装は着手前に『委譲プラン』を第一成果物として出す** (出すまで実装ツールを叩かない)。**subagent 完了後は成果物を必ず検証 (main or reviewer)、fire-and-forget 禁止**。委譲を受けた subagent は scope 内で実装してよい。詳細: `.claude/rules/dispatcher-orchestration.md`
+
 ## 最優先ルール Q0-Q6 (違反 = 品質事故)
 
 - **Q0** サイレントスキップ / 偽装成功 / 逃避修正は **絶対禁止**。**負の能力主張ゲート (2026-06-21)**: 「できない/user 手動が必要/cannot」を未完了タスクに出す前は Failure Evidence Block 必須 (候補手段列挙 + 最強未試行手段の実テスト + 真に不能な根拠)、1 手段失敗を goal 不能に昇格させ user 転嫁しない、terminal handoff 前は Codex 相談。詳細: `.claude/rules/silent-skip-prevention.md`
@@ -47,7 +51,7 @@
 |----------|------|
 | 本 CLAUDE.md (project root) | プロジェクト構造・絶対ルール・規約 |
 | `~/.claude/rules/*.md` (user global) | 全プロジェクト共通 coding / security |
-| `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** / **progress-touchpoint** (2026-06-10 無応答事故 2 件で昇格) |
+| `.claude/rules/*.md` (always-load Critical 7+constitution、2026-05-21 hybrid 化) | **00-constitution** (index) / **karpathy-principles** / **silent-skip-prevention** (Q0) / **db-migration-rules** (Q2) / **sku-rules** / **md-files-can-be-wrong** / **sqlite-timezone** / **cascade-update** / **progress-touchpoint** (2026-06-10 無応答事故 2 件で昇格) / **dispatcher-orchestration** (2026-06-27 W286 incident で昇格) |
 | `.claude/rule-snippets/*.md` (on-demand snippet、2026-05-21 hybrid 化) | **wiki-frontmatter** / **contradiction-annotation** / **discord-notification** / **supplier-matching-rules** / **llm-wiki-compilation** (Q7) / **browser-ui-native-input** (2026-06-21、ブラウザ UI は native locator 第一選択・負の能力主張ゲート技術編) — UserPromptSubmit router で keyword 一致時 JIT 注入、または assistant が Read on-demand |
 | `tools/ebay-manager/CLAUDE.md` (subdir) | eBay 規制 4 セクション (出品 / 通関 / DDP / ランク) |
 | `USER_MANUAL.md` (project root) | **user (人間) が手で実行する手順** 集約 (scheduler 操作 / Phase 7 監視・緊急停止 / kill switch / メンテ / トラブル対処 / slash command 早見表) |

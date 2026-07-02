@@ -346,6 +346,130 @@ def get_item_details_batch(
     return results
 
 
+def get_competitor_snapshot_batch(
+    item_ids: list[str],
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+    max_calls: Optional[int] = None,
+) -> tuple[dict, int]:
+    """W301 AI 店長 Phase1 S4: 競合 (他セラー) の GetItem 定点観測データ取得.
+
+    ⚠️ 設計書 (.company/engineering/docs/2026-06-24-ai-manager-phase1-design.md)
+    は Shopping API GetMultipleItems (20 ItemID/コール) を前提にしていたが、
+    本 codebase には Shopping API クライアントが存在しない (get_item_details_batch
+    も含め実装済みなのは Trading API GetItem = 1 ItemID/コール のみ)。
+    md-files-can-be-wrong.md R-1 に基づき設計書の想定とコード実態の差異をここに
+    明記し、未検証の新規 API 連携を本タスクで新設しない (K1 Simplicity) 方針で、
+    既存の実装可能な経路 (Trading API GetItem、get_item_details_batch と同型の
+    XML/認証) で実装する。1 コール = 1 item (cap は API コール数 = item 数と等価)。
+
+    GetItem は ItemID が公開されていれば所有者以外の item でも Ack=Success で
+    取得できる (買い手向け商品詳細画面と同じ経路。Seller/FeedbackScore 等の
+    公開フィールドも DetailLevel=ReturnAll に含まれる)。
+
+    max_calls: 本呼出で消費してよい API コール上限 (None = item_ids 全件).
+      呼出側 (task_competitor_snapshot.py) が 1 run 全体の cap を管理する。
+
+    Returns: (results, calls_used)
+      results: {item_id: {quantity_sold, quantity_total, quantity_available,
+                seller_feedback_score, seller_positive_pct, seller_country,
+                price_usd, shipping_usd}}  (取得失敗 item は結果に含まれない)
+      calls_used: 実際に試行した item 数 (成功/失敗問わず、cap 消費の正)。
+    """
+    if not item_ids:
+        return {}, 0
+
+    user_token = _resolve_active_token(user_token)
+    limit = len(item_ids) if max_calls is None else max(0, min(len(item_ids), max_calls))
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    results: dict = {}
+    calls_used = 0
+
+    for item_id in item_ids[:limit]:
+        calls_used += 1
+        try:
+            xml_body = _build_get_item_xml(item_id).replace("{USER_TOKEN}", user_token)
+            headers = {
+                "X-EBAY-API-SITEID": "0",
+                "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+                "X-EBAY-API-CALL-NAME": "GetItem",
+                "X-EBAY-API-APP-NAME": app_id,
+                "X-EBAY-API-DEV-NAME": dev_id,
+                "X-EBAY-API-CERT-NAME": cert_id,
+                "Content-Type": "text/xml",
+            }
+            resp = httpx.post(TRADING_API_URL, content=xml_body.encode("utf-8"),
+                               headers=headers, timeout=30)
+            resp.raise_for_status()
+
+            root = ET.fromstring(resp.text)
+            ack = root.findtext("ns:Ack", namespaces=ns)
+            if ack not in ("Success", "Warning"):
+                errors = root.findall(".//ns:Errors/ns:LongMessage", namespaces=ns)
+                msg = "; ".join(e.text for e in errors if e.text) or "Unknown error"
+                logger.debug(f"GetItem(snapshot) {item_id} error: {msg}")
+                continue
+
+            item = root.find(".//ns:Item", namespaces=ns)
+            if item is None:
+                logger.debug(f"GetItem(snapshot) {item_id}: Item 要素なし")
+                continue
+
+            selling_status = item.find("ns:SellingStatus", namespaces=ns)
+            qty_sold_text = selling_status.findtext("ns:QuantitySold", namespaces=ns) if selling_status is not None else None
+            quantity_sold = _safe_int(qty_sold_text, default=None) if qty_sold_text else None
+            qty_total_text = item.findtext("ns:Quantity", namespaces=ns)
+            quantity_total = _safe_int(qty_total_text, default=None) if qty_total_text else None
+            quantity_available = (
+                quantity_total - quantity_sold
+                if quantity_total is not None and quantity_sold is not None
+                else None
+            )
+
+            price_text = selling_status.findtext("ns:CurrentPrice", namespaces=ns) if selling_status is not None else None
+            price_usd = _safe_float(price_text, default=None) if price_text else None
+
+            shipping_usd = None
+            shipping_details = item.find(".//ns:ShippingDetails", namespaces=ns)
+            if shipping_details is not None:
+                cost_text = shipping_details.findtext(
+                    "ns:ShippingServiceOptions/ns:ShippingServiceCost", namespaces=ns
+                )
+                if cost_text:
+                    try:
+                        shipping_usd = float(cost_text)
+                    except ValueError:
+                        shipping_usd = None
+
+            seller = item.find("ns:Seller", namespaces=ns)
+            feedback_text = seller.findtext("ns:FeedbackScore", namespaces=ns) if seller is not None else None
+            seller_feedback_score = _safe_int(feedback_text, default=None) if feedback_text else None
+            pos_pct_text = seller.findtext("ns:PositiveFeedbackPercent", namespaces=ns) if seller is not None else None
+            seller_positive_pct = _safe_float(pos_pct_text, default=None) if pos_pct_text else None
+            seller_country = item.findtext("ns:Country", namespaces=ns) or None
+
+            results[item_id] = {
+                "quantity_sold": quantity_sold,
+                "quantity_total": quantity_total,
+                "quantity_available": quantity_available,
+                "seller_feedback_score": seller_feedback_score,
+                "seller_positive_pct": seller_positive_pct,
+                "seller_country": seller_country,
+                "price_usd": price_usd,
+                "shipping_usd": shipping_usd,
+            }
+        except Exception as e:  # noqa: BLE001 — 1 item 失敗で run 全体を止めない
+            logger.debug(f"GetItem(snapshot) {item_id} exception: {e}")
+            continue
+
+    logger.info(
+        f"[W301 S4] competitor snapshot GetItem: {len(results)}/{calls_used} success"
+    )
+    return results, calls_used
+
+
 def get_single_listing(
     item_id: str,
     app_id: str,

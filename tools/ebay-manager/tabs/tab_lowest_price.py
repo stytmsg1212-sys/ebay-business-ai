@@ -34,7 +34,14 @@ def render_lowest_price_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
     import json
-    from monitor.database import get_japan_competitor_alerts, update_alert_action
+    import re
+    from datetime import datetime
+    from monitor.database import (
+        get_japan_competitor_alerts,
+        get_shadow_reconciliation_report,
+        set_competitor_pricing_eligible,
+        update_alert_action,
+    )
     from ui_cache import bump_db_version, get_db_version, seed_keyed_value_from_db
     st.title("最安値チェック")
     st.caption(
@@ -68,6 +75,107 @@ def render_lowest_price_tab(s: dict) -> None:
                 _lp_cfg = json.load(_cf)
         except Exception:
             _lp_cfg = {}
+
+    # ── W301 AI 店長 Phase1 S6: Shadow バッジ + 突合レポート + 昇格ボタン ──
+    # 設計書: .company/engineering/docs/2026-06-24-ai-manager-phase1-design.md §7(S6)
+    # shadow_mode は tasks_enabled.rival_classify.shadow_mode (config)。キー未設定時は
+    # True (task_rival_classify.py が現状ハードコードしている既定に追従、md-files-can-be-wrong
+    # 対策: 未実装のキーを「あるはず」と決め打ちしない)。
+    _lp_rival_task_cfg = ((_lp_cfg.get('tasks_enabled') or {}).get('rival_classify') or {})
+    _lp_shadow_mode = bool(_lp_rival_task_cfg.get('shadow_mode', True))
+
+    if _lp_shadow_mode:
+        st.warning(
+            "🔶 **Shadow 運用中** — AI 判定 (rival_classifier) は記録のみ。"
+            "自動値下げ対象は人間採用分のみ (下記「値下げ適格」トグルで手動 ON にした競合だけ)。"
+        )
+
+    with st.expander("AI 判定 Shadow 突合レポート (W301)", expanded=False):
+        st.caption(
+            "AI が「真ライバル」と判定した競合のうち、実際に人間が値下げ適格を ON に"
+            "しているかを突合。卒業基準: Shadow 運用開始から 2 週間経過 かつ "
+            "real 側不一致率 5% 以下。"
+        )
+        try:
+            _lp_shadow_report = get_shadow_reconciliation_report()
+            _rc1, _rc2, _rc3, _rc4 = st.columns(4)
+            with _rc1:
+                _lp_days = _lp_shadow_report['days_since_shadow_start']
+                st.metric(
+                    "Shadow 運用日数",
+                    f"{_lp_days:.1f} 日" if _lp_days is not None else "未開始",
+                )
+            with _rc2:
+                _lp_mm = _lp_shadow_report['mismatch_rate']
+                st.metric(
+                    "real 不一致率",
+                    f"{_lp_mm * 100:.1f}%" if _lp_mm is not None else "データなし",
+                    help=(
+                        f"AI real 判定 {_lp_shadow_report['ai_real_count']} 件中、"
+                        f"人間未採用 {_lp_shadow_report['ai_real_user_not_adopted']} 件"
+                    ),
+                )
+            with _rc3:
+                _lp_nfr = _lp_shadow_report['noise_false_reject_rate']
+                st.metric(
+                    "noise 誤棄却率",
+                    f"{_lp_nfr * 100:.1f}%" if _lp_nfr is not None else "データなし",
+                    help=(
+                        f"AI noise 判定 {_lp_shadow_report['ai_noise_count']} 件中、"
+                        f"人間が値下げ適格を維持 {_lp_shadow_report['ai_noise_user_kept_eligible']} 件"
+                        "(AI の noise 誤棄却を人間が救っている可能性)"
+                    ),
+                )
+            with _rc4:
+                if _lp_shadow_report['graduation_met']:
+                    st.success("卒業基準: 達成")
+                else:
+                    st.info("卒業基準: 未達")
+
+            if _lp_shadow_mode:
+                st.caption(
+                    "⚠️ **昇格ボタンは config `tasks_enabled.rival_classify.shadow_mode` へ "
+                    "false の承認記録を書き込むのみです**。task_rival_classify.py は "
+                    "Phase1 設計上 Shadow を常にコード側で固定しており、本ボタンだけでは "
+                    "自動値下げ対象は広がりません (別途コード対応が必要、Phase1 では自動昇格"
+                    "経路を作らない方針)。user 専用操作です。"
+                )
+                _lp_grad_disabled = not _lp_shadow_report['graduation_met']
+                _lp_grad_confirm = st.checkbox(
+                    "卒業基準を確認した上で Shadow 解除の承認記録を残す",
+                    key="lp_shadow_grad_confirm",
+                    disabled=_lp_grad_disabled,
+                )
+                if st.button(
+                    "Shadow 解除を承認 (config 記録)",
+                    key="lp_shadow_grad_btn",
+                    type="primary",
+                    disabled=_lp_grad_disabled or not _lp_grad_confirm,
+                ):
+                    try:
+                        _lp_cfg.setdefault('tasks_enabled', {}).setdefault(
+                            'rival_classify', {}
+                        )
+                        _lp_cfg['tasks_enabled']['rival_classify']['shadow_mode'] = False
+                        _lp_cfg['tasks_enabled']['rival_classify'][
+                            'shadow_mode_changed_at'
+                        ] = datetime.now().isoformat()
+                        _lp_cfg['tasks_enabled']['rival_classify'][
+                            'shadow_mode_changed_by'
+                        ] = 'user'
+                        with open(_lp_cfg_path, 'w', encoding='utf-8') as _lp_wf:
+                            json.dump(_lp_cfg, _lp_wf, indent=2, ensure_ascii=False)
+                        st.success(
+                            "config に承認記録を書き込みました "
+                            "(実際の Shadow 解除には別途コード対応が必要です)"
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"config 書込エラー: {e}")
+            else:
+                st.caption("shadow_mode=false 記録済み (config)。")
+        except Exception as e:
+            st.error(f"Shadow 突合レポート読込エラー: {e}")
 
     # ── W119: 商品データ FIX (per-listing 編集) ──
     try:
@@ -351,40 +459,107 @@ def render_lowest_price_tab(s: dict) -> None:
                         )
                     )
 
-            # ライバル価格・送料 一覧
-            st.markdown("**ライバル価格・送料**")
+            # ライバル価格・送料 + AI 判定 + 値下げ適格トグル
+            # (W301 AI 店長 Phase1 S6: rival_classifications 最新判定を表示し、
+            #  pricing_eligible を user が手動 ON/OFF できる実行部)。
+            st.markdown("**ライバル価格・送料 + AI 判定**")
             _lp_pricing_rows = get_competitors_with_pricing(_lp_selected_id)
             if not _lp_pricing_rows:
                 st.caption("登録ライバルなし")
             else:
-                # H2 fix: LinkColumn を正しく URL 列で機能させる
-                _lp_pricing_df = pd.DataFrame([
+                def _lp_ai_label(row: dict) -> str:
+                    cls = row.get('ai_classification')
+                    if not cls:
+                        return '未判定'
+                    label = {'real': '✅ real', 'noise': '🚫 noise', 'review': '❓ review'}.get(cls, cls)
+                    conf = row.get('ai_confidence')
+                    if conf is not None:
+                        label += f" ({conf:.2f})"
+                    return label
+
+                def _lp_ai_warning_flag(row: dict) -> str:
+                    # save_rival_classification (monitor/rival_classifier.py) は
+                    # warning_brand_flag を reason 末尾 "[warning_brand:XXX]" として
+                    # 埋め込む (専用列は存在しない、md-files-can-be-wrong: 別列がある
+                    # 前提を置かず実データ形式に合わせる)。
+                    reason = row.get('ai_reason') or ''
+                    m = re.search(r"\[warning_brand:([^\]]+)\]", reason)
+                    return f"⚠️ {m.group(1)}" if m else ''
+
+                _lp_editor_rows = [
                     {
+                        'id': r['id'],
                         'item id': r['competitor_item_id'],
                         'リンク': f"https://www.ebay.com/itm/{r['competitor_item_id']}",
-                        '商品価格': r['price_usd'] if r['price_usd'] is not None else None,
-                        '送料': r['shipping_usd'] if r['shipping_usd'] is not None else None,
-                        '合計': r['total_usd'] if r['total_usd'] is not None else None,
+                        '商品価格': r['price_usd'],
+                        '送料': r['shipping_usd'],
+                        '合計': r['total_usd'],
                         '最終取得': r['last_priced_at'] or '-',
+                        'AI判定': _lp_ai_label(r),
+                        '警告': _lp_ai_warning_flag(r),
+                        'AI理由': (r.get('ai_reason') or '-')[:150],
+                        '値下げ適格': bool(r.get('pricing_eligible')),
                     }
                     for r in _lp_pricing_rows
-                ])
-                st.dataframe(
-                    _lp_pricing_df,
+                ]
+                _lp_edited_rows = st.data_editor(
+                    _lp_editor_rows,
                     column_config={
-                        'item id': st.column_config.TextColumn('item id', width='small'),
+                        'id': None,  # 内部 key (competitor_products.id) — 非表示
+                        'item id': st.column_config.TextColumn('item id', width='small', disabled=True),
                         'リンク': st.column_config.LinkColumn(
                             'リンク', display_text='開く', width='small',
-                            help="クリックで eBay 商品ページ",
+                            help="クリックで eBay 商品ページ", disabled=True,
                         ),
-                        '商品価格': st.column_config.NumberColumn('商品価格', format='$%.2f', width='small'),
-                        '送料': st.column_config.NumberColumn('送料', format='$%.2f', width='small'),
-                        '合計': st.column_config.NumberColumn('合計', format='$%.2f', width='small'),
-                        '最終取得': st.column_config.TextColumn('最終取得', width='medium'),
+                        '商品価格': st.column_config.NumberColumn('商品価格', format='$%.2f', width='small', disabled=True),
+                        '送料': st.column_config.NumberColumn('送料', format='$%.2f', width='small', disabled=True),
+                        '合計': st.column_config.NumberColumn('合計', format='$%.2f', width='small', disabled=True),
+                        '最終取得': st.column_config.TextColumn('最終取得', width='medium', disabled=True),
+                        'AI判定': st.column_config.TextColumn('AI判定', width='small', disabled=True,
+                                                              help="rival_classifications の競合単位最新判定 (real/noise/review + 確信度)"),
+                        '警告': st.column_config.TextColumn('警告', width='small', disabled=True),
+                        'AI理由': st.column_config.TextColumn('AI理由', width='large', disabled=True),
+                        '値下げ適格': st.column_config.CheckboxColumn(
+                            '値下げ適格',
+                            help="ON = W183 自動値下げの対象に含める競合として人間が採用 (pricing_eligible)",
+                        ),
                     },
                     hide_index=True,
                     use_container_width=True,
+                    num_rows='fixed',
+                    key=f'lp_ai_editor_{_lp_selected_id}',
                 )
+
+                _lp_pending_changes = [
+                    (_orig['id'], _edited['値下げ適格'])
+                    for _orig, _edited in zip(_lp_editor_rows, _lp_edited_rows)
+                    if bool(_orig['値下げ適格']) != bool(_edited['値下げ適格'])
+                ]
+                if _lp_pending_changes:
+                    st.warning(
+                        f"未保存の変更 {len(_lp_pending_changes)} 件 (値下げ適格 ON/OFF)。"
+                        "下記チェック + ボタンで確定してください。"
+                    )
+                    _lp_toggle_confirm = st.checkbox(
+                        f"上記 {len(_lp_pending_changes)} 件の変更を保存する",
+                        key=f'lp_toggle_confirm_{_lp_selected_id}',
+                    )
+                    if st.button(
+                        "値下げ適格の変更を反映",
+                        key=f'lp_toggle_apply_{_lp_selected_id}',
+                        type='primary',
+                        disabled=not _lp_toggle_confirm,
+                    ):
+                        try:
+                            for _cp_id, _new_val in _lp_pending_changes:
+                                set_competitor_pricing_eligible(
+                                    _cp_id, bool(_new_val), changed_by='user'
+                                )
+                            bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
+                            st.success(f"{len(_lp_pending_changes)} 件を反映しました")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"反映エラー: {e}")
 
             # 操作ボタン群
             _lp_action_cols = st.columns([1, 1, 2])

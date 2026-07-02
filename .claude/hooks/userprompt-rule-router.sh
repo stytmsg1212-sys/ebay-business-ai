@@ -108,6 +108,15 @@ ROUTER_MAP = [
          'connect_over_cdp', 'locator', 'graphql', 'upsertprofile'],
         'ブラウザ UI は native locator method 第一選択 (合成クリックは controlled component 無効) / eBaymag 各国タブ input name 構造 / 負の能力主張ゲート技術編.',
     ),
+    # dispatcher-orchestration は always-load rule (.claude/rules/) だが、
+    # 「自走/承認不要/委譲」系 prompt 時に立ち位置 (窓口/オーケストレーター) を
+    # 再喚起する hint を出す (W286 incident: autonomous を personal execution と誤読)
+    (
+        '.claude/rules/dispatcher-orchestration.md',
+        ['自走', '承認不要', '承認求めず', '委譲', 'orchestrate', 'autonomous',
+         'dispatch', 'ディスパッチ', 'オーケストレ'],
+        'あなた=最上位の窓口/オーケストレーター。手を動かす実装は subagent 委譲、main は分解/判断/統合/報告のみ。autonomous=orchestrate autonomously。重い実装は着手前に委譲プランを第一成果物として出す.',
+    ),
 ]
 
 # ------ keyword matching ------
