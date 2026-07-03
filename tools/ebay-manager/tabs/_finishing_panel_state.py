@@ -57,14 +57,24 @@ FIELD_LABELS_JA: dict[str, str] = {
     "description": "Description",
     "images": "画像",
     "rank": "ランク",
+    # 2026-07-03 user 追加要望: コンディション理由 (eBay ConditionDescription)。
+    # 中古ランクでの「動作確認結果」記載欄。As-Is (7000) は eBay 制約で必須
+    # (tools/ebay-manager/CLAUDE.md 「As-Is 出品の XML 必須要件」)。
+    "condition_description": "コンディション理由",
     "quantity": "数量",
 }
 
-# 変更プレビュー表示順 (設計書§3 の表と同順)
-PREVIEW_FIELD_ORDER: tuple[str, ...] = ("title", "description", "images", "rank", "quantity")
+# 変更プレビュー表示順 (設計書§3 の表と同順)。condition_description は rank の直後
+# (「Description と Condition はセット」の視覚的順序 = user 要望)。
+PREVIEW_FIELD_ORDER: tuple[str, ...] = (
+    "title", "description", "images", "rank", "condition_description", "quantity",
+)
 
 # コンテンツ一括反映 (🚀 eBay へ反映 ボタン) の対象フィールド。
-# 画像は対象外 (モジュール docstring 参照)。
+# 画像は対象外 (モジュール docstring 参照)。condition_description は rank と bundled
+# された時は rank apply 内で送信 (同 revise_item_condition 呼出、二重 API 回避)。
+# cd 単独 dirty 時は _finishing_panel.py 側で `condition_description` 固有の
+# dispatch エントリを register する (dispatch 順序上ここには含めない = 動的判断)。
 DISPATCH_FIELD_ORDER: tuple[str, ...] = ("title", "description", "rank", "quantity")
 
 
@@ -151,6 +161,16 @@ def is_field_dirty(field: str, before: Any, after: Any) -> bool:
         a = (after or "").strip() if isinstance(after, str) else after
         b = (before or "").strip() if isinstance(before, str) else before
         return bool(a) and a != b
+    if field == "condition_description":
+        # 空 → 非空: dirty (未設定に理由を追加)
+        # 非空 → 別値: dirty (理由変更)
+        # 非空 → 空: dirty (理由削除、eBay 側で空文字列送信 → 既存維持)
+        #   ⚠️ 空文字は送信時に revise_item_condition の cd=None にマップ
+        #      (「値なし = 既存維持」= eBay 挙動)。それでも UI 上「削除操作」を
+        #      dirty として認識するため、strip 比較で before != after を真とする。
+        a = (after or "").strip() if isinstance(after, str) else ""
+        b = (before or "").strip() if isinstance(before, str) else ""
+        return a != b
     if field == "quantity":
         if after is None:
             return False
@@ -416,6 +436,53 @@ def generate_description_via_ai(
         "title_en": result.get("title_en") or "",
         "message": result.get("message") or "",
     }
+
+
+# =============================================================================
+# As-Is (7000) の ConditionDescription 必須ガード
+# =============================================================================
+
+# tools/ebay-manager/CLAUDE.md「As-Is 出品の XML 必須要件」:
+#   65 字以内 / 英文 / `As-Is — <reason>` 形式
+AS_IS_RANK = "As-Is"
+AS_IS_CD_MAX_LEN = 65
+
+
+def validate_as_is_condition_description(
+    effective_rank: Optional[str], effective_cd: Optional[str],
+) -> Optional[str]:
+    """As-Is (7000) 反映時の condition_description バリデーション.
+
+    Returns:
+        None: バリデーション PASS (As-Is でない、または理由が正当)
+        str: エラーメッセージ (呼出側が st.error で表示 + 反映拒否する)
+
+    Args:
+        effective_rank: 反映後の実効ランク ('N'/'S'/'A'-'D'/'PO'/'As-Is'/None)
+        effective_cd: 反映後の実効理由 (dirty なら新値、無 dirty なら既存の欄値)
+
+    ルール (tools/ebay-manager/CLAUDE.md 準拠):
+      - As-Is 以外は無検査 (PASS)。
+      - As-Is で理由が空 → 反映拒否 (欠落は buyer 紛争で Defect 確定リスク)。
+      - As-Is で理由 > 65 字 → 反映拒否 (eBay XML 65 字制約、超過は VerifyAdd で警告)。
+    """
+    if effective_rank != AS_IS_RANK:
+        return None
+    cd = (effective_cd or "").strip()
+    if not cd:
+        return (
+            "As-Is (7000) はコンディション理由が必須です "
+            "(例: 'As-Is — No AC adapter for testing', 'As-Is — PCB burn damage')。"
+            "欠落すると buyer 紛争で Defect 確定リスクがあります "
+            "(tools/ebay-manager/CLAUDE.md As-Is XML 必須要件)。"
+        )
+    if len(cd) > AS_IS_CD_MAX_LEN:
+        return (
+            f"As-Is のコンディション理由は {AS_IS_CD_MAX_LEN} 字以内 (現在 {len(cd)} 字)。"
+            "eBay XML 制約のため短縮してください "
+            "(推奨形式: 'As-Is — <reason>')。"
+        )
+    return None
 
 
 # =============================================================================

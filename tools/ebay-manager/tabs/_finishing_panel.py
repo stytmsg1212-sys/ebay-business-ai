@@ -41,6 +41,7 @@ from typing import Callable, Optional
 import streamlit as st
 
 from tabs._finishing_panel_state import (
+    AS_IS_CD_MAX_LEN,
     DISPATCH_FIELD_ORDER,
     FIELD_LABELS_JA,
     RANK_CHOICES,
@@ -58,6 +59,7 @@ from tabs._finishing_panel_state import (
     resolve_source_url,
     seed_initial,
     seed_session_value,
+    validate_as_is_condition_description,
 )
 
 logger = logging.getLogger(__name__)
@@ -254,59 +256,70 @@ def _render_content_group(
         candidate_id=candidate_id, candidate_url=candidate_url,
     )
 
-    # ---- ランク ----
-    rank_initial = seed_initial(st.session_state, eid, "rank", resolve_rank_initial(row))
-    rank_key = pf_key(eid, "rank")
-    _rank_opts = [_RANK_BLANK] + list(RANK_CHOICES)
-    _rank_seed = rank_initial if rank_initial in RANK_CHOICES else _RANK_BLANK
-    seed_session_value(st.session_state, rank_key, _rank_seed)
+    # ---- ランク + コンディション理由は Description コンテナ内 (「セット」構成) で
+    # 既に処理済 (`_render_condition_subblock` が fields['rank'] /
+    # fields['condition_description'] を設定)。ここで独立配置しない (user 要望)。
 
-    body_cols = st.columns(2)
-    with body_cols[0]:
-        st.selectbox(
-            "ランク",
-            options=_rank_opts,
-            format_func=lambda v: RANK_LABELS_JA.get(v, v),
-            key=rank_key,
-        )
-    _rank_sel = st.session_state.get(rank_key, _rank_seed)
-    new_rank = None if _rank_sel == _RANK_BLANK else _rank_sel
-    fields["rank"] = {"before": (rank_initial or None), "after": new_rank}
-
-    # ---- 数量 ----
+    # ---- 数量 (独立フィールド) ----
     qty_initial = seed_initial(
         st.session_state, eid, "quantity", int(row.get("quantity_ebay") or 0),
     )
     qty_key = pf_key(eid, "quantity")
     seed_session_value(st.session_state, qty_key, qty_initial)
-    with body_cols[1]:
-        st.number_input("数量", min_value=0, step=1, key=qty_key)
+    st.number_input("数量", min_value=0, step=1, key=qty_key)
     new_qty = int(st.session_state.get(qty_key, qty_initial))
     fields["quantity"] = {"before": qty_initial, "after": new_qty}
 
-    # ---- 変更プレビュー + 一括反映 ----
+    # ---- 変更プレビュー + 一括反映 (2026-07-03 UX: 常時表示) ----
+    # user 指摘: 「dirty がある時だけ描画」だと、画像だけ触る典型フロー (画像は
+    # 別ボタンで即時反映される) で「🚀 eBay へ反映」ボタンが一度も現れず、
+    # user が「反映ボタンが見当たらない」と迷う。dirty ゼロでも案内 + 無効ボタンを
+    # 常時描画して視認性を確保する。
     preview = build_change_preview(fields)
-    if not preview:
-        st.caption("変更はありません。")
-        return
 
-    st.markdown("**変更プレビュー** (変更されたフィールドのみ表示)")
-    st.table([
-        {"フィールド": p["label"], "Before": p["before"], "After": p["after"]}
-        for p in preview
-    ])
-
+    # ボタン件数表示: DISPATCH_FIELD_ORDER (title/description/rank/quantity) に加え、
+    # condition_description dirty も 1 件としてカウント (state 層の DISPATCH_FIELD_ORDER
+    # には含まれないが、_apply_content_changes は rank と bundle または cd 単独で送信する)。
     _dirty_dispatch_fields = [
         f for f in DISPATCH_FIELD_ORDER
         if is_field_dirty(f, fields[f]["before"], fields[f]["after"])
     ]
+    _cd_present = fields.get("condition_description") or None
+    if _cd_present and is_field_dirty(
+        "condition_description",
+        _cd_present.get("before", ""), _cd_present.get("after", ""),
+    ):
+        # rank と cd がどちらも dirty の場合は同 revise で bundle されるが、user 視点では
+        # 「2 件の変更」として見える方が自然 (プレビュー表と件数を一致させる)。
+        _dirty_dispatch_fields.append("condition_description")
+
+    if preview:
+        st.markdown("**変更プレビュー** (変更されたフィールドのみ表示)")
+        st.table([
+            {"フィールド": p["label"], "Before": p["before"], "After": p["after"]}
+            for p in preview
+        ])
+        _btn_label = f"🚀 eBay へ反映 ({len(_dirty_dispatch_fields)}件の変更)"
+        _btn_disabled = False
+    else:
+        # dirty ゼロ: 2 行案内 + 無効化ボタン (常時表示で視認性確保)。
+        st.info(
+            "📭 反映待ちの変更はありません "
+            "(タイトル / Description / コンディション / 数量をここで編集すると反映ボタンが有効になります)"
+        )
+        st.caption(
+            "🖼 画像は上の画像セクション内の専用ボタンで即時反映されます"
+            " (この一括反映ボタンの対象外)。"
+        )
+        _btn_label = "🚀 eBay へ反映 (変更なし)"
+        _btn_disabled = True
+
     if st.button(
-        f"🚀 eBay へ反映 ({len(_dirty_dispatch_fields)}件の変更)",
+        _btn_label,
         key=pf_key(eid, "apply_btn"), type="primary",
-        disabled=not _dirty_dispatch_fields,
+        disabled=_btn_disabled,
     ):
         _apply_content_changes(eid, fields, config, source_tab=source_tab, candidate_id=candidate_id)
-    st.caption("価格・送料は含まれません（下の「💰 価格・送料」隔離セクションから）")
 
 
 # =============================================================================
@@ -342,8 +355,15 @@ def _render_description_field(
     seed_session_value(st.session_state, desc_key, desc_initial)
 
     with st.container(border=True):
-        st.markdown("**Description**")
+        st.markdown("**📝 Description & Condition (商品説明とコンディション)**")
+        st.caption(
+            "user 要望 2026-07-03: 商品タイトル / 説明文 / ランク / コンディション理由は"
+            "「セット」で編集する構成。ランク編集時は理由 (中古 = 動作確認結果 / As-Is = 必須) "
+            "も一緒に。"
+        )
 
+        # ── (1) Description サブブロック ──
+        st.markdown("**Description**")
         # 現行プレビュー (先頭 200 字)
         st.caption("現行プレビュー")
         _preview_src = desc_initial or "(未設定)"
@@ -376,6 +396,10 @@ def _render_description_field(
             key=desc_key,
             height=180,
         )
+
+        # ── (2) Condition サブブロック (Description とセット、user 2026-07-03 要望) ──
+        st.divider()
+        _render_condition_subblock(eid, row, fields)
 
     new_desc = st.session_state.get(desc_key, desc_initial)
     fields["description"] = {"before": desc_initial, "after": new_desc}
@@ -478,6 +502,82 @@ def _render_description_ebay_fetch(
             st.rerun(scope="fragment")
         else:
             st.error(_res["message"])
+
+
+# =============================================================================
+# Condition サブブロック (Description コンテナ内、user 2026-07-03 要望で統合)
+# =============================================================================
+
+def _render_condition_subblock(eid: str, row: dict, fields: dict[str, dict]) -> None:
+    """ランク + コンディション理由 (ConditionDescription) を Description とセットで編集.
+
+    2026-07-03 user 要望「コンディションは Description とセットで編集する」に基づき、
+    従来独立フィールドだったランク selectbox をここへ移動 + eBay ConditionDescription
+    を編集する text_input を新設。dirty 判定結果は `fields['rank']` と
+    `fields['condition_description']` にそのまま書き込む (呼出側 build_change_preview /
+    _apply_content_changes に届く形)。
+
+    As-Is (7000) の理由必須ガード + 65 字制約は
+    `_finishing_panel_state.validate_as_is_condition_description` で dispatch 直前に検証。
+    """
+    st.markdown("**🏷️ Condition (商品ランク + 理由)**")
+    st.caption(
+        "ランクは eBay 実 Condition 由来 (人気度グレードとは別)。"
+        "N=新品 / S=新品同様 / A-PO=Used サブランク / As-Is=未確認・部品取り。"
+        "🚀 反映 で eBay Condition + ConditionDescription も一緒に更新されます。"
+    )
+
+    # ── ランク selectbox ──
+    rank_initial = seed_initial(st.session_state, eid, "rank", resolve_rank_initial(row))
+    rank_key = pf_key(eid, "rank")
+    _rank_opts = [_RANK_BLANK] + list(RANK_CHOICES)
+    _rank_seed = rank_initial if rank_initial in RANK_CHOICES else _RANK_BLANK
+    seed_session_value(st.session_state, rank_key, _rank_seed)
+    st.selectbox(
+        "ランク",
+        options=_rank_opts,
+        format_func=lambda v: RANK_LABELS_JA.get(v, v),
+        key=rank_key,
+        help="変更を 🚀 反映 すると eBay Condition が更新されます。"
+             "S(Open Box=1500) は一部カテゴリで不可 → 送信後に verify 失敗ならメッセージで通知。",
+    )
+    _rank_sel = st.session_state.get(rank_key, _rank_seed)
+    new_rank = None if _rank_sel == _RANK_BLANK else _rank_sel
+    fields["rank"] = {"before": (rank_initial or None), "after": new_rank}
+
+    # ── コンディション理由 (eBay ConditionDescription) ──
+    # DB には保存しない (eBay 専用、tab_product_management 従来動作を踏襲)。
+    # `condition_description_initial` = 未設定固定 = "" にすることで、
+    # dirty 判定は「空 → 非空」または「非空 → 別値」を捉える。
+    cd_initial = seed_initial(st.session_state, eid, "condition_description", "")
+    cd_key = pf_key(eid, "condition_description")
+    seed_session_value(st.session_state, cd_key, cd_initial)
+    _cd_help_lines = [
+        "中古ランク (A-PO) では動作確認結果 (例: 'Tested OK. Power on/off: OK / Audio: OK')。",
+        f"As-Is は必須 (欠落 = buyer 紛争で Defect 確定リスク、eBay XML {AS_IS_CD_MAX_LEN} 字以内・"
+        "'As-Is — <reason>' 形式推奨)。",
+        "空欄で反映すると eBay 側の既存 ConditionDescription を維持 (未変更)。",
+    ]
+    st.text_input(
+        "コンディション理由 (eBay ConditionDescription)",
+        key=cd_key,
+        max_chars=1000,  # eBay 一般上限 (As-Is は 65 字で別途 dispatch 直前検証)
+        help="\n".join(_cd_help_lines),
+    )
+    new_cd = (st.session_state.get(cd_key, "") or "").strip()
+    fields["condition_description"] = {"before": (cd_initial or ""), "after": new_cd}
+
+    # As-Is + 空理由の warn は入力時点で早めに表示 (dispatch 直前の error より UX 良い)
+    if new_rank == "As-Is" and not new_cd:
+        st.warning(
+            f"⚠️ As-Is は理由が必須です。{AS_IS_CD_MAX_LEN} 字以内 / "
+            "'As-Is — <reason>' 形式で入力してください。"
+        )
+    elif new_rank == "As-Is" and len(new_cd) > AS_IS_CD_MAX_LEN:
+        st.warning(
+            f"⚠️ As-Is 理由は {AS_IS_CD_MAX_LEN} 字以内 (現在 {len(new_cd)} 字)。"
+            "短縮してください。"
+        )
 
 
 # =============================================================================
@@ -624,40 +724,170 @@ def _apply_content_changes(
             "apply": _apply_description,
         })
 
-    if is_field_dirty("rank", fields["rank"]["before"], fields["rank"]["after"]):
-        _after = fields["rank"]["after"]
-        _cond_id = rank_to_condition_id(_after)
+    # ── Condition (rank + condition_description) — bundle 送信 ──
+    # rank と conddesc は同じ revise_item_condition で送るため、bundle して 1 API 呼出。
+    # As-Is 必須ガードは dispatch 直前に validate_as_is_condition_description で。
+    # `condition_description` は _render_condition_subblock が set するが、
+    # unit test 等が渡さないケースに備え defensive default (`.get()` + 空 dict fallback)。
+    _cd_field = fields.get("condition_description") or {"before": "", "after": ""}
+    _rank_dirty = is_field_dirty("rank", fields["rank"]["before"], fields["rank"]["after"])
+    _cd_dirty = is_field_dirty(
+        "condition_description", _cd_field["before"], _cd_field["after"],
+    )
+    _effective_rank = (
+        fields["rank"]["after"] if _rank_dirty else fields["rank"]["before"]
+    )
+    _effective_cd_after = _cd_field["after"]
 
-        def _apply_rank(_after=_after, _cond_id=_cond_id):
+    if _rank_dirty or _cd_dirty:
+        # As-Is 必須ガード (state 層) — 失敗時は dispatch 全体を中止 (K1: 部分反映しない)
+        _guard = validate_as_is_condition_description(_effective_rank, _effective_cd_after)
+        if _guard is not None:
+            st.error(_guard)
+            return
+
+    if _rank_dirty:
+        # rank dirty ⇒ conddesc も同時送信 (bundled、二重 API 回避)。
+        # conddesc 単独 dirty のケースは次の elif で処理。
+        _r_after = fields["rank"]["after"]
+        _cond_id = rank_to_condition_id(_r_after)
+        # cd を「送るか」の判定: dirty なら新値を送る、そうでなければ None で eBay 側維持
+        _cd_to_send = _effective_cd_after if _cd_dirty else None
+        _cd_before = _cd_field["before"]
+
+        def _apply_rank(_r_after=_r_after, _cond_id=_cond_id,
+                        _cd_to_send=_cd_to_send, _cd_dirty=_cd_dirty,
+                        _cd_before=_cd_before):
             if not _cond_id:
-                return {"success": False, "message": f"rank={_after!r} に対応する ConditionID が不明です"}
-            if _cond_id == "7000":
-                # As-Is (7000) は ConditionDescription 必須 (CLAUDE.md)。Phase 2 パネルは
-                # 理由入力欄を持たないため自動反映せず、商品管理タブへ誘導する
-                # (_apply_supplier_condition と同方針、既存 As-Is ガードを踏襲)。
-                return {
-                    "success": False,
-                    "message": "As-Is は理由入力が必須のため商品管理タブから設定してください",
-                }
+                return {"success": False,
+                        "message": f"rank={_r_after!r} に対応する ConditionID が不明です"}
             from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+            from monitor.listing_content_change_log import log_content_change
             snap_pre = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
-            if snap_pre.ok and (snap_pre.condition_id or "") == _cond_id:
-                update_ebay_listing_condition(eid, ebay_condition_id=_cond_id, condition_rank=_after)
-                return {"success": True, "message": f"既に {_after}({_cond_id}) — DB 同期のみ"}
-            r = revise_item_condition(eid, _cond_id, app_id, dev_id, cert_id, token)
+            _cd_arg = _cd_to_send if (_cd_to_send or "") else None
+            # 既に同 ConditionID (rank 一致) の時、conddesc 変更が無ければ DB 同期のみ。
+            # conddesc dirty なら revise を必ず走らせて eBay に送る (rank 一致でも cd は更新)。
+            if (snap_pre.ok
+                    and (snap_pre.condition_id or "") == _cond_id
+                    and not _cd_dirty):
+                update_ebay_listing_condition(
+                    eid, ebay_condition_id=_cond_id, condition_rank=_r_after)
+                return {"success": True, "message": f"既に {_r_after}({_cond_id}) — DB 同期のみ"}
+            r = revise_item_condition(
+                eid, _cond_id, app_id, dev_id, cert_id, token,
+                condition_description=_cd_arg,
+            )
             snap_post = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
             actual = snap_post.condition_id if snap_post.ok else None
+
+            # 監査ログの共通処理 (bundled 送信で conddesc も pushed 済 → 追記)。
+            # dispatch_content_changes は本 apply を "rank" として 1 回のみ log するため、
+            # conddesc dirty 時は追加で log_content_change(field="condition_description")。
+            def _log_bundled_cd_if_dirty(ebay_ack_msg: Optional[str]) -> None:
+                if not _cd_dirty:
+                    return
+                try:
+                    log_content_change(
+                        eid, "condition_description", _cd_before, _cd_to_send or "",
+                        source_tab=source_tab, candidate_id=candidate_id,
+                        success=True, ebay_ack=ebay_ack_msg,
+                    )
+                except Exception:  # noqa: BLE001 -- 監査ログ失敗で reviseの結果を握り潰さない
+                    logger.exception("condition_description 追加監査ログ失敗 eid=%s", eid)
+
             if actual == _cond_id:
-                update_ebay_listing_condition(eid, ebay_condition_id=_cond_id, condition_rank=_after)
-                return {"success": True, "message": f"Condition を {_after}({_cond_id}) に反映"}
+                update_ebay_listing_condition(
+                    eid, ebay_condition_id=_cond_id, condition_rank=_r_after)
+                _log_bundled_cd_if_dirty(r.get("message"))
+                return {"success": True,
+                        "message": f"Condition を {_r_after}({_cond_id}) に反映"
+                                    + (" + 理由も更新" if _cd_dirty else "")}
+
+            # W220 regression fix (2026-07-03 code review MED): S(1500) verify 失敗時の
+            # 3000(Used) 自動降格 fallback を復元。旧 tab_product_management.py:4310-4327 の
+            # 挙動 (CLAUDE.md「Cond ID 1500 はカテゴリ依存」規約に基づく降格) がランク編集の
+            # パネル移設で失われていた。K2: 旧実装を忠実に移植 (改良しない、silent 降格禁止)。
+            if _cond_id == "1500":
+                _rf = revise_item_condition(
+                    eid, "3000", app_id, dev_id, cert_id, token,
+                    condition_description=_cd_arg,
+                )
+                snap3 = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+                if snap3.ok and snap3.condition_id == "3000":
+                    # eBay 実値は 3000(Used)。user 意図"S"は実態と乖離するので
+                    # condition_rank に "S" を残さない: ebay_condition_id のみ実値
+                    # 同期 (user が後で Used サブランクを別途指定)。
+                    update_ebay_listing_condition(eid, ebay_condition_id="3000")
+                    # 監査ログの after は実際に適用された 3000 で記録 (silent 降格禁止 = Q0)。
+                    # dispatch_content_changes は "rank" を _r_after で log するが、それは
+                    # user 意図値。追加で「実適用=3000」を残すため、bundled cd log と同じ
+                    # ルートで rank 実適用を明示 log する。
+                    try:
+                        log_content_change(
+                            eid, "rank", fields["rank"]["before"], "Used(3000, S降格)",
+                            source_tab=source_tab, candidate_id=candidate_id,
+                            success=True,
+                            ebay_ack=(
+                                f"S(1500) 不可カテゴリのため 3000 へ降格: "
+                                f"{_rf.get('message', '不明')}"
+                            ),
+                        )
+                    except Exception:  # noqa: BLE001 -- log 失敗で反映結果を握り潰さない
+                        logger.exception("S→3000 降格の監査ログ追記失敗 eid=%s", eid)
+                    _log_bundled_cd_if_dirty(_rf.get("message"))
+                    return {
+                        "success": True,
+                        "message": (
+                            "Condition: S(新品同様)はこのカテゴリで不可のため "
+                            "Used(3000) で反映しました "
+                            "(Used サブランクは別途指定してください)"
+                            + ("　※ 理由も更新済" if _cd_dirty else "")
+                        ),
+                    }
+                return {
+                    "success": False,
+                    "message": (
+                        f"Condition 反映失敗 (S=1500 不可・3000 fallback も失敗): "
+                        f"{r.get('message', '不明')}"
+                    ),
+                }
             return {
                 "success": False,
                 "message": f"Condition 反映 verify 失敗 (実値={actual}): {r.get('message', '不明')}",
             }
 
         changes.append({
-            "field": "rank", "before": fields["rank"]["before"], "after": _after,
+            "field": "rank", "before": fields["rank"]["before"], "after": _r_after,
             "apply": _apply_rank,
+        })
+    elif _cd_dirty:
+        # rank 未変更・conddesc のみ dirty ⇒ 現行 ConditionID を保って cd のみ更新。
+        _cd_after = _effective_cd_after
+        _cd_before = _cd_field["before"]
+
+        def _apply_cd_only(_cd_after=_cd_after):
+            from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+            snap = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+            if not snap.ok or not (snap.condition_id or "").strip():
+                return {
+                    "success": False,
+                    "message": f"現行 ConditionID を取得できません: {snap.error or '不明'}",
+                }
+            _cur_cid = str(snap.condition_id).strip()
+            r = revise_item_condition(
+                eid, _cur_cid, app_id, dev_id, cert_id, token,
+                condition_description=(_cd_after or None),
+            )
+            if r.get("success"):
+                return {"success": True,
+                        "message": f"コンディション理由を更新 (ConditionID {_cur_cid} 維持)"}
+            return {"success": False,
+                    "message": f"理由更新失敗: {r.get('message', '不明')}"}
+
+        changes.append({
+            "field": "condition_description",
+            "before": _cd_before, "after": _cd_after,
+            "apply": _apply_cd_only,
         })
 
     if is_field_dirty("quantity", fields["quantity"]["before"], fields["quantity"]["after"]):

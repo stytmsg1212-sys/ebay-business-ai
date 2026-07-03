@@ -1500,47 +1500,12 @@ def _render_left_basic_and_physical(
             if _inv_sync_caption:
                 st.caption(_inv_sync_caption)
 
-            # W227 (2026-06-06 根治): 商品「状態」ランク編集。⚠️ 以前は人気度 rank 列
-            # (自動ランク更新の S/A/B/C/D/E) を表示していたため、価格編集で人気度Sを eBay
-            # Condition Open Box(1500) へ誤上書きする事故が起きた。本 widget は **eBay 実
-            # Condition 由来** (_condition_widget_initial: condition_rank 優先 → ebay_condition_id
-            # 由来 1000→N/1500→S/7000→As-Is/3000→未設定) を表示し、人気度 rank 列は一切
-            # 読み書きしない。未設定 (Used サブランク不明 / eBay未取得) は sentinel で
-            # stale write 防止。eBay Condition 反映は 📤eBay反映 (dirty-flag、user 変更時のみ)。
-            _RANK_BLANK = "（未設定 / eBay未取得）"
-            _RANK_CHOICES = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
-            _cur_rank = _condition_widget_initial(p)
-            _rank_opts = [_RANK_BLANK] + _RANK_CHOICES
-            _rank_default = _cur_rank if _cur_rank in _RANK_CHOICES else _RANK_BLANK
-            _cid_disp = str(p.get("ebay_condition_id") or "").strip() or "未取得"
-
-            # Row: 商品ランク
-            _r_a, _r_b = st.columns([1, 1.5])
-            with _r_a:
-                _b_label(
-                    "商品ランク",
-                    "eBay 実 Condition 由来 (人気度グレードとは別)。N=新品 / S=新品同様 / "
-                    "A=美品 / B=良品 / C=使用感 / D=難あり / PO=通電のみ / As-Is=未確認。"
-                    "変更を 📤eBay反映 すると eBay Condition も更新 (変更時のみ)。"
-                    "Used品は A-PO すべて eBay 上は Used(3000)。",
-                )
-            with _r_b:
-                _rank_sel = st.selectbox(
-                    "商品ランク (eBay 状態)",
-                    options=_rank_opts,
-                    index=_rank_opts.index(_rank_default),
-                    key=f"pm_rank_{eid}",
-                    label_visibility="collapsed",
-                )
-            editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
-            # dirty-flag: render 時の状態 (eBay Condition 由来) を保持。
-            # _apply_listing_content_to_ebay は user が widget を **実際に変更した時のみ**
-            # Condition を push する (人気度 stale 値の誤上書き事故を構造的に遮断)。
-            editing["rank_render_initial"] = _cur_rank or None
-            st.caption(f"現在の eBay Condition: **{_cid_disp}** "
-                       f"({_CONDITION_ID_LABEL.get(_cid_disp, '—')})"
-                       + ("　※ Used はサブランク(A-PO)を選ぶと MonoDeck に記録 (eBay は Used のまま)"
-                          if _cid_disp == "3000" else ""))
+            # W314 (2026-07-03 user 要望): 商品ランク widget はコンテンツパネル側の
+            # 「📝 Description & Condition」ブロックへ移動 (重複解消)。従来ここに存在した
+            # `pm_rank_{eid}` selectbox + editing["rank"] / editing["rank_render_initial"]
+            # の書込は撤去。_apply_listing_content_to_ebay は editing.get("rank") / .get(
+            # "rank_render_initial") を .get() で読むためキー不在時は None → dirty 不成立
+            # で skip (等価な no-op、eBay/DB への影響ゼロ)。
 
             # Row: 重量
             _r_a, _r_b = st.columns([1, 1.5])
@@ -1589,72 +1554,15 @@ def _render_left_basic_and_physical(
                     label_visibility="collapsed",
                 )
 
-            # W227 (2026-06-06 user 要望): ランク選択時に迷わないよう 8 段階の早見表を
-            # 折りたたみで掲示 (CLAUDE.md コンディションランク 8 段階)。eBay Condition との
-            # 対応も併記 (N=New / S=Open Box / A-PO=Used / As-Is=For parts)。
-            with st.expander("📖 商品ランク早見表 (どれにするか迷ったら)", expanded=False):
-                st.markdown(
-                    "| ランク | 意味 | 外観 × 動作 | eBay Condition |\n"
-                    "|---|---|---|---|\n"
-                    "| **N** | 新品・未開封 | シュリンク / 工場出荷 | New (1000) |\n"
-                    "| **S** | 新品同様 | 開封済だが未使用・使用痕なし | Open Box (1500※) |\n"
-                    "| **A** | 美品・動作確認済 | 小さな使用痕、全機能動作 | Used (3000) |\n"
-                    "| **B** | 並品・動作確認済 | 目立つ使用痕、全機能動作 | Used (3000) |\n"
-                    "| **C** | 使用感あり・動作確認済 | 使用感強い、全機能動作 | Used (3000) |\n"
-                    "| **D** | 難あり・動作確認済 | 外観/機能に問題、動作は限定的 | Used (3000) |\n"
-                    "| **PO** | 通電のみ | 電源 ON 確認だけ・動作未確認 | Used (3000) |\n"
-                    "| **As-Is** | 未確認 / 部品取り | 無保証販売・**理由必須** | For parts (7000) |\n"
-                )
-                st.caption(
-                    "判別のコツ: 新品シュリンク=**N** / 未使用だが開封・保管長め=**S** / "
-                    "動作確認済の中古は使用痕の程度で **A→B→C→D** / 通電だけ=**PO** / "
-                    "ジャンク・部品取りは**As-Is(理由必須)**。"
-                    "※ S(Open Box=1500) は一部カテゴリで不可 → eBay 反映時に Used(3000) へ自動降格 (通知あり)。"
-                )
+            # W314 (2026-07-03): 「📖 商品ランク早見表」expander はランク widget と
+            # 一緒にコンテンツパネル側 (「📝 Description & Condition」) へ移動 (重複解消)。
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 🏷️ 商品タイトル — 全幅 1 行
-    # ──────────────────────────────────────────────────────────────────────
-    # W31 (2026-06-20): タイトル編集 (任意)。dirty-flag: render 時の DB 値を
-    # 保持し、無操作時は eBay に push しない。80 文字制限は
-    # _apply_listing_content_to_ebay → revise_item_title で validate。
-    _cur_title = (p.get("title") or "").strip()
-    editing["title_render_initial"] = _cur_title
-    t1, t2 = st.columns([1, 6])
-    with t1:
-        _b_label(
-            "商品タイトル",
-            "eBay Title (80文字以内)。変更後に 📤eBay反映 すると eBay Title も更新 "
-            "(変更した時のみ)。80 文字超は反映を拒否します。",
-        )
-    with t2:
-        _new_title_val = st.text_input(
-            "商品タイトル (eBay Title / 80 文字以内)",
-            value=_cur_title,
-            max_chars=80,
-            key=f"pm_title_{eid}",
-            label_visibility="collapsed",
-        )
-    editing["new_title"] = _new_title_val.strip() if _new_title_val else ""
-    _title_len = len(editing["new_title"])
-    if _title_len > 70:
-        st.caption(
-            f"⚠️ {'80 文字超 — 反映できません' if _title_len > 80 else f'{_title_len}/80 文字 (残り {80 - _title_len} 文字)'}"
-        )
-
-    # W220 slice3 (2026-06-04): Condition 理由 (eBay ConditionDescription)。
-    # ランクを Used(A/B/C/D/PO) / As-Is に変えて 📤eBay反映 する時に送る状態説明。
-    # As-Is(7000) は CLAUDE.md で **必須** (欠落=buyer紛争でDefect確定リスク)。
-    # eBay 専用 (DB 非保存)。空なら eBay 側の既存 ConditionDescription を維持。
-    editing["condition_description"] = st.text_input(
-        "Condition 理由 (中古/As-Is 用・eBay表示)",
-        value="",
-        key=f"pm_conddesc_{eid}",
-        max_chars=1000,
-        help="ランクを Used/As-Is に変えて eBay 反映する時の状態説明 (例: "
-             "Tested OK / No AC adapter for testing)。As-Is は必須。空なら eBay "
-             "側の既存説明を維持。DB には保存しません (eBay 専用)。",
-    )
+    # W314 (2026-07-03 user 要望): 商品タイトル (pm_title_) + Condition 理由 (pm_conddesc_)
+    # widget はコンテンツパネル側 (「📝 Description & Condition」) へ移動 (重複解消)。
+    # `editing["title_render_initial"]` / `editing["new_title"]` / `editing[
+    # "condition_description"]` の書込は撤去。_apply_listing_content_to_ebay は
+    # `editing.get(...)` で参照するためキー不在時は None → dirty 不成立で skip
+    # (等価な no-op、eBay/DB への影響ゼロ)。
 
     # ──────────────────────────────────────────────────────────────────────
     # 📎 listing メモ (W140) — 内容あれば自動展開、空なら折りたたみ
@@ -1680,38 +1588,12 @@ def _render_left_basic_and_physical(
             label_visibility="collapsed",
         )
 
-    # W220 (2026-06-04): description (商品説明文) 編集。ローカル下書きを DB に保持。
-    # eBay への反映は slice3 の「📤 eBay反映」(ReviseItem) 経由で明示実行 (即時 push
-    # しない=安全側)。内容あれば見出しに「入力あり」、本文は折りたたみ既定。
-    _desc_body = p.get("listing_description") or ""
-    # C-fix (2026-06-05): listing_description は eBay から一度も取得しておらず
-    # (W220 は編集+ReviseItem 送出のみ)、全 listing で空 → 編集欄が空白だった。
-    # 「📥 eBayから現在の説明を取得」で GetItem の Description を引いて欄に流し込む。
-    # session_state key 方式 (value= 併用は警告 + 上書き不可のため不使用)。
-    _desc_key = f"pm_desc_{eid}"
-    if _desc_key not in st.session_state:
-        st.session_state[_desc_key] = _desc_body
-    with st.expander(
-        "📝 説明文 (description) 編集"
-        + (" — 入力あり" if (st.session_state.get(_desc_key) or "").strip() else " — 空"),
-        expanded=False,
-    ):
-        # W225 (2026-06-05): 旧「📥 eBayから現在の説明を取得」ボタンはここ (st.form 内)
-        # にあり、st.form 内に st.button は置けず editor 展開時に StreamlitAPIException
-        # でクラッシュしていた (今朝の C-fix で混入、表行選択で必ず開く本 W で顕在化)。
-        # 取得は即時アクションのため form **外** ボタン (_render_desc_fetch_button) へ
-        # 移設。ここは編集欄のみ。取得値は session_state[pm_desc_{eid}] 経由で連携。
-        st.caption("eBay から現在の説明を取り込むには、フォーム上部の "
-                   "「📥 eBayから現在の説明を取得」を使用 (取得後この欄に表示)。")
-        editing["listing_description"] = st.text_area(
-            "description",
-            key=_desc_key,
-            max_chars=8000,
-            height=160,
-            help="商品説明文の下書き (HTML 可)。保存で MonoDeck DB に保持。eBay へは "
-                 "別途「📤 eBay反映」(ReviseItem) で送信 (slice3)。空保存で下書き削除。",
-            label_visibility="collapsed",
-        )
+    # W314 (2026-07-03 user 要望): 説明文 (pm_desc_) expander はコンテンツパネル側
+    # (「📝 Description & Condition」) へ移動 (重複解消)。_save_product_data /
+    # _apply_listing_content_to_ebay は editing.get("listing_description") を `.get()`
+    # で読むためキー不在 → None → save/apply とも skip (等価な no-op、DB/eBay 影響
+    # ゼロ)。DB への listing_description 保存経路はコンテンツパネル側
+    # `_sync_description_db` が eBay 反映成功時に代替する。
 
     return editing
 
@@ -4099,13 +3981,10 @@ def _render_product_editor(p: dict, config: dict) -> None:
             # キーワード新着監視/eBaymag をパネル側「⚔ 競合・監視」「🌍 eBaymag」
             # expander へ移設したことに伴い右列が空になったため単一列化した
             # (money-direct ロジック・dirty-flag は不変、配置のみ変更)。
-            # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
-            # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
-            # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
-            # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
-            # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
-            # form 内 description text_area (同 key) が次 rerun で読む。
-            _render_desc_fetch_button(eid, config)
+            # W314 (2026-07-03 user 要望): 「📥 eBay から現在の説明を取得」ボタンは
+            # 説明文 widget と一緒にコンテンツパネル側 (「📝 Description & Condition」
+            # → 3 方式 radio の「⬇️ eBay から取得」) へ移動 (重複解消)。
+            # `_render_desc_fetch_button` 関数体は Phase 3 再利用余地のため残置。
             with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
                 editing = _render_left_basic_and_physical(
                     p, config, bp_state=bp_state)
