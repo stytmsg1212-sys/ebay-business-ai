@@ -32,6 +32,72 @@ def _close_supplier_followup(cid: int) -> None:
     close_supplier_followup_state(st.session_state, cid)
 
 
+def _render_followup_title_subsection(cid: int, eid: str) -> None:
+    """採用後フォローアップ欄の「✏️ タイトルも直す」サブセクション (W314 Phase 1 S3).
+
+    仕入先候補「採用」後にタイトルも直したい (今回要望の核心) に対応。
+    現行タイトルを ebay_listings から取得して text_input に初期表示、
+    変更があれば「eBay へ反映」ボタンが活性化する (dirty-flag、
+    tab_product_management.py の title 編集パターンを踏襲)。
+    """
+    from tabs._supplier_followup_state import (
+        apply_followup_title_to_ebay,
+        detect_origin_risk_words,
+        title_is_dirty,
+    )
+
+    _title_initial = ""
+    if eid:
+        try:
+            from monitor.database import get_conn
+            with get_conn() as conn:
+                _row = conn.execute(
+                    "SELECT title FROM ebay_listings WHERE ebay_item_id=?", (eid,),
+                ).fetchone()
+            _title_initial = (_row[0] if _row else "") or ""
+        except Exception:  # noqa: BLE001 -- UI 補完経路なので例外で section 壊さない
+            logger.exception("followup タイトル取得失敗 cid=%s eid=%s", cid, eid)
+
+    with st.expander("✏️ タイトルも直す", expanded=False):
+        if not eid or not _title_initial:
+            st.caption("listing 情報が取得できないため、ここではタイトルを編集できません。")
+            return
+
+        _new_title = st.text_input(
+            "商品タイトル (eBay Title / 80 文字以内)",
+            value=_title_initial,
+            max_chars=80,
+            key=f"_sup_title_{cid}",
+            help="変更後に「eBay へ反映」を押すと eBay Title を更新します (変更した時のみ)。",
+        )
+        _new_title = (_new_title or "").strip()
+        st.caption(f"{len(_new_title)}/80 文字")
+
+        _risk_words = detect_origin_risk_words(_new_title)
+        if _risk_words:
+            st.warning(
+                "⚠️ 原産国を示唆する表現が含まれています "
+                f"({', '.join(_risk_words)})。eBay 出品文への原産国記載は"
+                "関税リスクがあるため、記載しないことを推奨します。"
+            )
+
+        _dirty = title_is_dirty(_new_title, _title_initial)
+        if st.button(
+            "📤 eBay へ反映",
+            key=f"_sup_title_apply_{cid}",
+            type="primary",
+            disabled=not _dirty,
+        ):
+            _result = apply_followup_title_to_ebay(
+                eid, _new_title, _title_initial,
+                source_tab="followup", candidate_id=cid,
+            )
+            if _result.get("success"):
+                st.success(_result.get("message") or "タイトルを更新しました")
+            else:
+                st.error(_result.get("message") or "タイトル更新に失敗しました")
+
+
 def render_supplier_followup_section() -> bool:
     """採用後の写真/description フォローアップ欄を描画する。
 
@@ -122,6 +188,9 @@ def render_supplier_followup_section() -> bool:
                 f'{_f_ttl} (item {_f_eid})</div>',
                 unsafe_allow_html=True,
             )
+
+            # ── タイトルサブセクション (W314 Phase 1 S3) ──
+            _render_followup_title_subsection(_fcid, _f_eid)
 
             # ── 写真サブセクション ──
             if st.session_state.get(f"_sup_photo_prompt_{_fcid}"):

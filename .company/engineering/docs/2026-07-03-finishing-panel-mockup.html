@@ -1,0 +1,836 @@
+<!doctype html>
+<!-- 商品仕上げパネル UX リファクタリング モックアップ / 2026-07-03
+     商品管理・在庫監視・仕入先候補の3画面から同一の「商品仕上げパネル」に合流する設計案。
+     外部CDN・フォント・画像は一切使用しない完全自己完結HTML(画像はCSSグラデーション+絵文字で代用)。
+     クリーンなライトテーマ・teal アクセント(MonoDeck現行トーン)。タブはvanilla JSで切替。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品仕上げパネル UX リファクタリング — モックアップ</title>
+<style>
+  :root{
+    --bg:#f2f6f5; --surface:#ffffff; --surface-2:#f6faf9; --surface-3:#eef4f2;
+    --border:#dfe8e5; --border-soft:#ecf2f0;
+    --teal:#0e6b60; --teal-dark:#0a4c44; --teal-light:#159284; --teal-soft:#e3f3f0; --teal-softer:#f2faf8;
+    --text:#1c2624; --text-2:#59685f; --text-3:#8fa09b;
+    --amber:#a9750c; --amber-dark:#7a5407; --amber-soft:#fbf1d9; --amber-border:#e3bb5c;
+    --ok:#2e7d5b; --ok-soft:#e6f4ec; --err:#c0392b; --err-soft:#fbe9e6; --warn:#a9750c; --warn-soft:#fbf1d9;
+    --radius:16px; --radius-sm:11px; --radius-xs:8px;
+    --shadow-sm:0 1px 2px rgba(20,45,40,.06),0 2px 8px rgba(20,45,40,.05);
+    --shadow-md:0 3px 10px rgba(20,45,40,.08),0 8px 24px rgba(20,45,40,.06);
+    --f:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",Meiryo,sans-serif;
+    --f-num:Consolas,"SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--f);color:var(--text);background:var(--bg);line-height:1.6;font-size:14px}
+  .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 20px 80px}
+
+  /* ==== banner ==== */
+  .mockbanner{background:#fff4d6;border:1px solid #eccf85;color:#7a5b06;font-size:12px;font-weight:700;
+    text-align:center;padding:8px 10px;border-radius:var(--radius-xs);margin-bottom:16px}
+
+  /* ==== topbar ==== */
+  .topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:21px;color:#fff;
+    background:linear-gradient(135deg,var(--teal),var(--teal-dark));box-shadow:var(--shadow-sm)}
+  .brand h1{font-size:19px;margin:0;font-weight:800;letter-spacing:.2px}
+  .brand p{margin:2px 0 0;color:var(--text-2);font-size:12px;font-weight:500}
+
+  /* ==== tabbar ==== */
+  .tabbar{display:flex;gap:6px;background:var(--surface-3);padding:5px;border-radius:999px;margin-bottom:18px;
+    width:fit-content;box-shadow:inset 0 1px 2px rgba(20,45,40,.06)}
+  .tabbtn{border:0;background:transparent;padding:9px 18px;border-radius:999px;font-size:13px;font-weight:700;
+    color:var(--text-2);cursor:pointer;font-family:var(--f);transition:.15s}
+  .tabbtn.active{background:var(--teal);color:#fff;box-shadow:var(--shadow-sm)}
+  .tabbtn:not(.active):hover{color:var(--teal-dark)}
+
+  .screen{display:none}
+  .screen.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  h2.sectitle{font-size:14.5px;font-weight:800;margin:22px 0 10px;display:flex;align-items:center;gap:9px;color:var(--text)}
+  h2.sectitle .tag-auto{font-size:10.5px;font-weight:700;color:var(--teal-dark);background:var(--teal-soft);
+    border-radius:999px;padding:3px 10px;letter-spacing:.2px}
+  h2.sectitle .tag-manual{font-size:10.5px;font-weight:700;color:var(--text-2);background:var(--surface-3);
+    border-radius:999px;padding:3px 10px;letter-spacing:.2px}
+
+  /* ==== annotation badges / callouts ==== */
+  .note-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;padding:3px 10px;
+    border-radius:999px;letter-spacing:.2px;white-space:nowrap}
+  .note-badge.new{background:#d1495b;color:#fff}
+  .note-badge.unify{background:var(--teal-dark);color:#fff}
+  .note-badge.money{background:var(--amber-dark);color:#fff}
+  .speech{position:relative;background:#fff8e8;border:1.5px solid #eccf85;color:#6e5305;font-size:12px;
+    font-weight:600;padding:10px 14px;border-radius:12px;line-height:1.55;margin:10px 0 4px;max-width:480px}
+  .speech b{color:#4d3c02}
+
+  /* ==== card shell ==== */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow-sm);padding:16px 18px;margin-bottom:14px}
+
+  /* ==== filter bar / table (screen1) ==== */
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .input{border:1px solid var(--border);border-radius:var(--radius-xs);padding:9px 12px;font-size:13px;
+    font-family:var(--f);color:var(--text);background:var(--surface);outline:0}
+  .input:focus{border-color:var(--teal-light);box-shadow:0 0 0 3px var(--teal-soft)}
+  .input.full{width:100%}
+  .btn-outline{border:1px solid var(--teal);color:var(--teal-dark);background:var(--surface);
+    border-radius:var(--radius-xs);padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--f)}
+  .btn-outline:hover{background:var(--teal-softer)}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+  table.dt{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
+  table.dt thead th{text-align:left;padding:10px 12px;background:var(--surface-3);color:var(--text-2);
+    font-weight:700;font-size:11.5px;letter-spacing:.2px;border-bottom:1px solid var(--border)}
+  table.dt tbody td{padding:9px 12px;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+  table.dt tbody tr:last-child td{border-bottom:0}
+  table.dt tbody tr:hover{background:var(--surface-2);cursor:pointer}
+  table.dt tbody tr.sel{background:var(--teal-soft)}
+  table.dt tbody tr.sel td{font-weight:700}
+  .tt{font-weight:600}
+  .sub{display:block;font-size:11px;color:var(--text-3);font-weight:500;margin-top:1px}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .badge.stock{background:var(--teal-soft);color:var(--teal-dark)}
+  .badge.nostock{background:#eef1fb;color:#4753a8}
+  .badge.status-active{background:var(--ok-soft);color:var(--ok)}
+  .badge.status-warn{background:var(--warn-soft);color:var(--warn)}
+  .profit-cell{color:var(--teal-dark);font-weight:700}
+
+  /* ==== image placeholders (CSS gradient + emoji, no real images) ==== */
+  .imgph{border-radius:10px;display:flex;align-items:center;justify-content:center;color:#0a4c44;
+    border:1px solid var(--border);position:relative;flex-shrink:0;font-weight:700}
+  .imgph.g1{background:linear-gradient(135deg,#cdeae3,#94cfc2)}
+  .imgph.g2{background:linear-gradient(135deg,#d8e9f6,#a9c9e6)}
+  .imgph.g3{background:linear-gradient(135deg,#f5e3c9,#e3bd88)}
+  .imgph.g4{background:linear-gradient(135deg,#ece0f5,#c9a8e0)}
+  .imgph.g5{background:linear-gradient(135deg,#f7dbe0,#e6a9b8)}
+  .thumb-sm{width:44px;height:44px;font-size:18px}
+  .thumb-panel{width:64px;height:64px;font-size:26px;border-radius:14px}
+  .thumb-swap{width:100%;aspect-ratio:1/1;font-size:22px}
+  .swaptag{position:absolute;bottom:4px;left:4px;right:4px;background:rgba(10,76,68,.88);color:#fff;
+    font-size:9px;font-weight:700;text-align:center;border-radius:6px;padding:2px 4px}
+
+  /* ==== finishing panel header ==== */
+  .panel-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;
+    border-bottom:1px solid var(--border-soft);margin-bottom:14px}
+  .ph-title{flex:1;min-width:240px}
+  .ph-toprow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ph-toprow h3{margin:0;font-size:15.5px;font-weight:800;line-height:1.4}
+  .ph-sub{margin-top:5px;font-size:11.5px;color:var(--text-3);font-weight:500}
+  .ph-metrics{display:flex;gap:10px;flex-wrap:wrap}
+  .metric{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:var(--radius-xs);
+    padding:8px 14px;text-align:center;min-width:82px}
+  .metric .mv{display:block;font-size:15px;font-weight:800;font-family:var(--f-num);color:var(--text)}
+  .metric .mv.ok{color:var(--ok)}
+  .metric .ml{display:block;font-size:10px;color:var(--text-3);font-weight:700;margin-top:2px;letter-spacing:.2px}
+
+  /* ==== accordion ==== */
+  details.acc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+    margin-bottom:9px;overflow:hidden}
+  details.acc > summary{padding:12px 15px;font-weight:800;font-size:13px;cursor:pointer;list-style:none;
+    display:flex;align-items:center;gap:9px;color:var(--text);user-select:none}
+  details.acc > summary::-webkit-details-marker{display:none}
+  details.acc > summary::before{content:"▸";color:var(--text-3);font-size:11px;transition:.15s}
+  details.acc[open] > summary::before{content:"▾";color:var(--teal)}
+  details.acc[open] > summary{border-bottom:1px solid var(--border-soft)}
+  .acc-body{padding:13px 15px 15px}
+  .acc-hint{font-size:11.5px;color:var(--text-3);font-weight:500;margin-top:2px}
+
+  /* money zone (isolated) */
+  details.acc.money-zone{border:2px solid var(--amber-border);background:var(--amber-soft);
+    box-shadow:0 0 0 4px rgba(169,117,12,.07)}
+  details.acc.money-zone > summary{color:var(--amber-dark)}
+  details.acc.money-zone > summary::before{color:var(--amber)}
+  details.acc.money-zone[open] > summary{border-bottom:1px solid var(--amber-border)}
+  .money-body .field{margin-bottom:12px}
+  .money-btn{background:var(--amber-dark);color:#fff;border:0;border-radius:var(--radius-xs);padding:11px 20px;
+    font-weight:800;font-size:13px;cursor:pointer;font-family:var(--f);box-shadow:var(--shadow-sm)}
+  .money-btn:hover{background:#5f4106}
+  .money-warn{font-size:11px;color:var(--amber-dark);font-weight:600;margin-top:8px;line-height:1.6}
+
+  /* ==== fields (content group) ==== */
+  .field{margin-bottom:16px}
+  .field:last-child{margin-bottom:0}
+  .field label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--text-2);
+    margin-bottom:6px}
+  .counter{font-family:var(--f-num);font-size:11px;color:var(--text-3);font-weight:600}
+  .pill-dirty{font-size:10px;font-weight:800;background:#fff0d9;color:#a9600c;border-radius:999px;padding:2px 9px}
+  .fieldrow{display:flex;gap:14px;flex-wrap:wrap}
+  .field.half{flex:1;min-width:160px}
+
+  .desc-preview{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:var(--radius-xs);
+    padding:11px 13px;font-size:12.5px;color:var(--text-2);line-height:1.6;margin-bottom:9px}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+  .btn-sm{border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-xs);
+    padding:7px 13px;font-size:12px;font-weight:700;color:var(--text-2);cursor:pointer;font-family:var(--f)}
+  .btn-sm:hover{border-color:var(--teal-light);color:var(--teal-dark);background:var(--teal-softer)}
+
+  /* image mode select */
+  .imgmode-select{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .radiocard{display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);border-radius:999px;
+    padding:8px 14px;font-size:12px;font-weight:700;color:var(--text-2);cursor:pointer;background:var(--surface)}
+  .radiocard input{accent-color:var(--teal);margin:0}
+  .radiocard:has(input:checked){border-color:var(--teal);color:var(--teal-dark);background:var(--teal-softer)}
+
+  .plates{display:flex;gap:12px;flex-wrap:wrap}
+  .platecard{width:96px;text-align:center;border:2px solid transparent;border-radius:var(--radius-xs);
+    padding:6px;cursor:pointer}
+  .platecard .imgph{width:100%;aspect-ratio:1/1;font-size:24px;border-radius:10px;margin-bottom:5px}
+  .platecard .pl{font-size:11px;font-weight:700;color:var(--text-2)}
+  .platecard.sel{border-color:var(--teal);background:var(--teal-softer)}
+  .platecard.sel .pl{color:var(--teal-dark)}
+
+  .supplygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:640px){.supplygrid{grid-template-columns:repeat(2,1fr)}}
+  .supplyitem{position:relative;border:1px solid var(--border);border-radius:var(--radius-xs);padding:7px;
+    background:var(--surface)}
+  .supplyitem .imgph{width:100%;aspect-ratio:1/1;font-size:22px;border-radius:8px;margin-bottom:6px}
+  .supplyitem .schk{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--text-2)}
+  .supplyitem .schk input{accent-color:var(--teal)}
+  .reso{display:block;margin-top:5px;font-size:9.5px;font-weight:700;border-radius:6px;padding:2px 6px;text-align:center}
+  .reso.ok{background:var(--ok-soft);color:var(--ok)}
+  .reso.warn{background:var(--warn-soft);color:var(--warn)}
+
+  .swapcols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){.swapcols{grid-template-columns:1fr}}
+  .swaplabel{font-size:11.5px;font-weight:700;color:var(--text-2);margin-bottom:8px}
+  .swapgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .swapgrid .imgph{border-radius:10px}
+  .swapgrid .imgph.main{grid-column:1/3;grid-row:1/3;aspect-ratio:1/1}
+  .swapgrid .imgph.candi{cursor:pointer;border-width:2px}
+  .swapgrid .imgph.candi.sel{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-soft)}
+  .hint{font-size:11px;color:var(--text-3);font-weight:600;margin-top:10px}
+
+  /* diff table */
+  table.difftable{width:100%;border-collapse:collapse;font-size:12px}
+  table.difftable th{text-align:left;padding:6px 8px;color:var(--text-3);font-weight:700;font-size:10.5px;
+    border-bottom:1px solid var(--border-soft)}
+  table.difftable td{padding:8px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+  table.difftable tr:last-child td{border-bottom:0}
+  td.before{color:var(--text-3);text-decoration:line-through}
+  td.after{color:var(--teal-dark);font-weight:700}
+  table.difftable td.fname{font-weight:700;color:var(--text-2);white-space:nowrap}
+
+  .action-zone{margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);text-align:center}
+  .btn-primary.big{border:0;background:var(--teal);color:#fff;border-radius:999px;padding:14px 30px;
+    font-size:14.5px;font-weight:800;cursor:pointer;font-family:var(--f);box-shadow:var(--shadow-md)}
+  .btn-primary.big:hover{background:var(--teal-light)}
+  .action-note{font-size:11px;color:var(--text-3);font-weight:600;margin-top:8px}
+
+  .mini-note{font-size:11.5px;font-weight:700;color:var(--text-2);margin-bottom:8px}
+  .simplerow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-soft);
+    font-size:12.5px}
+  .simplerow:last-child{border-bottom:0}
+  .simplerow .url{flex:1;color:var(--text-2);font-family:var(--f-num);font-size:11.5px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+
+  /* ==== 在庫監視 / 仕入先候補 comparison card ==== */
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:880px){.compare-grid{grid-template-columns:1fr}}
+  .cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow-sm);padding:16px;margin-bottom:16px}
+  .cmp-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+  .cmp-top .tt{font-size:13.5px;font-weight:800;flex:1;line-height:1.4}
+  .score-pill{font-size:11px;font-weight:800;border-radius:999px;padding:4px 12px;white-space:nowrap}
+  .score-pill.hi{background:var(--ok-soft);color:var(--ok)}
+  .score-pill.mid{background:var(--warn-soft);color:var(--warn)}
+  .cmp-imgs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  .cmp-imgcol{text-align:center}
+  .cmp-imgcol .lab{font-size:10.5px;font-weight:700;color:var(--text-3);margin-bottom:6px}
+  .cmp-imgcol .imgph{width:100%;aspect-ratio:1/1;font-size:26px;border-radius:12px}
+  .cmp-meta{display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap}
+  .cmp-meta .m{font-size:11.5px}
+  .cmp-meta .m b{display:block;font-size:15px;font-family:var(--f-num);color:var(--teal-dark)}
+  .cmp-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn-adopt{border:0;background:var(--teal);color:#fff;border-radius:var(--radius-xs);padding:9px 16px;
+    font-size:12.5px;font-weight:800;cursor:pointer;font-family:var(--f)}
+  .btn-reject{border:1px solid var(--border);background:var(--surface);color:var(--text-2);
+    border-radius:var(--radius-xs);padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--f)}
+  .btn-newlist{border:1px solid var(--teal);background:var(--surface);color:var(--teal-dark);
+    border-radius:var(--radius-xs);padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--f)}
+  .adopted-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--ok);
+    background:var(--ok-soft);border-radius:999px;padding:7px 16px}
+  .gotolink{font-size:11.5px;font-weight:700;color:var(--teal-dark);background:var(--teal-soft);
+    border-radius:999px;padding:5px 12px;display:inline-flex;align-items:center;gap:5px;margin-top:6px}
+
+  /* inline finishing panel (compact, embedded in screen2/3) */
+  .inline-panel{margin-top:4px;border-top:2px dashed var(--teal-light);padding-top:14px}
+  .inline-panel .panel-head{padding-bottom:12px}
+  .inline-panel .ph-toprow h3{font-size:14px}
+
+  .foot{margin-top:30px;text-align:center;color:var(--text-3);font-size:11px;font-weight:600;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mockbanner">🧪 モックアップ — 実装前の画面イメージ（2026-07-03 設計案）</div>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">🧩</div>
+      <div>
+        <h1>商品仕上げパネル UX リファクタリング</h1>
+        <p>商品管理 / 在庫監視 / 仕入先候補 — どこから入っても同じ「商品仕上げパネル」に合流して1商品を仕上げる</p>
+      </div>
+    </div>
+  </div>
+
+  <nav class="tabbar">
+    <button class="tabbtn active" onclick="showTab('t1', this)">📦 商品管理</button>
+    <button class="tabbtn" onclick="showTab('t2', this)">🔍 在庫監視</button>
+    <button class="tabbtn" onclick="showTab('t3', this)">🤝 仕入先候補</button>
+  </nav>
+
+  <!-- ==================== 画面1: 商品管理 ==================== -->
+  <section id="t1" class="screen active">
+
+    <div class="card">
+      <div class="filterbar">
+        <input class="input" style="flex:2;min-width:220px" placeholder="🔍 タイトル / SKU / ebay_item_id で検索">
+        <select class="input"><option>すべてのステータス</option><option>Active</option><option>要対応</option></select>
+        <select class="input"><option>すべての在庫種別</option><option>有在庫</option><option>無在庫</option></select>
+        <button class="btn-outline">検索</button>
+      </div>
+
+      <div class="tablewrap">
+        <table class="dt">
+          <thead>
+            <tr><th></th><th>サムネ</th><th>タイトル</th><th>種別</th><th>価格</th><th>利益</th><th>在庫</th><th>ステータス</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="imgph g2 thumb-sm">🎵</div></td>
+              <td><span class="tt">Panasonic RP-HJE120 イヤホン (新品)</span><span class="sub">ebay_item_id ****7701</span></td>
+              <td><span class="badge stock">有在庫 stock01</span></td>
+              <td class="num">$19.99</td>
+              <td class="profit-cell num">¥820</td>
+              <td class="num">12</td>
+              <td><span class="badge status-active">Active</span></td>
+            </tr>
+            <tr class="sel">
+              <td><input type="checkbox" checked></td>
+              <td><div class="imgph g1 thumb-sm">🎧</div></td>
+              <td><span class="tt">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</span><span class="sub">ebay_item_id ****1123 ・選択中</span></td>
+              <td><span class="badge stock">有在庫 stock03</span></td>
+              <td class="num">$89.99</td>
+              <td class="profit-cell num">¥3,240</td>
+              <td class="num">3</td>
+              <td><span class="badge status-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="imgph g4 thumb-sm">🎚️</div></td>
+              <td><span class="tt">SONY WH-1000XM4 ヘッドホン</span><span class="sub">ebay_item_id ****4488</span></td>
+              <td><span class="badge nostock">無在庫 ebayyh_</span></td>
+              <td class="num">$159.00</td>
+              <td class="profit-cell num">¥5,120</td>
+              <td class="num">—</td>
+              <td><span class="badge status-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="imgph g3 thumb-sm">📟</div></td>
+              <td><span class="tt">KEYENCE FS-N11N センサーアンプ</span><span class="sub">ebay_item_id ****9902</span></td>
+              <td><span class="badge stock">有在庫 stock07</span></td>
+              <td class="num">$210.00</td>
+              <td class="profit-cell num">¥8,900</td>
+              <td class="num">1</td>
+              <td><span class="badge status-warn">要対応</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="imgph g5 thumb-sm">📏</div></td>
+              <td><span class="tt">HIOKI 3280-10F AC クランプメーター</span><span class="sub">ebay_item_id ****3315</span></td>
+              <td><span class="badge nostock">無在庫 ebayme_</span></td>
+              <td class="num">$145.00</td>
+              <td class="profit-cell num">¥4,050</td>
+              <td class="num">—</td>
+              <td><span class="badge status-active">Active</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2 class="sectitle">▼ 選択中の商品を仕上げる <span class="note-badge unify">NEW 統一パネル</span></h2>
+
+    <div class="card">
+      <div class="panel-head">
+        <div class="imgph g1 thumb-panel">🎧</div>
+        <div class="ph-title">
+          <div class="ph-toprow">
+            <h3>Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</h3>
+          </div>
+          <div class="ph-sub">ebay_item_id: ****1123 ・ SKU: stock03（有在庫）</div>
+        </div>
+        <div class="ph-metrics">
+          <div class="metric"><span class="mv">¥3,240</span><span class="ml">利益 14.2%</span></div>
+          <div class="metric"><span class="mv">$89.99</span><span class="ml">販売価格</span></div>
+          <div class="metric"><span class="mv">3</span><span class="ml">在庫数</span></div>
+          <div class="metric"><span class="mv ok">Active</span><span class="ml">ステータス</span></div>
+        </div>
+      </div>
+
+      <!-- グループ1: コンテンツ (主役・常時デモでは開いた状態) -->
+      <details class="acc" open>
+        <summary>コンテンツ</summary>
+        <div class="acc-body">
+
+          <div class="field">
+            <label>商品タイトル <span class="counter">62 / 80</span> <span class="pill-dirty">変更あり</span></label>
+            <input class="input full" value="Audio-Technica ATH-CKS330NC Wireless Earbuds w/Box Excellent">
+          </div>
+
+          <div class="field">
+            <label>Description</label>
+            <div class="desc-preview">Bluetooth 5.2 対応ワイヤレスイヤホン。元箱・付属品完備。動作確認済み、目立つ傷なし。ノイズキャンセリング機能良好…</div>
+            <div class="btnrow">
+              <button class="btn-sm">🤖 AI で生成</button>
+              <button class="btn-sm">✏️ 手動編集</button>
+              <button class="btn-sm">⬇️ eBay から取得</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>画像</label>
+            <div class="imgmode-wrap">
+              <div class="imgmode-select">
+                <label class="radiocard"><input type="radio" name="imgmode-p1" checked onchange="setImgMode(this,1)"><span>① AI 合成 (MONOタグ)</span></label>
+                <label class="radiocard"><input type="radio" name="imgmode-p1" onchange="setImgMode(this,2)"><span>② 仕入先画像をそのまま使う</span></label>
+                <label class="radiocard"><input type="radio" name="imgmode-p1" onchange="setImgMode(this,3)"><span>③ メイン1枚だけ差し替え</span></label>
+              </div>
+
+              <!-- モード① AI合成: 3候補プレート選択 -->
+              <div class="img-mode-panel" data-mode="1">
+                <div class="plates">
+                  <div class="platecard sel"><div class="imgph g1">🖼️</div><div class="pl">W3</div></div>
+                  <div class="platecard"><div class="imgph g2">🖼️</div><div class="pl">W4</div></div>
+                  <div class="platecard"><div class="imgph g3">🖼️</div><div class="pl">W2</div></div>
+                </div>
+              </div>
+
+              <!-- モード② 仕入先画像そのまま: 全画像グリッド -->
+              <div class="img-mode-panel" data-mode="2" style="display:none">
+                <div class="supplygrid">
+                  <div class="supplyitem"><div class="imgph g1">📷</div><label class="schk"><input type="checkbox" checked>1枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g2">📷</div><label class="schk"><input type="checkbox" checked>2枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g3">📷</div><label class="schk"><input type="checkbox" checked>3枚目</label><span class="reso warn">⚠ 480px — 要確認</span></div>
+                  <div class="supplyitem"><div class="imgph g4">📷</div><label class="schk"><input type="checkbox" checked>4枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g5">📷</div><label class="schk"><input type="checkbox">5枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g1">📷</div><label class="schk"><input type="checkbox">6枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g2">📷</div><label class="schk"><input type="checkbox">7枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                  <div class="supplyitem"><div class="imgph g3">📷</div><label class="schk"><input type="checkbox">8枚目</label><span class="reso ok">✓ 解像度チェック済 (500px以上)</span></div>
+                </div>
+              </div>
+
+              <!-- モード③ メイン1枚だけ差し替え -->
+              <div class="img-mode-panel" data-mode="3" style="display:none">
+                <div class="swapcols">
+                  <div class="swapcol">
+                    <div class="swaplabel">現在の eBay 画像</div>
+                    <div class="swapgrid">
+                      <div class="imgph g1 main">🎧<span class="swaptag">差し替え対象</span></div>
+                      <div class="imgph g2">2</div>
+                      <div class="imgph g3">3</div>
+                      <div class="imgph g4">4</div>
+                      <div class="imgph g5">5</div>
+                    </div>
+                  </div>
+                  <div class="swapcol">
+                    <div class="swaplabel">新メイン候補</div>
+                    <div class="swapgrid">
+                      <div class="imgph g2 candi sel">🆕</div>
+                      <div class="imgph g4 candi">🆕</div>
+                      <div class="imgph g5 candi">🆕</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="hint">💡 2枚目以降はそのまま保持されます</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fieldrow">
+            <div class="field half">
+              <label>ランク</label>
+              <select class="input full">
+                <option>N — 新品・未開封</option>
+                <option>S — 新品同様</option>
+                <option selected>A — 美品・動作確認済</option>
+                <option>B — 並品・動作確認済</option>
+                <option>C — 使用感あり・動作確認済</option>
+              </select>
+            </div>
+            <div class="field half">
+              <label>数量</label>
+              <input class="input full" type="number" value="3" min="0">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>変更プレビュー <span class="acc-hint" style="margin:0">変更されたフィールドのみ表示</span></label>
+            <table class="difftable">
+              <thead><tr><th>フィールド</th><th>Before</th><th>After</th></tr></thead>
+              <tbody>
+                <tr><td class="fname">タイトル</td><td class="before">ATH-CKS330NC Wireless Earbuds</td><td class="after">ATH-CKS330NC Wireless Earbuds w/Box Excellent</td></tr>
+                <tr><td class="fname">画像 (メイン差替)</td><td class="before">🎧 現行メイン</td><td class="after">🆕 新メイン候補 (2枚目以降保持)</td></tr>
+                <tr><td class="fname">数量</td><td class="before">1</td><td class="after">3</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="action-zone">
+            <button class="btn-primary big">🚀 eBay へ反映 (3件の変更)</button>
+            <div class="action-note">価格・送料は含まれません（下の隔離セクションから）</div>
+          </div>
+
+        </div>
+      </details>
+
+      <!-- グループ2: 仕入先 -->
+      <details class="acc">
+        <summary>仕入先</summary>
+        <div class="acc-body">
+          <div class="field">
+            <label>仕入先URL</label>
+            <input class="input full" value="https://page.auctions.yahoo.co.jp/jp/auction/x1234567890">
+          </div>
+          <div class="mini-note">候補一覧 (2件)</div>
+          <div class="simplerow"><div class="imgph g1 thumb-sm">📷</div><span class="url">https://page.auctions.yahoo.co.jp/jp/auction/x1234567890</span><span class="badge status-active">採用中</span></div>
+          <div class="simplerow"><div class="imgph g3 thumb-sm">📷</div><span class="url">https://jp.mercari.com/item/m12345678901</span><span class="badge nostock">候補</span></div>
+        </div>
+      </details>
+
+      <!-- グループ3: 競合・監視 -->
+      <details class="acc">
+        <summary>競合・監視</summary>
+        <div class="acc-body">
+          <div class="mini-note">有効競合セラー (3件)</div>
+          <div class="simplerow"><span class="url" style="flex:none;width:120px">jp-audio-shop</span><span class="url">$92.00 ・ 評価1,204 (98.6%) ・ ソールド多</span><span class="badge status-active">キーセラー</span></div>
+          <div class="simplerow"><span class="url" style="flex:none;width:120px">tokyo-gadgets99</span><span class="url">$88.50 ・ 評価340 (97.1%)</span></div>
+          <div class="simplerow"><span class="url" style="flex:none;width:120px">osaka-electronics</span><span class="url">$95.00 ・ 評価812 (99.0%)</span></div>
+        </div>
+      </details>
+
+      <!-- グループ4: eBaymag -->
+      <details class="acc">
+        <summary>eBaymag</summary>
+        <div class="acc-body">
+          <div class="simplerow"><span class="url" style="flex:none;width:120px">最終同期</span><span class="url">2026-07-03 03:12 (自動)</span><span class="badge status-active">正常</span></div>
+          <div class="simplerow"><span class="url" style="flex:none;width:120px">送料ポリシー</span><span class="url">SpeedPAK Economy ・ DDP適用</span></div>
+        </div>
+      </details>
+
+      <!-- グループ5: 価格・送料 (金銭直結・隔離) -->
+      <details class="acc money-zone">
+        <summary>💰 価格・送料 <span class="note-badge money">金銭直結・2段確認</span></summary>
+        <div class="acc-body money-body">
+          <div class="fieldrow">
+            <div class="field half">
+              <label>販売価格 (USD)</label>
+              <input class="input full" type="number" value="89.99" step="0.01">
+            </div>
+            <div class="field half">
+              <label>送料サービス</label>
+              <select class="input full"><option>SpeedPAK Economy</option><option>FedEx International</option></select>
+            </div>
+          </div>
+          <div class="field">
+            <label>関税 buffer (DDP)</label>
+            <input class="input full" value="$4.20 (Section 232 対象外・IEEPA 15%込み)" readonly>
+          </div>
+          <button class="money-btn">価格・送料を反映 (要確認)</button>
+          <div class="money-warn">⚠ このセクションは他のコンテンツ変更と別ボタンです。反映前に金額を必ず目視確認してください。</div>
+        </div>
+      </details>
+
+    </div>
+  </section>
+
+  <!-- ==================== 画面2: 在庫監視 ==================== -->
+  <section id="t2" class="screen">
+
+    <h2 class="sectitle">🚨 供給リスク（自動検知）<span class="tag-auto">自動</span></h2>
+
+    <div class="compare-grid">
+      <div class="cmp-card">
+        <div class="cmp-top">
+          <div class="tt">Panasonic RP-HJE120 イヤホン (新品)</div>
+          <span class="score-pill hi">一致度 94%</span>
+        </div>
+        <div class="cmp-imgs">
+          <div class="cmp-imgcol"><div class="lab">eBay 掲載画像</div><div class="imgph g2">🎵</div></div>
+          <div class="cmp-imgcol"><div class="lab">仕入先候補画像</div><div class="imgph g4">🎵</div></div>
+        </div>
+        <div class="cmp-meta">
+          <div class="m"><b>¥820</b>想定利益</div>
+          <div class="m"><b>2件</b>他候補</div>
+        </div>
+        <div class="adopted-tag">✅ 採用済み</div>
+        <div class="speech"><b>💬 補充ついでにタイトルも直せる：</b>在庫補充のためだけに開いたのに、そのままコンテンツ全体（タイトル・画像・ランク）を仕上げて反映できます。</div>
+
+        <div class="inline-panel">
+          <div class="panel-head">
+            <div class="imgph g2 thumb-panel">🎵</div>
+            <div class="ph-title">
+              <div class="ph-toprow"><h3>Panasonic RP-HJE120 イヤホン (新品)</h3><span class="note-badge unify">統一パネル</span></div>
+              <div class="ph-sub">ebay_item_id: ****7701 ・ SKU: stock01（有在庫）</div>
+            </div>
+            <div class="ph-metrics">
+              <div class="metric"><span class="mv">¥820</span><span class="ml">利益 4.1%</span></div>
+              <div class="metric"><span class="mv">$19.99</span><span class="ml">販売価格</span></div>
+              <div class="metric"><span class="mv ok">Active</span><span class="ml">ステータス</span></div>
+            </div>
+          </div>
+
+          <details class="acc" open>
+            <summary>コンテンツ</summary>
+            <div class="acc-body">
+              <div class="field">
+                <label>商品タイトル <span class="counter">48 / 80</span> <span class="pill-dirty">変更あり</span></label>
+                <input class="input full" value="Panasonic RP-HJE120 In-Ear Headphones New Sealed">
+              </div>
+              <div class="field">
+                <label>画像モード</label>
+                <div class="imgmode-wrap">
+                  <div class="imgmode-select">
+                    <label class="radiocard"><input type="radio" name="imgmode-t2c1" onchange="setImgMode(this,1)"><span>① AI 合成 (MONOタグ)</span></label>
+                    <label class="radiocard"><input type="radio" name="imgmode-t2c1" checked onchange="setImgMode(this,2)"><span>② 仕入先画像をそのまま使う</span></label>
+                    <label class="radiocard"><input type="radio" name="imgmode-t2c1" onchange="setImgMode(this,3)"><span>③ メイン1枚だけ差し替え</span></label>
+                  </div>
+                  <div class="img-mode-panel" data-mode="1" style="display:none">
+                    <div class="plates">
+                      <div class="platecard sel"><div class="imgph g1">🖼️</div><div class="pl">W3</div></div>
+                      <div class="platecard"><div class="imgph g2">🖼️</div><div class="pl">W4</div></div>
+                    </div>
+                  </div>
+                  <div class="img-mode-panel" data-mode="2">
+                    <div class="supplygrid">
+                      <div class="supplyitem"><div class="imgph g2">📷</div><label class="schk"><input type="checkbox" checked>1枚目</label><span class="reso ok">✓ 500px以上</span></div>
+                      <div class="supplyitem"><div class="imgph g4">📷</div><label class="schk"><input type="checkbox" checked>2枚目</label><span class="reso ok">✓ 500px以上</span></div>
+                      <div class="supplyitem"><div class="imgph g5">📷</div><label class="schk"><input type="checkbox" checked>3枚目</label><span class="reso ok">✓ 500px以上</span></div>
+                      <div class="supplyitem"><div class="imgph g1">📷</div><label class="schk"><input type="checkbox">4枚目</label><span class="reso ok">✓ 500px以上</span></div>
+                    </div>
+                  </div>
+                  <div class="img-mode-panel" data-mode="3" style="display:none">
+                    <div class="hint">③ を選ぶとメイン1枚だけの差し替えビューに切り替わります（画面1と同一UI）</div>
+                  </div>
+                </div>
+              </div>
+              <div class="fieldrow">
+                <div class="field half"><label>ランク</label><select class="input full"><option selected>N — 新品・未開封</option><option>S — 新品同様</option></select></div>
+                <div class="field half"><label>数量</label><input class="input full" type="number" value="12"></div>
+              </div>
+              <div class="field">
+                <label>変更プレビュー</label>
+                <table class="difftable">
+                  <thead><tr><th>フィールド</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td class="fname">タイトル</td><td class="before">Panasonic RP-HJE120 Earphones</td><td class="after">Panasonic RP-HJE120 In-Ear Headphones New Sealed</td></tr>
+                    <tr><td class="fname">画像</td><td class="before">🎵 旧画像3枚</td><td class="after">📷 仕入先画像3枚に統一</td></tr>
+                    <tr><td class="fname">数量</td><td class="before">0</td><td class="after">12</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="action-zone">
+                <button class="btn-primary big">🚀 eBay へ反映 (3件の変更)</button>
+                <div class="action-note">価格・送料は含まれません（画面1と同じ隔離セクションから）</div>
+              </div>
+            </div>
+          </details>
+          <details class="acc"><summary>仕入先</summary><div class="acc-body acc-hint">仕入先URLは供給リスク検知時に自動採用済み。</div></details>
+          <details class="acc"><summary>競合・監視</summary><div class="acc-body acc-hint">競合3件・キーセラーなし。</div></details>
+          <details class="acc"><summary>eBaymag</summary><div class="acc-body acc-hint">最終同期 2026-07-03 03:12。</div></details>
+          <details class="acc money-zone"><summary>💰 価格・送料 <span class="note-badge money">金銭直結・2段確認</span></summary><div class="acc-body money-body acc-hint">価格・送料の変更はこちらから個別に。</div></details>
+        </div>
+      </div>
+
+      <div class="cmp-card">
+        <div class="cmp-top">
+          <div class="tt">KEYENCE FS-N11N センサーアンプ</div>
+          <span class="score-pill mid">一致度 71%</span>
+        </div>
+        <div class="cmp-imgs">
+          <div class="cmp-imgcol"><div class="lab">eBay 掲載画像</div><div class="imgph g3">📟</div></div>
+          <div class="cmp-imgcol"><div class="lab">仕入先候補画像</div><div class="imgph g5">📟</div></div>
+        </div>
+        <div class="cmp-meta">
+          <div class="m"><b>¥8,900</b>想定利益</div>
+          <div class="m"><b>1件</b>他候補</div>
+        </div>
+        <div class="cmp-actions">
+          <button class="btn-adopt">✔ 採用</button>
+          <button class="btn-reject">✕ 不採用</button>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sectitle">📝 手動監視（自分で登録したURL）<span class="tag-manual">別概念</span></h2>
+    <div class="card">
+      <div class="simplerow">
+        <div class="imgph g1 thumb-sm">🔗</div>
+        <span class="url">https://page.auctions.yahoo.co.jp/jp/auction/m998877 — 状態: 監視中</span>
+        <a class="gotolink">📝 商品管理で開く</a>
+      </div>
+      <div class="simplerow">
+        <div class="imgph g2 thumb-sm">🔗</div>
+        <span class="url">https://jp.mercari.com/item/m55566677788 — 状態: 監視中</span>
+        <a class="gotolink">📝 商品管理で開く</a>
+      </div>
+      <div class="simplerow">
+        <div class="imgph g4 thumb-sm">🔗</div>
+        <span class="url">https://page.auctions.yahoo.co.jp/jp/auction/m112233 — 状態: 終了 (要確認)</span>
+        <a class="gotolink">📝 商品管理で開く</a>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ==================== 画面3: 仕入先候補 ==================== -->
+  <section id="t3" class="screen">
+
+    <h2 class="sectitle">🤝 仕入先候補</h2>
+
+    <div class="compare-grid">
+      <div class="cmp-card">
+        <div class="cmp-top">
+          <div class="tt">SONY WH-1000XM4 ヘッドホン</div>
+          <span class="score-pill hi">match_score 88</span>
+        </div>
+        <div class="cmp-imgs">
+          <div class="cmp-imgcol"><div class="lab">eBay 掲載画像</div><div class="imgph g4">🎚️</div></div>
+          <div class="cmp-imgcol"><div class="lab">候補画像</div><div class="imgph g2">🎚️</div></div>
+        </div>
+        <div class="cmp-meta">
+          <div class="m"><b>¥5,120</b>想定利益</div>
+          <div class="m"><b>88</b>スコア</div>
+        </div>
+        <div class="adopted-tag">✅ 採用済み</div>
+        <div class="speech"><b>💬 どこから入っても同じ：</b>この仕上げパネルは画面2（在庫監視）と全く同じ構成。仕入先候補から採用しても、そのままコンテンツを仕上げられます。</div>
+
+        <div class="inline-panel">
+          <div class="panel-head">
+            <div class="imgph g4 thumb-panel">🎚️</div>
+            <div class="ph-title">
+              <div class="ph-toprow"><h3>SONY WH-1000XM4 ヘッドホン</h3><span class="note-badge unify">統一パネル</span></div>
+              <div class="ph-sub">ebay_item_id: ****4488 ・ SKU: ebayyh_p1221413657（無在庫）</div>
+            </div>
+            <div class="ph-metrics">
+              <div class="metric"><span class="mv">¥5,120</span><span class="ml">利益 9.8%</span></div>
+              <div class="metric"><span class="mv">$159.00</span><span class="ml">販売価格</span></div>
+              <div class="metric"><span class="mv ok">Active</span><span class="ml">ステータス</span></div>
+            </div>
+          </div>
+
+          <details class="acc" open>
+            <summary>コンテンツ</summary>
+            <div class="acc-body">
+              <div class="field">
+                <label>商品タイトル <span class="counter">55 / 80</span> <span class="pill-dirty">変更あり</span></label>
+                <input class="input full" value="Sony WH-1000XM4 Wireless Noise Cancelling Headphones">
+              </div>
+              <div class="field">
+                <label>画像モード</label>
+                <div class="imgmode-wrap">
+                  <div class="imgmode-select">
+                    <label class="radiocard"><input type="radio" name="imgmode-t3c1" checked onchange="setImgMode(this,1)"><span>① AI 合成 (MONOタグ)</span></label>
+                    <label class="radiocard"><input type="radio" name="imgmode-t3c1" onchange="setImgMode(this,2)"><span>② 仕入先画像をそのまま使う</span></label>
+                    <label class="radiocard"><input type="radio" name="imgmode-t3c1" onchange="setImgMode(this,3)"><span>③ メイン1枚だけ差し替え</span></label>
+                  </div>
+                  <div class="img-mode-panel" data-mode="1">
+                    <div class="plates">
+                      <div class="platecard sel"><div class="imgph g4">🖼️</div><div class="pl">W3</div></div>
+                      <div class="platecard"><div class="imgph g2">🖼️</div><div class="pl">W4</div></div>
+                      <div class="platecard"><div class="imgph g5">🖼️</div><div class="pl">W2</div></div>
+                    </div>
+                  </div>
+                  <div class="img-mode-panel" data-mode="2" style="display:none">
+                    <div class="hint">② を選ぶと仕入先の全画像グリッドが表示されます（画面1と同一UI）</div>
+                  </div>
+                  <div class="img-mode-panel" data-mode="3" style="display:none">
+                    <div class="hint">③ を選ぶとメイン1枚だけの差し替えビューに切り替わります（画面1と同一UI）</div>
+                  </div>
+                </div>
+              </div>
+              <div class="fieldrow">
+                <div class="field half"><label>ランク</label><select class="input full"><option>S — 新品同様</option><option selected>A — 美品・動作確認済</option></select></div>
+                <div class="field half"><label>数量</label><input class="input full" type="number" value="1"></div>
+              </div>
+              <div class="field">
+                <label>変更プレビュー</label>
+                <table class="difftable">
+                  <thead><tr><th>フィールド</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td class="fname">タイトル</td><td class="before">(新規出品)</td><td class="after">Sony WH-1000XM4 Wireless Noise Cancelling Headphones</td></tr>
+                    <tr><td class="fname">画像</td><td class="before">(新規出品)</td><td class="after">🖼️ AI合成プレート W3</td></tr>
+                    <tr><td class="fname">数量</td><td class="before">(新規出品)</td><td class="after">1</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="action-zone">
+                <button class="btn-primary big">🚀 eBay へ反映 (3件の変更)</button>
+                <div class="action-note">価格・送料は含まれません（画面1と同じ隔離セクションから）</div>
+              </div>
+            </div>
+          </details>
+          <details class="acc"><summary>仕入先</summary><div class="acc-body acc-hint">候補URLをこのタブで採用済み。他候補1件は不採用に。</div></details>
+          <details class="acc"><summary>競合・監視</summary><div class="acc-body acc-hint">競合5件・キーセラー1件あり。</div></details>
+          <details class="acc"><summary>eBaymag</summary><div class="acc-body acc-hint">新規出品のため未同期。反映後に自動同期されます。</div></details>
+          <details class="acc money-zone"><summary>💰 価格・送料 <span class="note-badge money">金銭直結・2段確認</span></summary><div class="acc-body money-body acc-hint">価格・送料の変更はこちらから個別に。</div></details>
+        </div>
+      </div>
+
+      <div class="cmp-card">
+        <div class="cmp-top">
+          <div class="tt">HIOKI 3280-10F AC クランプメーター</div>
+          <span class="score-pill mid">match_score 66</span>
+        </div>
+        <div class="cmp-imgs">
+          <div class="cmp-imgcol"><div class="lab">eBay 掲載画像</div><div class="imgph g5">📏</div></div>
+          <div class="cmp-imgcol"><div class="lab">候補画像</div><div class="imgph g3">📏</div></div>
+        </div>
+        <div class="cmp-meta">
+          <div class="m"><b>¥4,050</b>想定利益</div>
+          <div class="m"><b>66</b>スコア</div>
+        </div>
+        <div class="cmp-actions">
+          <button class="btn-adopt">✔ 採用</button>
+          <button class="btn-reject">✕ 不採用</button>
+          <button class="btn-newlist">＋ 個別出品で新規</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <div class="foot">
+    UX リファクタリング設計モックアップ / どこから入っても同一の「商品仕上げパネル」に合流し1商品を仕上げる構成。
+    コンテンツ（タイトル・画像3モード・ランク・数量・変更プレビュー・一括反映）と 価格・送料（金銭直結・隔離）を分離。
+    2026-07-03 設計案・実装前イメージ。
+  </div>
+</div>
+
+<script>
+  function showTab(id, btn){
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.tabbtn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  function setImgMode(radio, mode){
+    var scope = radio.closest('.imgmode-wrap');
+    if(!scope) return;
+    scope.querySelectorAll('.img-mode-panel').forEach(function(el){
+      el.style.display = (String(el.getAttribute('data-mode')) === String(mode)) ? '' : 'none';
+    });
+  }
+</script>
+</body>
+</html>

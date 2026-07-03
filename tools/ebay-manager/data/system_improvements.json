@@ -2917,7 +2917,17 @@
     "priority": "normal",
     "status": "未着手",
     "created": "2026-07-02",
-    "completed": null,
-    "completed_date": null
+    "completed": null
+  },
+  {
+    "id": 379,
+    "tag": "W314",
+    "title": "3タブ統一「商品仕上げパネル」リファクタリング",
+    "description": "商品管理/在庫監視/仕入先候補の分断解消。どこから入っても同一の仕上げパネル (タイトル/description/画像3モード[合成・そのまま採用・メイン1枚差替]/ランク/数量) に合流、コンテンツ反映1ボタン+変更プレビュー、価格送料はT3隔離、listing_content_change_log 監査ログ新設 (全文保存)、性能改善 (N+1/キャッシュ/CSS)。設計書 = .company/engineering/docs/2026-07-03-finishing-panel-design.md、モックアップ承認済み。Phase 1-5 段階リリース (Phase 1 = タイトル欄+画像3モード+migration、着手 2026-07-03)。",
+    "category": "ui",
+    "priority": "高",
+    "status": "in_progress",
+    "created": "2026-07-03",
+    "completed": null
   }
 ]

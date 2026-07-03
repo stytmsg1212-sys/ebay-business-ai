@@ -604,10 +604,10 @@ def _upload_eps_and_revise(
 # Render UI section
 # ==========================================================================
 
-def render_supplier_photo_apply_section(
+def _render_mode1_ai_compose(
     candidate_id: int, candidate_url: str, ebay_item_id: str, candidate_title: str
 ) -> None:
-    """app.py から呼出される写真反映セクション.
+    """① AI 合成 (従来フロー、W314 S2 でモード分岐前と完全同一実装).
 
     Args:
         candidate_id: supplier_candidates.id (session_state key 用)
@@ -846,3 +846,685 @@ def render_supplier_photo_apply_section(
                         f"EPS は upload 済 ({result['eps_url']}) — "
                         "ReviseItem 再試行時は cache hit で課金 0"
                     )
+
+
+# ==========================================================================
+# W314 Phase 1 S2 (2026-07-03): 画像 3 モード共通部品
+#   ① AI 合成 (従来, _render_mode1_ai_compose) / ② そのまま採用 / ③ メイン差し替え
+# 設計書: .company/engineering/docs/2026-07-03-finishing-panel-design.md §4/§6
+# ==========================================================================
+
+MODE_AI_COMPOSE = "① AI 合成 (従来)"
+MODE_AS_IS = "② 仕入先画像をそのまま使う"
+MODE_MAIN_REPLACE = "③ メイン 1 枚だけ差し替え"
+
+# 確定判断1 (設計書 §0): 500px 未満は警告バッジのみ、ブロックしない (強行可)
+MIN_RESOLUTION_PX = 500
+
+
+def check_image_resolution(path: Path) -> Optional[tuple[int, int]]:
+    """画像ファイルの解像度 (width, height) を返す. 読込失敗時は None.
+
+    Q0 silent skip prevention: 失敗は logger.warning で痕跡保存.
+    """
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            return (int(im.width), int(im.height))
+    except Exception as e:
+        logger.warning(f"check_image_resolution 失敗 ({path}): {e}")
+        return None
+
+
+def is_low_resolution(width: int, height: int, min_px: int = MIN_RESOLUTION_PX) -> bool:
+    """幅 or 高さのいずれかが min_px 未満なら低解像度 (確定判断1: 警告のみ・強行可)."""
+    return width < min_px or height < min_px
+
+
+def _upgrade_to_https(url: str) -> str:
+    """`http://` を `https://` に昇格 (i.ebayimg.com 等は両対応). それ以外は素通し.
+
+    F6: 既存 GetItem 応答が http:// URL を返すケースがあり、そのまま ReviseItem に
+    送ると eBay 側で reject される (https 必須). i.ebayimg.com / ebayimg.com は
+    https でも同じリソースが返るため機械的に昇格しても副作用なし.
+    """
+    if not isinstance(url, str) or not url:
+        return url
+    if url.startswith("http://"):
+        return "https://" + url[len("http://"):]
+    return url
+
+
+def build_main_replace_picture_urls(
+    new_main_url: str, existing_urls: list[str], *, cap: int = 12,
+) -> tuple[list[str], list[str], list[str]]:
+    """③ メイン差し替え: `[new_main] + existing[1:]` を構築 (eBay 12 枚上限, dedupe 済).
+
+    PictureDetails は ReviseItem で全置換のみ (差分更新不可) のため、既存の
+    2 枚目以降を明示的に再送して保持する (設計書 §4-③).
+
+    W314 S2 codex review 対応:
+      - F5 dedupe: 順序保持で重複除去 (new_main が existing 内にある場合も 1 枠に).
+        cap 12 の実効枚数を減らさない (F5 と 12 枚上限の相互作用の意図).
+      - F6 http→https 昇格: existing 側 URL の `http://` は `https://` に昇格.
+        i.ebayimg.com は両対応のため機械的に昇格しても副作用なし.
+      - F4 fail-closed: 昇格後も非 https が残る URL は **silent 除外せず invalid に集計**.
+        caller は len(invalid) > 0 時に反映を中断する (silent 除外 = 画像消失事故).
+
+    Returns:
+        (kept, dropped, invalid).
+          - kept: 反映対象 (cap 件まで、dedupe + https 昇格済).
+          - dropped: cap 超過分 (dedupe 後の cap 位置以降).
+          - invalid: 昇格しても https にならなかった URL (mailto: 等).
+            **caller は len(invalid) > 0 なら全体を中断する** (Q0 silent skip 防止).
+    """
+    if not new_main_url:
+        return [], [], []
+    # 1. combined 構築 (new_main は必ず先頭、existing[1:] を後続)
+    combined_raw: list[str] = [new_main_url] + [
+        u for u in (existing_urls or [])[1:] if u
+    ]
+    # 2. F6: http → https 昇格
+    combined_upgraded = [_upgrade_to_https(u) for u in combined_raw]
+    # 3. F4: 非 https が残ったら invalid に集計 (silent 除外禁止)
+    invalid = [u for u in combined_upgraded if not u.startswith("https://")]
+    # 4. F5: 順序保持で dedupe
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for u in combined_upgraded:
+        if u in seen:
+            continue
+        seen.add(u)
+        deduped.append(u)
+    # 5. cap 適用 (dedupe 後の実効枚数で 12 上限を判定 = F5 意図)
+    kept = deduped[:cap]
+    dropped = deduped[cap:]
+    return kept, dropped, invalid
+
+
+def _download_image_to(url: str, dest: Path, timeout: float = 30.0) -> Optional[Path]:
+    """URL の画像をローカルにダウンロード. 成功時 Path、失敗時 None.
+
+    Q0 silent skip prevention: 失敗は logger.warning で痕跡保存.
+    """
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
+            r = c.get(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                },
+            )
+            r.raise_for_status()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(r.content)
+        return dest
+    except Exception as e:
+        logger.warning(f"_download_image_to 失敗 ({url} -> {dest}): {e}")
+        return None
+
+
+def _log_content_change_images_safe(
+    ebay_item_id: str,
+    before_urls: Optional[list[str]],
+    after_urls: Optional[list[str]],
+    *,
+    source_tab: str,
+    candidate_id: Optional[int],
+    success: bool,
+    ebay_ack: Optional[str] = None,
+) -> None:
+    """listing_content_change_log (W314 並行実装) への画像変更ログ書込.
+
+    monitor.listing_content_change_log は本タスクと並行実装中のため、未整備
+    (ImportError) でも UI を落とさず no-op fallback する (Q0: 痕跡は
+    logger.warning に残す、統合後は実体が入って自動的に記録が始まる).
+    """
+    try:
+        from monitor.listing_content_change_log import log_content_change
+    except ImportError as e:
+        logger.warning(
+            f"listing_content_change_log 未整備のため画像変更ログを skip "
+            f"(eid={ebay_item_id}): {e}"
+        )
+        return
+    try:
+        log_content_change(
+            ebay_item_id=ebay_item_id,
+            field="images",
+            before_value=json.dumps(before_urls or [], ensure_ascii=False),
+            after_value=json.dumps(after_urls or [], ensure_ascii=False),
+            source_tab=source_tab,
+            candidate_id=candidate_id,
+            success=success,
+            ebay_ack=ebay_ack,
+        )
+    except Exception as e:  # noqa: BLE001 log 契約の実装差異で例外多様、UI は落とさない
+        logger.warning(f"log_content_change 呼出失敗 (images, eid={ebay_item_id}): {e}")
+
+
+def _upload_full_list_and_revise(ebay_item_id: str, local_paths: list[str]) -> dict:
+    """② そのまま採用: 選択画像を EPS 化して PictureDetails を全置換.
+
+    Returns:
+        {'success': bool, 'message': str, 'picture_urls': list[str]}
+    """
+    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
+    from monitor.ebay_eps_uploader import upload_images_parallel
+    from monitor.ebay_client import revise_item_pictures
+    from monitor.image_pipeline_shared import resolve_final_picture_urls
+
+    creds = get_ebay_credentials()
+    if not ebay_credentials_ok(creds):
+        return {
+            'success': False,
+            'message': 'eBay credentials not configured (env var 設定 + OAuth 完了確認)',
+            'picture_urls': [],
+        }
+    if not local_paths:
+        return {'success': False, 'message': 'アップロード対象画像がありません', 'picture_urls': []}
+
+    paths = [Path(p) for p in local_paths]
+    try:
+        eps_results = upload_images_parallel(paths, use_cache=True, max_workers=3)
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'EPS upload exception: {type(e).__name__}: {e}',
+            'picture_urls': [],
+        }
+
+    if len(eps_results) != len(paths):
+        return {
+            'success': False,
+            'message': (
+                f'EPS results count mismatch: got {len(eps_results)} but expected '
+                f'{len(paths)}. upload_images_parallel internal bug の可能性.'
+            ),
+            'picture_urls': [],
+        }
+
+    eps_urls = [r.eps_url for r in eps_results if r.success and r.eps_url]
+    failed_count = len(paths) - len(eps_urls)
+    if not eps_urls:
+        return {
+            'success': False,
+            'message': f'EPS upload 全滅 ({len(paths)} 枚)',
+            'picture_urls': [],
+        }
+
+    kept, dropped = resolve_final_picture_urls(
+        processed_eps_urls=eps_urls, selected_raw_urls=[], fallback_raw_urls=[], cap=12,
+    )
+    if not kept:
+        return {
+            'success': False,
+            'message': 'EPS URL が有効な https URL ではありません',
+            'picture_urls': [],
+        }
+
+    revise_result = revise_item_pictures(
+        item_id=ebay_item_id, picture_urls=kept,
+        app_id=creds['app_id'], dev_id=creds['dev_id'], cert_id=creds['cert_id'],
+        user_token=creds['user_token'],
+    )
+    if not revise_result['success']:
+        return {
+            'success': False,
+            'message': (
+                f'EPS upload OK ({len(kept)} 枚) だが ReviseItem 失敗: '
+                f'{revise_result["message"]}. EPS は eps_upload_cache に永続記録済、'
+                f'再試行時は cache hit で課金 0.'
+            ),
+            'picture_urls': kept,
+        }
+
+    msg = f'eBay 反映成功: ItemID {ebay_item_id} の写真 {len(kept)} 枚で全置換'
+    if failed_count:
+        msg += f' / EPS 失敗 {failed_count} 枚 skip'
+    if dropped:
+        msg += f' / eBay 12 枚上限で {len(dropped)} 枚 truncate'
+    return {'success': True, 'message': msg, 'picture_urls': kept}
+
+
+def _upload_single_and_revise_main(
+    ebay_item_id: str, new_main_source: str, kind: str, existing_urls: list[str],
+) -> dict:
+    """③ メイン差し替え: 新メイン 1 枚を EPS 化し `[new_main] + existing[1:]` で ReviseItem.
+
+    Args:
+        new_main_source: kind='local' ならローカル合成済ファイルパス、
+            kind='remote' なら仕入先の画像 URL (内部で DL してから EPS upload).
+        existing_urls: GetItem で取得済の現行 PictureURL 全件. 呼び出し元
+            (`_render_mode3_main_replace`) で空でないこと確認済の前提だが、
+            本関数でも二重防御する (Q0: 既存画像消失リスクを絶対に取らない).
+
+    Returns:
+        {'success': bool, 'message': str, 'picture_urls': list[str]}
+    """
+    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
+    from monitor.ebay_eps_uploader import upload_images_parallel
+    from monitor.ebay_client import revise_item_pictures
+
+    creds = get_ebay_credentials()
+    if not ebay_credentials_ok(creds):
+        return {
+            'success': False,
+            'message': 'eBay credentials not configured (env var 設定 + OAuth 完了確認)',
+            'picture_urls': [],
+        }
+    if not existing_urls:
+        return {
+            'success': False,
+            'message': '現行画像一覧が空のため反映を中断しました (既存画像消失リスク回避)',
+            'picture_urls': [],
+        }
+
+    if kind == "local":
+        local_path = Path(new_main_source)
+        if not local_path.exists():
+            return {
+                'success': False,
+                'message': f'ローカル画像が見つかりません: {local_path}',
+                'picture_urls': [],
+            }
+    else:
+        tmp_dir = Path("data/hero_candidates/_mode3_tmp")
+        dest = tmp_dir / f"{ebay_item_id}_new_main.jpg"
+        local_path = _download_image_to(new_main_source, dest)
+        if not local_path:
+            return {
+                'success': False,
+                'message': f'新メイン画像のダウンロード失敗: {new_main_source}',
+                'picture_urls': [],
+            }
+
+    # W314 S2 review H1 fix: モード② と同じ eps_upload_cache 経由に統一。
+    # `upload_image_to_eps` 直呼びは cache 非経由のため、ReviseItem 失敗 → 再クリック
+    # で同一画像を再課金 upload してしまう。また ① で EPS 化済の合成 hero を ③ で
+    # 再利用する経路 (mode3 picker で AI 合成候補を選ぶ場合) では確実に二重 upload
+    # になる。`upload_images_parallel(..., use_cache=True)` で file hash → EPS URL の
+    # DB cache (`eps_upload_cache`) を経由し重複課金を防ぐ (max_workers=1: 単一画像)。
+    _eps_results = upload_images_parallel(
+        [local_path], use_cache=True, max_workers=1,
+    )
+    eps_result = _eps_results[0] if _eps_results else None
+    if not eps_result or not eps_result.success or not eps_result.eps_url:
+        return {
+            'success': False,
+            'message': (
+                f'新メイン画像の EPS upload 失敗: '
+                f'{getattr(eps_result, "error", "no result")}'
+            ),
+            'picture_urls': [],
+        }
+
+    kept, dropped, invalid = build_main_replace_picture_urls(
+        eps_result.eps_url, existing_urls, cap=12,
+    )
+    # F4 fail-closed: 昇格しても非 https が残る URL がある場合、silent 除外せず
+    # 全体を中断 (silent 除外 = 画像消失事故 = Q0 違反).
+    if invalid:
+        return {
+            'success': False,
+            'message': (
+                f'既存画像に https 化できない URL が {len(invalid)} 件あります '
+                f'(反映中断・画像消失防止): {invalid[:3]}'
+                + (f' ... 他 {len(invalid) - 3} 件' if len(invalid) > 3 else '')
+            ),
+            'picture_urls': [],
+        }
+    if not kept:
+        return {'success': False, 'message': '差し替え後の画像リストが空です', 'picture_urls': []}
+
+    revise_result = revise_item_pictures(
+        item_id=ebay_item_id, picture_urls=kept,
+        app_id=creds['app_id'], dev_id=creds['dev_id'], cert_id=creds['cert_id'],
+        user_token=creds['user_token'],
+    )
+    if not revise_result['success']:
+        return {
+            'success': False,
+            'message': (
+                f'新メイン EPS upload OK ({eps_result.eps_url}) だが ReviseItem 失敗: '
+                f'{revise_result["message"]}'
+            ),
+            'picture_urls': kept,
+        }
+
+    msg = f'eBay 反映成功: メイン画像を差し替え ({len(kept)} 枚、うち既存保持 {len(kept) - 1} 枚)'
+    if dropped:
+        msg += f' / eBay 12 枚上限で {len(dropped)} 枚 truncate'
+    return {'success': True, 'message': msg, 'picture_urls': kept}
+
+
+def _render_mode2_as_is(
+    candidate_id: int, candidate_url: str, ebay_item_id: str, candidate_title: str
+) -> None:
+    """② 仕入先画像をそのまま採用 (AI 合成なし、EPS 経由で eBay 全置換).
+
+    hotlink 直渡し不可 (仕入先側 URL 消滅対策) のため、選択画像は必ず一旦
+    ローカル DL → EPS upload を経由する (設計書 §4-②).
+    """
+    sk_all_urls = f"{_SS}asis_all_urls_{candidate_id}"
+    sk_selected = f"{_SS}asis_selected_{candidate_id}"
+    sk_downloaded = f"{_SS}asis_downloaded_{candidate_id}"
+    sk_apply_result = f"{_SS}asis_apply_result_{candidate_id}"
+
+    with st.container(border=True):
+        st.caption(f"② そのまま採用: 対象商品 {candidate_title[:60]} / item {ebay_item_id}")
+
+        all_urls = st.session_state.get(sk_all_urls)
+        if all_urls is None:
+            with st.spinner("仕入先 URL から全画像を抽出中 (Yahoo/Mercari/PayPay 対応)..."):
+                all_urls = fetch_supplier_images_all(candidate_url)
+            st.session_state[sk_all_urls] = all_urls
+        if not all_urls:
+            st.error(
+                "仕入先画像が取得できません (scrape_supplier_url 失敗 + og:image meta も無し)。"
+                "仕入先 URL を確認してください。"
+            )
+            return
+
+        st.markdown("**採用する画像を選択してください (チェックボックス、既定は 1 枚目)**")
+        selected_flags: dict = st.session_state.get(sk_selected) or {}
+        per_row = 5
+        for i in range(0, len(all_urls), per_row):
+            cols = st.columns(per_row)
+            for j, url in enumerate(all_urls[i:i + per_row]):
+                idx = i + j
+                with cols[j]:
+                    try:
+                        st.image(url, use_container_width=True)
+                    except Exception:  # noqa: BLE001
+                        st.caption(f"(表示失敗) #{idx+1}")
+                    checked = st.checkbox(
+                        f"#{idx+1} を採用", value=selected_flags.get(idx, idx == 0),
+                        key=f"{_SS}asis_chk_{candidate_id}_{idx}",
+                    )
+                    selected_flags[idx] = checked
+        st.session_state[sk_selected] = selected_flags
+
+        chosen_idx = sorted(i for i, v in selected_flags.items() if v)
+        if not chosen_idx:
+            st.info("1 枚以上選択してください。")
+            return
+        chosen_urls = [all_urls[i] for i in chosen_idx]
+
+        if st.button(
+            "選択画像をダウンロードして解像度確認",
+            key=f"{_SS}asis_btn_dl_{candidate_id}", type="primary",
+        ):
+            out_dir = Path(f"data/hero_candidates/sup_{candidate_id}/asis")
+            downloaded: dict = {}
+            with st.spinner(f"{len(chosen_urls)} 枚ダウンロード中..."):
+                for i, url in zip(chosen_idx, chosen_urls):
+                    dest = out_dir / f"raw_{i:02d}.jpg"
+                    path = _download_image_to(url, dest)
+                    reso = check_image_resolution(path) if path else None
+                    downloaded[i] = {
+                        "url": url,
+                        "path": str(path) if path else None,
+                        "reso": reso,
+                    }
+            st.session_state[sk_downloaded] = downloaded
+            st.rerun()
+
+        downloaded = st.session_state.get(sk_downloaded)
+        if not downloaded:
+            return
+        if set(downloaded.keys()) != set(chosen_idx):
+            st.warning("選択が変更されました。「選択画像をダウンロードして解像度確認」を再実行してください。")
+            return
+
+        st.markdown("**ダウンロード結果**")
+        ok_paths: list[str] = []
+        for i in chosen_idx:
+            info = downloaded.get(i) or {}
+            path = info.get("path")
+            reso = info.get("reso")
+            if not path:
+                st.caption(f"#{i+1}: ⚠ ダウンロード失敗 (対象から除外されます)")
+                continue
+            if reso and is_low_resolution(*reso):
+                st.caption(
+                    f"#{i+1}: ⚠ 低解像度 {reso[0]}x{reso[1]} "
+                    f"({MIN_RESOLUTION_PX}px 未満、そのまま反映可)"
+                )
+            elif reso:
+                st.caption(f"#{i+1}: OK ({reso[0]}x{reso[1]})")
+            else:
+                st.caption(f"#{i+1}: OK (解像度不明)")
+            ok_paths.append(path)
+
+        if not ok_paths:
+            st.error("有効な画像がありません。")
+            return
+
+        st.markdown("---")
+        if st.button(
+            f"📷 この {len(ok_paths)} 枚で eBay 画像を全置換",
+            key=f"{_SS}asis_btn_apply_{candidate_id}", type="primary",
+        ):
+            from monitor.ebay_image_fetcher import get_all_ebay_image_urls
+            before_urls = get_all_ebay_image_urls(ebay_item_id)  # ログ用ベストエフォート
+            # W314 S2 codex review F9: before 取得失敗時は silent にせず UI 注記 + log
+            # (mode② は revise 側の重み付けが「全置換 = before 空でも本命処理継続」でよい
+            # ため反映は中断しない、が「記録できていない」事実は user に見える形にする).
+            if not before_urls:
+                logger.warning(
+                    f"mode② before_urls 取得失敗 (eid={ebay_item_id}). "
+                    f"監査ログ before_value は [] で記録し反映は続行."
+                )
+                st.info(
+                    "変更前画像の記録を取得できませんでした (Ack≠Success / API 失敗)。"
+                    "監査ログの変更前は空で記録され、反映処理は続行します。"
+                )
+            with st.spinner("EPS アップロード + eBay 反映中..."):
+                result = _upload_full_list_and_revise(ebay_item_id, ok_paths)
+            after_urls = result.get("picture_urls") if result.get("success") else []
+            _log_content_change_images_safe(
+                ebay_item_id, before_urls, after_urls,
+                source_tab="supplier_candidates", candidate_id=candidate_id,
+                success=bool(result.get("success")), ebay_ack=result.get("message"),
+            )
+            st.session_state[sk_apply_result] = result
+            st.rerun()
+
+        result = st.session_state.get(sk_apply_result)
+        if result:
+            if result['success']:
+                st.success(result['message'])
+            else:
+                st.error(result['message'])
+
+
+def _render_mode3_main_replace(
+    candidate_id: int, candidate_url: str, ebay_item_id: str, candidate_title: str
+) -> None:
+    """③ メイン 1 枚だけ差し替え. `[new_main] + existing[1:]` で eBay に再送.
+
+    現行配列 (GetItem) の取得失敗時は反映を中断してエラー表示する
+    (設計書 §4-③: 既存画像を消すリスクを絶対に取らない).
+    """
+    sk_current = f"{_SS}mr_current_{candidate_id}"
+    sk_supplier_urls = f"{_SS}mr_supplier_urls_{candidate_id}"
+    sk_picked = f"{_SS}mr_picked_{candidate_id}"
+    sk_picked_kind = f"{_SS}mr_picked_kind_{candidate_id}"
+    sk_apply_result = f"{_SS}mr_apply_result_{candidate_id}"
+    # ① モードで合成済の hero 候補があれば新メイン候補として再利用 (session_state key 共有)
+    sk_ai_cands = f"{_SS}hero_candidates_{candidate_id}"
+
+    with st.container(border=True):
+        st.caption(f"③ メイン差し替え: 対象商品 {candidate_title[:60]} / item {ebay_item_id}")
+
+        current = st.session_state.get(sk_current)
+        if current is None:
+            from monitor.ebay_image_fetcher import get_all_ebay_image_urls
+            with st.spinner("eBay の現行画像一覧を取得中 (GetItem)..."):
+                current = get_all_ebay_image_urls(ebay_item_id)
+            st.session_state[sk_current] = current
+
+        if not current:
+            st.error(
+                "eBay の現行画像一覧を取得できませんでした (GetItem 失敗)。"
+                "既存画像を消すリスクがあるため反映は中断します。"
+                "credentials / ItemID を確認してから再試行してください。"
+            )
+            if st.button("再取得", key=f"{_SS}mr_btn_retry_{candidate_id}"):
+                st.session_state.pop(sk_current, None)
+                st.rerun()
+            return
+
+        st.markdown(f"**現行画像 ({len(current)} 枚、1 枚目がメイン = 差し替え対象)**")
+        cur_cols = st.columns(min(len(current), 6))
+        for i, url in enumerate(current[:6]):
+            with cur_cols[i]:
+                try:
+                    st.image(url, use_container_width=True)
+                except Exception:  # noqa: BLE001
+                    st.caption("(表示失敗)")
+                st.caption("🎯 現行メイン" if i == 0 else f"#{i+1}")
+        if len(current) > 6:
+            st.caption(f"... 他 {len(current) - 6} 枚")
+
+        supplier_urls = st.session_state.get(sk_supplier_urls)
+        if supplier_urls is None:
+            with st.spinner("仕入先 URL から画像を抽出中..."):
+                supplier_urls = fetch_supplier_images_all(candidate_url)
+            st.session_state[sk_supplier_urls] = supplier_urls
+
+        ai_cands = st.session_state.get(sk_ai_cands) or []
+        candidates: list[dict] = []
+        for c in ai_cands:
+            p = c.get("path")
+            if p:
+                candidates.append(
+                    {"label": f"AI合成 [{c.get('plate_id')}]", "path": p, "kind": "local"}
+                )
+        for i, u in enumerate(supplier_urls or []):
+            candidates.append({"label": f"仕入先 raw #{i+1}", "path": u, "kind": "remote"})
+
+        if not candidates:
+            st.warning(
+                "新メイン候補がありません (仕入先画像取得失敗、①モードでの合成も未実施)。"
+            )
+            return
+
+        st.markdown("**新しいメイン画像を選択してください**")
+        picked = st.session_state.get(sk_picked)
+        per_row = 5
+        for i in range(0, len(candidates), per_row):
+            cols = st.columns(per_row)
+            for j, cand in enumerate(candidates[i:i + per_row]):
+                idx = i + j
+                with cols[j]:
+                    try:
+                        st.image(cand["path"], use_container_width=True)
+                    except Exception:  # noqa: BLE001
+                        st.caption("(表示失敗)")
+                    is_picked = (picked == cand["path"])
+                    st.caption(cand["label"])
+                    if st.button(
+                        "採用中" if is_picked else "選択",
+                        key=f"{_SS}mr_btn_pick_{candidate_id}_{idx}",
+                        type="primary" if is_picked else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state[sk_picked] = cand["path"]
+                        st.session_state[sk_picked_kind] = cand["kind"]
+                        st.rerun()
+
+        if not picked:
+            return
+
+        kind = st.session_state.get(sk_picked_kind) or "remote"
+        st.markdown("---")
+        if st.button(
+            "📷 このメイン画像で差し替え",
+            key=f"{_SS}mr_btn_apply_{candidate_id}", type="primary",
+        ):
+            # W314 S2 codex review F1/F2: apply 直前に fresh GetItem を取り直して
+            # ベースラインにする (sk_current は render 開始時の snapshot なので、
+            # モード②等で他 tab から画像更新された場合に stale)。取得失敗/空なら
+            # 中断 (既存画像消失リスク回避、fail-closed).
+            from monitor.ebay_image_fetcher import get_all_ebay_image_urls
+            with st.spinner("現行画像を eBay から再取得中 (GetItem)..."):
+                fresh_current = get_all_ebay_image_urls(ebay_item_id)
+            if not fresh_current:
+                fail = {
+                    'success': False,
+                    'message': (
+                        'apply 直前の GetItem 再取得に失敗しました '
+                        '(Ack≠Success / API 失敗 / 空). 既存画像消失リスクがあるため '
+                        '反映を中断しました. しばらく待って再試行してください.'
+                    ),
+                    'picture_urls': [],
+                }
+                _log_content_change_images_safe(
+                    ebay_item_id, current, [],
+                    source_tab="supplier_candidates", candidate_id=candidate_id,
+                    success=False, ebay_ack=fail['message'],
+                )
+                st.session_state[sk_apply_result] = fail
+                st.rerun()
+            with st.spinner("EPS アップロード + eBay 反映中..."):
+                result = _upload_single_and_revise_main(
+                    ebay_item_id, picked, kind, fresh_current,
+                )
+            after_urls = result.get("picture_urls") if result.get("success") else []
+            # F2: 監査ログの before_value は fresh_current (revise 実行時の真の現行)
+            _log_content_change_images_safe(
+                ebay_item_id, fresh_current, after_urls,
+                source_tab="supplier_candidates", candidate_id=candidate_id,
+                success=bool(result.get("success")), ebay_ack=result.get("message"),
+            )
+            st.session_state[sk_apply_result] = result
+            # W314 S2 review M1: 成功時に現行画像キャッシュを無効化。
+            # 次回 render 時に GetItem で再取得させ、古い配列が表示継続するのを防ぐ。
+            if result.get("success"):
+                st.session_state.pop(sk_current, None)
+            st.rerun()
+
+        result = st.session_state.get(sk_apply_result)
+        if result:
+            if result['success']:
+                st.success(result['message'])
+            else:
+                st.error(result['message'])
+
+
+def render_supplier_photo_apply_section(
+    candidate_id: int, candidate_url: str, ebay_item_id: str, candidate_title: str
+) -> None:
+    """app.py / 仕入先候補タブから呼出される写真反映セクション (W314 S2: 3 モード).
+
+    Args:
+        candidate_id: supplier_candidates.id (session_state key 用)
+        candidate_url: 仕入先 URL (og:image / 全画像抽出元)
+        ebay_item_id: 反映先 eBay 出品 ID
+        candidate_title: 表示用商品名 (UI 短縮)
+
+    3 モード (既定 = ① 従来フロー無改変):
+        ① AI 合成 (従来): `_render_mode1_ai_compose` (完全既存実装)
+        ② 仕入先画像をそのまま使う: `_render_mode2_as_is` (EPS 経由で全置換)
+        ③ メイン 1 枚だけ差し替え: `_render_mode3_main_replace`
+            (`[new_main] + existing[1:]` で ReviseItem 再送)
+    """
+    sk_mode = f"{_SS}photo_mode_{candidate_id}"
+    mode = st.radio(
+        "反映モード",
+        [MODE_AI_COMPOSE, MODE_AS_IS, MODE_MAIN_REPLACE],
+        key=sk_mode,
+        horizontal=True,
+    )
+    if mode == MODE_AS_IS:
+        _render_mode2_as_is(candidate_id, candidate_url, ebay_item_id, candidate_title)
+    elif mode == MODE_MAIN_REPLACE:
+        _render_mode3_main_replace(candidate_id, candidate_url, ebay_item_id, candidate_title)
+    else:
+        _render_mode1_ai_compose(candidate_id, candidate_url, ebay_item_id, candidate_title)

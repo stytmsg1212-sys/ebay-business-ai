@@ -54,6 +54,8 @@ user の「**自走 / autonomous / 承認不要 / 承認求めず / proceed**」
 
 **subagent は `git stash` / `git checkout -- ` / `git restore` / `git reset` を実行禁止**。working tree は並列 subagent 全員の共有物であり、1 agent の stash が他 agent の未コミット成果物を巻き戻す (実例: S4 の `git stash && pytest && git stash pop` background 実行 + shell kill で pop 不達 → S3/S6/main の変更が stash に取り残され working tree から消失)。ベースライン比較 (「変更前状態でテスト」等) が必要な時は **worktree 隔離** (`Agent` の `isolation: "worktree"` / EnterWorktree) を使う。main は委譲 prompt に本禁止を明記する。復旧は main が一元管理 (subagent が独自に stash pop しない。読み取り専用の `git show stash@{N}:path` 抽出は可)。
 
+**2026-07-03 W314 S1 で再発 — 禁止明記だけでは止まらない**。誘発動機は 2 回とも「pre-existing test failure が自分の変更由来か確認したい」。main は委譲 prompt に (a) **非破壊の代替手段を毎回併記** (`git show HEAD:<path>` / `git diff HEAD -- <path>` / worktree 隔離)、(b) **既知 test 債務を事前列挙** (「v83/v84 version-pin 2 件は既知、確認不要」等) して stash の動機自体を消すこと。詳細: [[feedback_subagent_git_stash_shared_tree]] 再発節。
+
 ## model 割り振り (Q6 準拠、継承事故防止)
 
 - `Agent` の **model param を必ず明示** (省略すると subagent が main の高コスト model を継承)。code-reviewer は agent 定義 frontmatter で指定済なら省略可。

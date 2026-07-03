@@ -161,4 +161,77 @@ def _api_image_urls(ebay_item_id: str) -> list[str]:
     return re.findall(r"<PictureURL>(https?://[^<]+)</PictureURL>", body)
 
 
-__all__ = ["fetch_product_photos"]
+def get_all_ebay_image_urls(ebay_item_id: str) -> list[str]:
+    """W314 Phase1 S2: GetItem で Ack=Success 検証済の全 PictureURL を返す (fail-closed).
+
+    `_api_image_urls` は Ack 検証なしで PictureURL を抽出する (1 枚目キャッシュ用途
+    = `ebay_listing_image.py` の `get_ebay_image_url` の挙動維持のため touch しない).
+    本関数は W314 S2 codex review F3 対応で **Ack=Success を確認し、Success 以外
+    (Warning/Failure/欠落 = 部分応答の可能性) は空 list を返す** (mode③ 側の空中断
+    ガードに倒れる = fail-closed で既存画像消失リスクを回避).
+
+    画像 3 モードの「メイン 1 枚だけ差し替え」で現行画像配列を保持したまま
+    1 枚目のみ入替える際に使用する (`[new_main] + existing[1:]`).
+
+    Args:
+        ebay_item_id: eBay Item ID (12/13 桁).
+
+    Returns:
+        list[str]: Ack=Success の GetItem 応答から抽出した PictureURL 全件.
+            credentials 未設定 / API 失敗 / Ack≠Success / PictureURL 無しは
+            全て空 list (fail-closed). 呼び出し側 (mode③) は空 list 時に反映を
+            中断すること (既存画像消失防止).
+    """
+    import io
+    import json
+    try:
+        from monitor.credentials import get_ebay_credentials
+        from monitor.ebay_client import _call_trading_api
+    except ImportError as e:
+        logger.debug(f"ebay_client not available: {e}")
+        return []
+    if not (ebay_item_id and str(ebay_item_id).isdigit()
+            and len(str(ebay_item_id)) in (12, 13)):
+        logger.warning(f"get_all_ebay_image_urls: invalid ebay_item_id: {ebay_item_id!r}")
+        return []
+    cfg_path = _BASE_DIR / "config" / "schedule_config.json"
+    if not cfg_path.exists():
+        logger.debug(f"get_all_ebay_image_urls: schedule_config not found ({cfg_path})")
+        return []
+    try:
+        with io.open(cfg_path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.warning(f"get_all_ebay_image_urls: schedule_config read failed: {e}")
+        return []
+    try:
+        creds = get_ebay_credentials(cfg)
+    except Exception as e:  # noqa: BLE001 credentials モジュール例外多様
+        logger.debug(f"get_all_ebay_image_urls: creds unavailable: {e}")
+        return []
+    xml_req = f"""<?xml version="1.0" encoding="utf-8"?>
+<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials><eBayAuthToken>{creds.get("user_token", "")}</eBayAuthToken></RequesterCredentials>
+  <ItemID>{ebay_item_id}</ItemID>
+  <DetailLevel>ReturnAll</DetailLevel>
+</GetItemRequest>
+"""
+    try:
+        resp = _call_trading_api("GetItem", xml_req, **creds)
+    except Exception as e:  # noqa: BLE001 API 例外多様
+        logger.warning(f"get_all_ebay_image_urls: GetItem failed eid={ebay_item_id}: {e}")
+        return []
+    body = (resp or {}).get("raw", "") or ""
+    # F3: Ack=Success 検証 (Warning/Failure/欠落は fail-closed で空 list)
+    ack_match = re.search(r"<Ack>([^<]+)</Ack>", body)
+    ack = (ack_match.group(1).strip() if ack_match else "").lower()
+    if ack != "success":
+        logger.warning(
+            f"get_all_ebay_image_urls: Ack != Success (got {ack!r}) eid={ebay_item_id}. "
+            f"部分応答の可能性があるため fail-closed で空 list を返す."
+        )
+        return []
+    return re.findall(r"<PictureURL>(https?://[^<]+)</PictureURL>", body)
+
+
+__all__ = ["fetch_product_photos", "get_all_ebay_image_urls"]

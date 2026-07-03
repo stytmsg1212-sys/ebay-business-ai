@@ -4209,6 +4209,51 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v88 (W314 商品仕上げパネル Phase1 S1 / 2026-07-03): listing
+        # コンテンツ変更監査ログ ----
+        # 設計書 .company/engineering/docs/2026-07-03-finishing-panel-design.md
+        # §6。title/description/images/rank/quantity の revise 前後を全文保存
+        # (確定判断2)。listing 識別は ebay_item_id のみ (sku-rules.md 準拠)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 87:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS listing_content_change_log (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ebay_item_id  TEXT NOT NULL,
+                        field         TEXT NOT NULL,
+                        before_value  TEXT,
+                        after_value   TEXT,
+                        source_tab    TEXT,
+                        candidate_id  INTEGER,
+                        success       INTEGER NOT NULL DEFAULT 0,
+                        ebay_ack      TEXT,
+                        changed_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_lccl_eid "
+                    "ON listing_content_change_log(ebay_item_id)"
+                )
+                logger.info("[init_db v88] listing_content_change_log created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v88] table create skipped: {e}")
+
+            _v88_tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='listing_content_change_log'"
+            ).fetchone()[0]
+            if _v88_tables == 1:
+                conn.execute("PRAGMA user_version = 88")
+                logger.info("[init_db v88] schema_ver bumped to 88")
+            else:
+                logger.warning(
+                    "[init_db v88] 未完了 (listing_content_change_log 未作成)。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
