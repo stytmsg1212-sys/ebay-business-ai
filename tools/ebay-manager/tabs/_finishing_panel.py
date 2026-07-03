@@ -36,7 +36,7 @@ Phase 2 スコープ外 (Phase 3 以降、設計書§8):
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 import streamlit as st
 
@@ -87,8 +87,16 @@ def render_finishing_panel(
     candidate_id: Optional[int] = None,
     candidate_url: Optional[str] = None,
     source_tab: str = "product_management",
+    top_slot: Optional[Callable[[], None]] = None,
 ) -> None:
-    """統一「商品仕上げパネル」を描画するエントリポイント (呼び出し契約は module docstring 参照)."""
+    """統一「商品仕上げパネル」を描画するエントリポイント (呼び出し契約は module docstring 参照).
+
+    Args:
+        top_slot: ヘッダ (サムネ + 4 指標) の**直下**、「コンテンツ」 expander の**手前**に
+            差し込む callable (user 2026-07-03 要望: 詳細編集 (従来) をこの位置に置く)。
+            None なら差し込まない (followup 経由 = source_tab != "product_management" の
+            既定動作)。callable は streamlit UI を描画する副作用のみ、戻り値は使わない。
+    """
     if not eid:
         st.error("ebay_item_id が指定されていません (商品仕上げパネルを表示できません)")
         return
@@ -96,6 +104,7 @@ def render_finishing_panel(
     _render_finishing_panel_fragment(
         eid, config, candidate_id=candidate_id,
         candidate_url=candidate_url, source_tab=source_tab,
+        top_slot=top_slot,
     )
 
 
@@ -107,8 +116,20 @@ def _render_finishing_panel_fragment(
     candidate_id: Optional[int],
     candidate_url: Optional[str],
     source_tab: str,
+    top_slot: Optional[Callable[[], None]] = None,
 ) -> None:
-    """パネル本体 (@st.fragment、設計書§7: 採用時 scope="app" ではなくパネル scope に縮小)."""
+    """パネル本体 (@st.fragment、設計書§7: 採用時 scope="app" ではなくパネル scope に縮小).
+
+    レイアウト (user 2026-07-03 要望反映):
+        1. ヘッダ (サムネ + タイトル + 4 指標)
+        2. top_slot() — 商品管理タブから渡す「🔧 詳細編集 (従来)」がここに来る
+        3. 「コンテンツ」 expander (統一パネルの主要 UI)
+
+    「仕入先」「💰 価格・送料」 expander は 2026-07-03 に撤去 (user 判断: 仮置き
+    ブロックは詳細編集 (従来) がすぐ上にあるため案内不要)。関数
+    `_render_supplier_group` / `_render_money_zone` は Phase 3 で再利用可能性が
+    あるためソースは残置 (呼出のみ削除、K1)。
+    """
     from monitor.database import get_ebay_listing_by_item_id
 
     row = get_ebay_listing_by_item_id(eid)
@@ -118,18 +139,15 @@ def _render_finishing_panel_fragment(
 
     _render_header(eid, row)
 
+    if top_slot is not None:
+        top_slot()
+
     _content_open = source_tab in ("inventory", "supplier")
     with st.expander("コンテンツ", expanded=_content_open):
         _render_content_group(
             eid, row, config,
             candidate_id=candidate_id, candidate_url=candidate_url, source_tab=source_tab,
         )
-
-    with st.expander("仕入先", expanded=False):
-        _render_supplier_group(row, candidate_url)
-
-    with st.expander("💰 価格・送料 (金銭直結・2段確認)", expanded=False):
-        _render_money_zone(eid)
 
 
 # =============================================================================
@@ -670,7 +688,8 @@ def _apply_content_changes(
 
 
 # =============================================================================
-# 仕入先グループ (最小、Phase 3 で編集機能追加予定)
+# 仕入先グループ / 価格・送料 zone (2026-07-03 現在 panel から呼ばれていない、
+# Phase 3 の再利用余地を残すため関数体は温存)
 # =============================================================================
 
 def _render_supplier_group(row: dict, candidate_url: Optional[str]) -> None:

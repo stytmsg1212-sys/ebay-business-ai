@@ -3917,9 +3917,13 @@ def _render_product_editor(p: dict, config: dict) -> None:
     # W314 Phase 2 S6 (2026-07-03): 統一「商品仕上げパネル」を先頭に表示。
     # 従来の編集ゾーンはそのまま下に残し、st.expander で包んで温存する
     # (Phase 3 で 5 グループ再編予定、今回は包むだけ = K2 surgical)。
-    render_finishing_panel(eid, config, source_tab="product_management")
-
-    with st.expander("🔧 詳細編集 (従来)", expanded=False):
+    # user feedback 2026-07-03: 詳細編集 (従来) が一番使うので、パネルヘッダ
+    # (サムネ + 4 指標) の直下 = 「コンテンツ」 expander の手前に配置する。
+    # top_slot callable を使って render_finishing_panel の内側に差し込む
+    # (panel の @st.fragment scope 内で描画されるため、button rerun がパネル
+    # scope に閉じる副次効果もある = 従来動作と互換)。
+    def _legacy_editor_top_slot() -> None:
+        with st.expander("🔧 詳細編集 (従来)", expanded=False):
             # ── Title (商品名 full text) ──
             st.markdown(f"### {p.get('title', '')}")
 
@@ -4155,6 +4159,14 @@ def _render_product_editor(p: dict, config: dict) -> None:
 
                 # 保存後もアコーディオンを開いたままにする
                 st.session_state["pm_keep_open_eid"] = eid
+
+    # 詳細編集 (従来) の closure 定義が済んだので panel を描画する。
+    # top_slot にこの closure を渡すことで、パネル内のヘッダ直下 (コンテンツ
+    # expander の手前) に「🔧 詳細編集 (従来)」が表示される (user 2026-07-03 要望)。
+    render_finishing_panel(
+        eid, config, source_tab="product_management",
+        top_slot=_legacy_editor_top_slot,
+    )
 
 
 def _money_eq(a: Optional[float], b: Optional[float]) -> bool:

@@ -55,6 +55,8 @@ def test_render_finishing_panel_signature_matches_call_contract():
     assert "candidate_url" in kw_only and kw_only["candidate_url"].default is None
     assert "source_tab" in kw_only
     assert kw_only["source_tab"].default == "product_management"
+    # user feedback 2026-07-03: ヘッダ直下に差し込む top_slot callable
+    assert "top_slot" in kw_only and kw_only["top_slot"].default is None
 
 
 def test_render_finishing_panel_rejects_empty_eid_without_crashing():
@@ -533,3 +535,120 @@ def test_state_generate_description_via_ai_pipeline_exception_returns_failure(mo
     result = fps_mod.generate_description_via_ai("https://example.com/x")
     assert result["success"] is False
     assert "scrape blew up" in result["message"]
+
+
+# ─────────────────────────────────────────────────
+# 11. user feedback 2026-07-03 レイアウト変更:
+#     ヘッダ → top_slot (詳細編集 従来) → コンテンツ、
+#     「仕入先」「💰 価格・送料」 expander は撤去
+# ─────────────────────────────────────────────────
+
+def test_finishing_panel_no_longer_opens_supplier_expander():
+    """user feedback 2026-07-03: 「仕入先」expander (仮置き) はパネルから撤去."""
+    src = _UI_PATH.read_text(encoding="utf-8")
+    # panel の body で `st.expander("仕入先"...)` が呼ばれなくなっている
+    assert 'st.expander("仕入先"' not in src
+
+
+def test_finishing_panel_no_longer_opens_money_zone_expander():
+    """user feedback 2026-07-03: 「💰 価格・送料」expander (仮置き) はパネルから撤去.
+
+    価格・送料の編集は詳細編集 (従来) 側で完結するため案内も不要
+    (T3 隔離は tab_product_management 側の従来フォーム 2 段確認で確保、
+    money-direct 関数の import 禁止テストは他所で維持)。
+    """
+    src = _UI_PATH.read_text(encoding="utf-8")
+    assert 'st.expander("💰 価格・送料' not in src
+
+
+def test_finishing_panel_helpers_supplier_and_money_zone_preserved():
+    """撤去は「呼出のみ」で、関数体自体は Phase 3 再利用余地を残して温存する.
+
+    (関数削除 = 破壊的変更、K1 撤去に留めるため helper は残す。既存の
+    test_money_zone_only_has_jump_button_no_price_input 等が引き続き機能する
+    ことを保証。)
+    """
+    assert _find_function_def("_render_supplier_group") is not None, (
+        "_render_supplier_group は将来再利用のため残置 (呼出のみ削除)"
+    )
+    assert _find_function_def("_render_money_zone") is not None, (
+        "_render_money_zone は将来再利用のため残置 (呼出のみ削除)"
+    )
+
+
+def test_top_slot_called_between_header_and_content():
+    """top_slot は _render_header の直後、コンテンツ expander の手前で呼ばれる.
+
+    AST ベース検査で: `_render_header(...)` の Call → `top_slot()` の Call →
+    `st.expander("コンテンツ"...)` の With がこの順序で現れる (user 2026-07-03 要望)。
+    docstring 内の "top_slot()" 言及を誤検出しないよう AST を使う。
+    """
+    fn = _find_function_def("_render_finishing_panel_fragment")
+    assert fn is not None
+
+    idx_header = idx_top = idx_content = None
+    for node in ast.walk(fn):
+        if idx_header is None and isinstance(node, ast.Call) \
+                and isinstance(node.func, ast.Name) and node.func.id == "_render_header":
+            idx_header = node.lineno
+        if idx_top is None and isinstance(node, ast.Call) \
+                and isinstance(node.func, ast.Name) and node.func.id == "top_slot":
+            idx_top = node.lineno
+        if idx_content is None and isinstance(node, ast.With):
+            for item in node.items:
+                ctx = item.context_expr
+                if isinstance(ctx, ast.Call) and isinstance(ctx.func, ast.Attribute) \
+                        and ctx.func.attr == "expander" and ctx.args:
+                    arg = ctx.args[0]
+                    if isinstance(arg, ast.Constant) and arg.value == "コンテンツ":
+                        idx_content = node.lineno
+                        break
+    assert idx_header is not None, "_render_header() 呼出が見つからない"
+    assert idx_top is not None, "top_slot() 呼出が見つからない"
+    assert idx_content is not None, "コンテンツ expander が見つからない"
+    assert idx_header < idx_top < idx_content, (
+        f"順序不正: _render_header L{idx_header} → top_slot L{idx_top} "
+        f"→ コンテンツ L{idx_content} の順であるべき"
+    )
+
+
+def test_top_slot_is_optional_and_skippable():
+    """top_slot=None (followup 経由 = source_tab != 'product_management') では
+    差し込まない = 従来通り「ヘッダ → コンテンツ」になること."""
+    fn = _find_function_def("_render_finishing_panel_fragment")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    # None ガード分岐が存在すること
+    assert "if top_slot is not None:" in src_seg
+
+
+# ─────────────────────────────────────────────────
+# 12. tab_product_management 側の結線: 詳細編集を top_slot として渡す
+# ─────────────────────────────────────────────────
+
+_PM_PATH = _PROJECT_ROOT / "tabs" / "tab_product_management.py"
+
+
+def test_pm_passes_legacy_editor_as_top_slot():
+    """tab_product_management は 「🔧 詳細編集 (従来)」を closure でラップし
+    render_finishing_panel(top_slot=...) で渡す (user 2026-07-03 要望).
+    """
+    src = _PM_PATH.read_text(encoding="utf-8")
+    # closure 定義
+    assert "def _legacy_editor_top_slot()" in src
+    # closure 内で従来 expander を開く
+    assert '"🔧 詳細編集 (従来)"' in src
+    # top_slot= キーワードで panel に渡す
+    assert "top_slot=_legacy_editor_top_slot" in src
+
+
+def test_pm_no_longer_calls_panel_without_top_slot():
+    """商品管理タブでは top_slot 抜きで render_finishing_panel を呼ばない
+    (詳細編集を必ずヘッダ直下に差し込むため)."""
+    src = _PM_PATH.read_text(encoding="utf-8")
+    # 旧 form の呼出 `render_finishing_panel(eid, config, source_tab="product_management")`
+    # (改行なし・top_slot 無し) が残存していないこと
+    assert (
+        'render_finishing_panel(eid, config, source_tab="product_management")'
+        not in src
+    ), "商品管理タブは top_slot 引数付きで呼び出すべき (2026-07-03 user 要望)"
