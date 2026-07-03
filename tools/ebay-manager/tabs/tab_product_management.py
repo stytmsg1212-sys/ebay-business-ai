@@ -3947,11 +3947,6 @@ def _render_product_editor(p: dict, config: dict) -> None:
                 bump_db_version()
                 st.rerun()
 
-            # W153 (2026-05-22): ライバル監視 section の呼出位置を移動.
-            # W217-B v2 (2026-06-04 mockup): 2 列構図に再整理。
-            # 左列下段=_render_supplier_section / 右列=_render_rival_section。
-            # form 外・個別 button 即時反応の挙動は移設後も不変。
-
             # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
             # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は
             # fetched_at 併記で正直開示 (HIGH-1)。eBay.com 直接変更で stale に
@@ -3970,56 +3965,44 @@ def _render_product_editor(p: dict, config: dict) -> None:
             # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
             _render_hero_metrics(p, bp_state=bp_state)
 
-            # ── 2 列 layout: 左 (編集 form + 仕入先) / 右 (ライバル) ──
-            # W217-B v2 (2026-06-04 mockup): 左=編集+仕入先, 右=ライバルのみ。
-            # 配置のみ変更、money-direct ロジック・dirty-flag は不変。
-            left, right = st.columns([1, 1], gap="medium")
-
-            with left:
-                # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
-                # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
-                # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
-                # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
-                # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
-                # form 内 description text_area (同 key) が次 rerun で読む。
-                _render_desc_fetch_button(eid, config)
-                # 左列上段: 編集 inputs + submit buttons (form 内、rerun 抑制)
-                with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
-                    editing = _render_left_basic_and_physical(
-                        p, config, bp_state=bp_state)
-                    # ── Action button 群 (3 列) ──
-                    st.markdown('<div class="pm-section-label">アクション</div>',
-                                unsafe_allow_html=True)
-                    btn_cols = st.columns(3)
-                    with btn_cols[0]:
-                        save_db = st.form_submit_button(
-                            "💾 DB 保存", use_container_width=True,
-                        )
-                    with btn_cols[1]:
-                        save_ebay = st.form_submit_button(
-                            "📤 eBay 反映",
-                            type="primary", use_container_width=True,
-                            help="DB + ReviseFixedPriceItem で eBay 出品価格 / 送料を更新",
-                        )
-                    with btn_cols[2]:
-                        calc_be = st.form_submit_button(
-                            "💡 利益計算", use_container_width=True,
-                            help="DB 保存 + breakeven 再計算",
-                        )
-                # 左列下段: 仕入先 (form **外** = 「🔍 在庫を今すぐ確認」など
-                # 個別 button の即時反応を維持)
-                _render_supplier_section(p, config)
-
-            with right:
-                # 右列 (form 外): ライバル監視 + 登録済 dataframe
-                _render_rival_section(p, config)
-
-            # W#33: キーワード新着監視 トグル (full-width / form 外)
-            _render_keyword_watch_toggle(p)
-
-            # eBaymag 国別出品管理 (依頼ボード#10、full-width / form 外 =
-            # 状態取得/反映 button の即時反応を維持)
-            _render_ebaymag_section(p)
+            # ── 編集 form + 仕入先 (単一列) ──
+            # W217-B v2 (2026-06-04 mockup) の 2 列 layout (左=編集+仕入先,
+            # 右=ライバル) は、W314 Phase 3 T2 (2026-07-03) でライバル監視/
+            # キーワード新着監視/eBaymag をパネル側「⚔ 競合・監視」「🌍 eBaymag」
+            # expander へ移設したことに伴い右列が空になったため単一列化した
+            # (money-direct ロジック・dirty-flag は不変、配置のみ変更)。
+            # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
+            # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
+            # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
+            # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
+            # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
+            # form 内 description text_area (同 key) が次 rerun で読む。
+            _render_desc_fetch_button(eid, config)
+            with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
+                editing = _render_left_basic_and_physical(
+                    p, config, bp_state=bp_state)
+                # ── Action button 群 (3 列) ──
+                st.markdown('<div class="pm-section-label">アクション</div>',
+                            unsafe_allow_html=True)
+                btn_cols = st.columns(3)
+                with btn_cols[0]:
+                    save_db = st.form_submit_button(
+                        "💾 DB 保存", use_container_width=True,
+                    )
+                with btn_cols[1]:
+                    save_ebay = st.form_submit_button(
+                        "📤 eBay 反映",
+                        type="primary", use_container_width=True,
+                        help="DB + ReviseFixedPriceItem で eBay 出品価格 / 送料を更新",
+                    )
+                with btn_cols[2]:
+                    calc_be = st.form_submit_button(
+                        "💡 利益計算", use_container_width=True,
+                        help="DB 保存 + breakeven 再計算",
+                    )
+            # 仕入先 (form **外** = 「🔍 在庫を今すぐ確認」など
+            # 個別 button の即時反応を維持)
+            _render_supplier_section(p, config)
 
             # ── form 外: submit 結果処理 ──
             if save_db or save_ebay or calc_be:
@@ -4160,12 +4143,29 @@ def _render_product_editor(p: dict, config: dict) -> None:
                 # 保存後もアコーディオンを開いたままにする
                 st.session_state["pm_keep_open_eid"] = eid
 
+    # W314 Phase 3 T2 (2026-07-03): 「⚔ 競合・監視」「🌍 eBaymag」を
+    # パネルの「コンテンツ」expander の下 (bottom_slot) へ移設する。
+    # 呼び出し場所の移動のみ (各関数の中身は無改変、K2)。商品管理専用スロット
+    # のため followup 経由 (在庫監視/仕入先候補) では bottom_slot を渡さず、
+    # この 2 expander は表示されない。
+    def _finishing_panel_bottom_slot() -> None:
+        # 「⚔ 競合・監視」= ライバル監視 + キーワード新着監視 (どちらも自前の
+        # expander を持たないため、ここで新規に包む)。
+        with st.expander("⚔ 競合・監視", expanded=False):
+            _render_rival_section(p, config)
+            _render_keyword_watch_toggle(p)
+        # 「🌍 eBaymag」= _render_ebaymag_section が自前で
+        # st.expander("🌍 eBaymag 国別出品 ...") を持つため、そのまま呼ぶだけで良い
+        # (二重に包むと expander のネストになるため包まない)。
+        _render_ebaymag_section(p)
+
     # 詳細編集 (従来) の closure 定義が済んだので panel を描画する。
     # top_slot にこの closure を渡すことで、パネル内のヘッダ直下 (コンテンツ
     # expander の手前) に「🔧 詳細編集 (従来)」が表示される (user 2026-07-03 要望)。
     render_finishing_panel(
         eid, config, source_tab="product_management",
         top_slot=_legacy_editor_top_slot,
+        bottom_slot=_finishing_panel_bottom_slot,
     )
 
 

@@ -88,6 +88,7 @@ def render_finishing_panel(
     candidate_url: Optional[str] = None,
     source_tab: str = "product_management",
     top_slot: Optional[Callable[[], None]] = None,
+    bottom_slot: Optional[Callable[[], None]] = None,
 ) -> None:
     """統一「商品仕上げパネル」を描画するエントリポイント (呼び出し契約は module docstring 参照).
 
@@ -96,6 +97,10 @@ def render_finishing_panel(
             差し込む callable (user 2026-07-03 要望: 詳細編集 (従来) をこの位置に置く)。
             None なら差し込まない (followup 経由 = source_tab != "product_management" の
             既定動作)。callable は streamlit UI を描画する副作用のみ、戻り値は使わない。
+        bottom_slot: 「コンテンツ」 expander の**下**に差し込む callable (W314 Phase 3 T2
+            / 2026-07-03: 商品管理タブから「⚔ 競合・監視」「🌍 eBaymag」を渡す)。None なら
+            差し込まない (商品管理専用スロット。followup 経由では渡されないため出ない)。
+            callable は streamlit UI を描画する副作用のみ、戻り値は使わない。
     """
     if not eid:
         st.error("ebay_item_id が指定されていません (商品仕上げパネルを表示できません)")
@@ -104,7 +109,7 @@ def render_finishing_panel(
     _render_finishing_panel_fragment(
         eid, config, candidate_id=candidate_id,
         candidate_url=candidate_url, source_tab=source_tab,
-        top_slot=top_slot,
+        top_slot=top_slot, bottom_slot=bottom_slot,
     )
 
 
@@ -117,6 +122,7 @@ def _render_finishing_panel_fragment(
     candidate_url: Optional[str],
     source_tab: str,
     top_slot: Optional[Callable[[], None]] = None,
+    bottom_slot: Optional[Callable[[], None]] = None,
 ) -> None:
     """パネル本体 (@st.fragment、設計書§7: 採用時 scope="app" ではなくパネル scope に縮小).
 
@@ -124,6 +130,8 @@ def _render_finishing_panel_fragment(
         1. ヘッダ (サムネ + タイトル + 4 指標)
         2. top_slot() — 商品管理タブから渡す「🔧 詳細編集 (従来)」がここに来る
         3. 「コンテンツ」 expander (統一パネルの主要 UI)
+        4. bottom_slot() — 商品管理タブから渡す「⚔ 競合・監視」「🌍 eBaymag」が
+           ここに来る (W314 Phase 3 T2 / 2026-07-03)
 
     「仕入先」「💰 価格・送料」 expander は 2026-07-03 に撤去 (user 判断: 仮置き
     ブロックは詳細編集 (従来) がすぐ上にあるため案内不要)。関数
@@ -148,6 +156,9 @@ def _render_finishing_panel_fragment(
             eid, row, config,
             candidate_id=candidate_id, candidate_url=candidate_url, source_tab=source_tab,
         )
+
+    if bottom_slot is not None:
+        bottom_slot()
 
 
 # =============================================================================

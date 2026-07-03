@@ -173,7 +173,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
     from monitor.database import add_check_log, add_item_manual, build_source_url, delete_item, delete_site_config, find_site_config_by_sku, get_active_items, get_all_items, get_conn, get_prev_status, get_recent_logs, get_site_configs, save_site_config, set_ebay_listing_risk_confirmed, update_ebay_listing_quantity, update_item_status, update_supplier_candidate_status, upsert_item
     from monitor.notifier import send_unavailable_alert
     from monitor.scrapers import check_item_by_config, check_items_batch, prepare_batch_items
-    from tasks.task_supplier_apply import accept_supplier_candidate, apply_supplier_candidate
     from ui_cache import bump_db_version, get_db_version
 
     # 依頼ボード#11 (2026-06-12): 採用バッチ成功後の写真/description フォロー
@@ -184,10 +183,19 @@ def render_inventory_monitor_tab(s: dict) -> None:
     if render_supplier_followup_section(source_tab="inventory"):
         st.markdown("---")
 
-    monitor_tab_risk, monitor_tab1, monitor_tab2 = st.tabs(["要対応", "監視リスト", "サイト設定"])
+    # W314 Phase 3 T2 (2026-07-03): 「供給リスク (自動検知)」と「手動監視」の
+    # 2 概念が同じ内側タブ群に同居し混同されやすい。ラベル + 1 行説明で明示分離
+    # (内側タブ構造自体は維持、K1)。
+    monitor_tab_risk, monitor_tab1, monitor_tab2 = st.tabs(
+        ["⚠ 供給リスク (自動検知)", "👁 手動監視 (自分で登録)", "サイト設定"]
+    )
 
     # ---------- 要対応（仕入先在庫リスク） ----------
     with monitor_tab_risk:
+        st.caption(
+            "ebay_listings の在庫チェック結果から自動検知。仕入先で購入できない"
+            "のに eBay 在庫が残っている商品を一覧表示します。"
+        )
         risk_data = _cd_supply_risk(get_db_version())
         oos_items = risk_data["out_of_stock"]
         pnf_items = risk_data["page_not_found"]
@@ -254,15 +262,18 @@ def render_inventory_monitor_tab(s: dict) -> None:
         def _adopt_and_apply(cand: dict, item: dict, is_pending: bool = True) -> bool:
             """仕入先候補を採用 → eBay へ SKU 反映まで 1 操作で実行 (依頼ボード#18).
 
-            仕入先候補タブの 1 クリック採用と同じ正規経路
-            (accept_supplier_candidate → apply_supplier_candidate)。
-            成功時はタブ最上部 followup 欄 (写真/description) のフラグも set。
-            対象は要対応一覧 (quantity_ebay >= 1 のみ抽出) なので qty 復元は不要。
+            実行部 (accept→apply→followup フラグ set→qty 復元) は
+            tabs._adopt_candidate.adopt_candidate に単一化済 (W314 Phase 3 T1、
+            仕入先候補タブの 1 クリック採用と同一の共有実装)。本関数はタブ固有の
+            UI 前処理 (eid mismatch ログ / 認証事前チェック) と通知 queue への
+            変換のみを担う。
             通知は _inv_action_notice queue 経由 (呼出側が st.rerun(scope="app"))。
 
             注: _ebay_creds / _cfg は後方の共通スコープ定義を closure 参照
             (呼出は render 時の fragment 内 = 定義後なので未定義参照にならない)。
             """
+            from tabs._adopt_candidate import adopt_candidate
+
             cid = cand["id"]
             # reviewer HIGH-1: SKU 反映 (apply_supplier_candidate) は候補行の
             # ebay_item_id に対して走るため、followup meta の eid も候補行を正とする
@@ -276,37 +287,30 @@ def render_inventory_monitor_tab(s: dict) -> None:
             if not all(_ebay_creds.values()):
                 _notice("error", "eBay API認証情報が未設定です（設定タブ参照）")
                 return False
-            if is_pending:
-                res_a = accept_supplier_candidate(cid)
-                if not res_a.get("success"):
-                    logger.error(
-                        "supplier accept failed (inventory tab) cid=%s eid=%s msg=%s",
-                        cid, eid, res_a.get("message"))
+            with st.spinner("仕入先の在庫を確認中..."):
+                res = adopt_candidate(
+                    cid, _cfg, source_tab="inventory", is_pending=is_pending,
+                )
+            if not res.get("success"):
+                logger.error(
+                    "adopt failed (inventory tab) cid=%s eid=%s stage=%s msg=%s",
+                    cid, eid, res.get("stage"), res.get("message"))
+                if res.get("stage") == "apply":
+                    _notice("error",
+                            f"{title_s}: eBay 反映に失敗しました — "
+                            f"{res.get('message') or 'apply エラー'}。"
+                            f"候補は採用済みのまま残るので「反映」ボタンで再試行できます。")
+                else:
                     _notice("error",
                             f"{title_s}: 採用に失敗しました — "
-                            f"{res_a.get('message') or 'accept失敗'}")
-                    return False
-            with st.spinner("仕入先の在庫を確認中..."):
-                res_b = apply_supplier_candidate(cid, _cfg)
-            if not res_b.get("success"):
-                logger.error(
-                    "supplier apply failed (inventory tab) cid=%s eid=%s msg=%s",
-                    cid, eid, res_b.get("message"))
-                _notice("error",
-                        f"{title_s}: eBay 反映に失敗しました — "
-                        f"{res_b.get('message') or 'apply エラー'}。"
-                        f"候補は採用済みのまま残るので「反映」ボタンで再試行できます。")
+                            f"{res.get('message') or 'accept失敗'}")
                 return False
             _notice("success", f"{title_s}: 採用 → eBay SKU 反映 完了")
-            # 依頼ボード#11: 採用成功後にタブ最上部の写真/description followup 欄を展開
-            st.session_state[f"_sup_photo_prompt_{cid}"] = True
-            st.session_state[f"_sup_desc_prompt_{cid}"] = True
-            st.session_state[f"_sup_photo_meta_{cid}"] = {
-                "url": cand.get("candidate_url") or "",
-                "eid": eid,
-                "title": item.get("title") or "",
-            }
-            bump_db_version()  # W134 Step2: SKU 変更後 read-cache 無効化
+            if res.get("qty_restore_message"):
+                _notice(
+                    "success" if res.get("qty_restore_ok") else "error",
+                    res["qty_restore_message"],
+                )
             return True
 
         # --- 在庫切れ（インライン候補表示版） ---
@@ -415,6 +419,20 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             f'style="color:#156a63;font-size:12px;">仕入先URLを開く</a></div>',
                             unsafe_allow_html=True,
                         )
+
+                # W314 Phase 3 T3 (2026-07-03): 商品管理タブへの導線 (W292 jump 流儀)。
+                # 供給リスクカードから直接タイトル/画像/ランクを編集したい時の近道。
+                if st.button(
+                    "📝 商品管理で開く",
+                    key=f"{section_key}_goto_pm_{eid}",
+                    help="この商品を商品管理タブで開いて詳細を確認・編集します",
+                ):
+                    st.session_state["pm_focus_eid"] = eid
+                    st.session_state["_w134_sel"] = "商品管理"
+                    st.session_state["_w217a_cat_view"] = "★ 毎日"
+                    # W174-pm と同方針: fragment 内の st.rerun() は明示 scope 指定が
+                    # 確実。商品管理タブへ完全ナビゲートするため app scope。
+                    st.rerun(scope="app")
 
                 # --- 依頼ボード#20 (2026-06-14): ヤフオク「落札者なし終了」は
                 # 売り切れと区別して「オークション終了（再出品待ち）」と明示。
@@ -1312,8 +1330,12 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                             f"{_u_title}: 保存に失敗しました — {_ue}")
                             st.rerun(scope="app")
 
-    # ---------- 監視リスト ----------
+    # ---------- 監視リスト (手動監視) ----------
     with monitor_tab1:
+        st.caption(
+            "monitored_items に自分で登録した URL の在庫監視です。"
+            "「⚠ 供給リスク」タブの自動検知とは別の仕組みです。"
+        )
         h1, h2, h3 = st.columns([3, 1, 1])
         with h1:
             st.subheader("監視中アイテム")

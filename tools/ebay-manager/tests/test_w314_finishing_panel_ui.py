@@ -57,6 +57,8 @@ def test_render_finishing_panel_signature_matches_call_contract():
     assert kw_only["source_tab"].default == "product_management"
     # user feedback 2026-07-03: ヘッダ直下に差し込む top_slot callable
     assert "top_slot" in kw_only and kw_only["top_slot"].default is None
+    # W314 Phase 3 (2026-07-03): パネル末尾に差し込む bottom_slot callable
+    assert "bottom_slot" in kw_only
 
 
 def test_render_finishing_panel_rejects_empty_eid_without_crashing():

@@ -27,12 +27,9 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
     import json
-    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
-    from monitor.database import get_conn, get_ebay_listing_by_item_id, get_supplier_candidates, update_ebay_listing_quantity, update_supplier_candidate_status
-    from monitor.ebay_client import revise_inventory_quantity
-    from tasks.task_supplier_apply import accept_supplier_candidate, apply_supplier_candidate
+    from monitor.database import get_conn, get_ebay_listing_by_item_id, get_supplier_candidates, update_supplier_candidate_status
+    from tabs._adopt_candidate import adopt_candidate
     from typing import Optional
-    from ui_cache import bump_db_version
     st.title("仕入先候補レビュー")
     st.caption(
         "Claude API が評価した仕入先候補を一覧。"
@@ -583,44 +580,50 @@ def render_supplier_candidates_tab(s: dict) -> None:
                         _msgs: list[tuple[str, str]] = []
                         _eid = row.get("ebay_item_id") or ""
                         try:
-                            res_a = accept_supplier_candidate(cid)
-                            if not res_a.get("success"):
-                                _msgs.append(("error", res_a.get("message") or "採用に失敗しました"))
-                            else:
-                                _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
-                                _cfg = {}
-                                _cfg_load_ok = True
-                                if _cfg_path.exists():
-                                    try:
-                                        _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                                    except (OSError, json.JSONDecodeError) as _e:
-                                        logger.exception("schedule_config.json 読込失敗 cid=%s", cid)
-                                        _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
-                                        _cfg_load_ok = False
-                                if _cfg_load_ok:
-                                    with st.spinner("仕入先の在庫を確認中..."):
-                                        res_b = apply_supplier_candidate(cid, _cfg, allow_alt_override=True)
-                                    if not res_b.get("success"):
-                                        logger.error(
-                                            "alt override apply failed cid=%s eid=%s msg=%s",
-                                            cid, _eid, res_b.get("message"),
-                                        )
+                            # 実行部 (accept→apply→followup フラグ set→qty 復元) は
+                            # tabs._adopt_candidate.adopt_candidate に単一化済
+                            # (W314 Phase 3 T1、在庫監視タブと同一の共有実装)。
+                            _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+                            _cfg = {}
+                            _cfg_load_ok = True
+                            if _cfg_path.exists():
+                                try:
+                                    _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                                except (OSError, json.JSONDecodeError) as _e:
+                                    logger.exception("schedule_config.json 読込失敗 cid=%s", cid)
+                                    _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
+                                    _cfg_load_ok = False
+                            if _cfg_load_ok:
+                                with st.spinner("仕入先の在庫を確認中..."):
+                                    res = adopt_candidate(
+                                        cid, _cfg, source_tab="supplier",
+                                        allow_alt_override=True,
+                                    )
+                                if not res.get("success"):
+                                    logger.error(
+                                        "alt override adopt failed cid=%s eid=%s stage=%s msg=%s",
+                                        cid, _eid, res.get("stage"), res.get("message"),
+                                    )
+                                    if res.get("stage") == "apply":
                                         _msgs.append((
                                             "error",
-                                            f"eBay 反映失敗: {res_b.get('message') or 'apply エラー'}",
+                                            f"eBay 反映失敗: {res.get('message') or 'apply エラー'}",
                                         ))
                                     else:
                                         _msgs.append((
-                                            "success",
-                                            res_b.get("message") or "別SKU手動override採用→eBay反映 成功",
+                                            "error",
+                                            res.get("message") or "採用に失敗しました",
                                         ))
-                                        st.session_state[f"_sup_photo_prompt_{cid}"] = True
-                                        st.session_state[f"_sup_desc_prompt_{cid}"] = True
-                                        st.session_state[f"_sup_photo_meta_{cid}"] = {
-                                            "url": url,
-                                            "eid": _eid,
-                                            "title": title,
-                                        }
+                                else:
+                                    _msgs.append((
+                                        "success",
+                                        res.get("message") or "別SKU手動override採用→eBay反映 成功",
+                                    ))
+                                    if res.get("qty_restore_message"):
+                                        _msgs.append((
+                                            "success" if res.get("qty_restore_ok") else "error",
+                                            res["qty_restore_message"],
+                                        ))
                         except Exception:  # noqa: BLE001
                             logger.exception("alt override accept/apply 想定外例外 cid=%s eid=%s", cid, _eid)
                             _msgs.append((
@@ -655,125 +658,55 @@ def render_supplier_candidates_tab(s: dict) -> None:
                     st.session_state[_confirm_key] = True
                     st.rerun(scope="fragment")
                     return  # H-2
-                # 通常 採用 path (revive / replace) は既存ロジック継続:
+                # 通常 採用 path (revive / replace): 実行部 (accept→apply→
+                # followup フラグ set→qty 復元) は tabs._adopt_candidate.
+                # adopt_candidate に単一化済 (W314 Phase 3 T1)。qty 0→1 復元は
+                # apply 直前の quantity_ebay 実測値で判定するため、旧
+                # `context == "revive"` 分岐は不要 (adopt_candidate docstring 参照)。
                 st.session_state[_lock_key] = True
                 _msgs: list[tuple[str, str]] = []
                 _eid = row.get("ebay_item_id") or ""
                 try:
-                    # 1) accept (status='accepted')
-                    res_a = accept_supplier_candidate(cid)
-                    if not res_a.get("success"):
-                        logger.error(
-                            "supplier accept failed cid=%s eid=%s msg=%s",
-                            cid, _eid, res_a.get("message"),
-                        )
-                        _msgs.append(("error", res_a.get("message") or "採用に失敗しました"))
-                    else:
-                        # 2) apply (eBay ReviseItem + DB sku 追従 + status='applied')
-                        _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
-                        _cfg = {}
-                        _cfg_load_ok = True
-                        if _cfg_path.exists():
-                            try:
-                                _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                            except (OSError, json.JSONDecodeError) as _e:
-                                logger.exception(
-                                    "schedule_config.json 読込失敗 cid=%s", cid,
-                                )
-                                _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
-                                _cfg_load_ok = False
-                        if _cfg_load_ok:
-                            with st.spinner("仕入先の在庫を確認中..."):
-                                res_b = apply_supplier_candidate(cid, _cfg)
-                            if not res_b.get("success"):
-                                logger.error(
-                                    "supplier apply failed cid=%s eid=%s msg=%s",
-                                    cid, _eid, res_b.get("message"),
-                                )
+                    _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+                    _cfg = {}
+                    _cfg_load_ok = True
+                    if _cfg_path.exists():
+                        try:
+                            _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError) as _e:
+                            logger.exception(
+                                "schedule_config.json 読込失敗 cid=%s", cid,
+                            )
+                            _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
+                            _cfg_load_ok = False
+                    if _cfg_load_ok:
+                        with st.spinner("仕入先の在庫を確認中..."):
+                            res = adopt_candidate(cid, _cfg, source_tab="supplier")
+                        if not res.get("success"):
+                            logger.error(
+                                "supplier adopt failed cid=%s eid=%s stage=%s msg=%s",
+                                cid, _eid, res.get("stage"), res.get("message"),
+                            )
+                            if res.get("stage") == "apply":
                                 _msgs.append((
                                     "error",
-                                    f"eBay 反映失敗: {res_b.get('message') or 'apply エラー'}",
+                                    f"eBay 反映失敗: {res.get('message') or 'apply エラー'}",
                                 ))
                             else:
                                 _msgs.append((
-                                    "success",
-                                    res_b.get("message") or "採用→eBay 反映 成功",
+                                    "error",
+                                    res.get("message") or "採用に失敗しました",
                                 ))
-                                # W115 整合性 fix (2026-05-20 user 緊急要望):
-                                # SKU 反映成功後、写真も反映する？」確認 → yes なら
-                                # 個別出品と同じプレート選択フロー (3 候補から user 選択)。
-                                # 採用後 candidate は status='applied' になり履歴タブに
-                                # 移動するため、セクション最上部 (タブ非依存) に prompt
-                                # を出す必要あり。url/eid/title を session_state に保持
-                                # して、次 rerun でその情報を使って prompt + photo
-                                # apply section を描画する。
-                                st.session_state[f"_sup_photo_prompt_{cid}"] = True
-                                # W148-X (2026-05-20 user 緊急要望): description
-                                # 反映ボタンを追加 (個別出品同等 Claude 生成 pipeline)。
-                                # 写真 prompt と同 cid で並行設置、user が独立に決定可。
-                                st.session_state[f"_sup_desc_prompt_{cid}"] = True
-                                st.session_state[f"_sup_photo_meta_{cid}"] = {
-                                    "url": url,
-                                    "eid": _eid,
-                                    "title": title,
-                                }
-                                # 3) 復活候補のみ qty 0→1 自動復元
-                                if context == "revive":
-                                    if not _eid:
-                                        logger.error(
-                                            "qty restore: ebay_item_id missing cid=%s", cid,
-                                        )
-                                        _msgs.append((
-                                            "error",
-                                            "ebay_item_id 不明のため qty 復元不可。"
-                                            "手動で在庫を 1 に戻してください。",
-                                        ))
-                                    else:
-                                        _ebay_creds = get_ebay_credentials(_cfg)
-                                        if not ebay_credentials_ok(_ebay_creds):
-                                            logger.error(
-                                                "qty restore: eBay credentials missing cid=%s eid=%s",
-                                                cid, _eid,
-                                            )
-                                            _msgs.append((
-                                                "error",
-                                                f"{_eid}: eBay 認証不足のため qty 復元失敗 "
-                                                f"(SKU は書換済、手動で在庫を 1 に戻してください、cid={cid})",
-                                            ))
-                                        else:
-                                            try:
-                                                _qres_r = revise_inventory_quantity(
-                                                    _eid, 1, **_ebay_creds,
-                                                )
-                                            except (RuntimeError, ConnectionError, TimeoutError, OSError) as _qe:
-                                                logger.exception(
-                                                    "qty restore exception cid=%s eid=%s",
-                                                    cid, _eid,
-                                                )
-                                                _msgs.append((
-                                                    "error",
-                                                    f"{_eid}: SKU 書換成功だが qty 復元中に例外 "
-                                                    f"({_qe}). 手動で在庫を 1 に戻してください (cid={cid}).",
-                                                ))
-                                            else:
-                                                if _qres_r.get("success"):
-                                                    update_ebay_listing_quantity(_eid, 1)
-                                                    bump_db_version()  # W134 Step2: 在庫復元後 read-cache 無効化
-                                                    _msgs.append((
-                                                        "success",
-                                                        f"{_eid}: 在庫 0 → 1 自動復元 (復活完了)",
-                                                    ))
-                                                else:
-                                                    logger.error(
-                                                        "qty restore api_failed cid=%s eid=%s msg=%s",
-                                                        cid, _eid, _qres_r.get("message"),
-                                                    )
-                                                    _msgs.append((
-                                                        "error",
-                                                        f"{_eid}: SKU 書換成功だが qty 復元失敗 "
-                                                        f"({_qres_r.get('message', '')}). "
-                                                        f"手動で在庫を 1 に戻してください (cid={cid}).",
-                                                    ))
+                        else:
+                            _msgs.append((
+                                "success",
+                                res.get("message") or "採用→eBay 反映 成功",
+                            ))
+                            if res.get("qty_restore_message"):
+                                _msgs.append((
+                                    "success" if res.get("qty_restore_ok") else "error",
+                                    res["qty_restore_message"],
+                                ))
                 except Exception:  # noqa: BLE001 — H-A: 想定外例外も logger + UI msg で必ず痕跡残す
                     logger.exception(
                         "supplier accept/apply 想定外例外 cid=%s eid=%s", cid, _eid,

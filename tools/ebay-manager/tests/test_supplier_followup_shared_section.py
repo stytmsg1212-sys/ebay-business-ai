@@ -48,12 +48,38 @@ def test_inventory_monitor_sets_prompt_flags_on_adopt():
     依頼ボード#18 (2026-06-13): 一括 UI (_process_apply / _process_apply_pnf
     の 2 経路) を撤去し、_adopt_and_apply 単一経路に統合。OOS/PNF 両ブロック
     がこのヘルパーを共有するため、フラグ set は 1 箇所のみが正。
+
+    W314 Phase 3 T1 (2026-07-03): flag set 本体は tabs/_adopt_candidate.py
+    (adopt_candidate) へ単一化 (在庫監視/仕入先候補タブ共有)。tab_inventory_
+    monitor.py 側にはもう flag set コードが存在せず、共有ヘルパーを呼ぶ配線
+    のみが残る。
     """
-    src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
-    assert src.count('st.session_state[f"_sup_photo_prompt_{cid}"] = True') == 1
-    assert src.count('st.session_state[f"_sup_desc_prompt_{cid}"] = True') == 1
+    inv_src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
+    assert 'st.session_state[f"_sup_photo_prompt_{cid}"] = True' not in inv_src, (
+        "flag set が tab_inventory_monitor.py に残っています。"
+        "tabs/_adopt_candidate.adopt_candidate へ単一化してください (W314 Phase 3 T1)。"
+    )
+    assert "from tabs._adopt_candidate import adopt_candidate" in inv_src
+    assert "adopt_candidate(" in inv_src
+
+    shared_src = (_TABS / "_adopt_candidate.py").read_text(encoding="utf-8")
+    assert shared_src.count('st.session_state[f"_sup_photo_prompt_{cid}"] = True') == 1
+    assert shared_src.count('st.session_state[f"_sup_desc_prompt_{cid}"] = True') == 1
     # meta (url/eid/title) も同時 set (followup 欄のタイトル/URL 表示用)
-    assert 'st.session_state[f"_sup_photo_meta_{cid}"]' in src
+    assert 'st.session_state[f"_sup_photo_meta_{cid}"]' in shared_src
+
+
+def test_supplier_candidates_tab_uses_shared_adopt_helper():
+    """仕入先候補タブの採用経路 (通常/alt override とも) が共有ヘルパーを呼ぶ。
+
+    W314 Phase 3 T1 (2026-07-03): tab_supplier_candidates.py の accept_
+    supplier_candidate/apply_supplier_candidate 直呼びは撤去され、
+    tabs._adopt_candidate.adopt_candidate に一本化されている。
+    """
+    src = (_TABS / "tab_supplier_candidates.py").read_text(encoding="utf-8")
+    assert "from tabs._adopt_candidate import adopt_candidate" in src
+    assert src.count("adopt_candidate(") >= 2  # 通常採用 + alt override 採用
+    assert "from tasks.task_supplier_apply import accept_supplier_candidate" not in src
 
 
 def test_shared_section_keeps_later_notice():
