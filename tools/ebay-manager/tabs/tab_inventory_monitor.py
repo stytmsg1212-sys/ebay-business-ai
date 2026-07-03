@@ -259,7 +259,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
             """rerun を跨いで表示する通知 queue (タブ冒頭で pop して表示)."""
             st.session_state.setdefault("_inv_action_notice", []).append((kind, msg))
 
-        def _adopt_and_apply(cand: dict, item: dict, is_pending: bool = True) -> bool:
+        def _adopt_and_apply(
+            cand: dict, item: dict, is_pending: bool = True,
+            open_editor: bool = True,
+        ) -> bool:
             """仕入先候補を採用 → eBay へ SKU 反映まで 1 操作で実行 (依頼ボード#18).
 
             実行部 (accept→apply→followup フラグ set→qty 復元) は
@@ -268,6 +271,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
             UI 前処理 (eid mismatch ログ / 認証事前チェック) と通知 queue への
             変換のみを担う。
             通知は _inv_action_notice queue 経由 (呼出側が st.rerun(scope="app"))。
+
+            open_editor (2026-07-03 user フィードバック #1):
+              True (default) = 従来動作 (adopt + パネル展開)
+              False = SKUのみ切替 (followup パネルは開かない)
 
             注: _ebay_creds / _cfg は後方の共通スコープ定義を closure 参照
             (呼出は render 時の fragment 内 = 定義後なので未定義参照にならない)。
@@ -290,6 +297,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
             with st.spinner("仕入先の在庫を確認中..."):
                 res = adopt_candidate(
                     cid, _cfg, source_tab="inventory", is_pending=is_pending,
+                    open_editor=open_editor,
                 )
             if not res.get("success"):
                 logger.error(
@@ -305,7 +313,8 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             f"{title_s}: 採用に失敗しました — "
                             f"{res.get('message') or 'accept失敗'}")
                 return False
-            _notice("success", f"{title_s}: 採用 → eBay SKU 反映 完了")
+            _suffix = "（SKUのみ、編集パネル非展開）" if not open_editor else ""
+            _notice("success", f"{title_s}: 採用 → eBay SKU 反映 完了{_suffix}")
             if res.get("qty_restore_message"):
                 _notice(
                     "success" if res.get("qty_restore_ok") else "error",
@@ -624,7 +633,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         # 新仕様 (Phase 3) は inventory_check 側で grace を管理し、
                         # 採用→反映フローは即時実行 (猶予なし).
 
-                        _info_col, _link_col, _btn_col = st.columns([5.6, 1.2, 2.2])
+                        # user フィードバック #1 (2026-07-03): 採用ボタンを 3 択化した
+                        # ため、btn 列を 2.2 → 3.0 に広げて「SKUのみ/編集あり/不採用」
+                        # の 3 連ボタンを収める (info 5.6 → 5.0 で相殺、link 1.2 は不変)。
+                        _info_col, _link_col, _btn_col = st.columns([5.0, 1.2, 3.0])
                         with _info_col:
                             _status_badge = ""
                             if _status == "accepted":
@@ -704,27 +716,49 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 )
                         with _btn_col:
                             if _status == "pending":
-                                # 依頼ボード#18: 仕入先候補タブと同じ 1 クリック採用。
-                                # 押下 → accept + apply (eBay SKU 反映) まで即実行。
+                                # user フィードバック #1 (2026-07-03): 採用ボタンを
+                                # 3 択化。SKUのみ (open_editor=False) / 編集あり
+                                # (open_editor=True) / 不採用。旧「採用」1 択は撤去。
                                 _lock_key = f"_inv_lock_{_cid}"
                                 _locked = bool(st.session_state.get(_lock_key, False))
-                                _b1, _b2 = st.columns(2)
+                                _b1, _b2, _b3 = st.columns(3)
                                 with _b1:
                                     if st.button(
-                                        "採用",
-                                        key=f"{section_key}_btn_adopt_{_cid}",
-                                        type="primary", width="stretch",
+                                        "SKUのみ",
+                                        key=f"{section_key}_btn_adopt_skuonly_{_cid}",
+                                        width="stretch",
                                         disabled=_locked,
-                                        help="この候補を採用し、その場で eBay の SKU を"
-                                             "この仕入先に書き換えます",
+                                        help="採用 (SKU切替のみ、編集パネルは開かない)。"
+                                             " 仕入先を差し替えるだけで済ませたい時。",
                                     ):
                                         st.session_state[_lock_key] = True
                                         try:
-                                            _adopt_and_apply(_c, item, is_pending=True)
+                                            _adopt_and_apply(
+                                                _c, item, is_pending=True,
+                                                open_editor=False,
+                                            )
                                         finally:
                                             st.session_state[_lock_key] = False
                                         st.rerun(scope="app")
                                 with _b2:
+                                    if st.button(
+                                        "編集あり",
+                                        key=f"{section_key}_btn_adopt_editor_{_cid}",
+                                        type="primary", width="stretch",
+                                        disabled=_locked,
+                                        help="採用 + 商品仕上げパネル展開 (タイトル/画像/"
+                                             "ランク/数量 を続けて編集する時)。",
+                                    ):
+                                        st.session_state[_lock_key] = True
+                                        try:
+                                            _adopt_and_apply(
+                                                _c, item, is_pending=True,
+                                                open_editor=True,
+                                            )
+                                        finally:
+                                            st.session_state[_lock_key] = False
+                                        st.rerun(scope="app")
+                                with _b3:
                                     st.button(
                                         "不採用",
                                         key=f"{section_key}_btn_reject_{_cid}",

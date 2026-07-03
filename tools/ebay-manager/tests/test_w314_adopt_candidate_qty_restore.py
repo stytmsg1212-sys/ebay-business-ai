@@ -96,9 +96,11 @@ class TestReviveQtyRestore(_AdoptCandidateTestBase):
         mock_revise.assert_called_once_with(_EID, 1, app_id="a", dev_id="d",
                                             cert_id="c", user_token="t")
         mock_upd_qty.assert_called_once_with(_EID, 1)
-        # followup フラグ set 検証 (両タブが依存)
+        # followup フラグ set 検証 (両タブが依存)。
+        # user フィードバック #2 (2026-07-03): `_sup_desc_prompt_` は撤去のため
+        # set されない (パネル内 description 編集経路に一本化)。
         self.assertTrue(self.session_state["_sup_photo_prompt_42"])
-        self.assertTrue(self.session_state["_sup_desc_prompt_42"])
+        self.assertNotIn("_sup_desc_prompt_42", self.session_state)
 
 
 class TestReplaceNoQtyRestore(_AdoptCandidateTestBase):
@@ -154,9 +156,11 @@ class TestAltOverrideNoQtyRestore(_AdoptCandidateTestBase):
         self.assertIsNone(res["qty_restore_message"])
         mock_revise.assert_not_called()
         mock_upd_qty.assert_not_called()
-        # 採用成功なので followup フラグは set される (旧 alt-override も set していた)
+        # 採用成功なので followup フラグ (`_sup_photo_prompt_`) は set される
+        # (旧 alt-override も set していた挙動を維持)。
+        # user フィードバック #2 (2026-07-03): `_sup_desc_prompt_` は撤去のため set しない。
         self.assertTrue(self.session_state["_sup_photo_prompt_42"])
-        self.assertTrue(self.session_state["_sup_desc_prompt_42"])
+        self.assertNotIn("_sup_desc_prompt_42", self.session_state)
 
 
 class TestApplyFailureNoSideEffects(_AdoptCandidateTestBase):

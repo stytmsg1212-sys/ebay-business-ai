@@ -49,6 +49,7 @@ def adopt_candidate(
     source_tab: str,
     is_pending: bool = True,
     allow_alt_override: bool = False,
+    open_editor: bool = True,
 ) -> dict:
     """仕入先候補を採用 → eBay へ SKU 反映まで一気通貫実行する。
 
@@ -61,6 +62,12 @@ def adopt_candidate(
             accept をスキップし apply のみ実行。
         allow_alt_override: True の時のみ alt_only 候補 (score<60 + alt=1) の
             SKU 書換ブロックをスキップする (仕入先候補タブの 2 段確認 override 専用)。
+        open_editor: True (default) なら採用後フォローアップ (商品仕上げパネル) を
+            展開するための session_state フラグ (`_sup_photo_prompt_{cid}` /
+            `_sup_photo_meta_{cid}`) を set する。False なら SKU 切替だけで完了し、
+            パネルは開かない (2026-07-03 user フィードバック #1: 「採用 (SKUのみ)」経路)。
+            revive の qty 0→1 復元は open_editor 値に関係なく実行される
+            (money-direct なので UI 開閉に依存させない)。
 
     Returns:
         {
@@ -129,19 +136,24 @@ def adopt_candidate(
             "qty_restore_ok": None,
         }
 
-    # followup フラグ (写真/description 展開プロンプト、商品仕上げパネルが読む) —
-    # 両旧実装が成功時に必ず set していた session_state (単一化の中核)。
+    # followup フラグ (商品仕上げパネル展開プロンプト、`render_supplier_followup_section`
+    # がこのフラグを見て cid を拾う) — open_editor=True の時のみ set。
+    # 2026-07-03 user フィードバック #1: 「採用 (SKUのみ)」経路では open_editor=False を
+    # 渡し、SKU 切替だけで完了させる (followup パネルを開かない)。
+    # 旧: `_sup_desc_prompt_` も同時 set していたが、S6 で「description 生成 はい/いいえ」
+    # プロンプトを撤去 (パネル内 description 編集に一本化) したため set 不要になった。
+    # `_sup_photo_prompt_` は followup section の cid 収集キーとして依然必要。
     import streamlit as st
 
-    cand_title = (cand.get("candidate_title") if cand else "") or ""
-    cand_url = (cand.get("candidate_url") if cand else "") or ""
-    st.session_state[f"_sup_photo_prompt_{cid}"] = True
-    st.session_state[f"_sup_desc_prompt_{cid}"] = True
-    st.session_state[f"_sup_photo_meta_{cid}"] = {
-        "url": cand_url,
-        "eid": eid,
-        "title": cand_title,
-    }
+    if open_editor:
+        cand_title = (cand.get("candidate_title") if cand else "") or ""
+        cand_url = (cand.get("candidate_url") if cand else "") or ""
+        st.session_state[f"_sup_photo_prompt_{cid}"] = True
+        st.session_state[f"_sup_photo_meta_{cid}"] = {
+            "url": cand_url,
+            "eid": eid,
+            "title": cand_title,
+        }
 
     # revive: apply 前の quantity_ebay が 0 だった listing のみ 0→1 自動復元。
     # alt override (別SKU候補の手動採用) は旧実装同様 qty 復元しない

@@ -17,8 +17,17 @@
 
 W314 Phase 2 S6 (2026-07-03): 写真反映 (📷 プロンプト) + タイトル編集小節は
 統一「商品仕上げパネル」(`render_finishing_panel`) に一本化された。
-description の AI 生成プロンプト (📝) のみ本モジュールに残る
-(パネルには AI 生成機能が無いため)。
+
+user フィードバック #2 (2026-07-03): description 生成プロンプト (「📝 はい / いいえ」)
+も撤去 (パネル内 description 編集経路に一本化されたと user 判断)。
+`_sup_desc_prompt_` / `_sup_desc_open_inline_` フラグは今後 set されないが、
+`_followup_cids` 収集 / close ロジック / 履歴タブの二重描画ガードは 4 flag のまま
+温存する (K2 surgical、フラグは default False で any() の結果に影響しない、
+将来 desc プロンプト復活時の受け皿として残す)。
+
+user フィードバック #3 (2026-07-03): 「対応を完了 (欄を閉じる)」押下時に
+統一パネルの未反映 dirty があれば 1 回目は warning を出して閉じない、
+2 回目で破棄して閉じる (2 段階確認)。
 """
 from __future__ import annotations
 
@@ -37,6 +46,54 @@ def _close_supplier_followup(cid: int) -> None:
     """
     from tabs._supplier_followup_state import close_supplier_followup_state
     close_supplier_followup_state(st.session_state, cid)
+
+
+def _get_dirty_field_labels(eid: str) -> list[str]:
+    """統一パネル (pf_{eid}_*) の未反映 dirty フィールドの日本語ラベル一覧を返す。
+
+    user フィードバック #3 (2026-07-03) の 2 段階確認 dirty ガード用。
+    パネルの純関数 (`_finishing_panel_state.pf_key` / `is_field_dirty` /
+    `FIELD_LABELS_JA` / `DISPATCH_FIELD_ORDER`) を import して判定する。
+    パネル本体 (`_finishing_panel.py`) は別 agent 編集中のため触らない
+    (state 層の純関数のみ利用、K1 / scope 遵守)。
+
+    baseline (`_initial`) 未設定 = パネルが 1 度も render されていない
+    (widget 値も無い) → dirty ではない扱い。widget 値も同じく取得できない時は
+    ベースラインとの差分が定義できないため dirty ではない。
+    """
+    from tabs._finishing_panel_state import (
+        DISPATCH_FIELD_ORDER,
+        FIELD_LABELS_JA,
+        is_field_dirty,
+        pf_key,
+    )
+
+    labels: list[str] = []
+    for _f in DISPATCH_FIELD_ORDER:
+        _initial_key = pf_key(eid, f"{_f}_initial")
+        _widget_key = pf_key(eid, _f)
+        if _initial_key not in st.session_state or _widget_key not in st.session_state:
+            continue
+        _before = st.session_state.get(_initial_key)
+        _after = st.session_state.get(_widget_key)
+        if is_field_dirty(_f, _before, _after):
+            labels.append(FIELD_LABELS_JA.get(_f, _f))
+    return labels
+
+
+def _clear_finishing_panel_state(eid: str) -> None:
+    """統一パネルの session_state (`pf_{eid}_*`) を破棄する。
+
+    「対応を完了」で欄を閉じるとき、パネル widget baseline/現在値を残すと
+    次に同 eid のパネルが再表示された時 (別 cid で同 listing を再採用等) に
+    古い dirty 状態が残る恐れがあるため、cid 単位のクリーンアップ
+    (`close_supplier_followup_state`) と対称にパネル state も破棄する。
+    """
+    from tabs._finishing_panel_state import pf_key as _pfk
+    _prefix = _pfk(eid, "")  # "pf_{eid}_"
+    for _k in list(st.session_state.keys()):
+        if _k.startswith(_prefix):
+            st.session_state.pop(_k, None)
 
 
 def _render_followup_title_subsection(cid: int, eid: str) -> None:
@@ -231,72 +288,40 @@ def render_supplier_followup_section(source_tab: str) -> bool:
                 source_tab=source_tab,
             )
 
-            # ── description サブセクション ──
-            if st.session_state.get(f"_sup_desc_prompt_{_fcid}"):
-                # Step 1: prompt
-                st.warning(
-                    f"📝 採用しました ({_f_ttl} / item {_f_eid})。"
-                    f"仕入先 URL から description (HTML 本文) も生成して反映しますか？ "
-                    f"(個別出品と同じ Claude パイプライン、~30-60 秒)"
-                )
-                _dpc = st.columns([1.6, 1.4, 5])
-                with _dpc[0]:
-                    if st.button(
-                        "📝 はい、description も生成",
-                        key=f"_sup_desc_yes_{_fcid}", type="primary",
-                    ):
-                        st.session_state[f"_sup_desc_open_inline_{_fcid}"] = True
-                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
-                        st.rerun()
-                with _dpc[1]:
-                    if st.button(
-                        "いいえ、後でやる",
-                        key=f"_sup_desc_no_{_fcid}",
-                    ):
-                        st.session_state[f"_sup_desc_prompt_{_fcid}"] = False
-                        # 依頼ボード#12: photo 側も非アクティブなら欄ごと消える
-                        # → 行き先通知を queue
-                        if not st.session_state.get(
-                            f"_sup_photo_prompt_{_fcid}"
-                        ) and not st.session_state.get(
-                            f"_sup_photo_open_inline_{_fcid}"
-                        ):
-                            st.session_state.setdefault(
-                                "_sup_followup_later_notice", []
-                            ).append({"title": _f_ttl, "eid": _f_eid})
-                        st.rerun()
+            # ── description サブセクション (2026-07-03 user フィードバック #2 で撤去) ──
+            # 旧「📝 はい、description も生成 / いいえ、後でやる」プロンプトと
+            # `_sup_desc_open_inline_` 経路の Claude パイプライン展開はここに
+            # あったが、パネル内 description 編集経路に一本化されたため撤去。
+            # `render_supplier_description_section` は個別出品タブ側で引き続き使う。
 
-            elif st.session_state.get(f"_sup_desc_open_inline_{_fcid}"):
-                # Step 2: opened
-                if not _f_url:
-                    st.error(
-                        f"cid={_fcid}: URL 情報不足 + DB lookup 失敗 → "
-                        f"採用やり直しで再 prompt 発生"
-                    )
-                else:
-                    st.markdown(
-                        f"**▼ description 反映: {_f_ttl} (item {_f_eid})**"
-                    )
-                    from tabs._supplier_description_pipeline import (
-                        render_supplier_description_section,
-                    )
-                    # 2026-06-11: close_flag_key 廃止 (✖閉じる 削除、閉じる動線は
-                    # 下のフッタ「この商品の対応を完了」に一本化)
-                    render_supplier_description_section(
-                        candidate_id=_fcid,
-                        candidate_url=_f_url,
-                        ebay_item_id=_f_eid,
-                        candidate_title=_f_ttl,
-                    )
-
-            # ── フッタ: 完了ボタン (バグ3 fix: このボタン 1 つで cid 全消し) ──
+            # ── フッタ: 完了ボタン (2 段階確認 dirty ガード付き、user フィードバック #3) ──
+            # パネル (pf_{eid}_*) の未反映 dirty があれば 1 回目は warning、
+            # 2 回目 (確認フラグ set 済) で破棄して閉じる。dirty ゼロなら即閉じ。
             st.markdown("---")
+            _confirm_discard_key = f"_sup_followup_discard_confirm_{_fcid}"
+            _dirty_fields = _get_dirty_field_labels(_f_eid) if _f_eid else []
+            if _dirty_fields and st.session_state.get(_confirm_discard_key):
+                st.warning(
+                    "⚠️ 上のパネルで未反映の変更 ("
+                    + ", ".join(_dirty_fields)
+                    + ") があります。もう一度「完了」を押すと **破棄して閉じます**。"
+                    + " 反映するにはパネル内の「🚀 eBay へ反映」を押してください。"
+                )
             if st.button(
                 "この商品の対応を完了 (欄を閉じる)",
                 key=f"_sup_followup_done_{_fcid}",
                 type="primary",
             ):
+                if _dirty_fields and not st.session_state.get(_confirm_discard_key):
+                    # 1 回目押下: warning を出して閉じない
+                    st.session_state[_confirm_discard_key] = True
+                    st.rerun()
+                # 2 回目 (確認フラグ set 済) or dirty ゼロ: 破棄 or そのまま閉じる
+                st.session_state.pop(_confirm_discard_key, None)
                 _close_supplier_followup(_fcid)
+                # パネル側の pf_{eid}_* も破棄 (baseline/widget/CSS センチネル)
+                if _f_eid:
+                    _clear_finishing_panel_state(_f_eid)
                 st.rerun()
 
     # HIGH1 fix: eid 単位で先着 cid のみ描画したため、後続 cid は silent 消失させず

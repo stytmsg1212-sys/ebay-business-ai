@@ -550,13 +550,18 @@ def render_supplier_candidates_tab(s: dict) -> None:
         _lock_key = f"_sup_lock_{cid}"
         _processing = st.session_state.get(_lock_key, False)
 
-        _btn_cols = st.columns(3)
+        # user フィードバック #1 (2026-07-03): 採用ボタンを 3 択化したため、
+        # ボタン数が 3 → 4 になった。個別出品 / SKUのみ / 編集あり / 不採用 の
+        # 4 連レイアウト (K1: 列数のみ変更)。カード幅が狭い時は wrap するが
+        # streamlit columns はそのまま横並び表示するため、ボタン文言を短めに
+        # 保つ (「編集あり」等)。
+        _btn_cols = st.columns(4)
         with _btn_cols[0]:
             # 「個別出品で新規」ボタン: 全パターン常時表示。
             # 仕入先 URL を「個別出品」タブの URL 欄に pre-fill する。
             # status は 'accepted' に変更して採用済み記録も同時に行う。
             if st.button(
-                "個別出品で新規",
+                "個別出品",
                 key=f"sup_new_listing_{context}_{cid}",
                 help="仕入先 URL を「個別出品」タブの URL 欄に pre-fill (status='accepted' 印付け)",
             ):
@@ -582,178 +587,175 @@ def render_supplier_candidates_tab(s: dict) -> None:
                     ]
                 st.rerun(scope="fragment")
                 return  # H-2
-        with _btn_cols[1]:
-            # 「採用」ボタン: 全パターン常時表示。
-            # alt_only=True の候補: #35 (2026-06-28) 2段確認フローで SKU書換 override 採用。
-            #   1クリック目 → confirm フラグを立てて warning + 確定/やめる ボタン表示
-            #   「確定」クリック → accept + apply(allow_alt_override=True) 実行
-            # alt_only=False (復活/置換) は従来通り accept + apply + qty 復元。
-            _confirm_key = f"_sup_confirm_alt_adopt_{cid}"
-            if _processing:
-                st.caption("⏳ 処理中... (二度押し防止)")
-            elif alt_only and st.session_state.get(_confirm_key):
-                # 2段目: 確認フラグが立っている → warning + 確定/やめる
-                st.warning(
-                    "⚠️ 別SKU候補です。現 listing の SKU をこの候補 URL に書き換えて eBay に"
-                    " 反映します。別商品の可能性があるため、正しい商品か確認してください。"
+        # user フィードバック #1 (2026-07-03): 「採用」ボタンを 2 択化
+        # (SKUのみ / 編集あり)。alt_only の 2 段確認は「choice を引き継ぐ」形で
+        # 押されたボタン (SKUのみ/編集あり) の open_editor 値を session_state に
+        # 保存してから warning へ進む (K1: 確定側で再選択させない)。
+        _confirm_key = f"_sup_confirm_alt_adopt_{cid}"
+        _confirm_choice_key = f"_sup_confirm_alt_choice_{cid}"
+
+        def _do_adopt(open_editor: bool, allow_alt_override: bool = False) -> None:
+            """通常 採用 path (revive / replace / alt-override) の共通 handler.
+
+            実行部 (accept→apply→followup フラグ set→qty 復元) は
+            tabs._adopt_candidate.adopt_candidate に単一化済 (W314 Phase 3 T1)。
+            open_editor は #1 (2026-07-03) の 3 択化に対応した委譲。
+            """
+            st.session_state[_lock_key] = True
+            _msgs: list[tuple[str, str]] = []
+            _eid = row.get("ebay_item_id") or ""
+            try:
+                _cfg_path = (
+                    Path(__file__).resolve().parent.parent
+                    / "config" / "schedule_config.json"
                 )
-                _conf_c1, _conf_c2 = st.columns(2)
-                with _conf_c1:
-                    if st.button(
-                        "確定（SKU書換で採用）",
-                        key=f"sup_accept_alt_confirm_{context}_{cid}",
-                        type="primary",
-                    ):
-                        st.session_state[_confirm_key] = False
-                        st.session_state[_lock_key] = True
-                        _msgs: list[tuple[str, str]] = []
-                        _eid = row.get("ebay_item_id") or ""
-                        try:
-                            # 実行部 (accept→apply→followup フラグ set→qty 復元) は
-                            # tabs._adopt_candidate.adopt_candidate に単一化済
-                            # (W314 Phase 3 T1、在庫監視タブと同一の共有実装)。
-                            _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
-                            _cfg = {}
-                            _cfg_load_ok = True
-                            if _cfg_path.exists():
-                                try:
-                                    _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                                except (OSError, json.JSONDecodeError) as _e:
-                                    logger.exception("schedule_config.json 読込失敗 cid=%s", cid)
-                                    _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
-                                    _cfg_load_ok = False
-                            if _cfg_load_ok:
-                                with st.spinner("仕入先の在庫を確認中..."):
-                                    res = adopt_candidate(
-                                        cid, _cfg, source_tab="supplier",
-                                        allow_alt_override=True,
-                                    )
-                                if not res.get("success"):
-                                    logger.error(
-                                        "alt override adopt failed cid=%s eid=%s stage=%s msg=%s",
-                                        cid, _eid, res.get("stage"), res.get("message"),
-                                    )
-                                    if res.get("stage") == "apply":
-                                        _msgs.append((
-                                            "error",
-                                            f"eBay 反映失敗: {res.get('message') or 'apply エラー'}",
-                                        ))
-                                    else:
-                                        _msgs.append((
-                                            "error",
-                                            res.get("message") or "採用に失敗しました",
-                                        ))
-                                else:
-                                    _msgs.append((
-                                        "success",
-                                        res.get("message") or "別SKU手動override採用→eBay反映 成功",
-                                    ))
-                                    if res.get("qty_restore_message"):
-                                        _msgs.append((
-                                            "success" if res.get("qty_restore_ok") else "error",
-                                            res["qty_restore_message"],
-                                        ))
-                        except Exception:  # noqa: BLE001
-                            logger.exception("alt override accept/apply 想定外例外 cid=%s eid=%s", cid, _eid)
+                _cfg = {}
+                _cfg_load_ok = True
+                if _cfg_path.exists():
+                    try:
+                        _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError) as _e:
+                        logger.exception(
+                            "schedule_config.json 読込失敗 cid=%s", cid,
+                        )
+                        _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
+                        _cfg_load_ok = False
+                if _cfg_load_ok:
+                    with st.spinner("仕入先の在庫を確認中..."):
+                        res = adopt_candidate(
+                            cid, _cfg, source_tab="supplier",
+                            allow_alt_override=allow_alt_override,
+                            open_editor=open_editor,
+                        )
+                    if not res.get("success"):
+                        logger.error(
+                            "supplier adopt failed cid=%s eid=%s stage=%s msg=%s "
+                            "override=%s open_editor=%s",
+                            cid, _eid, res.get("stage"), res.get("message"),
+                            allow_alt_override, open_editor,
+                        )
+                        if res.get("stage") == "apply":
                             _msgs.append((
                                 "error",
-                                f"想定外エラー (cid={cid}). 詳細はログ確認、手動で SKU を確認してください。",
+                                f"eBay 反映失敗: {res.get('message') or 'apply エラー'}",
                             ))
-                        finally:
-                            st.session_state[_lock_key] = False
-                            st.session_state[f"_sup_msgs_{cid}"] = _msgs
-                        st.rerun(scope="app")
-                        return  # H-2
-                with _conf_c2:
-                    if st.button(
-                        "やめる",
-                        key=f"sup_accept_alt_cancel_{context}_{cid}",
-                    ):
-                        st.session_state[_confirm_key] = False
-                        st.rerun(scope="fragment")
-                        return  # H-2
-            elif st.button(
-                "採用",
-                key=f"sup_accept_{context}_{cid}",
-                type="primary",
+                        else:
+                            _msgs.append((
+                                "error",
+                                res.get("message") or "採用に失敗しました",
+                            ))
+                    else:
+                        _base_msg = res.get("message") or (
+                            "別SKU手動override採用→eBay反映 成功"
+                            if allow_alt_override
+                            else "採用→eBay 反映 成功"
+                        )
+                        _suffix = (
+                            "（SKUのみ、編集パネル非展開）" if not open_editor else ""
+                        )
+                        _msgs.append(("success", f"{_base_msg}{_suffix}"))
+                        if res.get("qty_restore_message"):
+                            _msgs.append((
+                                "success" if res.get("qty_restore_ok") else "error",
+                                res["qty_restore_message"],
+                            ))
+            except Exception:  # noqa: BLE001 — H-A: 想定外例外も logger + UI msg で必ず痕跡残す
+                logger.exception(
+                    "supplier accept/apply 想定外例外 cid=%s eid=%s override=%s open_editor=%s",
+                    cid, _eid, allow_alt_override, open_editor,
+                )
+                _msgs.append((
+                    "error",
+                    f"想定外エラーが発生しました (cid={cid}). "
+                    "詳細はログ確認、手動で在庫/SKU を確認してください。",
+                ))
+            finally:
+                st.session_state[_lock_key] = False
+                st.session_state[f"_sup_msgs_{cid}"] = _msgs
+
+        # ── alt_only 2 段確認モード: 選択済み choice を保持して警告 + 確定/やめる ──
+        # confirm フラグが立っている時は button 行を出さず、warning + 確定/やめる を
+        # フル幅で描画する (旧: btn_cols[1] 内に押し込んでいたが SKUのみ/編集あり
+        # 分離で幅が足りなくなるため上に引き出し、K1)。
+        if _processing:
+            st.caption("⏳ 処理中... (二度押し防止)")
+            return  # button 行は描画しない
+        if alt_only and st.session_state.get(_confirm_key):
+            _choice = st.session_state.get(_confirm_choice_key, "editor")
+            _choice_label = "SKUのみ" if _choice == "skuonly" else "編集あり"
+            st.warning(
+                f"⚠️ 別SKU候補です。現 listing の SKU をこの候補 URL に書き換えて"
+                f" eBay に反映します。別商品の可能性があるため、正しい商品か確認して"
+                f"ください。（採用モード: **{_choice_label}**）"
+            )
+            _conf_c1, _conf_c2 = st.columns(2)
+            with _conf_c1:
+                if st.button(
+                    f"確定（{_choice_label} で書換採用）",
+                    key=f"sup_accept_alt_confirm_{context}_{cid}",
+                    type="primary",
+                ):
+                    st.session_state[_confirm_key] = False
+                    st.session_state.pop(_confirm_choice_key, None)
+                    _do_adopt(
+                        open_editor=(_choice == "editor"),
+                        allow_alt_override=True,
+                    )
+                    st.rerun(scope="app")
+                    return  # H-2
+            with _conf_c2:
+                if st.button(
+                    "やめる",
+                    key=f"sup_accept_alt_cancel_{context}_{cid}",
+                ):
+                    st.session_state[_confirm_key] = False
+                    st.session_state.pop(_confirm_choice_key, None)
+                    st.rerun(scope="fragment")
+                    return  # H-2
+            return  # 確認モード中は個別出品/採用/不採用ボタンを重ねて出さない
+
+        with _btn_cols[1]:
+            # 「採用 (SKUのみ)」: adopt + eBay 反映のみ、followup パネル非展開
+            if st.button(
+                "SKUのみ",
+                key=f"sup_accept_skuonly_{context}_{cid}",
                 help=(
-                    "採用: 別SKU候補のため確認を 1 枚挟んでから SKU 書換で eBay 反映します"
+                    "採用 (SKUのみ): 別SKU候補は 1 度確認を挟んでから SKU 書換で反映"
                     if alt_only
-                    else "採用: SKU 書換 + eBay 在庫復元 (復活/置換 candidate のみ有効)"
+                    else "採用 (SKUのみ): SKU 切替のみ、編集パネルは開かない。"
+                    " 仕入先を差し替えるだけで済ませたい時。"
                 ),
             ):
                 if alt_only:
-                    # alt_only: 1クリック目 → confirm フラグを立てて warning 表示
                     st.session_state[_confirm_key] = True
+                    st.session_state[_confirm_choice_key] = "skuonly"
                     st.rerun(scope="fragment")
                     return  # H-2
-                # 通常 採用 path (revive / replace): 実行部 (accept→apply→
-                # followup フラグ set→qty 復元) は tabs._adopt_candidate.
-                # adopt_candidate に単一化済 (W314 Phase 3 T1)。qty 0→1 復元は
-                # apply 直前の quantity_ebay 実測値で判定するため、旧
-                # `context == "revive"` 分岐は不要 (adopt_candidate docstring 参照)。
-                st.session_state[_lock_key] = True
-                _msgs: list[tuple[str, str]] = []
-                _eid = row.get("ebay_item_id") or ""
-                try:
-                    _cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
-                    _cfg = {}
-                    _cfg_load_ok = True
-                    if _cfg_path.exists():
-                        try:
-                            _cfg = json.loads(_cfg_path.read_text(encoding="utf-8"))
-                        except (OSError, json.JSONDecodeError) as _e:
-                            logger.exception(
-                                "schedule_config.json 読込失敗 cid=%s", cid,
-                            )
-                            _msgs.append(("error", f"schedule_config.json 読込失敗: {_e}"))
-                            _cfg_load_ok = False
-                    if _cfg_load_ok:
-                        with st.spinner("仕入先の在庫を確認中..."):
-                            res = adopt_candidate(cid, _cfg, source_tab="supplier")
-                        if not res.get("success"):
-                            logger.error(
-                                "supplier adopt failed cid=%s eid=%s stage=%s msg=%s",
-                                cid, _eid, res.get("stage"), res.get("message"),
-                            )
-                            if res.get("stage") == "apply":
-                                _msgs.append((
-                                    "error",
-                                    f"eBay 反映失敗: {res.get('message') or 'apply エラー'}",
-                                ))
-                            else:
-                                _msgs.append((
-                                    "error",
-                                    res.get("message") or "採用に失敗しました",
-                                ))
-                        else:
-                            _msgs.append((
-                                "success",
-                                res.get("message") or "採用→eBay 反映 成功",
-                            ))
-                            if res.get("qty_restore_message"):
-                                _msgs.append((
-                                    "success" if res.get("qty_restore_ok") else "error",
-                                    res["qty_restore_message"],
-                                ))
-                except Exception:  # noqa: BLE001 — H-A: 想定外例外も logger + UI msg で必ず痕跡残す
-                    logger.exception(
-                        "supplier accept/apply 想定外例外 cid=%s eid=%s", cid, _eid,
-                    )
-                    _msgs.append((
-                        "error",
-                        f"想定外エラーが発生しました (cid={cid}). "
-                        "詳細はログ確認、手動で在庫/SKU を確認してください。",
-                    ))
-                finally:
-                    st.session_state[_lock_key] = False
-                    st.session_state[f"_sup_msgs_{cid}"] = _msgs
-                # W174-pm H-2: 採用は photo/desc prompt section (L5314+) を outer
-                # scope で表示するため full rerun. 採用後は status='applied' で
-                # candidate が履歴タブに移動するためタブ維持は副次的.
+                _do_adopt(open_editor=False)
                 st.rerun(scope="app")
-                return  # H-2: defensive early return
+                return  # H-2
         with _btn_cols[2]:
+            # 「採用 (編集あり)」: adopt + followup パネル展開 (従来動作)
+            if st.button(
+                "編集あり",
+                key=f"sup_accept_editor_{context}_{cid}",
+                type="primary",
+                help=(
+                    "採用 (編集あり): 別SKU候補は 1 度確認を挟んでから書換 + パネル展開"
+                    if alt_only
+                    else "採用 (編集あり): SKU 書換 + 商品仕上げパネル展開"
+                    " (タイトル/画像/ランク/数量 を続けて編集する時)。"
+                ),
+            ):
+                if alt_only:
+                    st.session_state[_confirm_key] = True
+                    st.session_state[_confirm_choice_key] = "editor"
+                    st.rerun(scope="fragment")
+                    return  # H-2
+                _do_adopt(open_editor=True)
+                st.rerun(scope="app")
+                return  # H-2
+        with _btn_cols[3]:
             # 2026-06-11 不採用高速化: on_click コールバックは fragment 再実行の前に
             # 走るため、DB 更新 + hide フラグを先に済ませて 1 往復で関数冒頭の早期
             # return (caption 表示) に直行する。旧 if st.button + st.rerun(scope=
