@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>MonoDeck ダッシュボード 再設計モックアップ (2026-07-04)</title>
+<style>
+  :root {
+    --bg: #f2ecdf;
+    --card: #fbf8f2;
+    --card-border: #e3dac6;
+    --text: #3a352c;
+    --text-sub: #8a8172;
+    --accent: #2f7d6e;
+    --accent-bg: #e3f0ec;
+    --red: #c0392b;
+    --red-bg: #f8e2df;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 0 60px;
+    background: var(--bg);
+    font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .page {
+    width: 1000px;
+    margin: 0 auto;
+  }
+  .page-title {
+    font-size: 13px;
+    color: var(--text-sub);
+    margin: 0 2px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .page-title strong { color: var(--text); font-size: 15px; }
+
+  /* --- tabs (before/after, CSS-only) --- */
+  .tabs { margin: 0 2px 12px; }
+  .tabs input { display: none; }
+  .tabs label {
+    display: inline-block;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-sub);
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    cursor: pointer;
+  }
+  .tabs label:first-of-type { border-radius: 6px 0 0 6px; }
+  .tabs label:last-of-type { border-radius: 0 6px 6px 0; border-left: none; }
+  #tab-after:checked ~ .tabs label[for="tab-after"],
+  #tab-before:checked ~ .tabs label[for="tab-before"] {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .view { display: none; }
+  #tab-after:checked ~ .view-after { display: block; }
+  #tab-before:checked ~ .view-before { display: block; }
+
+  /* --- card base --- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-sub);
+    margin: 0 0 8px;
+    letter-spacing: .02em;
+  }
+
+  /* --- 1. header strip --- */
+  .header-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 20px;
+  }
+  .action-block { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .action-count {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--red);
+    white-space: nowrap;
+  }
+  .action-count.zero { color: var(--accent); font-size: 18px; font-weight: 700; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+  .pill.urgent { background: var(--red-bg); color: var(--red); border: 1px solid #e6b6ae; }
+  .pill.neutral { background: var(--accent-bg); color: var(--accent); border: 1px solid #bcdcd4; }
+  .pill.ok { background: #eee9dc; color: var(--text-sub); border: 1px solid var(--card-border); }
+
+  .kpi-row { display: flex; gap: 26px; }
+  .kpi { text-align: right; }
+  .kpi-label { font-size: 11px; color: var(--text-sub); margin-bottom: 2px; }
+  .kpi-value { font-size: 17px; font-weight: 700; color: var(--text); }
+  .kpi-value .sep { color: var(--text-sub); font-weight: 400; font-size: 13px; margin: 0 2px; }
+  .kpi-value.ok-check { color: var(--accent); }
+
+  /* --- 2. notification list --- */
+  .notif-list { display: flex; flex-direction: column; }
+  .notif-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 4px;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 13px;
+  }
+  .notif-row:last-child { border-bottom: none; }
+  .notif-row .badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .notif-row .badge.act { background: var(--red-bg); color: var(--red); }
+  .notif-row .txt { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notif-row .txt b { font-weight: 700; }
+  .notif-row .meta { color: var(--text-sub); font-size: 12px; white-space: nowrap; }
+  .notif-row .btns { display: flex; gap: 4px; }
+  .notif-row .btns span {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--card-border);
+    color: var(--text-sub);
+    background: #fff;
+    white-space: nowrap;
+  }
+  .notif-empty { font-size: 13px; color: var(--accent); padding: 6px 4px; }
+
+  /* --- 3. inventory / price 2-col --- */
+  .split2 { display: flex; gap: 14px; }
+  .split2 > div {
+    flex: 1;
+    background: #fff;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 10px 14px;
+  }
+  .split2 .headline { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .split2 .headline .num { color: var(--text); font-size: 15px; }
+  .split2 .detail { font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
+  .split2 .link { font-size: 12px; color: var(--accent); font-weight: 600; cursor: pointer; }
+
+  /* --- 4. mail --- */
+  details.expander { margin-top: 6px; }
+  details.expander summary {
+    font-size: 12px;
+    color: var(--text-sub);
+    cursor: pointer;
+    outline: none;
+    padding: 4px 0;
+  }
+  details.expander .note {
+    font-size: 11px;
+    color: var(--text-sub);
+    margin: 4px 0 6px;
+    font-style: italic;
+  }
+  .mail-list-line { font-size: 12px; padding: 3px 0; border-bottom: 1px dashed var(--card-border); }
+
+  /* --- 5. footer strip --- */
+  .footer-strip {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 18px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .footer-strip .item { white-space: nowrap; }
+  .footer-strip .ok { color: var(--accent); font-weight: 600; }
+  .footer-strip .sep { color: var(--card-border); }
+  details.news-expander summary {
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .news-line { font-size: 12px; padding: 4px 2px; border-bottom: 1px dashed var(--card-border); }
+
+  /* --- 6. removed notice --- */
+  .removed-box {
+    background: #eee9dc;
+    border: 1px dashed var(--text-sub);
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 12px;
+    color: var(--text-sub);
+  }
+  .removed-box b { color: var(--text); }
+
+  .measure-note {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 14px;
+  }
+
+  /* --- before (schematic old dashboard) --- */
+  .before-wrap { text-align: center; }
+  .before-shrink {
+    display: inline-block;
+    width: 300px;
+    transform-origin: top center;
+    border: 2px solid var(--text-sub);
+    border-radius: 4px;
+    padding: 8px;
+    background: repeating-linear-gradient(
+      180deg, #fff, #fff 10px, #eee9dc 10px, #eee9dc 20px
+    );
+  }
+  .before-shrink .blk {
+    background: #fff;
+    border: 1px solid var(--card-border);
+    margin-bottom: 6px;
+    padding: 6px;
+    font-size: 9px;
+    color: var(--text-sub);
+    text-align: left;
+  }
+  .before-caption {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-title">
+    <span><strong>MonoDeck ダッシュボード</strong>  再設計モックアップ</span>
+    <span>2026-07-04 案 / 幅 1000px</span>
+  </div>
+
+  <input type="radio" name="tab" id="tab-after" checked>
+  <input type="radio" name="tab" id="tab-before">
+  <div class="tabs">
+    <label for="tab-after">After (新デザイン)</label>
+    <label for="tab-before">Before (現行・模式図)</label>
+  </div>
+
+  <!-- ============ AFTER (新デザイン) ============ -->
+  <div class="view view-after">
+
+    <!-- 1. header strip -->
+    <div class="card header-strip">
+      <div class="action-block">
+        <div class="action-count">⚠ 要対応 3</div>
+        <div class="pills">
+          <span class="pill urgent">通関 1</span>
+          <span class="pill urgent">承認待ち 2</span>
+          <span class="pill neutral">在庫切れ 34</span>
+          <span class="pill ok">緊急メール 0</span>
+        </div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">本日売上</div>
+          <div class="kpi-value">$0<span class="sep">/</span>0件</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">今週</div>
+          <div class="kpi-value">$1,588<span class="sep">/</span>8件</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">システム 24h</div>
+          <div class="kpi-value ok-check">✓ 99%<span class="sep">(713/714)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. notification center -->
+    <div class="card">
+      <div class="section-title">🔔 通知センター ・未読 3</div>
+      <div class="notif-list">
+        <div class="notif-row">
+          <span class="badge">KW</span>
+          <span class="txt">🔨 <b>Leica M6 Classic レンジファインダー</b> — ¥30,000 | KW: ライカM6 | ヤフオク</span>
+          <span class="meta">15分前</span>
+          <span class="btns"><span>開く</span><span>✓</span></span>
+        </div>
+        <div class="notif-row">
+          <span class="badge">KW</span>
+          <span class="txt">🔨 <b>HIOKI 3390 パワーハイテスタ</b> — ¥18,500 | KW: HIOKI 3390 | ヤフオク</span>
+          <span class="meta">42分前</span>
+          <span class="btns"><span>開く</span><span>✓</span></span>
+        </div>
+        <div class="notif-row">
+          <span class="badge act">要対応</span>
+          <span class="txt">📋 通関書類ドラフト確認待ち — FedEx TRK#7429-xxxx</span>
+          <span class="meta">2時間前</span>
+          <span class="btns"><span>開く</span><span>✓</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. inventory / price -->
+    <div class="card">
+      <div class="section-title">📦 在庫・価格 (要点のみ)</div>
+      <div class="split2">
+        <div>
+          <div class="headline">在庫切れ <span class="num">34件</span></div>
+          <div class="detail">直近: maxell MXCP-P100 / HIOKI DT4282 / +32</div>
+          <div class="link">在庫監視で対応 →</div>
+        </div>
+        <div>
+          <div class="headline">価格急変 <span class="num">0件</span></div>
+          <div class="detail">在庫復活 106件 (参考)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. mail -->
+    <div class="card">
+      <div class="section-title">📬 メール</div>
+      <div class="notif-empty">✓ 緊急メールなし</div>
+      <details class="expander">
+        <summary>参考メール (12)</summary>
+        <div class="note">※ 楽天等の業務外メールは自動除外済み (件数は業務関連のみ)</div>
+        <div class="mail-list-line">FedEx 通関完了通知 ・注文確認 (eBay) x3 ・出荷ラベル発行通知 x2 ・その他 6件</div>
+      </details>
+    </div>
+
+    <!-- 5. footer strip -->
+    <div class="card footer-strip">
+      <span class="item">TASKS <b>2</b></span>
+      <span class="sep">・</span>
+      <span class="item ok">部署 ✓</span>
+      <span class="sep">・</span>
+      <span class="item ok">燃料サーチャージ ✓</span>
+      <span class="sep">・</span>
+      <details class="news-expander" style="flex:1;">
+        <summary>ニュース (8) ▸</summary>
+        <div class="news-line">eBay、9月より Managed Payments 手数料体系を一部改定</div>
+        <div class="news-line">US Section 232 派生品リスト、家電カテゴリに新規追加の動き</div>
+        <div class="news-line">ヤフオク、出品者向け新配送連携サービスを発表</div>
+        <div class="news-line">FedEx、国際発送の燃料サーチャージを来月改定</div>
+        <div class="news-line">eBay Japan、越境EC セラー向けウェビナー開催案内</div>
+        <div class="news-line">USPS、通関書類の電子提出を一部品目で義務化</div>
+        <div class="news-line">円相場、対ドルで年初来変動幅拡大の報道</div>
+        <div class="news-line">DHL、アジア域内配送で新料金プラン導入</div>
+      </details>
+    </div>
+
+    <!-- 6. removed notice -->
+    <div class="removed-box">
+      <b>撤去したもの:</b>
+      ROADMAP 表示 (→ システム運用タブへ、掃除済みで残 ~15 件) ／
+      巨大コックピット帯 ／
+      MORNING BRIEF は通知センターの 1 行に統合 ／
+      AI活用アクションは NEWS 内へ
+    </div>
+
+    <div class="measure-note">
+      推定縦寸法 ・約 640px (CSS box 積算による設計時見積り、実ブラウザ実測ではない) ／ 現行 ~8,000px 超からの大幅圧縮
+    </div>
+
+  </div>
+
+  <!-- ============ BEFORE (現行・模式図) ============ -->
+  <div class="view view-before">
+    <div class="before-wrap">
+      <div class="before-shrink">
+        <div class="blk">巨大コックピット帯 (KPI大量表示)</div>
+        <div class="blk">MORNING BRIEF (長文セクション)</div>
+        <div class="blk">ROADMAP 一覧 (~15件超、全展開)</div>
+        <div class="blk">通知一覧 (旧フォーマット、行間広い)</div>
+        <div class="blk">在庫切れ一覧 (全件テーブル表示)</div>
+        <div class="blk">価格変動一覧 (全件テーブル表示)</div>
+        <div class="blk">メール一覧 (urgent/参考 混在、全展開)</div>
+        <div class="blk">AI活用アクション帯</div>
+        <div class="blk">TASKS / 部署 / 燃料サーチャージ</div>
+        <div class="blk">NEWS 全展開</div>
+        <div class="blk">(以下、縦スクロール継続 ...)</div>
+      </div>
+      <div class="before-caption">
+        模式図 (実寸ではなく構成イメージ) ／ 実測 縦 約 8,000px 超 (全セクション常時展開・粒度不統一)
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
