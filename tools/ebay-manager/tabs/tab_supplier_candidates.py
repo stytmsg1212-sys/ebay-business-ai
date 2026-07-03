@@ -470,15 +470,27 @@ def render_supplier_candidates_tab(s: dict) -> None:
                         not st.session_state.get(_photo_key, False)
                     )
                 if st.session_state.get(_photo_key, False):
-                    # 2026-05-20 Codex HIGH: 採用直後 prompt 経由の inline section
-                    # (画面上部) で同 cid が既に開いている場合、ここで再 render すると
+                    # 2026-05-20 Codex HIGH: 採用直後 followup (画面上部) で同 cid が
+                    # 既に表示されている場合、ここで再 render すると
                     # `render_supplier_photo_apply_section` 内の widget key
                     # (sup_*_{cid}) が重複し Streamlit duplicate-key エラーで
-                    # 画面破綻。inline が開いている時は history 側を skip + 注意表示。
-                    if st.session_state.get(f"_sup_photo_open_inline_{cid}"):
+                    # 画面破綻。W314 Phase 2 S6 (2026-07-03): followup 側は
+                    # 統一パネル (render_finishing_panel) に一本化され「はい/いいえ」
+                    # プロンプトを経由せず cid が followup 対象である間は常時
+                    # render_supplier_photo_apply_section を内包する。そのため
+                    # 判定基準を _sup_photo_open_inline_ 単独から、followup 側の
+                    # _followup_cids 収集条件 (4 flag いずれか True) と同一に更新。
+                    _followup_active = any(
+                        st.session_state.get(f"{_p}{cid}")
+                        for _p in (
+                            "_sup_photo_prompt_", "_sup_photo_open_inline_",
+                            "_sup_desc_prompt_", "_sup_desc_open_inline_",
+                        )
+                    )
+                    if _followup_active:
                         st.caption(
-                            "⚠️ この候補は採用直後の写真反映 section (画面上部) で"
-                            "既に開いています。そちらで操作してください。"
+                            "⚠️ この候補は採用直後の商品仕上げパネル (画面上部) で"
+                            "既に表示されています。そちらで操作してください。"
                         )
                     else:
                         from tabs._supplier_photo_pipeline import (
@@ -826,7 +838,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # へ移設 (在庫監視タブと共有)。経緯コメント (2026-05-20 W115 / 2026-06-11
     # バグ3/4 / 依頼ボード#12 行き先通知) は移設先に保持。
     from tabs._supplier_followup_section import render_supplier_followup_section
-    if render_supplier_followup_section():
+    if render_supplier_followup_section(source_tab="supplier"):
         st.markdown("---")
 
     # ── サブタブ 4 分割 (2026-04-24 rev2) ──

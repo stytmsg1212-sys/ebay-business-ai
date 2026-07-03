@@ -181,7 +181,7 @@ def render_inventory_monitor_tab(s: dict) -> None:
     # _process_apply 成功時に立てた _sup_photo_prompt_/_sup_desc_prompt_ を
     # ここで描画 (バッチ末尾の st.rerun 後にタブ最上部へ出る)。
     from tabs._supplier_followup_section import render_supplier_followup_section
-    if render_supplier_followup_section():
+    if render_supplier_followup_section(source_tab="inventory"):
         st.markdown("---")
 
     monitor_tab_risk, monitor_tab1, monitor_tab2 = st.tabs(["要対応", "監視リスト", "サイト設定"])

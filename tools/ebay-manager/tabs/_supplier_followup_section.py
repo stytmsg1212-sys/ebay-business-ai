@@ -10,8 +10,15 @@
   - 採用 (apply_supplier_candidate 成功) 時に session_state へ
     `_sup_photo_prompt_{cid}` / `_sup_desc_prompt_{cid}` = True を set
     (meta `_sup_photo_meta_{cid}` は任意 — 無ければ本 render が DB 補完)
-  - ページ本文の先頭付近で render_supplier_followup_section() を呼び、
+  - ページ本文の先頭付近で render_supplier_followup_section(source_tab=...) を呼び、
     True が返ったら区切り線等を描く
+    (source_tab は "inventory"|"supplier" — 統一「商品仕上げパネル」
+    (tabs/_finishing_panel.py) のコンテンツ既定開閉に使われる、W314 Phase 2 S6)
+
+W314 Phase 2 S6 (2026-07-03): 写真反映 (📷 プロンプト) + タイトル編集小節は
+統一「商品仕上げパネル」(`render_finishing_panel`) に一本化された。
+description の AI 生成プロンプト (📝) のみ本モジュールに残る
+(パネルには AI 生成機能が無いため)。
 """
 from __future__ import annotations
 
@@ -98,12 +105,17 @@ def _render_followup_title_subsection(cid: int, eid: str) -> None:
                 st.error(_result.get("message") or "タイトル更新に失敗しました")
 
 
-def render_supplier_followup_section() -> bool:
+def render_supplier_followup_section(source_tab: str) -> bool:
     """採用後の写真/description フォローアップ欄を描画する。
 
     session_state の `_sup_photo_prompt_` / `_sup_photo_open_inline_` /
     `_sup_desc_prompt_` / `_sup_desc_open_inline_` 各 namespace から
     アクティブな candidate id を収集し、cid 単位の統合ブロックを描画。
+
+    Args:
+        source_tab: 呼出元タブ ("inventory"|"supplier")。統一「商品仕上げパネル」
+            (`render_finishing_panel`) へそのまま渡し、コンテンツ既定開閉に使う
+            (W314 Phase 2 S6)。
 
     Returns:
         1 件以上描画したら True (呼び出し側が区切り線を引く判断に使う)。
@@ -154,6 +166,15 @@ def render_supplier_followup_section() -> bool:
             f"description 生成は商品管理タブからいつでもできます。"
         )
 
+    # 同一 listing (ebay_item_id) に候補 2 件以上が同時 followup アクティブになると
+    # render_finishing_panel が同じ eid で 2 回呼ばれ、pf_{eid}_* widget key が
+    # 重複して StreamlitDuplicateElementKey で followup 全体がクラッシュする
+    # (1 listing に複数候補は正常データ。code-reviewer HIGH1 / 2026-07-03)。
+    # 対策 = eid 単位で先着 cid のみ描画、後続 cid は caption で明示スキップ (Q0)。
+    # 「対応を完了」でフラグが閉じれば次 rerun で次の cid が自然に表示される。
+    _seen_eids: set[str] = set()
+    _skipped_by_eid: dict[str, list[int]] = {}
+
     for _fcid in sorted(_followup_cids):
         _fmeta: dict = st.session_state.get(f"_sup_photo_meta_{_fcid}") or {}
         # meta が session_state にない場合は DB から補完 (2026-05-25 防御強化を継承)
@@ -180,6 +201,14 @@ def render_supplier_followup_section() -> bool:
         _f_eid = _fmeta.get("eid") or ""
         _f_url = _fmeta.get("url") or ""
 
+        # HIGH1 fix: 同一 eid 重複描画抑止 (widget key 衝突防止)。
+        # eid が空 (meta 補完失敗) は cid が識別子として機能するため衝突しない = 描画する。
+        if _f_eid and _f_eid in _seen_eids:
+            _skipped_by_eid.setdefault(_f_eid, []).append(_fcid)
+            continue
+        if _f_eid:
+            _seen_eids.add(_f_eid)
+
         with st.container(border=True):
             st.markdown(
                 f'<div style="font-size:11px;color:#b8860b;'
@@ -189,65 +218,18 @@ def render_supplier_followup_section() -> bool:
                 unsafe_allow_html=True,
             )
 
-            # ── タイトルサブセクション (W314 Phase 1 S3) ──
-            _render_followup_title_subsection(_fcid, _f_eid)
-
-            # ── 写真サブセクション ──
-            if st.session_state.get(f"_sup_photo_prompt_{_fcid}"):
-                # Step 1: prompt (採用押下直後、まだ「はい/いいえ」未選択)
-                st.warning(
-                    f"📷 採用しました ({_f_ttl} / item {_f_eid})。"
-                    f"仕入先の画像で写真も反映しますか？ "
-                    f"(個別出品と同じ Photoroom + Gemini 3 候補プレートから選択)"
-                )
-                _pc = st.columns([1, 1, 5])
-                with _pc[0]:
-                    if st.button(
-                        "📷 はい、写真も選ぶ",
-                        key=f"_sup_photo_yes_{_fcid}", type="primary",
-                    ):
-                        st.session_state[f"_sup_photo_open_inline_{_fcid}"] = True
-                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
-                        st.rerun()
-                with _pc[1]:
-                    if st.button(
-                        "いいえ、後でやる",
-                        key=f"_sup_photo_no_{_fcid}",
-                    ):
-                        st.session_state[f"_sup_photo_prompt_{_fcid}"] = False
-                        # meta は履歴タブ「📷 写真反映」ボタン再操作用に残す
-                        # 依頼ボード#12: desc 側も非アクティブなら次 rerun で欄ごと
-                        # 消える → 行き先通知を queue
-                        if not st.session_state.get(
-                            f"_sup_desc_prompt_{_fcid}"
-                        ) and not st.session_state.get(
-                            f"_sup_desc_open_inline_{_fcid}"
-                        ):
-                            st.session_state.setdefault(
-                                "_sup_followup_later_notice", []
-                            ).append({"title": _f_ttl, "eid": _f_eid})
-                        st.rerun()
-
-            elif st.session_state.get(f"_sup_photo_open_inline_{_fcid}"):
-                # Step 2: opened (はい押下後 → photo apply section を inline 展開)
-                if not _f_url:
-                    st.error(
-                        f"cid={_fcid}: URL 情報不足 → 履歴タブの「📷 写真反映」"
-                        f"から操作してください"
-                    )
-                else:
-                    st.markdown(
-                        f"**▼ 写真反映: {_f_ttl} (item {_f_eid})**"
-                    )
-                    from tabs._supplier_photo_pipeline import (
-                        render_supplier_photo_apply_section,
-                    )
-                    render_supplier_photo_apply_section(
-                        candidate_id=_fcid,
-                        candidate_url=_f_url,
-                        ebay_item_id=_f_eid,
-                        candidate_title=_f_ttl,
-                    )
+            # ── 統一パネル (W314 Phase 2 S6): タイトル/画像/ランク/数量を集約 ──
+            # 旧「タイトルサブセクション」(_render_followup_title_subsection、S3) と
+            # 「写真サブセクション」の Step1 プロンプト/Step2 inline 展開は、この
+            # 単一呼出しに統合された (_render_followup_title_subsection 自体は
+            # 削除せず温存、パネルのタイトル欄と重複するため followup からは呼ばない)。
+            # render_supplier_photo_apply_section はパネル内部からのみ呼ばれる
+            # (followup 側で直接呼ばないことで widget key 二重描画を防止)。
+            from tabs._finishing_panel import render_finishing_panel
+            render_finishing_panel(
+                _f_eid, None, candidate_id=_fcid, candidate_url=_f_url,
+                source_tab=source_tab,
+            )
 
             # ── description サブセクション ──
             if st.session_state.get(f"_sup_desc_prompt_{_fcid}"):
@@ -316,5 +298,14 @@ def render_supplier_followup_section() -> bool:
             ):
                 _close_supplier_followup(_fcid)
                 st.rerun()
+
+    # HIGH1 fix: eid 単位で先着 cid のみ描画したため、後続 cid は silent 消失させず
+    # ユーザーに「上のパネル完了後に表示されます」と明示 (Q0)。
+    for _eid, _skipped_cids in _skipped_by_eid.items():
+        _cid_list = ", ".join(f"#{c}" for c in _skipped_cids)
+        st.caption(
+            f"ℹ️ 同一商品 (item {_eid}) の別候補 {_cid_list} は、"
+            f"上のパネルで「対応を完了」した後に順次表示されます。"
+        )
 
     return bool(_followup_cids)

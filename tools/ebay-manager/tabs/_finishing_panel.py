@@ -1,0 +1,510 @@
+"""W314 Phase 2 S5 (2026-07-03): 統一「商品仕上げパネル」本体.
+
+設計書: .company/engineering/docs/2026-07-03-finishing-panel-design.md §1-§5
+モックアップ: 2026-07-03-finishing-panel-mockup.html (同ディレクトリ、user 承認済)
+
+商品管理 / 在庫監視 / 仕入先候補 の 3 タブから同一パネルに合流させる統一 UI。
+結線 (3 タブへの呼出し追加) は別 agent S6 が担当、本ファイルは
+`render_finishing_panel()` の提供のみが scope (K1: 新規ファイルのみ)。
+
+呼び出し契約 (S6 へ):
+    from tabs._finishing_panel import render_finishing_panel
+    render_finishing_panel(
+        eid,                       # ebay_item_id (str, 必須、sku-rules 準拠)
+        config,                    # schedule_config.json 相当 dict (省略可、None 可)
+        candidate_id=None,         # 仕入先候補 id (供給リスク採用後 / 仕入先候補タブ経由のみ)
+        candidate_url=None,        # 仕入先 URL (省略時 ebay_listings.source_url で自動補完)
+        source_tab="product_management",  # 'product_management'|'inventory'|'supplier' 等
+    )
+
+Phase 2 スコープ外 (Phase 3 以降、設計書§8):
+    - 価格・送料の編集 (本パネルには置かない、商品管理タブへ誘導のみ = T3 隔離)
+    - 仕入先 URL の編集 (表示のみ)
+    - 採用ロジック単一化 / 商品管理タブの 5 グループ再編
+
+画像フィールドの扱い (Phase 2 の明示的な簡略化):
+    `_supplier_photo_pipeline.render_supplier_photo_apply_section` は 3 モード
+    それぞれが自前の「eBay に反映」ボタンを持ち、押下と同時に eBay へ即時反映される
+    (= コンテンツ一括反映ボタンを待たない)。この独自完結フローに合わせるため、
+    本パネルの「変更プレビュー」テーブルおよび「🚀 eBay へ反映」一括ボタンには
+    images を含めない (`_finishing_panel_state.DISPATCH_FIELD_ORDER` に 'images' は
+    無い)。画像パイプラインの内部 session_state (`sup_*` prefix) を横断的に
+    dirty 追跡することは Phase 2 では行わない (3 モードで session_state 形状が
+    異なり、外部ファイルを触らずに安全に統合するのは困難なため。Phase 3/5 の
+    photo_pipeline 収斂で再検討)。
+"""
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+import streamlit as st
+
+from tabs._finishing_panel_state import (
+    DISPATCH_FIELD_ORDER,
+    FIELD_LABELS_JA,
+    RANK_CHOICES,
+    RANK_LABELS_JA,
+    build_change_preview,
+    compute_header_metrics,
+    dispatch_content_changes,
+    fetch_description_from_ebay,
+    is_field_dirty,
+    mark_field_synced,
+    pf_key,
+    rank_to_condition_id,
+    resolve_rank_initial,
+    seed_initial,
+    seed_session_value,
+)
+
+logger = logging.getLogger(__name__)
+
+_CSS_SENTINEL = "_pf_css_injected"
+
+_RANK_BLANK = "（未設定 / eBay未取得）"
+
+
+def _inject_css_once() -> None:
+    """パネル用 CSS を 1 回だけ注入する (設計書§7 性能設計、session_state センチネル)."""
+    if st.session_state.get(_CSS_SENTINEL):
+        return
+    st.session_state[_CSS_SENTINEL] = True
+    st.markdown(
+        """<style>
+        .pf-money-note { color:#7a5407; font-size:12px; font-weight:600; }
+        </style>""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_finishing_panel(
+    eid: str,
+    config: Optional[dict] = None,
+    *,
+    candidate_id: Optional[int] = None,
+    candidate_url: Optional[str] = None,
+    source_tab: str = "product_management",
+) -> None:
+    """統一「商品仕上げパネル」を描画するエントリポイント (呼び出し契約は module docstring 参照)."""
+    if not eid:
+        st.error("ebay_item_id が指定されていません (商品仕上げパネルを表示できません)")
+        return
+    _inject_css_once()
+    _render_finishing_panel_fragment(
+        eid, config, candidate_id=candidate_id,
+        candidate_url=candidate_url, source_tab=source_tab,
+    )
+
+
+@st.fragment
+def _render_finishing_panel_fragment(
+    eid: str,
+    config: Optional[dict],
+    *,
+    candidate_id: Optional[int],
+    candidate_url: Optional[str],
+    source_tab: str,
+) -> None:
+    """パネル本体 (@st.fragment、設計書§7: 採用時 scope="app" ではなくパネル scope に縮小)."""
+    from monitor.database import get_ebay_listing_by_item_id
+
+    row = get_ebay_listing_by_item_id(eid)
+    if not row:
+        st.error(f"listing が見つかりません (ebay_item_id={eid})")
+        return
+
+    _render_header(eid, row)
+
+    _content_open = source_tab in ("inventory", "supplier")
+    with st.expander("コンテンツ", expanded=_content_open):
+        _render_content_group(
+            eid, row, config,
+            candidate_id=candidate_id, candidate_url=candidate_url, source_tab=source_tab,
+        )
+
+    with st.expander("仕入先", expanded=False):
+        _render_supplier_group(row, candidate_url)
+
+    with st.expander("💰 価格・送料 (金銭直結・2段確認)", expanded=False):
+        _render_money_zone(eid)
+
+
+# =============================================================================
+# ヘッダ
+# =============================================================================
+
+def _render_header(eid: str, row: dict) -> None:
+    """サムネ / タイトル / 4 指標 (価格・利益・在庫・ステータス) を常時表示."""
+    title = row.get("title") or "(タイトル不明)"
+    metrics = compute_header_metrics(row)
+
+    head_cols = st.columns([1, 4])
+    with head_cols[0]:
+        img_url = row.get("ebay_image_url")
+        if img_url:
+            try:
+                st.image(img_url, use_container_width=True)
+            except Exception:  # noqa: BLE001 -- 画像表示失敗でパネル全体を壊さない
+                st.caption("🖼️")
+        else:
+            st.caption("🖼️ (画像未取得)")
+    with head_cols[1]:
+        st.markdown(f"**{title}**")
+        st.caption(f"ebay_item_id: {eid} ・ SKU: {row.get('sku') or '-'}")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            if metrics["profit_jpy"] is not None:
+                _delta = (
+                    f"{metrics['profit_rate_pct']}%"
+                    if metrics["profit_rate_pct"] is not None else None
+                )
+                st.metric("利益", f"¥{metrics['profit_jpy']:,}", _delta)
+            else:
+                st.metric("利益", "—")
+        with m2:
+            st.metric("販売価格", f"${metrics['price_usd']:,.2f}")
+        with m3:
+            st.metric("在庫数", metrics["quantity"])
+        with m4:
+            st.metric("ステータス", metrics["status"])
+
+
+# =============================================================================
+# コンテンツグループ
+# =============================================================================
+
+def _render_content_group(
+    eid: str,
+    row: dict,
+    config: Optional[dict],
+    *,
+    candidate_id: Optional[int],
+    candidate_url: Optional[str],
+    source_tab: str,
+) -> None:
+    fields: dict[str, dict] = {}
+
+    # ---- タイトル ----
+    title_key = pf_key(eid, "title")
+    title_initial = seed_initial(st.session_state, eid, "title", row.get("title") or "")
+    seed_session_value(st.session_state, title_key, title_initial)
+    _title_dirty_before = is_field_dirty(
+        "title", title_initial, st.session_state.get(title_key, title_initial),
+    )
+    st.text_input(
+        "商品タイトル (eBay Title / 80 文字以内)"
+        + ("　🟠 変更あり" if _title_dirty_before else ""),
+        max_chars=80,
+        key=title_key,
+    )
+    new_title = st.session_state.get(title_key, title_initial)
+    st.caption(f"{len(new_title or '')}/80 文字")
+    fields["title"] = {"before": title_initial, "after": new_title}
+
+    # ---- description ----
+    desc_key = pf_key(eid, "description")
+    desc_initial = seed_initial(
+        st.session_state, eid, "description", row.get("listing_description") or "",
+    )
+    seed_session_value(st.session_state, desc_key, desc_initial)
+    with st.container(border=True):
+        st.caption("Description (現行プレビュー)")
+        _preview_src = desc_initial or "(未設定)"
+        st.markdown(_preview_src[:200] + ("…" if len(_preview_src) > 200 else ""))
+        dcols = st.columns([1, 4])
+        with dcols[0]:
+            if st.button("⬇️ eBay から取得", key=pf_key(eid, "desc_fetch_btn")):
+                _res = fetch_description_from_ebay(eid, config)
+                if _res["success"]:
+                    st.session_state[desc_key] = _res["description"]
+                    st.success("取得しました。下の編集欄に反映しました。")
+                    st.rerun(scope="fragment")
+                else:
+                    st.error(_res["message"])
+        st.text_area(
+            "説明文 (HTML) を編集",
+            key=desc_key,
+            height=150,
+        )
+    new_desc = st.session_state.get(desc_key, desc_initial)
+    fields["description"] = {"before": desc_initial, "after": new_desc}
+
+    # ---- 画像 (3モード、一括反映の対象外 — module docstring 参照) ----
+    st.markdown("**画像**")
+    st.caption(
+        "💡 画像はこのセクション内の「eBay に反映」ボタンで即時完結します"
+        "(下の「🚀 eBay へ反映」一括ボタンの対象外)。"
+    )
+    _effective_candidate_url = candidate_url or row.get("source_url") or ""
+    if _effective_candidate_url:
+        from tabs._supplier_photo_pipeline import render_supplier_photo_apply_section
+        _photo_cid = candidate_id if candidate_id is not None else eid
+        render_supplier_photo_apply_section(
+            candidate_id=_photo_cid,
+            candidate_url=_effective_candidate_url,
+            ebay_item_id=eid,
+            candidate_title=row.get("title") or "",
+        )
+    else:
+        st.info(
+            "仕入先 URL 未指定のため画像モードは利用できません。"
+            "仕入先候補タブから採用すると画像反映も選べます。"
+        )
+
+    # ---- ランク ----
+    rank_initial = seed_initial(st.session_state, eid, "rank", resolve_rank_initial(row))
+    rank_key = pf_key(eid, "rank")
+    _rank_opts = [_RANK_BLANK] + list(RANK_CHOICES)
+    _rank_seed = rank_initial if rank_initial in RANK_CHOICES else _RANK_BLANK
+    seed_session_value(st.session_state, rank_key, _rank_seed)
+
+    body_cols = st.columns(2)
+    with body_cols[0]:
+        st.selectbox(
+            "ランク",
+            options=_rank_opts,
+            format_func=lambda v: RANK_LABELS_JA.get(v, v),
+            key=rank_key,
+        )
+    _rank_sel = st.session_state.get(rank_key, _rank_seed)
+    new_rank = None if _rank_sel == _RANK_BLANK else _rank_sel
+    fields["rank"] = {"before": (rank_initial or None), "after": new_rank}
+
+    # ---- 数量 ----
+    qty_initial = seed_initial(
+        st.session_state, eid, "quantity", int(row.get("quantity_ebay") or 0),
+    )
+    qty_key = pf_key(eid, "quantity")
+    seed_session_value(st.session_state, qty_key, qty_initial)
+    with body_cols[1]:
+        st.number_input("数量", min_value=0, step=1, key=qty_key)
+    new_qty = int(st.session_state.get(qty_key, qty_initial))
+    fields["quantity"] = {"before": qty_initial, "after": new_qty}
+
+    # ---- 変更プレビュー + 一括反映 ----
+    preview = build_change_preview(fields)
+    if not preview:
+        st.caption("変更はありません。")
+        return
+
+    st.markdown("**変更プレビュー** (変更されたフィールドのみ表示)")
+    st.table([
+        {"フィールド": p["label"], "Before": p["before"], "After": p["after"]}
+        for p in preview
+    ])
+
+    _dirty_dispatch_fields = [
+        f for f in DISPATCH_FIELD_ORDER
+        if is_field_dirty(f, fields[f]["before"], fields[f]["after"])
+    ]
+    if st.button(
+        f"🚀 eBay へ反映 ({len(_dirty_dispatch_fields)}件の変更)",
+        key=pf_key(eid, "apply_btn"), type="primary",
+        disabled=not _dirty_dispatch_fields,
+    ):
+        _apply_content_changes(eid, fields, config, source_tab=source_tab, candidate_id=candidate_id)
+    st.caption("価格・送料は含まれません（下の「💰 価格・送料」隔離セクションから）")
+
+
+def _sync_description_db(eid: str, description: str) -> None:
+    """description の DB 同期 (listing_description 列).
+
+    database.py に専用の `update_ebay_listing_*` 関数が無いため (title/quantity/
+    rank には既存関数があるが description は無い)、本ファイル内で直接 UPDATE する。
+    scope 制約 (S5 = 新規ファイルのみ) のため database.py への関数追加は見送り、
+    Phase 3 の既存ファイル改修時に `update_ebay_listing_description()` として
+    昇格させることを推奨する (S6 引き継ぎ事項)。
+    """
+    from monitor.database import get_conn
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ebay_listings SET listing_description=? WHERE ebay_item_id=?",
+            (description, eid),
+        )
+
+
+def _apply_content_changes(
+    eid: str,
+    fields: dict[str, dict],
+    config: Optional[dict],
+    *,
+    source_tab: str,
+    candidate_id: Optional[int],
+) -> None:
+    """「🚀 eBay へ反映」ボタン押下時の一括反映処理."""
+    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
+    from monitor.database import (
+        update_ebay_listing_condition,
+        update_ebay_listing_quantity,
+        update_ebay_listing_title,
+    )
+    from monitor.ebay_client import (
+        revise_inventory_quantity,
+        revise_item_condition,
+        revise_item_description,
+        revise_item_title,
+    )
+
+    try:
+        creds = get_ebay_credentials(config)
+    except Exception as e:  # noqa: BLE001 -- credentials 解決の多様な例外を UI に伝える
+        st.error(f"credentials 取得エラー: {e}")
+        return
+    if not ebay_credentials_ok(creds):
+        st.error("eBay credentials 未設定です (設定タブ参照)")
+        return
+    app_id, dev_id = creds["app_id"], creds["dev_id"]
+    cert_id, token = creds["cert_id"], creds["user_token"]
+
+    changes: list[dict] = []
+
+    if is_field_dirty("title", fields["title"]["before"], fields["title"]["after"]):
+        # M2 fix (2026-07-03 code review MED): revise_item_title / update_ebay_listing_title
+        # は内部で strip するが本 apply が渡す raw 値は未 strip のため、監査ログ
+        # (dispatch_content_changes の after 引数) と eBay/DB 実値が末尾空白で
+        # 乖離し得る。ここで先に strip して 3 者 (eBay/DB/監査ログ) を一致させる。
+        _after = (fields["title"]["after"] or "").strip()
+
+        def _apply_title(_after=_after):
+            r = revise_item_title(eid, _after, app_id, dev_id, cert_id, token)
+            if r.get("success"):
+                update_ebay_listing_title(eid, _after)
+            return r
+
+        changes.append({
+            "field": "title", "before": fields["title"]["before"], "after": _after,
+            "apply": _apply_title,
+        })
+
+    if is_field_dirty("description", fields["description"]["before"], fields["description"]["after"]):
+        _after = fields["description"]["after"]
+
+        def _apply_description(_after=_after):
+            r = revise_item_description(eid, _after, app_id, dev_id, cert_id, token)
+            if r.get("success"):
+                _sync_description_db(eid, _after)
+            return r
+
+        changes.append({
+            "field": "description", "before": fields["description"]["before"], "after": _after,
+            "apply": _apply_description,
+        })
+
+    if is_field_dirty("rank", fields["rank"]["before"], fields["rank"]["after"]):
+        _after = fields["rank"]["after"]
+        _cond_id = rank_to_condition_id(_after)
+
+        def _apply_rank(_after=_after, _cond_id=_cond_id):
+            if not _cond_id:
+                return {"success": False, "message": f"rank={_after!r} に対応する ConditionID が不明です"}
+            if _cond_id == "7000":
+                # As-Is (7000) は ConditionDescription 必須 (CLAUDE.md)。Phase 2 パネルは
+                # 理由入力欄を持たないため自動反映せず、商品管理タブへ誘導する
+                # (_apply_supplier_condition と同方針、既存 As-Is ガードを踏襲)。
+                return {
+                    "success": False,
+                    "message": "As-Is は理由入力が必須のため商品管理タブから設定してください",
+                }
+            from monitor.ebay_listing_snapshot import fetch_listing_snapshot
+            snap_pre = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+            if snap_pre.ok and (snap_pre.condition_id or "") == _cond_id:
+                update_ebay_listing_condition(eid, ebay_condition_id=_cond_id, condition_rank=_after)
+                return {"success": True, "message": f"既に {_after}({_cond_id}) — DB 同期のみ"}
+            r = revise_item_condition(eid, _cond_id, app_id, dev_id, cert_id, token)
+            snap_post = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
+            actual = snap_post.condition_id if snap_post.ok else None
+            if actual == _cond_id:
+                update_ebay_listing_condition(eid, ebay_condition_id=_cond_id, condition_rank=_after)
+                return {"success": True, "message": f"Condition を {_after}({_cond_id}) に反映"}
+            return {
+                "success": False,
+                "message": f"Condition 反映 verify 失敗 (実値={actual}): {r.get('message', '不明')}",
+            }
+
+        changes.append({
+            "field": "rank", "before": fields["rank"]["before"], "after": _after,
+            "apply": _apply_rank,
+        })
+
+    if is_field_dirty("quantity", fields["quantity"]["before"], fields["quantity"]["after"]):
+        _after = fields["quantity"]["after"]
+
+        def _apply_quantity(_after=_after):
+            r = revise_inventory_quantity(eid, int(_after), app_id, dev_id, cert_id, token)
+            if r.get("success"):
+                update_ebay_listing_quantity(eid, int(_after))
+            return r
+
+        changes.append({
+            "field": "quantity", "before": fields["quantity"]["before"], "after": _after,
+            "apply": _apply_quantity,
+        })
+
+    if not changes:
+        st.info("反映対象の変更がありません。")
+        return
+
+    after_by_field = {c["field"]: c["after"] for c in changes}
+    with st.spinner(f"{len(changes)} 件を eBay へ反映中..."):
+        results = dispatch_content_changes(
+            eid, changes, source_tab=source_tab, candidate_id=candidate_id,
+        )
+
+    any_success = False
+    for field, res in results.items():
+        label = FIELD_LABELS_JA.get(field, field)
+        if res["success"]:
+            st.success(f"{label}: {res['message'] or '反映しました'}")
+            mark_field_synced(st.session_state, eid, field, after_by_field[field])
+            any_success = True
+        else:
+            st.error(f"{label}: {res['message'] or '反映に失敗しました'}")
+
+    # M1 fix (2026-07-03 code review MED): DB を更新した場合は ui_cache の
+    # db_version を bump し、外側 (tab_product_management 等) の
+    # `_cd_fetch_all_products` cache を無効化する。bump しないと反映後も
+    # 商品一覧が旧値を表示し続ける (既存編集ゾーンの流儀、
+    # tab_product_management.py L3943 付近と同じパターン)。全失敗時は DB は
+    # 変わっていないため bump しない。
+    if any_success:
+        from ui_cache import bump_db_version
+        bump_db_version()
+
+    st.rerun(scope="fragment")
+
+
+# =============================================================================
+# 仕入先グループ (最小、Phase 3 で編集機能追加予定)
+# =============================================================================
+
+def _render_supplier_group(row: dict, candidate_url: Optional[str]) -> None:
+    url = candidate_url or row.get("source_url") or ""
+    if url:
+        st.markdown(f"仕入先 URL: [{url}]({url})")
+    else:
+        st.caption("仕入先 URL は未設定です。")
+    st.caption("💡 仕入先 URL の編集機能は Phase 3 で対応予定です (現時点は表示のみ)。")
+
+
+# =============================================================================
+# 価格・送料 (T3 隔離)
+# =============================================================================
+
+def _render_money_zone(eid: str) -> None:
+    st.markdown(
+        '<span class="pf-money-note">⚠️ 誤操作防止のため、価格・送料の変更は'
+        'このパネルには含まれません。</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption("商品管理タブの従来フォーム (2段確認) から変更してください。")
+    if st.button("📝 商品管理タブで価格・送料を編集", key=pf_key(eid, "goto_pm")):
+        # W292 jump 流儀 (tab_today_tasks.py L578-581) を踏襲。
+        st.session_state["pm_focus_eid"] = eid
+        st.session_state["_w134_sel"] = "商品管理"
+        st.session_state["_w217a_cat_view"] = "★ 毎日"
+        # fragment 内での st.rerun() は明示 scope 指定が確実 (Streamlit バージョン依存の
+        # default 挙動に頼らない、W174-pm test_accept_button_uses_app_scope_rerun と同方針)。
+        # 商品管理タブへ完全ナビゲートするため app scope (fragment scope だとタブ切替が
+        # 反映されない)。
+        st.rerun(scope="app")

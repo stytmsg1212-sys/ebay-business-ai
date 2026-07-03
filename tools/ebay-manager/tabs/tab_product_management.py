@@ -26,6 +26,7 @@ import pandas as pd
 import streamlit as st
 
 from ui_cache import bump_db_version, get_db_version, seed_keyed_list_from_db
+from tabs._finishing_panel import render_finishing_panel
 from tabs._supplier_description_pipeline import (
     apply_description_to_ebay,
     generate_supplier_description,
@@ -3912,244 +3913,248 @@ def _render_product_editor(p: dict, config: dict) -> None:
       実害なしのため残置。
     """
     eid = p["ebay_item_id"]
-    # W225: 呼出元が選択行の 1 商品のみを渡す = 常に編集ゾーンを描画する。
-    # body を再 indent しないため guard を残す (差分最小・K2 surgical)。
-    if True:
-        # ── Title (商品名 full text) ──
-        st.markdown(f"### {p.get('title', '')}")
 
-        # ── W151 (2026-05-22): 初期登録済み checkbox ──
-        # user 業務 = 初期登録 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等)
-        # 完了 listing にチェック → フィルタ「📝 初期未完了のみ」で残作業を絞り込み.
-        # W153 (新規ライバル発見) の base point として initial_registered_at を参照予定.
-        _init_current = bool(p.get("initial_registered"))
-        _init_cols = st.columns([1, 4])
-        with _init_cols[0]:
-            _init_new = st.checkbox(
-                "📝 初期登録済み",
-                value=_init_current,
-                key=f"pm_init_reg_{eid}",
-            )
-        with _init_cols[1]:
-            if _init_current and p.get("initial_registered_at"):
-                st.caption(f"完了時刻: {p['initial_registered_at']} UTC")
-        if _init_new != _init_current:
-            set_initial_registered(eid, _init_new)
-            bump_db_version()
-            st.rerun()
+    # W314 Phase 2 S6 (2026-07-03): 統一「商品仕上げパネル」を先頭に表示。
+    # 従来の編集ゾーンはそのまま下に残し、st.expander で包んで温存する
+    # (Phase 3 で 5 グループ再編予定、今回は包むだけ = K2 surgical)。
+    render_finishing_panel(eid, config, source_tab="product_management")
 
-        # W153 (2026-05-22): ライバル監視 section の呼出位置を移動.
-        # W217-B v2 (2026-06-04 mockup): 2 列構図に再整理。
-        # 左列下段=_render_supplier_section / 右列=_render_rival_section。
-        # form 外・個別 button 即時反応の挙動は移設後も不変。
+    with st.expander("🔧 詳細編集 (従来)", expanded=False):
+            # ── Title (商品名 full text) ──
+            st.markdown(f"### {p.get('title', '')}")
 
-        # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
-        # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は
-        # fetched_at 併記で正直開示 (HIGH-1)。eBay.com 直接変更で stale に
-        # なった時のための「↻ 再取得」は単一 listing 1 回 GetItem (opt-in)。
-        bp_state = _bp_state_from_db(p)
-        if st.button("↻ Shipping BP 再取得",
-                     key=f"pm_bprefresh_{eid}",
-                     help="この listing の BP を実 eBay から 1 回取得し DB を"
-                          "最新化 (eBay 側で直接 BP を変えた後に使用)"):
-            _refresh_bp_from_ebay(eid, config)
-            st.rerun()
-        _bprefresh_err = st.session_state.get(f"pm_bprefresh_err_{eid}")
-        if _bprefresh_err:
-            st.warning(f"↻ {_bprefresh_err}")
-
-        # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
-        _render_hero_metrics(p, bp_state=bp_state)
-
-        # ── 2 列 layout: 左 (編集 form + 仕入先) / 右 (ライバル) ──
-        # W217-B v2 (2026-06-04 mockup): 左=編集+仕入先, 右=ライバルのみ。
-        # 配置のみ変更、money-direct ロジック・dirty-flag は不変。
-        left, right = st.columns([1, 1], gap="medium")
-
-        with left:
-            # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
-            # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
-            # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
-            # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
-            # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
-            # form 内 description text_area (同 key) が次 rerun で読む。
-            _render_desc_fetch_button(eid, config)
-            # 左列上段: 編集 inputs + submit buttons (form 内、rerun 抑制)
-            with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
-                editing = _render_left_basic_and_physical(
-                    p, config, bp_state=bp_state)
-                # ── Action button 群 (3 列) ──
-                st.markdown('<div class="pm-section-label">アクション</div>',
-                            unsafe_allow_html=True)
-                btn_cols = st.columns(3)
-                with btn_cols[0]:
-                    save_db = st.form_submit_button(
-                        "💾 DB 保存", use_container_width=True,
-                    )
-                with btn_cols[1]:
-                    save_ebay = st.form_submit_button(
-                        "📤 eBay 反映",
-                        type="primary", use_container_width=True,
-                        help="DB + ReviseFixedPriceItem で eBay 出品価格 / 送料を更新",
-                    )
-                with btn_cols[2]:
-                    calc_be = st.form_submit_button(
-                        "💡 利益計算", use_container_width=True,
-                        help="DB 保存 + breakeven 再計算",
-                    )
-            # 左列下段: 仕入先 (form **外** = 「🔍 在庫を今すぐ確認」など
-            # 個別 button の即時反応を維持)
-            _render_supplier_section(p, config)
-
-        with right:
-            # 右列 (form 外): ライバル監視 + 登録済 dataframe
-            _render_rival_section(p, config)
-
-        # W#33: キーワード新着監視 トグル (full-width / form 外)
-        _render_keyword_watch_toggle(p)
-
-        # eBaymag 国別出品管理 (依頼ボード#10、full-width / form 外 =
-        # 状態取得/反映 button の即時反応を維持)
-        _render_ebaymag_section(p)
-
-        # ── form 外: submit 結果処理 ──
-        if save_db or save_ebay or calc_be:
-            comp_list = st.session_state.get(f"pm_comp_list_{eid}", [])
-            messages: list[str] = []
-
-            # 1. eBay 反映 (save_ebay の時のみ)
-            if save_ebay:
-                ebay_result = _apply_to_ebay(
-                    eid, editing, config, current_sku=p.get("sku")
+            # ── W151 (2026-05-22): 初期登録済み checkbox ──
+            # user 業務 = 初期登録 (ライバル登録 / 物理属性入力 / 仕入先候補確定 等)
+            # 完了 listing にチェック → フィルタ「📝 初期未完了のみ」で残作業を絞り込み.
+            # W153 (新規ライバル発見) の base point として initial_registered_at を参照予定.
+            _init_current = bool(p.get("initial_registered"))
+            _init_cols = st.columns([1, 4])
+            with _init_cols[0]:
+                _init_new = st.checkbox(
+                    "📝 初期登録済み",
+                    value=_init_current,
+                    key=f"pm_init_reg_{eid}",
                 )
-                _msg = ebay_result.get("message", "不明")
-                snap2 = ebay_result.get("post_snapshot")
-                # revise が実行され反映後 GetItem が取れた場合は、verify 成否に
-                # 関わらず DB を **実 eBay 値** へ同期する (DB:=真実)。これで
-                # HIGH-1 (価格 eBay 反映済・DB 旧値の永続乖離) も部分 verify 乖離も
-                # 構造的に消える。snap2 が None = revise 未実行 or verify GetItem
-                # 失敗 = DB は触らない (eBay 不明値を DB に書かない=Q0)。
-                if snap2 is not None:
-                    _sync_db_to_actual(eid, snap2)
-                if ebay_result["success"]:
-                    messages.append(f"eBay 反映成功 → {_msg}")
-                elif ebay_result.get("no_change"):
-                    # W227 (2026-06-06 緊急): 価格/送料は差分なし (benign no-op)。
-                    # ここで早期 return すると、user が商品ランク (Condition) や説明文を
-                    # 変更しても反映されない (S→N 修正不能の不具合)。DB は post_snapshot
-                    # で実 eBay へ同期済 (上の _sync_db_to_actual)。Condition/説明文の
-                    # 反映 (_apply_listing_content_to_ebay) へ **継続する**。
-                    messages.append("価格/送料は eBay と差分なし (反映不要)")
-                else:
+            with _init_cols[1]:
+                if _init_current and p.get("initial_registered_at"):
+                    st.caption(f"完了時刻: {p['initial_registered_at']} UTC")
+            if _init_new != _init_current:
+                set_initial_registered(eid, _init_new)
+                bump_db_version()
+                st.rerun()
+
+            # W153 (2026-05-22): ライバル監視 section の呼出位置を移動.
+            # W217-B v2 (2026-06-04 mockup): 2 列構図に再整理。
+            # 左列下段=_render_supplier_section / 右列=_render_rival_section。
+            # form 外・個別 button 即時反応の挙動は移設後も不変。
+
+            # W138-A (2026-05-17): BP は DB 列駆動で **価格同様「最初から自動
+            # 表示」** (per-render GetItem ゼロ、表示ボタン廃止)。鮮度は
+            # fetched_at 併記で正直開示 (HIGH-1)。eBay.com 直接変更で stale に
+            # なった時のための「↻ 再取得」は単一 listing 1 回 GetItem (opt-in)。
+            bp_state = _bp_state_from_db(p)
+            if st.button("↻ Shipping BP 再取得",
+                         key=f"pm_bprefresh_{eid}",
+                         help="この listing の BP を実 eBay から 1 回取得し DB を"
+                              "最新化 (eBay 側で直接 BP を変えた後に使用)"):
+                _refresh_bp_from_ebay(eid, config)
+                st.rerun()
+            _bprefresh_err = st.session_state.get(f"pm_bprefresh_err_{eid}")
+            if _bprefresh_err:
+                st.warning(f"↻ {_bprefresh_err}")
+
+            # ── Hero metrics row: 4 主要指標を上部に大きく表示 ──
+            _render_hero_metrics(p, bp_state=bp_state)
+
+            # ── 2 列 layout: 左 (編集 form + 仕入先) / 右 (ライバル) ──
+            # W217-B v2 (2026-06-04 mockup): 左=編集+仕入先, 右=ライバルのみ。
+            # 配置のみ変更、money-direct ロジック・dirty-flag は不変。
+            left, right = st.columns([1, 1], gap="medium")
+
+            with left:
+                # W225 (2026-06-05): description の eBay 取得は **即時アクション** (GetItem
+                # → 欄へ流し込み) のため form **外** に配置。st.form 内に st.button は置けず、
+                # 今朝の C-fix で form 内 (_render_left_basic_and_physical) に混入していた
+                # = editor 展開時に StreamlitAPIException でクラッシュしていた (表行選択で
+                # 必ず開く本 W で顕在化)。取得値は session_state[pm_desc_{eid}] に書き、
+                # form 内 description text_area (同 key) が次 rerun で読む。
+                _render_desc_fetch_button(eid, config)
+                # 左列上段: 編集 inputs + submit buttons (form 内、rerun 抑制)
+                with st.form(key=f"pm_form_{eid}", clear_on_submit=False):
+                    editing = _render_left_basic_and_physical(
+                        p, config, bp_state=bp_state)
+                    # ── Action button 群 (3 列) ──
+                    st.markdown('<div class="pm-section-label">アクション</div>',
+                                unsafe_allow_html=True)
+                    btn_cols = st.columns(3)
+                    with btn_cols[0]:
+                        save_db = st.form_submit_button(
+                            "💾 DB 保存", use_container_width=True,
+                        )
+                    with btn_cols[1]:
+                        save_ebay = st.form_submit_button(
+                            "📤 eBay 反映",
+                            type="primary", use_container_width=True,
+                            help="DB + ReviseFixedPriceItem で eBay 出品価格 / 送料を更新",
+                        )
+                    with btn_cols[2]:
+                        calc_be = st.form_submit_button(
+                            "💡 利益計算", use_container_width=True,
+                            help="DB 保存 + breakeven 再計算",
+                        )
+                # 左列下段: 仕入先 (form **外** = 「🔍 在庫を今すぐ確認」など
+                # 個別 button の即時反応を維持)
+                _render_supplier_section(p, config)
+
+            with right:
+                # 右列 (form 外): ライバル監視 + 登録済 dataframe
+                _render_rival_section(p, config)
+
+            # W#33: キーワード新着監視 トグル (full-width / form 外)
+            _render_keyword_watch_toggle(p)
+
+            # eBaymag 国別出品管理 (依頼ボード#10、full-width / form 外 =
+            # 状態取得/反映 button の即時反応を維持)
+            _render_ebaymag_section(p)
+
+            # ── form 外: submit 結果処理 ──
+            if save_db or save_ebay or calc_be:
+                comp_list = st.session_state.get(f"pm_comp_list_{eid}", [])
+                messages: list[str] = []
+
+                # 1. eBay 反映 (save_ebay の時のみ)
+                if save_ebay:
+                    ebay_result = _apply_to_ebay(
+                        eid, editing, config, current_sku=p.get("sku")
+                    )
+                    _msg = ebay_result.get("message", "不明")
+                    snap2 = ebay_result.get("post_snapshot")
+                    # revise が実行され反映後 GetItem が取れた場合は、verify 成否に
+                    # 関わらず DB を **実 eBay 値** へ同期する (DB:=真実)。これで
+                    # HIGH-1 (価格 eBay 反映済・DB 旧値の永続乖離) も部分 verify 乖離も
+                    # 構造的に消える。snap2 が None = revise 未実行 or verify GetItem
+                    # 失敗 = DB は触らない (eBay 不明値を DB に書かない=Q0)。
                     if snap2 is not None:
-                        st.warning(
-                            f"⚠️ 一部未反映 (DB は実 eBay 値へ同期済): {_msg} / "
-                            f"https://www.ebay.com/itm/{eid} で確認してください。"
-                            "(仕入価格/在庫数など他の編集値は未保存、"
-                            "再度フォームを保存してください)"
-                        )
+                        _sync_db_to_actual(eid, snap2)
+                    if ebay_result["success"]:
+                        messages.append(f"eBay 反映成功 → {_msg}")
+                    elif ebay_result.get("no_change"):
+                        # W227 (2026-06-06 緊急): 価格/送料は差分なし (benign no-op)。
+                        # ここで早期 return すると、user が商品ランク (Condition) や説明文を
+                        # 変更しても反映されない (S→N 修正不能の不具合)。DB は post_snapshot
+                        # で実 eBay へ同期済 (上の _sync_db_to_actual)。Condition/説明文の
+                        # 反映 (_apply_listing_content_to_ebay) へ **継続する**。
+                        messages.append("価格/送料は eBay と差分なし (反映不要)")
                     else:
-                        st.error(f"eBay 反映できず (DB 変更なし): {_msg}")
-                    # H5 fix: エラー時も expander を開いたままにする
-                    st.session_state["pm_keep_open_eid"] = eid
-                    # 未反映項目の editing 値を一括 DB 保存しない (整合性優先)。
-                    return
-
-                # W220 slice3: price/shipping 反映成功後、説明文 + ランク→Condition
-                # を eBay へ反映 (独立関数、money-direct 送料ロジック非干渉)。DB 保存
-                # (下記) より前に呼ぶ = description draft の「変更前 DB 値」と比較できる。
-                _content = _apply_listing_content_to_ebay(eid, editing, config)
-                if _content.get("changed"):
-                    if _content.get("success"):
-                        messages.append(
-                            _content.get("message") or "説明文/Condition 反映")
-                    else:
-                        st.warning(
-                            "⚠️ 説明文/Condition の eBay 反映に一部失敗: "
-                            f"{_content.get('message', '不明')} / "
-                            f"https://www.ebay.com/itm/{eid} で確認してください。"
-                        )
+                        if snap2 is not None:
+                            st.warning(
+                                f"⚠️ 一部未反映 (DB は実 eBay 値へ同期済): {_msg} / "
+                                f"https://www.ebay.com/itm/{eid} で確認してください。"
+                                "(仕入価格/在庫数など他の編集値は未保存、"
+                                "再度フォームを保存してください)"
+                            )
+                        else:
+                            st.error(f"eBay 反映できず (DB 変更なし): {_msg}")
+                        # H5 fix: エラー時も expander を開いたままにする
                         st.session_state["pm_keep_open_eid"] = eid
-                    # HIGH-3 (Codex/code-reviewer): eBay 反映に失敗した項目は DB に
-                    # 保存しない (DB↔eBay 乖離防止)。desc_ok/cond_ok が False の項目
-                    # だけ editing から除外 = _save_product_data が skip (None ガード)。
-                    # None=未試行 / True=成功 は通常保存 (DB が実 eBay と一致)。
-                    if _content.get("desc_ok") is False:
-                        editing["listing_description"] = None
-                    if _content.get("cond_ok") is False:
-                        editing["rank"] = None
-                    # W31: Title 反映失敗時は DB への title 書込を抑止
-                    # (title_ok=True の場合は update_ebay_listing_title が既に呼ばれており
-                    # _save_product_data は title を上書きしないため競合しない)
-                    if _content.get("title_ok") is False:
-                        editing["new_title"] = None
+                        # 未反映項目の editing 値を一括 DB 保存しない (整合性優先)。
+                        return
 
-            # 2. DB 保存 (save_db / save_ebay 両方で実行)
-            # H9 (Wave C): eBay 反映 success 後の DB save 失敗を transparent に報告.
-            # 旧実装は例外 propagate → user に generic Streamlit error、DB-eBay 不整合の説明なし.
-            if save_db or save_ebay:
-                try:
-                    _save_product_data(
-                        ebay_item_id=eid,
-                        editing=editing,
-                        competitors=comp_list,
-                        recalc_breakeven=False,  # breakeven は別ボタンで明示的に
-                        config=config,
-                    )
-                    if save_ebay:
-                        messages.append(
-                            "💾 DB 保存完了 (※ eBay GetItem で実反映の最終 verify 推奨)"
+                    # W220 slice3: price/shipping 反映成功後、説明文 + ランク→Condition
+                    # を eBay へ反映 (独立関数、money-direct 送料ロジック非干渉)。DB 保存
+                    # (下記) より前に呼ぶ = description draft の「変更前 DB 値」と比較できる。
+                    _content = _apply_listing_content_to_ebay(eid, editing, config)
+                    if _content.get("changed"):
+                        if _content.get("success"):
+                            messages.append(
+                                _content.get("message") or "説明文/Condition 反映")
+                        else:
+                            st.warning(
+                                "⚠️ 説明文/Condition の eBay 反映に一部失敗: "
+                                f"{_content.get('message', '不明')} / "
+                                f"https://www.ebay.com/itm/{eid} で確認してください。"
+                            )
+                            st.session_state["pm_keep_open_eid"] = eid
+                        # HIGH-3 (Codex/code-reviewer): eBay 反映に失敗した項目は DB に
+                        # 保存しない (DB↔eBay 乖離防止)。desc_ok/cond_ok が False の項目
+                        # だけ editing から除外 = _save_product_data が skip (None ガード)。
+                        # None=未試行 / True=成功 は通常保存 (DB が実 eBay と一致)。
+                        if _content.get("desc_ok") is False:
+                            editing["listing_description"] = None
+                        if _content.get("cond_ok") is False:
+                            editing["rank"] = None
+                        # W31: Title 反映失敗時は DB への title 書込を抑止
+                        # (title_ok=True の場合は update_ebay_listing_title が既に呼ばれており
+                        # _save_product_data は title を上書きしないため競合しない)
+                        if _content.get("title_ok") is False:
+                            editing["new_title"] = None
+
+                # 2. DB 保存 (save_db / save_ebay 両方で実行)
+                # H9 (Wave C): eBay 反映 success 後の DB save 失敗を transparent に報告.
+                # 旧実装は例外 propagate → user に generic Streamlit error、DB-eBay 不整合の説明なし.
+                if save_db or save_ebay:
+                    try:
+                        _save_product_data(
+                            ebay_item_id=eid,
+                            editing=editing,
+                            competitors=comp_list,
+                            recalc_breakeven=False,  # breakeven は別ボタンで明示的に
+                            config=config,
                         )
-                    else:
-                        messages.append("💾 DB 保存完了")
-                except (sqlite3.IntegrityError, sqlite3.OperationalError,
-                        ValueError, KeyError) as db_e:
-                    logger.exception(f"[pm] DB save failed (eid={eid})")
-                    if save_ebay:
-                        # eBay 反映 success 済み → DB 不整合の警告
-                        st.error(
-                            f"⚠️ eBay 反映は **成功**しましたが、DB 同期に失敗しました: {db_e}. "
-                            f"`https://www.ebay.com/itm/{eid}` で eBay 側を verify し、"
-                            f"DB を手動で再保存してください. "
-                            f"(price/shipping/SKU/inventory が DB と eBay で一時的に乖離します)"
+                        if save_ebay:
+                            messages.append(
+                                "💾 DB 保存完了 (※ eBay GetItem で実反映の最終 verify 推奨)"
+                            )
+                        else:
+                            messages.append("💾 DB 保存完了")
+                    except (sqlite3.IntegrityError, sqlite3.OperationalError,
+                            ValueError, KeyError) as db_e:
+                        logger.exception(f"[pm] DB save failed (eid={eid})")
+                        if save_ebay:
+                            # eBay 反映 success 済み → DB 不整合の警告
+                            st.error(
+                                f"⚠️ eBay 反映は **成功**しましたが、DB 同期に失敗しました: {db_e}. "
+                                f"`https://www.ebay.com/itm/{eid}` で eBay 側を verify し、"
+                                f"DB を手動で再保存してください. "
+                                f"(price/shipping/SKU/inventory が DB と eBay で一時的に乖離します)"
+                            )
+                        else:
+                            st.error(f"❌ DB 保存失敗: {db_e}")
+                        st.session_state["pm_keep_open_eid"] = eid
+                        return
+
+                # 3. 利益計算 (calc_be の時のみ)
+                if calc_be:
+                    # まず DB 保存してから breakeven 再計算 (input 値を反映)
+                    if not (save_db or save_ebay):
+                        _save_product_data(
+                            ebay_item_id=eid,
+                            editing=editing,
+                            competitors=comp_list,
+                            recalc_breakeven=False,
+                            config=config,
                         )
-                    else:
-                        st.error(f"❌ DB 保存失敗: {db_e}")
-                    st.session_state["pm_keep_open_eid"] = eid
-                    return
+                    try:
+                        # calculator.load_settings() を使用 (schedule_config.json ではない)
+                        be = update_listing_breakeven(eid, _calc_settings())
+                        if be and be > 0:
+                            # 「\$」escape で markdown LaTeX 化を回避.
+                            messages.append(f"損益分岐: **\\${be:.2f}** (再計算完了、上部 metric 参照)")
+                        else:
+                            messages.append(
+                                "breakeven 計算は仕入価格 + 重量 + 寸法が必要 (未入力 listing)"
+                            )
+                    except (sqlite3.OperationalError, TypeError, ValueError, KeyError, RuntimeError) as e:
+                        st.error(f"利益計算エラー: {e}")
+                        # H5 fix: エラー時も expander 維持
+                        st.session_state["pm_keep_open_eid"] = eid
+                        return
 
-            # 3. 利益計算 (calc_be の時のみ)
-            if calc_be:
-                # まず DB 保存してから breakeven 再計算 (input 値を反映)
-                if not (save_db or save_ebay):
-                    _save_product_data(
-                        ebay_item_id=eid,
-                        editing=editing,
-                        competitors=comp_list,
-                        recalc_breakeven=False,
-                        config=config,
-                    )
-                try:
-                    # calculator.load_settings() を使用 (schedule_config.json ではない)
-                    be = update_listing_breakeven(eid, _calc_settings())
-                    if be and be > 0:
-                        # 「\$」escape で markdown LaTeX 化を回避.
-                        messages.append(f"損益分岐: **\\${be:.2f}** (再計算完了、上部 metric 参照)")
-                    else:
-                        messages.append(
-                            "breakeven 計算は仕入価格 + 重量 + 寸法が必要 (未入力 listing)"
-                        )
-                except (sqlite3.OperationalError, TypeError, ValueError, KeyError, RuntimeError) as e:
-                    st.error(f"利益計算エラー: {e}")
-                    # H5 fix: エラー時も expander 維持
-                    st.session_state["pm_keep_open_eid"] = eid
-                    return
+                if messages:
+                    st.success(" | ".join(messages))
 
-            if messages:
-                st.success(" | ".join(messages))
-
-            # 保存後もアコーディオンを開いたままにする
-            st.session_state["pm_keep_open_eid"] = eid
+                # 保存後もアコーディオンを開いたままにする
+                st.session_state["pm_keep_open_eid"] = eid
 
 
 def _money_eq(a: Optional[float], b: Optional[float]) -> bool:
