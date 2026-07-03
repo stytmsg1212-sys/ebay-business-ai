@@ -1,0 +1,420 @@
+<!doctype html>
+<!-- MonoDeck 商品管理画面「コンパクト化」モックアップ / 2026-07-03
+     モニター半分幅(約1000px)で使っても視点移動が少ない編集レイアウト案。
+     外部CDN・フォント・画像は一切使用しない完全自己完結HTML(画像はCSSグラデーション+絵文字で代用)。
+     現行(tabs/tab_product_management.py _render_left_basic_and_physical 実装ママ再現)と
+     改善案をタブ切替(vanilla JS)で見比べる。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品管理画面 コンパクト化 — モックアップ</title>
+<style>
+  :root{
+    --bg:#dfe5e3; --surface:#ffffff; --surface-2:#f6faf9; --surface-3:#eef4f2;
+    --border:#dfe8e5; --border-soft:#ecf2f0;
+    --teal:#0e6b60; --teal-dark:#0a4c44; --teal-light:#159284; --teal-soft:#e3f3f0; --teal-softer:#f2faf8;
+    --text:#1c2624; --text-2:#59685f; --text-3:#8fa09b;
+    --amber:#a9750c; --amber-dark:#7a5407; --amber-soft:#fbf1d9; --amber-border:#e3bb5c;
+    --ok:#2e7d5b; --ok-soft:#e6f4ec;
+    --bad:#b02a1f; --bad-soft:#fdeceb; --bad-border:#f3b6b0;
+    --radius:14px; --radius-sm:10px; --radius-xs:7px;
+    --shadow-sm:0 1px 2px rgba(20,45,40,.06),0 2px 8px rgba(20,45,40,.05);
+    --f:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",Meiryo,sans-serif;
+    --f-num:Consolas,"SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--f);color:var(--text);background:var(--bg);line-height:1.6;font-size:14px;padding:22px 12px 60px}
+  .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+  .mockbanner{max-width:1000px;margin:0 auto 10px;background:#fff4d6;border:1px solid #eccf85;color:#7a5b06;
+    font-size:12px;font-weight:700;text-align:center;padding:8px 10px;border-radius:var(--radius-xs)}
+
+  /* ==== ruler label above the "half monitor" frame ==== */
+  .rulerwrap{max-width:1000px;margin:0 auto 4px;text-align:center}
+  .ruler{display:inline-block;font-size:11px;font-weight:800;color:var(--text-2);
+    background:var(--surface);border:1px dashed #9aa39f;border-radius:999px;padding:4px 14px}
+
+  /* ==== the 1000px device frame (everything outside = gray page bg) ==== */
+  .frame{max-width:1000px;margin:0 auto;background:var(--surface);border:2px dashed #9aa39f;
+    border-radius:16px;box-shadow:0 6px 24px rgba(20,45,40,.10);padding:16px 20px 20px;position:relative}
+
+  .topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .logo{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:16px;color:#fff;
+    background:linear-gradient(135deg,var(--teal),var(--teal-dark));flex-shrink:0}
+  .topbar h1{font-size:15px;margin:0;font-weight:800}
+  .topbar p{margin:1px 0 0;color:var(--text-3);font-size:11px;font-weight:500}
+
+  /* ==== compact panel header (thumb + title + 4 metrics, 1 row) ==== */
+  .panelhead{display:flex;align-items:center;gap:12px;background:var(--teal-softer);
+    border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:9px 12px;margin-bottom:14px;flex-wrap:wrap}
+  .ph-thumb{width:38px;height:38px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:18px;
+    background:linear-gradient(135deg,#cdeae3,#94cfc2);color:#0a4c44;border:1px solid var(--border)}
+  .ph-title{flex:1;min-width:200px}
+  .ph-title .tt{font-size:12.5px;font-weight:800;line-height:1.3;display:block}
+  .ph-title .sub{font-size:10.5px;color:var(--text-3);font-weight:600}
+  .ph-metrics{display:flex;gap:6px;flex-wrap:wrap}
+  .metric{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-xs);
+    padding:4px 10px;text-align:center;min-width:56px}
+  .metric .mv{display:block;font-size:12.5px;font-weight:800;font-family:var(--f-num);color:var(--text)}
+  .metric .mv.ok{color:var(--ok)}
+  .metric .ml{display:block;font-size:8.5px;color:var(--text-3);font-weight:700;letter-spacing:.2px}
+
+  /* ==== tabbar (現行 / 改善案) ==== */
+  .tabbar{display:flex;gap:6px;background:var(--surface-3);padding:4px;border-radius:999px;margin-bottom:14px;
+    width:fit-content}
+  .tabbtn{border:0;background:transparent;padding:8px 18px;border-radius:999px;font-size:12.5px;font-weight:800;
+    color:var(--text-2);cursor:pointer;font-family:var(--f)}
+  .tabbtn.active{background:var(--teal);color:#fff}
+  .tabbtn.active.isold{background:var(--bad)}
+  .tabbtn:not(.active):hover{color:var(--teal-dark)}
+
+  .screen{display:none}
+  .screen.active{display:block}
+
+  h2.sectitle{font-size:12.5px;font-weight:800;margin:14px 0 8px;color:var(--text-2);
+    border-bottom:1px solid var(--border-soft);padding-bottom:5px;display:flex;align-items:center;gap:6px}
+  h2.sectitle.money{color:var(--amber-dark);border-bottom-color:var(--amber-border)}
+
+  /* ==== red annotation flag (現行タブ専用) ==== */
+  .flagwrap{position:relative;margin-bottom:10px}
+  .flag{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:var(--bad);
+    background:var(--bad-soft);border:1px solid var(--bad-border);border-radius:999px;padding:2px 9px;margin-bottom:5px}
+
+  /* ==== 現行(OLD) field styling: wide box for a single value ==== */
+  .old-money{border:1.5px solid var(--amber-border);background:var(--amber-soft);border-radius:var(--radius-sm);
+    padding:12px 14px;margin-bottom:12px}
+  .old-attr{padding:2px 2px 0}
+  .old-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .old-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .old-row1{display:block}
+  .old-field label{display:block;font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:4px}
+  .old-field .inp{width:100%;height:42px;border:1px solid var(--border);border-radius:7px;background:var(--surface);
+    display:flex;align-items:center;padding:0 12px;font-size:14px;font-weight:700;color:var(--text);font-family:var(--f-num)}
+  .old-caption{font-size:11px;color:var(--text-2);background:var(--surface);border:1px dashed var(--border);
+    border-radius:7px;padding:8px 11px;margin:8px 0 12px;line-height:1.6}
+  .old-grid2x2{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:10px}
+
+  /* ==== 改善案(NEW) field styling: content-width compact inputs ==== */
+  .new-money{border:1.5px solid var(--amber-border);background:var(--amber-soft);border-radius:var(--radius-sm);
+    padding:10px 12px;margin-bottom:10px}
+  .new-warnband{font-size:10.5px;font-weight:700;color:var(--amber-dark);background:#fff8e8;
+    border:1px solid #eccf85;border-radius:6px;padding:5px 10px;margin-bottom:9px}
+  .new-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .new-row:last-child{margin-bottom:0}
+  .new-field{display:flex;flex-direction:column;gap:2px}
+  .new-field.w-num{width:110px}
+  .new-field.w-sel{width:150px}
+  .new-field.w-sku{width:130px}
+  .new-field.w-inv{width:90px}
+  .new-field.w-rank{width:90px}
+  .new-field.w-title{flex:1;min-width:220px}
+  .new-field label{font-size:10px;font-weight:700;color:var(--text-3);display:flex;align-items:center;gap:4px}
+  .new-field .inp{height:30px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+    display:flex;align-items:center;padding:0 9px;font-size:12.5px;font-weight:700;color:var(--text);
+    font-family:var(--f-num)}
+  .new-field .inp.sel::after{content:"▾";margin-left:auto;color:var(--text-3);font-family:var(--f)}
+  .counter-inline{margin-left:auto;font-size:9.5px;color:var(--text-3);font-weight:700;font-family:var(--f-num)}
+
+  /* info tooltip (pure CSS, no JS) */
+  .info-ico{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;
+    background:var(--teal-soft);color:var(--teal-dark);font-size:9px;font-weight:800;cursor:help;position:relative}
+  .info-ico:hover::after{content:attr(data-tip);position:absolute;bottom:135%;left:0;width:230px;
+    background:var(--teal-dark);color:#fff;font-size:10.5px;font-weight:500;line-height:1.5;padding:8px 10px;
+    border-radius:7px;box-shadow:var(--shadow-sm);z-index:9;white-space:normal}
+  .info-ico:hover::before{content:"";position:absolute;bottom:100%;left:5px;border:5px solid transparent;
+    border-top-color:var(--teal-dark);margin-bottom:-1px;z-index:9}
+
+  h2.sectitle .info-ico{margin-left:2px}
+
+  /* ==== bottom fixed action row (改善案) ==== */
+  .actionbar{position:sticky;bottom:0;display:flex;gap:8px;background:var(--surface);border-top:1px solid var(--border);
+    padding:10px 2px 2px;margin-top:14px}
+  .abtn{flex:1;border:0;border-radius:8px;padding:10px;text-align:center;font-size:12.5px;font-weight:800;
+    cursor:pointer;font-family:var(--f)}
+  .abtn.save{background:var(--teal-soft);color:var(--teal-dark)}
+  .abtn.push{background:var(--teal);color:#fff}
+  .abtn.calc{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border)}
+
+  .old-actionbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+  .old-actionbar .abtn{padding:12px}
+
+  /* ==== implementation note (実装方式メモ) ==== */
+  .implnote{max-width:1000px;margin:16px auto 0;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px 18px;box-shadow:var(--shadow-sm)}
+  .implnote h3{font-size:12.5px;margin:0 0 8px;font-weight:800;color:var(--text)}
+  .implnote ol{margin:0;padding-left:18px}
+  .implnote li{font-size:12px;color:var(--text-2);margin:6px 0;line-height:1.6}
+  .implnote li b{color:var(--teal-dark)}
+
+  /* ==== compression summary card ==== */
+  .compare{max-width:1000px;margin:14px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.compare{grid-template-columns:1fr}}
+  .cbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;
+    box-shadow:var(--shadow-sm)}
+  .cbox .clabel{font-size:11px;font-weight:800;color:var(--text-3);margin-bottom:4px}
+  .cbox .cval{font-size:26px;font-weight:800;font-family:var(--f-num)}
+  .cbox.old .cval{color:var(--bad)}
+  .cbox.new .cval{color:var(--teal-dark)}
+  .cbox .cnote{font-size:11px;color:var(--text-2);margin-top:4px}
+
+  .foot{max-width:1000px;margin:22px auto 0;text-align:center;color:var(--text-3);font-size:11px;font-weight:600}
+</style>
+</head>
+<body>
+
+  <div class="mockbanner">🧪 モックアップ — 実装前の画面イメージ（2026-07-03 設計案・商品管理画面コンパクト化）</div>
+
+  <div class="rulerwrap"><span class="ruler">← モニター半分幅を再現・約 1000px →</span></div>
+
+  <div class="frame">
+
+    <div class="topbar">
+      <div class="logo">🗂️</div>
+      <div>
+        <h1>商品管理 — 編集フォーム（左列）</h1>
+        <p>例: Audio-Technica ATH-CKS330NC ワイヤレスイヤホン（元箱付き・美品）</p>
+      </div>
+    </div>
+
+    <!-- ==== 3. コンパクト版パネルヘッダ（サムネ+4指標が1行） ==== -->
+    <div class="panelhead">
+      <div class="ph-thumb">🎧</div>
+      <div class="ph-title">
+        <span class="tt">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</span>
+        <span class="sub">ebay_item_id ****1123 ・有在庫 stock03</span>
+      </div>
+      <div class="ph-metrics">
+        <div class="metric"><span class="mv">$89.99</span><span class="ml">価格</span></div>
+        <div class="metric"><span class="mv ok">¥3,240</span><span class="ml">利益</span></div>
+        <div class="metric"><span class="mv">14.2%</span><span class="ml">利益率</span></div>
+        <div class="metric"><span class="mv">Active</span><span class="ml">状態</span></div>
+      </div>
+    </div>
+
+    <nav class="tabbar">
+      <button class="tabbtn isold active" onclick="showTab('old', this)">🔴 現行（問題点）</button>
+      <button class="tabbtn" onclick="showTab('new', this)">🟢 改善案</button>
+    </nav>
+
+    <!-- ==================== 4. 現行タブ ==================== -->
+    <section id="old" class="screen active">
+
+      <h2 class="sectitle money">💰 価格・採算（money-direct・誤操作注意）</h2>
+      <div class="old-money">
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 数値1個に画面幅いっぱいの入力欄</span>
+          <div class="old-row3">
+            <div class="old-field"><label>商品価格 (USD)</label><div class="inp">89.99</div></div>
+            <div class="old-field"><label>送料 Buyer pays (USD)</label><div class="inp">15.00</div></div>
+            <div class="old-field"><label>送料 +each (USD)</label><div class="inp">8.00</div></div>
+          </div>
+        </div>
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 常時表示の説明文</span>
+          <div class="old-caption">💡 送料 (Buyer pays / +each) は <b>DB保存値</b>表示 (実 eBay 最終同期: 2026-06-20 10:30)。
+            eBay.com で直接変更していると乖離し得ます。真値は 📤eBay反映 時に verify されます。</div>
+        </div>
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 数値1個に画面幅いっぱいの入力欄</span>
+          <div class="old-row3">
+            <div class="old-field"><label>区分 (送料・関税前提)</label><div class="inp" style="font-family:var(--f)">US_only</div></div>
+            <div class="old-field"><label>仕入価格 (JPY)</label><div class="inp">9,800</div></div>
+            <div class="old-field"><label>下限価格 商品のみ (USD)</label><div class="inp">75.00</div></div>
+          </div>
+        </div>
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 常時表示の説明文</span>
+          <div class="old-caption">💡 <b>下限価格・損益分岐は「商品価格」のみ</b>（送料は含みません）。
+            買い手が払う<b>総額の下限 = 下限価格 + 送料</b>。自動値下げは商品価格がこの下限を下回らない範囲で実行されます。</div>
+        </div>
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 1行1項目で縦に長い（全幅）</span>
+          <div class="old-row1">
+            <div class="old-field"><label>ポイント還元 (¥)</label><div class="inp">500</div></div>
+          </div>
+        </div>
+
+        <div class="flagwrap">
+          <span class="flag">⚠ 1行1項目で縦に長い（全幅）</span>
+          <div class="old-row1">
+            <div class="old-field"><label>Shipping Policy (BP)</label><div class="inp" style="font-family:var(--f)">DDP_2-3kg_$030_7day</div></div>
+          </div>
+        </div>
+
+      </div>
+
+      <h2 class="sectitle">📦 商品属性</h2>
+      <div class="old-attr">
+        <div class="old-row2">
+          <div class="old-field"><label>SKU (在庫種別)</label><div class="inp" style="font-family:var(--f)">stock03</div></div>
+          <div class="old-field"><label>在庫数 (物理在庫)</label><div class="inp">3</div></div>
+        </div>
+
+        <div class="flagwrap" style="margin-top:10px">
+          <div class="old-row1">
+            <div class="old-field"><label>商品タイトル (eBay Title / 80 文字以内)</label>
+              <div class="inp" style="font-family:var(--f);font-weight:600">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</div></div>
+          </div>
+        </div>
+
+        <div class="old-grid2x2">
+          <div class="old-field"><label>重量 (g)</label><div class="inp">180</div></div>
+          <div class="old-field"><label>幅 (cm)</label><div class="inp">9</div></div>
+          <div class="old-field"><label>長さ (cm)</label><div class="inp">12</div></div>
+          <div class="old-field"><label>高さ (cm)</label><div class="inp">4</div></div>
+        </div>
+      </div>
+
+      <div class="old-actionbar">
+        <div class="abtn save">💾 DB保存</div>
+        <div class="abtn push">📤 eBay反映</div>
+        <div class="abtn calc">💡 利益計算</div>
+      </div>
+    </section>
+
+    <!-- ==================== 改善案タブ ==================== -->
+    <section id="new" class="screen">
+
+      <h2 class="sectitle money">💰 価格・採算
+        <span class="info-ico" data-tip="money-direct: 誤操作注意。区分/BPを変更すると次回eBay反映で実際の送料・関税前提が変わります。">i</span>
+      </h2>
+      <div class="new-money">
+        <div class="new-warnband">⚠️ money-direct — 保存前に金額を再確認してください</div>
+
+        <div class="new-row">
+          <div class="new-field w-num">
+            <label>商品価格 (USD)</label>
+            <div class="inp">89.99</div>
+          </div>
+          <div class="new-field w-num">
+            <label>送料 BP (USD)
+              <span class="info-ico" data-tip="1個目の送料 (ShippingServiceCost)。DB保存値表示、実eBay最終同期: 2026-06-20 10:30。">i</span>
+            </label>
+            <div class="inp">15.00</div>
+          </div>
+          <div class="new-field w-num">
+            <label>送料 +each (USD)
+              <span class="info-ico" data-tip="2個目以降の追加送料 (ShippingServiceAdditionalCost)。DB保存値表示、eBayとの一致は📤eBay反映でverify。">i</span>
+            </label>
+            <div class="inp">8.00</div>
+          </div>
+          <div class="new-field w-num">
+            <label>下限価格 (USD)
+              <span class="info-ico" data-tip="商品価格のみの下限（送料は含みません）。買い手の総額下限＝下限価格＋送料。自動値下げはこれを下回りません。">i</span>
+            </label>
+            <div class="inp">75.00</div>
+          </div>
+        </div>
+
+        <div class="new-row">
+          <div class="new-field w-sel">
+            <label>区分
+              <span class="info-ico" data-tip="Terapeak 365日 sold 判定 (W110(2))。送料差分式+DDP関税の前提区分。">i</span>
+            </label>
+            <div class="inp sel" style="font-family:var(--f)">US_only</div>
+          </div>
+          <div class="new-field w-num">
+            <label>仕入価格 (JPY)</label>
+            <div class="inp">9,800</div>
+          </div>
+          <div class="new-field w-num">
+            <label>ポイント還元 (¥)
+              <span class="info-ico" data-tip="この仕入れで得たポイント実額。採算判断の材料（利益額には合算しない）。">i</span>
+            </label>
+            <div class="inp">500</div>
+          </div>
+          <div class="new-field w-sel">
+            <label>Shipping Policy (BP)
+              <span class="info-ico" data-tip="変更すると📤eBay反映でlistingのBPを差し替え。custom送料のDDP関税bufferが消える場合あり、要再設定。">i</span>
+            </label>
+            <div class="inp sel" style="font-family:var(--f);font-size:11px">DDP_2-3kg_$030_7day</div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="sectitle">📦 商品属性</h2>
+
+      <div class="new-row">
+        <div class="new-field w-sku">
+          <label>SKU (在庫種別)
+            <span class="info-ico" data-tip="stock*で始まる=有在庫(在庫数管理対象) / ebay*で始まる=無在庫">i</span>
+          </label>
+          <div class="inp" style="font-family:var(--f)">stock03</div>
+        </div>
+        <div class="new-field w-inv">
+          <label>在庫数</label>
+          <div class="inp">3</div>
+        </div>
+        <div class="new-field w-rank">
+          <label>ランク
+            <span class="info-ico" data-tip="eBay実Condition由来。N=新品/S=新品同様/A-D=Used/PO=通電のみ/As-Is=未確認。">i</span>
+          </label>
+          <div class="inp sel" style="font-family:var(--f)">A</div>
+        </div>
+      </div>
+
+      <div class="new-row">
+        <div class="new-field w-title">
+          <label>商品タイトル (eBay Title)
+            <span class="counter-inline">31 / 80</span>
+          </label>
+          <div class="inp" style="font-weight:600">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</div>
+        </div>
+      </div>
+
+      <div class="new-row">
+        <div class="new-field w-num"><label>重量 (g)</label><div class="inp">180</div></div>
+        <div class="new-field w-num"><label>長さ (cm)</label><div class="inp">12</div></div>
+        <div class="new-field w-num"><label>幅 (cm)</label><div class="inp">9</div></div>
+        <div class="new-field w-num"><label>高さ (cm)</label><div class="inp">4</div></div>
+      </div>
+
+      <div class="actionbar">
+        <div class="abtn save">💾 DB保存</div>
+        <div class="abtn push">📤 eBay反映</div>
+        <div class="abtn calc">💡 利益計算</div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="compare">
+    <div class="cbox old">
+      <div class="clabel">現行の縦行数（価格・採算 + 商品属性）</div>
+      <div class="cval">約 10 行</div>
+      <div class="cnote">価格6行（数値3列×2 + caption×2 + 全幅×2）＋ 属性4行（SKU/在庫・タイトル・物理属性2行）</div>
+    </div>
+    <div class="cbox new">
+      <div class="clabel">改善案の縦行数（同範囲・ランクも同居）</div>
+      <div class="cval">約 5 行</div>
+      <div class="cnote">価格2行（4列×2）＋ 属性3行（SKU/在庫/ランク・タイトル・物理属性4列）＝ 約50%圧縮</div>
+    </div>
+  </div>
+
+  <div class="implnote">
+    <h3>🔧 実装方式メモ（Streamlit）</h3>
+    <ol>
+      <li><b>列数変更のみ</b>: <code>st.columns(3)</code> → <code>st.columns(4)</code> 等、既存 <code>st.number_input</code>/<code>st.selectbox</code> の並べ替えだけで実現。新規ウィジェットの追加はなし。</li>
+      <li><b>CSS で寸法を圧縮</b>: <code>&lt;style&gt;</code> ブロック追加で入力欄の高さ（~44px→~32px）・セクション間余白・フォントサイズを縮小。ロジックは無変更。</li>
+      <li><b>caption → help/tooltip 化</b>: 常時表示の <code>st.caption(...)</code> を <code>help=</code> 引数または <code>st.popover</code> の ⓘ アイコンに置換。表示内容・情報量は変えず、表示方法のみ変更（機能の増減なし）。</li>
+    </ol>
+  </div>
+
+  <div class="foot">MonoDeck 商品管理画面 コンパクト化モックアップ / 2026-07-03 作成 — 実装前の設計イメージ（実コードは変更していません）</div>
+
+<script>
+function showTab(id, btn){
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tabbtn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

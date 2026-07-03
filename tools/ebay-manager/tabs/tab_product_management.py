@@ -1138,395 +1138,508 @@ def _render_left_basic_and_physical(
     📎 メモ (折りたたみ)」の3段配置に再整理。widget の key/value/help/dirty
     変数 (primary_market_render_initial / add_render_initial /
     bp_render_initial_id) は1文字も改変せず、配置順序のみ変更 (K2 surgical)。
-    Streamlit は st.markdown で <div> を開けて閉じる pattern が機能しない
-    (他 widget が <div> の外に出てしまう) ため、money 枠の border-left+bg
-    視覚は完全には再現せず、見出し pm-money-head + 既存 section-label 構造
-    で「金額系」と「属性系」の段差を表現する。
+
+    W314 追加改修 (2026-07-03、モック案B「スプレッドシート密集」準拠): 「ラベル
+    (markdown 小/右寄せ) : 入力 (label_visibility="collapsed")」ペアを
+    st.columns で 1 行 2 組並べる高密度グリッドへ再編。widget の
+    key / 型 / 初期値 / validation / dirty-flag / submit 処理は不変 (見た目のみ変更)。
+    ⚠️ Streamlit 1.56 の label_visibility="collapsed" は組込みラベル行
+    (help= のツールチップ アイコンごと) を丸ごと非表示にするため、常時表示
+    だった caption 文言は独自ラベル (_b_label) の native title 属性
+    (ⓘ hover) に集約した。BP 変更時の警告 (⚠️ 送料が default に戻る/DDP
+    buffer 喪失リスク) は金銭直結の安全情報のため tooltip 化せず、従来通り
+    常時可視の st.warning/st.caption のまま残す。
     """
     eid = p["ebay_item_id"]
     editing: dict = {}
     current_sku = p.get("sku") or ""
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 💰 価格・採算 (money-direct・誤操作注意)
-    # ──────────────────────────────────────────────────────────────────────
-    # W217-A (2026-06-03): モックアップの「💰金額枠 (amber 左ライン + 背景 +
-    # 角丸)」を st.container(border=True, key=...) で実装。CSS hook は
-    # div[class*="st-key-pm_money_box_"] で amber border-left を上書き。
-    # 旧 issue (st.markdown <div> が後続 widget を囲めない) を、新規 widget
-    # 配置を変えずに container で囲むだけで解決する。
-    # ⚠️ st.container の key= パラメータは Streamlit 1.36+ で導入された機能
-    # (border= は 1.29+ から、key= は 1.36+ から)。本コードは key= を使うため
-    # requirements.txt の pin を streamlit>=1.56.0 (現に動作確認済の installed
-    # 版) へ引き上げ済。古い streamlit (例 1.32.0) では TypeError で本タブが
-    # 即クラッシュするため、requirements.txt の pin を下げてはいけない。
-    # widget の key / value / help / dirty-flag 変数
-    # (primary_market_render_initial / add_render_initial /
-    # bp_render_initial_id) は 1 文字も改変せず、container でラップするのみ。
-    with st.container(border=True, key=f"pm_money_box_{eid}"):
+    def _b_label(text: str, tip: str = "") -> None:
+        """コンパクトグリッド用の右寄せ小ラベル (対の入力欄は label_visibility="collapsed")."""
+        _tip_html = (
+            f'<span class="pm-b-info" title="{html.escape(tip)}">ⓘ</span>' if tip else ""
+        )
         st.markdown(
-            '<div class="pm-section-label" '
-            'style="color: var(--pm-warning) !important; '
-            'border-bottom-color: var(--pm-warning) !important; '
-            'margin-top: 0 !important;">'
-            '💰 価格・採算 (money-direct・誤操作注意)</div>',
+            f'<div class="pm-b-lbl">{html.escape(text)}{_tip_html}</div>',
             unsafe_allow_html=True,
         )
 
-        # 💵 eBay 出品価格 + 送料 (商品価格 / Buyer pays / +each)
-        eb1, eb2, eb3 = st.columns(3)
-        with eb1:
-            editing["new_ebay_price"] = st.number_input(
-                "商品価格 (USD)",
-                min_value=0.0,
-                value=float(p.get("current_price") or 0.0) if p.get("current_price") else None,
-                step=1.0, format="%.2f",
-                key=f"pm_ebay_price_{eid}",
-            )
-        with eb2:
-            editing["new_ship_cost"] = st.number_input(
-                "送料 Buyer pays (USD)",
-                min_value=0.0,
-                value=float(p.get("shipping_cost") or 0.0) if p.get("shipping_cost") is not None else None,
-                step=0.5, format="%.2f",
-                key=f"pm_ebay_ship_{eid}",
-                help="1 個目の送料 (ShippingServiceCost)",
-            )
-        with eb3:
-            # W142 根本原因#5(b): 旧実装は value=None ハードコードで +each が
-            # 常時空欄 (ebay_listings に保存列が無かった)。migration v43 の
-            # shipping_additional_cost を表示 source に (Buyer pays L771 と対称)。
-            # W142 Codex-R3 HIGH-2: +each dirty-flag 用 render 初期値 (= DB 列値)。
-            # _apply_to_ebay は「submit 値 != この初期値」の時のみ user が
-            # +each を実操作したとみなす。BP の Codex#1 bp_render_initial_id と
-            # 同型 = 表示中 DB 値を「変更」と誤認し stale を実 eBay に上書き
-            # する経路を遮断 (金銭直結、Phase2 実 eBay 真実原則を守る)。
-            _add_init = (float(p.get("shipping_additional_cost"))
-                         if p.get("shipping_additional_cost") is not None
-                         else None)
-            editing["add_render_initial"] = _add_init
-            editing["new_ship_additional"] = st.number_input(
-                "送料 +each (USD)",
-                min_value=0.0,
-                value=_add_init,
-                step=0.5, format="%.2f",
-                key=f"pm_ebay_ship_add_{eid}",
-                help="2 個目以降の追加送料 (ShippingServiceAdditionalCost)。"
-                     "DB保存値表示。実 eBay との一致は 📤eBay反映 で verify。",
-            )
-        # W142 (B): 送料は DB保存値表示 + 乖離マーカー (expander 展開で
-        # GetItem を呼ばない = 速度/quota 優先、真値は 📤eBay反映 で verify /
-        # BP ↻ で取得)。鮮度を fetched_at で正直開示 (R-11/HIGH-1 の精神)。
-        _ship_fa = _fetched_jst_label(
-            p.get("shipping_additional_fetched_at") or p.get("last_synced_at")
-        )
-        st.caption(
-            f"💡 送料 (Buyer pays / +each) は **DB保存値**表示 "
-            f"(実 eBay 最終同期: {_ship_fa})。eBay.com で直接変更していると"
-            f"乖離し得ます。真値は 📤eBay反映 時に verify されます。"
-        )
+    # ──────────────────────────────────────────────────────────────────────
+    # 💰 価格・採算 (money-direct) | 📦 商品属性 — 左右横並び (2 カラム)
+    # ──────────────────────────────────────────────────────────────────────
+    # W314 v2 (2026-07-03、user 目標 ~300px、v1 の 530px 縦積み未達を受けた再改修):
+    # form > columns(2) > container(border) > columns(2) のネスト構造。
+    # Streamlit は "columns の nest は 1 段" が公式ガイドライン。form/container は
+    # nest 深度にカウントされないため、outer columns(2枠分割) と inner columns
+    # (ラベル:入力ペア) の 2 段で StreamlitAPIException が出ない前提で組む
+    # (streamlit run で live 検証、失敗時は代替案 = ペア側を CSS grid で組む)。
+    _money_col, _attr_col = st.columns([1, 1], gap="small")
 
-        # 🌐 区分 + 💰 仕入価格 + 下限価格 (採算判断に直結する 3 軸を money 枠内に集約)
-        from monitor.database import VALID_PRIMARY_MARKETS
-        _mkt_labels = {
-            "US_only": "US_only — 米国のみ販売 (商品価格に関税包含)",
-            "mixed_global": "mixed_global — 米国+他国 混在",
-            "global_only": "global_only — 米国以外",
-            "unknown": "unknown — 未判定",
-        }
-        _mkt_opts = list(VALID_PRIMARY_MARKETS)
-        # DB が None の listing は表示上 unknown を default に (書込は dirty 時のみ)。
-        _cur_mkt = (p.get("primary_market") or "unknown")
-        if _cur_mkt not in _mkt_opts:
-            _cur_mkt = "unknown"
-        # dirty-flag (BP / 送料 と同型): submit 値 != 表示初期値 の時のみ DB 保存。
-        # None の listing を無操作で unknown に上書きする stale write を遮断。
-        editing["primary_market_render_initial"] = _cur_mkt
-        mk1, mk2, mk3 = st.columns(3)
-        with mk1:
-            editing["primary_market"] = st.selectbox(
-                "区分 (送料・関税前提)",
-                options=_mkt_opts,
-                index=_mkt_opts.index(_cur_mkt),
-                format_func=lambda m: _mkt_labels.get(m, m),
-                key=f"pm_primary_market_{eid}",
-                help="Terapeak 365 日 sold 判定 (W110(2))。送料差分式 + DDP 関税の前提区分。"
-                     "保存で DB 更新 + 利益再計算 (eBay 送料反映は別途 📤eBay反映)。",
+    # ────────────────────────────── 💰 左枠 ──────────────────────────────
+    with _money_col:
+        # W217-A (2026-06-03): st.container(border=True, key=...) で金額枠を実装。
+        # CSS hook は div[class*="st-key-pm_money_box_"] (amber border-left +
+        # W314 で追加したグリッド圧縮 CSS)。streamlit>=1.56.0 pin 前提は不変。
+        with st.container(border=True, key=f"pm_money_box_{eid}"):
+            st.markdown(
+                '<div class="pm-b-head">💰 価格・採算 '
+                '<span class="pm-b-warnpill">money-direct・誤操作注意</span></div>',
+                unsafe_allow_html=True,
             )
-        with mk2:
-            editing["purchase_yen"] = st.number_input(
-                "仕入価格 (JPY)",
-                min_value=0,
-                value=int(p["purchase_yen"]) if p.get("purchase_yen") else None,
-                step=100, key=f"pm_pyen_{eid}",
-            )
-        with mk3:
-            editing["lp_min_price"] = st.number_input(
-                "下限価格 商品のみ (USD)",
-                min_value=0.0,
-                value=float(p["lp_min_price"]) if p.get("lp_min_price") else None,
-                step=1.0, format="%.2f",
-                key=f"pm_minp_{eid}",
-                help="W183 自動値下げの絶対下限。**商品価格のみ・送料は含みません**。"
-                     "自動値下げはこの商品価格を下回りません。買い手の総額下限 = "
-                     "下限価格 + 送料。未入力なら breakeven (損益分岐の商品価格) が下限。",
-            )
-        # 補足: 下限価格 / breakeven は「商品価格(送料別)」軸 (eBay 出品価格=StartPrice)。
-        # 自動値下げ(W183)は competitor 総額 -$0.01 から自社送料を引いた商品価格を狙い、
-        # この下限でクランプする (task_rival_pricing._compute_target_price / floor 比較)。
-        st.caption(
-            "💡 **下限価格・損益分岐は「商品価格」のみ**（送料は含みません）。"
-            "買い手が払う**総額の下限 = 下限価格 + 送料**。"
-            "自動値下げは商品価格がこの下限を下回らない範囲で実行されます。"
-        )
 
-        # W220 (2026-06-04): per-listing ポイント実額(¥)。仕入先/カードで還元率が
-        # 違うため実額を入力。採算パネルの「ポイント還元」に反映 (手取り判断材料、
-        # 利益には合算しない)。settings.point_reward_rate (global) は実質 0 で機能せず。
-        editing["point_yen"] = st.number_input(
-            "ポイント還元 (¥)",
-            min_value=0,
-            # W220 MEDIUM-1: 0 (ポイント無し明示) を None に潰さない (is not None)。
-            value=int(p["point_yen"]) if p.get("point_yen") is not None else None,
-            step=100, key=f"pm_pointyen_{eid}",
-            help="この仕入れで得たポイント実額(¥)。採算の「ポイント還元」に反映 "
-                 "(赤字許容の判断材料。利益額には合算しない)。空=ポイントなし。",
-        )
-
-        # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
-        editing["new_bp_id"] = None
-        # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
-        # 由来の現 BP id)。_apply_to_ebay は「submit 値 != この初期値」の時のみ
-        # 「user が selectbox を操作した」とみなし、無操作の stale 初期値が実
-        # eBay へ巻き戻る経路を遮断する (金銭直結)。
-        editing["bp_render_initial_id"] = None
-        if bp_state is not None:
-            pl = bp_state.get("policies")
-            if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
-                ids = [pi.policy_id for pi in pl.policies]
-                opts = [pi.name for pi in pl.policies]
-                cur_id = bp_state.get("id")
-                editing["bp_render_initial_id"] = cur_id
-                cur_idx = ids.index(cur_id) if cur_id in ids else 0
-                sel_i = st.selectbox(
-                    "Shipping Policy (BP)",
-                    options=list(range(len(ids))),
-                    index=cur_idx,
-                    format_func=lambda i: opts[i],
-                    # Codex#1-fix2 (金銭直結): widget key に **DB 由来 cur_id を
-                    # 含める**。Streamlit は key が session_state に在ると
-                    # index= を無視し保存値を返す仕様。固定 key だと ↻/同期で
-                    # DB BP が A→B に変わっても widget は旧 A を保持 →
-                    # bp_render_initial(=fresh B) と new_bp_id(=stale A) が
-                    # 食い違い「無操作なのに touched」誤判定 → 実 eBay の B を
-                    # stale A へ巻き戻す (DDP buffer 喪失)。key に cur_id を
-                    # 織り込むと DB BP 変化時に **別 widget = fresh 初期化**
-                    # され dirty-flag 前提 (無操作⟹widget値==render初期値) を
-                    # 回復。同一 DB 状態内は key 安定で user の途中選択を保持。
-                    key=f"pm_bp_{eid}_{cur_id}",
-                    help="変更すると 📤 eBay 反映 で listing の BP を差し替えます",
-                )
-                editing["new_bp_id"] = ids[sel_i]
-                if ids[sel_i] != cur_id:
-                    _ov_c = editing.get("new_ship_cost")
-                    _ov_a = editing.get("new_ship_additional")
-                    _cur = (f"現在 Buyer pays ${float(_ov_c):.2f}"
-                            if _ov_c is not None else "現在 Buyer pays 未設定")
-                    if _ov_a is not None:
-                        _cur += f" / +each ${float(_ov_a):.2f}"
-                    st.warning(
-                        "⚠️ BP を変更すると送料が**新 BP の default に戻ります**。"
-                        f"({_cur})"
-                    )
-                    st.caption(
-                        "現在の custom 送料に **DDP 関税 buffer** が含まれる場合、"
-                        "buffer が消え **売主の関税負担 (赤字方向、Section 232 "
-                        "該当品は数百ドル/件)** が発生し得ます。新 BP default 額は "
-                        "BP 適用後 GetItem で判明 (変更前取得不可、eBay 仕様)。"
-                        "変更後に送料を再設定してください。"
-                    )
-            else:
-                st.caption(
-                    "🚚 Shipping Policy 変更不可: "
-                    f"{bp_state.get('error') or '現在 BP / BP 一覧の取得に失敗'}"
+            # Row: 商品価格
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label("商品価格", "eBay Start Price (USD)")
+            with _r_b:
+                editing["new_ebay_price"] = st.number_input(
+                    "商品価格 (USD)",
+                    min_value=0.0,
+                    value=float(p.get("current_price") or 0.0) if p.get("current_price") else None,
+                    step=1.0, format="%.2f",
+                    key=f"pm_ebay_price_{eid}",
+                    label_visibility="collapsed",
                 )
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 📦 商品属性 (SKU / 在庫 / 物理属性) — money 系より控えめに
-    # ──────────────────────────────────────────────────────────────────────
-    st.markdown('<div class="pm-section-label">📦 商品属性</div>',
-                unsafe_allow_html=True)
+            # Row: 送料 BP
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label("送料 BP", "1 個目の送料 (ShippingServiceCost)")
+            with _r_b:
+                editing["new_ship_cost"] = st.number_input(
+                    "送料 Buyer pays (USD)",
+                    min_value=0.0,
+                    value=float(p.get("shipping_cost") or 0.0) if p.get("shipping_cost") is not None else None,
+                    step=0.5, format="%.2f",
+                    key=f"pm_ebay_ship_{eid}",
+                    label_visibility="collapsed",
+                )
 
-    # 🏷️ SKU + 在庫数 (stock prefix のみ在庫数表示)
-    sku_col, inv_col = st.columns(2)
-    with sku_col:
-        editing["sku"] = st.text_input(
-            "SKU (在庫種別)",
-            value=current_sku,
-            key=f"pm_sku_{eid}",
-            help="stock* で始まる = 有在庫 (在庫数管理対象) / ebay* で始まる = 無在庫",
-        )
-    with inv_col:
-        # SKU が現在 stock* で始まるなら在庫数入力欄表示
-        # NOTE: form 内のため text_input の変更を即時参照できない (submit 後反映).
-        #       なので「保存時点」での current_sku ベース判定で OK.
-        sku_is_stock = current_sku.startswith("stock")
-        if sku_is_stock:
-            current_inv = p.get("inventory_count")
-            editing["inventory_count"] = st.number_input(
-                "在庫数 (物理在庫)",
-                min_value=0,
-                value=int(current_inv) if current_inv is not None else None,
-                step=1,
-                key=f"pm_inv_{eid}",
-                help="物理在庫. 売れたら GetOrders API で自動減算 (in_stock SKU のみ).",
+            # W142 (B): 送料は DB保存値表示 + 乖離マーカー (expander 展開で GetItem
+            # を呼ばない = 速度/quota 優先、真値は 📤eBay反映 で verify / BP ↻ で取得)。
+            # 鮮度を fetched_at で正直開示 (R-11/HIGH-1 の精神)。W314: 常時 caption
+            # だった文言を「送料 +each」の tooltip に集約。
+            _ship_fa = _fetched_jst_label(
+                p.get("shipping_additional_fetched_at") or p.get("last_synced_at")
             )
-            # W133 (2026-05-16): eBay 数量 sync の最終状態を表示 (痕跡層 / Q0).
-            _sync_err = p.get("qty_sync_error")
-            if _sync_err:
-                st.caption(f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}")
-            else:
-                _sync_at = p.get("last_qty_sync_at")
-                _sync_qty = p.get("last_synced_quantity")
-                if _sync_at:
-                    st.caption(
-                        f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
-                    )
-        else:
-            # W205 (2026-05-31): 無在庫 (ebay* SKU) は物理在庫を持たないが、
-            # eBay 出品数量 (quantity_ebay) は手動で持ち上げられる。
-            # 無在庫は Amazon/楽天/Yahoo から無限調達可 = 売れて0になり販売
-            # 機会を逃すのを防ぐため、任意の数量を eBay へ即反映する。
-            # 自動補充は対象外 (手動編集のみ / K1)。
-            editing["inventory_count"] = None
-            sku_is_supplier = current_sku.startswith("ebay")
-            if sku_is_supplier:
-                _cur_qty = p.get("quantity_ebay")
-                editing["quantity_ebay_manual"] = st.number_input(
-                    "eBay 出品数量 (無在庫)",
+
+            # Row: 送料 +each
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "送料 +each",
+                    "2 個目以降の追加送料 (ShippingServiceAdditionalCost)。DB保存値表示 "
+                    f"(実 eBay 最終同期: {_ship_fa})。eBay.com で直接変更していると乖離"
+                    "し得ます。真値は 📤eBay反映 時に verify されます。",
+                )
+            with _r_b:
+                # W142 根本原因#5(b): 旧実装は value=None ハードコードで +each が
+                # 常時空欄 (ebay_listings に保存列が無かった)。migration v43 の
+                # shipping_additional_cost を表示 source に (Buyer pays と対称)。
+                # W142 Codex-R3 HIGH-2: +each dirty-flag 用 render 初期値 (= DB 列値)。
+                # _apply_to_ebay は「submit 値 != この初期値」の時のみ user が
+                # +each を実操作したとみなす (金銭直結、Phase2 実 eBay 真実原則)。
+                _add_init = (float(p.get("shipping_additional_cost"))
+                             if p.get("shipping_additional_cost") is not None
+                             else None)
+                editing["add_render_initial"] = _add_init
+                editing["new_ship_additional"] = st.number_input(
+                    "送料 +each (USD)",
+                    min_value=0.0,
+                    value=_add_init,
+                    step=0.5, format="%.2f",
+                    key=f"pm_ebay_ship_add_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # Row: 下限価格
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "下限価格",
+                    "W183 自動値下げの絶対下限。商品価格のみ・送料は含みません。買い手"
+                    "の総額下限 = 下限価格 + 送料。未入力なら breakeven (損益分岐の商品"
+                    "価格) が下限。自動値下げは商品価格がこの下限を下回らない範囲で実行。",
+                )
+            with _r_b:
+                editing["lp_min_price"] = st.number_input(
+                    "下限価格 商品のみ (USD)",
+                    min_value=0.0,
+                    value=float(p["lp_min_price"]) if p.get("lp_min_price") else None,
+                    step=1.0, format="%.2f",
+                    key=f"pm_minp_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # 🌐 区分 + 💰 仕入価格 (採算判断に直結する軸を money 枠内に集約)
+            from monitor.database import VALID_PRIMARY_MARKETS
+            _mkt_labels = {
+                "US_only": "US_only — 米国のみ販売 (商品価格に関税包含)",
+                "mixed_global": "mixed_global — 米国+他国 混在",
+                "global_only": "global_only — 米国以外",
+                "unknown": "unknown — 未判定",
+            }
+            _mkt_opts = list(VALID_PRIMARY_MARKETS)
+            # DB が None の listing は表示上 unknown を default に (書込は dirty 時のみ)。
+            _cur_mkt = (p.get("primary_market") or "unknown")
+            if _cur_mkt not in _mkt_opts:
+                _cur_mkt = "unknown"
+            # dirty-flag (BP / 送料 と同型): submit 値 != 表示初期値 の時のみ DB 保存。
+            # None の listing を無操作で unknown に上書きする stale write を遮断。
+            editing["primary_market_render_initial"] = _cur_mkt
+
+            # Row: 区分
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "区分",
+                    "Terapeak 365 日 sold 判定 (W110(2))。送料差分式 + DDP 関税の前提"
+                    "区分。保存で DB 更新 + 利益再計算 (eBay 送料反映は別途 📤eBay反映)。",
+                )
+            with _r_b:
+                editing["primary_market"] = st.selectbox(
+                    "区分 (送料・関税前提)",
+                    options=_mkt_opts,
+                    index=_mkt_opts.index(_cur_mkt),
+                    format_func=lambda m: _mkt_labels.get(m, m),
+                    key=f"pm_primary_market_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # Row: 仕入価格
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label("仕入価格")
+            with _r_b:
+                editing["purchase_yen"] = st.number_input(
+                    "仕入価格 (JPY)",
                     min_value=0,
-                    value=int(_cur_qty) if _cur_qty is not None else 0,
-                    step=1,
-                    key=f"pm_qtyebay_{eid}",
-                    help="無在庫 listing の eBay 出品数量。保存で eBay へ即反映 "
-                         "(Amazon/楽天/Yahoo から調達可なので0切れ防止に持ち上げる)。",
+                    value=int(p["purchase_yen"]) if p.get("purchase_yen") else None,
+                    step=100, key=f"pm_pyen_{eid}",
+                    label_visibility="collapsed",
                 )
-                # 痕跡層 (Q0): eBay 数量 sync の最終状態を表示。
+
+            # Row: ポイント還元
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "ポイント還元",
+                    "この仕入れで得たポイント実額(¥)。採算の「ポイント還元」に反映 "
+                    "(赤字許容の判断材料。利益額には合算しない)。空=ポイントなし。",
+                )
+            with _r_b:
+                # W220 (2026-06-04): per-listing ポイント実額(¥)。仕入先/カードで
+                # 還元率が違うため実額を入力。settings.point_reward_rate (global) は
+                # 実質 0 で機能せず。
+                editing["point_yen"] = st.number_input(
+                    "ポイント還元 (¥)",
+                    min_value=0,
+                    # W220 MEDIUM-1: 0 (ポイント無し明示) を None に潰さない (is not None)。
+                    value=int(p["point_yen"]) if p.get("point_yen") is not None else None,
+                    step=100, key=f"pm_pointyen_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # ── 🚚 Shipping Policy (W138-A: bp_state は DB 列駆動で常時 dict) ──
+            editing["new_bp_id"] = None
+            # Codex#1 dirty-flag 用: selectbox を render 時に初期化した値 (= DB 列
+            # 由来の現 BP id)。_apply_to_ebay は「submit 値 != この初期値」の時のみ
+            # 「user が selectbox を操作した」とみなし、無操作の stale 初期値が実
+            # eBay へ巻き戻る経路を遮断する (金銭直結)。
+            editing["bp_render_initial_id"] = None
+            if bp_state is not None:
+                pl = bp_state.get("policies")
+                if bp_state.get("ok") and pl is not None and pl.ok and pl.policies:
+                    ids = [pi.policy_id for pi in pl.policies]
+                    opts = [pi.name for pi in pl.policies]
+                    cur_id = bp_state.get("id")
+                    editing["bp_render_initial_id"] = cur_id
+                    cur_idx = ids.index(cur_id) if cur_id in ids else 0
+                    _r_a, _r_b = st.columns([1, 1.5])
+                    with _r_a:
+                        _b_label(
+                            "Shipping Policy",
+                            "変更すると 📤 eBay 反映 で listing の BP を差し替えます",
+                        )
+                    with _r_b:
+                        sel_i = st.selectbox(
+                            "Shipping Policy (BP)",
+                            options=list(range(len(ids))),
+                            index=cur_idx,
+                            format_func=lambda i: opts[i],
+                            # Codex#1-fix2 (金銭直結): widget key に **DB 由来 cur_id を
+                            # 含める**。Streamlit は key が session_state に在ると
+                            # index= を無視し保存値を返す仕様。固定 key だと ↻/同期で
+                            # DB BP が A→B に変わっても widget は旧 A を保持 →
+                            # bp_render_initial(=fresh B) と new_bp_id(=stale A) が
+                            # 食い違い「無操作なのに touched」誤判定 → 実 eBay の B を
+                            # stale A へ巻き戻す (DDP buffer 喪失)。key に cur_id を
+                            # 織り込むと DB BP 変化時に **別 widget = fresh 初期化**
+                            # され dirty-flag 前提 (無操作⟹widget値==render初期値) を
+                            # 回復。同一 DB 状態内は key 安定で user の途中選択を保持。
+                            key=f"pm_bp_{eid}_{cur_id}",
+                            label_visibility="collapsed",
+                        )
+                    editing["new_bp_id"] = ids[sel_i]
+                    if ids[sel_i] != cur_id:
+                        # ⚠️ 金銭直結の安全情報 (DDP 関税 buffer 喪失リスク) につき
+                        # tooltip 化せず、従来通り常時可視の st.warning/st.caption
+                        # のまま残す (W314 でも tooltip 統合対象から除外)。
+                        _ov_c = editing.get("new_ship_cost")
+                        _ov_a = editing.get("new_ship_additional")
+                        _cur = (f"現在 Buyer pays ${float(_ov_c):.2f}"
+                                if _ov_c is not None else "現在 Buyer pays 未設定")
+                        if _ov_a is not None:
+                            _cur += f" / +each ${float(_ov_a):.2f}"
+                        st.warning(
+                            "⚠️ BP を変更すると送料が**新 BP の default に戻ります**。"
+                            f"({_cur})"
+                        )
+                        st.caption(
+                            "現在の custom 送料に **DDP 関税 buffer** が含まれる場合、"
+                            "buffer が消え **売主の関税負担 (赤字方向、Section 232 "
+                            "該当品は数百ドル/件)** が発生し得ます。新 BP default 額は "
+                            "BP 適用後 GetItem で判明 (変更前取得不可、eBay 仕様)。"
+                            "変更後に送料を再設定してください。"
+                        )
+                else:
+                    st.caption(
+                        "🚚 Shipping Policy 変更不可: "
+                        f"{bp_state.get('error') or '現在 BP / BP 一覧の取得に失敗'}"
+                    )
+
+    # ────────────────────────────── 📦 右枠 ──────────────────────────────
+    with _attr_col:
+        with st.container(border=True, key=f"pm_attr_box_{eid}"):
+            st.markdown(
+                '<div class="pm-b-head pm-b-head-attr">📦 商品属性</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Row: SKU
+            sku_is_stock = current_sku.startswith("stock")
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "SKU",
+                    "stock* で始まる = 有在庫 (在庫数管理対象) / ebay* で始まる = 無在庫",
+                )
+            with _r_b:
+                editing["sku"] = st.text_input(
+                    "SKU (在庫種別)",
+                    value=current_sku,
+                    key=f"pm_sku_{eid}",
+                    label_visibility="collapsed",
+                )
+            # NOTE: form 内のため text_input の変更を即時参照できない (submit 後反映).
+            #       なので「保存時点」での current_sku ベース判定で OK.
+            _inv_sync_caption: Optional[str] = None
+
+            # Row: 在庫数 (stock*) / eBay 出品数量 (ebay*) / 対象外
+            if sku_is_stock:
+                _r_a, _r_b = st.columns([1, 1.5])
+                with _r_a:
+                    _b_label("在庫数", "物理在庫. 売れたら GetOrders API で自動減算 (in_stock SKU のみ).")
+                with _r_b:
+                    current_inv = p.get("inventory_count")
+                    editing["inventory_count"] = st.number_input(
+                        "在庫数 (物理在庫)",
+                        min_value=0,
+                        value=int(current_inv) if current_inv is not None else None,
+                        step=1,
+                        key=f"pm_inv_{eid}",
+                        label_visibility="collapsed",
+                    )
+                # W133 (2026-05-16): eBay 数量 sync の最終状態 (痕跡層 / Q0)。動的な
+                # 状態表示のため tooltip 化せず、行の下に compact caption で残す。
                 _sync_err = p.get("qty_sync_error")
                 if _sync_err:
-                    st.caption(f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}")
+                    _inv_sync_caption = f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}"
                 else:
                     _sync_at = p.get("last_qty_sync_at")
                     _sync_qty = p.get("last_synced_quantity")
                     if _sync_at:
-                        st.caption(
-                            f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
-                        )
+                        _inv_sync_caption = f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
             else:
-                st.caption("在庫数管理対象外 (stock*/ebay* 以外の SKU)")
+                # W205 (2026-05-31): 無在庫 (ebay* SKU) は物理在庫を持たないが、
+                # eBay 出品数量 (quantity_ebay) は手動で持ち上げられる。
+                # 無在庫は Amazon/楽天/Yahoo から無限調達可 = 売れて0になり販売
+                # 機会を逃すのを防ぐため、任意の数量を eBay へ即反映する。
+                # 自動補充は対象外 (手動編集のみ / K1)。
+                editing["inventory_count"] = None
+                sku_is_supplier = current_sku.startswith("ebay")
+                if sku_is_supplier:
+                    _r_a, _r_b = st.columns([1, 1.5])
+                    with _r_a:
+                        _b_label(
+                            "eBay出品数量",
+                            "無在庫 listing の eBay 出品数量。保存で eBay へ即反映 "
+                            "(Amazon/楽天/Yahoo から調達可なので0切れ防止に持ち上げる)。",
+                        )
+                    with _r_b:
+                        _cur_qty = p.get("quantity_ebay")
+                        editing["quantity_ebay_manual"] = st.number_input(
+                            "eBay 出品数量 (無在庫)",
+                            min_value=0,
+                            value=int(_cur_qty) if _cur_qty is not None else 0,
+                            step=1,
+                            key=f"pm_qtyebay_{eid}",
+                            label_visibility="collapsed",
+                        )
+                    # 痕跡層 (Q0): eBay 数量 sync の最終状態を表示。
+                    _sync_err = p.get("qty_sync_error")
+                    if _sync_err:
+                        _inv_sync_caption = f"⚠️ eBay 数量反映エラー: {str(_sync_err)[:120]}"
+                    else:
+                        _sync_at = p.get("last_qty_sync_at")
+                        _sync_qty = p.get("last_synced_quantity")
+                        if _sync_at:
+                            _inv_sync_caption = f"✅ eBay 数量反映: {_sync_at} (数量 {_sync_qty})"
+                else:
+                    st.caption("在庫数管理対象外 (stock*/ebay* 以外の SKU)")
+            if _inv_sync_caption:
+                st.caption(_inv_sync_caption)
 
-    # ── W31 (2026-06-20): タイトル編集 (任意) ──
-    # dirty-flag: render 時の DB 値を保持し、無操作時は eBay に push しない。
-    # 80 文字制限は _apply_listing_content_to_ebay → revise_item_title で validate。
+            # W227 (2026-06-06 根治): 商品「状態」ランク編集。⚠️ 以前は人気度 rank 列
+            # (自動ランク更新の S/A/B/C/D/E) を表示していたため、価格編集で人気度Sを eBay
+            # Condition Open Box(1500) へ誤上書きする事故が起きた。本 widget は **eBay 実
+            # Condition 由来** (_condition_widget_initial: condition_rank 優先 → ebay_condition_id
+            # 由来 1000→N/1500→S/7000→As-Is/3000→未設定) を表示し、人気度 rank 列は一切
+            # 読み書きしない。未設定 (Used サブランク不明 / eBay未取得) は sentinel で
+            # stale write 防止。eBay Condition 反映は 📤eBay反映 (dirty-flag、user 変更時のみ)。
+            _RANK_BLANK = "（未設定 / eBay未取得）"
+            _RANK_CHOICES = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
+            _cur_rank = _condition_widget_initial(p)
+            _rank_opts = [_RANK_BLANK] + _RANK_CHOICES
+            _rank_default = _cur_rank if _cur_rank in _RANK_CHOICES else _RANK_BLANK
+            _cid_disp = str(p.get("ebay_condition_id") or "").strip() or "未取得"
+
+            # Row: 商品ランク
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label(
+                    "商品ランク",
+                    "eBay 実 Condition 由来 (人気度グレードとは別)。N=新品 / S=新品同様 / "
+                    "A=美品 / B=良品 / C=使用感 / D=難あり / PO=通電のみ / As-Is=未確認。"
+                    "変更を 📤eBay反映 すると eBay Condition も更新 (変更時のみ)。"
+                    "Used品は A-PO すべて eBay 上は Used(3000)。",
+                )
+            with _r_b:
+                _rank_sel = st.selectbox(
+                    "商品ランク (eBay 状態)",
+                    options=_rank_opts,
+                    index=_rank_opts.index(_rank_default),
+                    key=f"pm_rank_{eid}",
+                    label_visibility="collapsed",
+                )
+            editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
+            # dirty-flag: render 時の状態 (eBay Condition 由来) を保持。
+            # _apply_listing_content_to_ebay は user が widget を **実際に変更した時のみ**
+            # Condition を push する (人気度 stale 値の誤上書き事故を構造的に遮断)。
+            editing["rank_render_initial"] = _cur_rank or None
+            st.caption(f"現在の eBay Condition: **{_cid_disp}** "
+                       f"({_CONDITION_ID_LABEL.get(_cid_disp, '—')})"
+                       + ("　※ Used はサブランク(A-PO)を選ぶと MonoDeck に記録 (eBay は Used のまま)"
+                          if _cid_disp == "3000" else ""))
+
+            # Row: 重量
+            _r_a, _r_b = st.columns([1, 1.5])
+            with _r_a:
+                _b_label("重量 (g)")
+            with _r_b:
+                editing["weight_g"] = st.number_input(
+                    "重量 (g)",
+                    min_value=0,
+                    value=int(p["weight_g"]) if p.get("weight_g") else None,
+                    step=10, key=f"pm_weight_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # Row: 寸法 L×W×H (cm) — 半幅枠内でも 3 連小入力を維持。
+            # ⚠️ st.columns の nest 上限は 1 段 (Streamlit 公式)。ここは既に
+            # 「outer columns(2) > container > pair columns(2)」= level 2 に居る
+            # ので、pair の右列内でさらに columns(3) を切ると level 3 で
+            # StreamlitAPIException になる。よって「ラベル + L + W + H」を container
+            # 直下の columns(4) 1 段でフラットに並べる (level 2 に留める)。
+            _r_lbl, _h1, _h2, _h3 = st.columns([1, 0.5, 0.5, 0.5])
+            with _r_lbl:
+                _b_label("寸法 L×W×H (cm)")
+            with _h1:
+                editing["length_cm"] = st.number_input(
+                    "長さ (cm)",
+                    min_value=0.0,
+                    value=float(p["length_cm"]) if p.get("length_cm") else None,
+                    step=1.0, key=f"pm_length_{eid}",
+                    label_visibility="collapsed",
+                )
+            with _h2:
+                editing["width_cm"] = st.number_input(
+                    "幅 (cm)",
+                    min_value=0.0,
+                    value=float(p["width_cm"]) if p.get("width_cm") else None,
+                    step=1.0, key=f"pm_width_{eid}",
+                    label_visibility="collapsed",
+                )
+            with _h3:
+                editing["height_cm"] = st.number_input(
+                    "高さ (cm)",
+                    min_value=0.0,
+                    value=float(p["height_cm"]) if p.get("height_cm") else None,
+                    step=1.0, key=f"pm_height_{eid}",
+                    label_visibility="collapsed",
+                )
+
+            # W227 (2026-06-06 user 要望): ランク選択時に迷わないよう 8 段階の早見表を
+            # 折りたたみで掲示 (CLAUDE.md コンディションランク 8 段階)。eBay Condition との
+            # 対応も併記 (N=New / S=Open Box / A-PO=Used / As-Is=For parts)。
+            with st.expander("📖 商品ランク早見表 (どれにするか迷ったら)", expanded=False):
+                st.markdown(
+                    "| ランク | 意味 | 外観 × 動作 | eBay Condition |\n"
+                    "|---|---|---|---|\n"
+                    "| **N** | 新品・未開封 | シュリンク / 工場出荷 | New (1000) |\n"
+                    "| **S** | 新品同様 | 開封済だが未使用・使用痕なし | Open Box (1500※) |\n"
+                    "| **A** | 美品・動作確認済 | 小さな使用痕、全機能動作 | Used (3000) |\n"
+                    "| **B** | 並品・動作確認済 | 目立つ使用痕、全機能動作 | Used (3000) |\n"
+                    "| **C** | 使用感あり・動作確認済 | 使用感強い、全機能動作 | Used (3000) |\n"
+                    "| **D** | 難あり・動作確認済 | 外観/機能に問題、動作は限定的 | Used (3000) |\n"
+                    "| **PO** | 通電のみ | 電源 ON 確認だけ・動作未確認 | Used (3000) |\n"
+                    "| **As-Is** | 未確認 / 部品取り | 無保証販売・**理由必須** | For parts (7000) |\n"
+                )
+                st.caption(
+                    "判別のコツ: 新品シュリンク=**N** / 未使用だが開封・保管長め=**S** / "
+                    "動作確認済の中古は使用痕の程度で **A→B→C→D** / 通電だけ=**PO** / "
+                    "ジャンク・部品取りは**As-Is(理由必須)**。"
+                    "※ S(Open Box=1500) は一部カテゴリで不可 → eBay 反映時に Used(3000) へ自動降格 (通知あり)。"
+                )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 🏷️ 商品タイトル — 全幅 1 行
+    # ──────────────────────────────────────────────────────────────────────
+    # W31 (2026-06-20): タイトル編集 (任意)。dirty-flag: render 時の DB 値を
+    # 保持し、無操作時は eBay に push しない。80 文字制限は
+    # _apply_listing_content_to_ebay → revise_item_title で validate。
     _cur_title = (p.get("title") or "").strip()
     editing["title_render_initial"] = _cur_title
-    _new_title_val = st.text_input(
-        "商品タイトル (eBay Title / 80 文字以内)",
-        value=_cur_title,
-        max_chars=80,
-        key=f"pm_title_{eid}",
-        help="変更後に 📤eBay反映 すると eBay Title も更新 (変更した時のみ)。"
-             "80 文字超は反映を拒否します。",
-    )
+    t1, t2 = st.columns([1, 6])
+    with t1:
+        _b_label(
+            "商品タイトル",
+            "eBay Title (80文字以内)。変更後に 📤eBay反映 すると eBay Title も更新 "
+            "(変更した時のみ)。80 文字超は反映を拒否します。",
+        )
+    with t2:
+        _new_title_val = st.text_input(
+            "商品タイトル (eBay Title / 80 文字以内)",
+            value=_cur_title,
+            max_chars=80,
+            key=f"pm_title_{eid}",
+            label_visibility="collapsed",
+        )
     editing["new_title"] = _new_title_val.strip() if _new_title_val else ""
     _title_len = len(editing["new_title"])
     if _title_len > 70:
         st.caption(
             f"⚠️ {'80 文字超 — 反映できません' if _title_len > 80 else f'{_title_len}/80 文字 (残り {80 - _title_len} 文字)'}"
-        )
-
-    # 📐 物理属性 (重量 / 長さ / 幅 / 高さ) — モックアップでは控えめなグリッド
-    e1, e2 = st.columns(2)
-    with e1:
-        editing["weight_g"] = st.number_input(
-            "重量 (g)",
-            min_value=0,
-            value=int(p["weight_g"]) if p.get("weight_g") else None,
-            step=10, key=f"pm_weight_{eid}",
-        )
-        editing["length_cm"] = st.number_input(
-            "長さ (cm)",
-            min_value=0.0,
-            value=float(p["length_cm"]) if p.get("length_cm") else None,
-            step=1.0, key=f"pm_length_{eid}",
-        )
-    with e2:
-        editing["width_cm"] = st.number_input(
-            "幅 (cm)",
-            min_value=0.0,
-            value=float(p["width_cm"]) if p.get("width_cm") else None,
-            step=1.0, key=f"pm_width_{eid}",
-        )
-        editing["height_cm"] = st.number_input(
-            "高さ (cm)",
-            min_value=0.0,
-            value=float(p["height_cm"]) if p.get("height_cm") else None,
-            step=1.0, key=f"pm_height_{eid}",
-        )
-
-    # W227 (2026-06-06 根治): 商品「状態」ランク編集。⚠️ 以前は人気度 rank 列
-    # (自動ランク更新の S/A/B/C/D/E) を表示していたため、価格編集で人気度Sを eBay
-    # Condition Open Box(1500) へ誤上書きする事故が起きた。本 widget は **eBay 実
-    # Condition 由来** (_condition_widget_initial: condition_rank 優先 → ebay_condition_id
-    # 由来 1000→N/1500→S/7000→As-Is/3000→未設定) を表示し、人気度 rank 列は一切
-    # 読み書きしない。未設定 (Used サブランク不明 / eBay未取得) は sentinel で
-    # stale write 防止。eBay Condition 反映は 📤eBay反映 (dirty-flag、user 変更時のみ)。
-    _RANK_BLANK = "（未設定 / eBay未取得）"
-    _RANK_CHOICES = ["N", "S", "A", "B", "C", "D", "PO", "As-Is"]
-    _cur_rank = _condition_widget_initial(p)
-    _rank_opts = [_RANK_BLANK] + _RANK_CHOICES
-    _rank_default = _cur_rank if _cur_rank in _RANK_CHOICES else _RANK_BLANK
-    _cid_disp = str(p.get("ebay_condition_id") or "").strip() or "未取得"
-    _rank_sel = st.selectbox(
-        "商品ランク (eBay 状態)",
-        options=_rank_opts,
-        index=_rank_opts.index(_rank_default),
-        key=f"pm_rank_{eid}",
-        help="eBay 実 Condition 由来 (人気度グレードとは別)。N=新品 / S=新品同様 / "
-             "A=美品 / B=良品 / C=使用感 / D=難あり / PO=通電のみ / As-Is=未確認。"
-             "変更を 📤eBay反映 すると eBay Condition も更新 (変更時のみ)。"
-             "Used品は A-PO すべて eBay 上は Used(3000)。",
-    )
-    editing["rank"] = None if _rank_sel == _RANK_BLANK else _rank_sel
-    # dirty-flag: render 時の状態 (eBay Condition 由来) を保持。
-    # _apply_listing_content_to_ebay は user が widget を **実際に変更した時のみ**
-    # Condition を push する (人気度 stale 値の誤上書き事故を構造的に遮断)。
-    editing["rank_render_initial"] = _cur_rank or None
-    st.caption(f"現在の eBay Condition: **{_cid_disp}** "
-               f"({_CONDITION_ID_LABEL.get(_cid_disp, '—')})"
-               + ("　※ Used はサブランク(A-PO)を選ぶと MonoDeck に記録 (eBay は Used のまま)"
-                  if _cid_disp == "3000" else ""))
-    # W227 (2026-06-06 user 要望): ランク選択時に迷わないよう 8 段階の早見表を
-    # 折りたたみで掲示 (CLAUDE.md コンディションランク 8 段階)。eBay Condition との
-    # 対応も併記 (N=New / S=Open Box / A-PO=Used / As-Is=For parts)。
-    with st.expander("📖 商品ランク早見表 (どれにするか迷ったら)", expanded=False):
-        st.markdown(
-            "| ランク | 意味 | 外観 × 動作 | eBay Condition |\n"
-            "|---|---|---|---|\n"
-            "| **N** | 新品・未開封 | シュリンク / 工場出荷 | New (1000) |\n"
-            "| **S** | 新品同様 | 開封済だが未使用・使用痕なし | Open Box (1500※) |\n"
-            "| **A** | 美品・動作確認済 | 小さな使用痕、全機能動作 | Used (3000) |\n"
-            "| **B** | 並品・動作確認済 | 目立つ使用痕、全機能動作 | Used (3000) |\n"
-            "| **C** | 使用感あり・動作確認済 | 使用感強い、全機能動作 | Used (3000) |\n"
-            "| **D** | 難あり・動作確認済 | 外観/機能に問題、動作は限定的 | Used (3000) |\n"
-            "| **PO** | 通電のみ | 電源 ON 確認だけ・動作未確認 | Used (3000) |\n"
-            "| **As-Is** | 未確認 / 部品取り | 無保証販売・**理由必須** | For parts (7000) |\n"
-        )
-        st.caption(
-            "判別のコツ: 新品シュリンク=**N** / 未使用だが開封・保管長め=**S** / "
-            "動作確認済の中古は使用痕の程度で **A→B→C→D** / 通電だけ=**PO** / "
-            "ジャンク・部品取りは**As-Is(理由必須)**。"
-            "※ S(Open Box=1500) は一部カテゴリで不可 → eBay 反映時に Used(3000) へ自動降格 (通知あり)。"
         )
 
     # W220 slice3 (2026-06-04): Condition 理由 (eBay ConditionDescription)。
@@ -5624,6 +5737,104 @@ def render_product_management(config: dict) -> None:
             font-size: 0.78em !important;
             margin-bottom: 2px !important;
             color: var(--pm-text-dim) !important;
+        }
+
+        /* === W314 追加改修 (2026-07-03): 詳細編集(従来) 高密度グリッド (案B) ===
+           mock: .company/engineering/docs/2026-07-03-compact-layout-mockup-v2.html
+           の案 B タブ準拠。widget の key/型/初期値/validation/dirty-flag/submit
+           処理は無改変 (見た目のみ)。div[class*="st-key-pm_attr_box_*"] は
+           📦商品属性 側 (st.container(key=f"pm_attr_box_{eid}")) の scope hook。 */
+        .pm-b-head {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--pm-warning);
+            letter-spacing: .02em;
+            margin: 0 0 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        /* W314 v2 (2026-07-03): 📦 商品属性枠の見出しは money 系と段差を付けるため
+           amber ではなく primary-light (ティール) で描画。 */
+        .pm-b-head-attr {
+            color: var(--pm-primary-light);
+        }
+        .pm-b-warnpill {
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--pm-warning);
+            background: rgba(184, 134, 11, 0.12);
+            border: 1px solid var(--pm-warning);
+            border-radius: 999px;
+            padding: 1px 8px;
+        }
+        /* コンパクトグリッド用の右寄せ小ラベル (_b_label ヘルパーが出す div)。
+           対の入力欄は label_visibility="collapsed" (組込みラベル行 = help=
+           ツールチップ アイコンごと display:none になる Streamlit 1.56 仕様を
+           実装時に確認したため、常時表示だった caption 文言はここの ⓘ
+           native title hover に集約している)。 */
+        .pm-b-lbl {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-height: 26px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--pm-text-dim);
+            text-align: right;
+            line-height: 1.2;
+            padding-right: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pm-b-info {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--pm-bg-card2);
+            color: var(--pm-primary-light);
+            font-size: 9px;
+            font-weight: 800;
+            cursor: help;
+            margin-left: 4px;
+            flex-shrink: 0;
+        }
+        /* 📦 商品属性 枠 (money 枠と対の視覚的まとまり) */
+        div[class*="st-key-pm_attr_box_"] {
+            border-radius: 8px !important;
+            background: var(--pm-bg-card) !important;
+        }
+        /* 金額枠 / 属性枠 共通: 行間・入力欄をさらに圧縮 (案B の 22-28px 行密度) */
+        div[class*="st-key-pm_money_box_"] [data-testid="stVerticalBlock"],
+        div[class*="st-key-pm_attr_box_"] [data-testid="stVerticalBlock"] {
+            gap: 0.2rem !important;
+        }
+        div[class*="st-key-pm_money_box_"] [data-testid="stHorizontalBlock"],
+        div[class*="st-key-pm_attr_box_"] [data-testid="stHorizontalBlock"] {
+            gap: 0.4rem !important;
+        }
+        div[class*="st-key-pm_money_box_"] [data-testid="stElementContainer"],
+        div[class*="st-key-pm_attr_box_"] [data-testid="stElementContainer"] {
+            margin-bottom: 0 !important;
+        }
+        div[class*="st-key-pm_money_box_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-pm_money_box_"] [data-testid="stTextInput"] input,
+        div[class*="st-key-pm_attr_box_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-pm_attr_box_"] [data-testid="stTextInput"] input {
+            padding: 2px 6px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            height: 26px !important;
+            min-height: 26px !important;
+        }
+        div[class*="st-key-pm_money_box_"] [data-baseweb="select"] > div,
+        div[class*="st-key-pm_attr_box_"] [data-baseweb="select"] > div {
+            min-height: 26px !important;
+            font-size: 12px !important;
         }
         </style>""",
         unsafe_allow_html=True,

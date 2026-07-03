@@ -1,0 +1,374 @@
+<!doctype html>
+<!-- MonoDeck 商品管理画面「コンパクト化」モックアップ v2 / 2026-07-03
+     v1 は 1項目1行の発想が残り横に長く縦に空白が多かった (user フィードバック)。
+     v2 は密度を大幅に上げ、編集ゾーン全体を 1000px 窓の半分以下に収める2案を提示。
+     外部CDN・フォント・画像なし。完全自己完結HTML。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品管理画面 コンパクト化 v2 — モックアップ</title>
+<style>
+  :root{
+    --bg:#dfe5e3; --surface:#ffffff; --surface-2:#f6faf9; --surface-3:#eef4f2;
+    --border:#dfe8e5; --border-soft:#ecf2f0; --border-strong:#c9d5d2;
+    --teal:#0e6b60; --teal-dark:#0a4c44; --teal-light:#159284; --teal-soft:#e3f3f0; --teal-softer:#f2faf8;
+    --text:#1c2624; --text-2:#59685f; --text-3:#8fa09b;
+    --amber:#a9750c; --amber-dark:#7a5407; --amber-soft:#fbf1d9; --amber-border:#e3bb5c;
+    --ok:#2e7d5b; --ok-soft:#e6f4ec;
+    --f:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",Meiryo,sans-serif;
+    --f-num:Consolas,"SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--f);color:var(--text);background:var(--bg);line-height:1.5;font-size:14px;padding:20px 12px 60px}
+  .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+  .mockbanner{max-width:1000px;margin:0 auto 8px;background:#fff4d6;border:1px solid #eccf85;color:#7a5b06;
+    font-size:12px;font-weight:700;text-align:center;padding:7px 10px;border-radius:7px}
+  .rulerwrap{max-width:1000px;margin:0 auto 4px;text-align:center}
+  .ruler{display:inline-block;font-size:10.5px;font-weight:800;color:var(--text-2);
+    background:var(--surface);border:1px dashed #9aa39f;border-radius:999px;padding:3px 12px}
+
+  .frame{max-width:1000px;margin:0 auto;background:var(--surface);border:2px dashed #9aa39f;
+    border-radius:14px;box-shadow:0 6px 24px rgba(20,45,40,.10);padding:14px 16px 16px;position:relative}
+
+  /* ==== compact panel header (1 行 32px) ==== */
+  .panelhead{display:flex;align-items:center;gap:10px;background:var(--teal-softer);
+    border:1px solid var(--border-soft);border-radius:8px;padding:5px 10px;margin-bottom:10px;height:36px}
+  .ph-thumb{width:26px;height:26px;border-radius:6px;flex-shrink:0;display:grid;place-items:center;font-size:14px;
+    background:linear-gradient(135deg,#cdeae3,#94cfc2);color:#0a4c44;border:1px solid var(--border)}
+  .ph-title{flex:1;min-width:0;font-size:12px;font-weight:800;line-height:1.3;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ph-title .sub{font-size:10px;color:var(--text-3);font-weight:600;margin-left:6px}
+  .ph-metrics{display:flex;gap:4px}
+  .metric{background:var(--surface);border:1px solid var(--border-soft);border-radius:5px;padding:2px 8px;text-align:center;min-width:52px}
+  .metric .mv{display:block;font-size:11.5px;font-weight:800;font-family:var(--f-num);color:var(--text);line-height:1.15}
+  .metric .mv.ok{color:var(--ok)}
+  .metric .ml{display:block;font-size:8px;color:var(--text-3);font-weight:700;letter-spacing:.2px;line-height:1}
+
+  .tabbar{display:flex;gap:6px;background:var(--surface-3);padding:3px;border-radius:999px;margin-bottom:12px;width:fit-content}
+  .tabbtn{border:0;background:transparent;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:800;
+    color:var(--text-2);cursor:pointer;font-family:var(--f)}
+  .tabbtn.active{background:var(--teal);color:#fff}
+  .tabbtn:not(.active):hover{color:var(--teal-dark)}
+  .screen{display:none}
+  .screen.active{display:block}
+
+  /* ==== info tooltip ==== */
+  .info{display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;
+    background:var(--teal-soft);color:var(--teal-dark);font-size:8px;font-weight:800;cursor:help;position:relative;margin-left:3px}
+  .info:hover::after{content:attr(data-tip);position:absolute;bottom:150%;left:0;width:230px;
+    background:var(--teal-dark);color:#fff;font-size:10.5px;font-weight:500;line-height:1.5;padding:7px 9px;
+    border-radius:6px;z-index:9;white-space:normal;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+
+  /* ==== 案A: 2ブロック横並び + ラベル左横付け ==== */
+  .aFrame{display:flex;gap:10px}
+  .aBlock{flex:1;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);min-width:0}
+  .aBlock.money{border-color:var(--amber-border);background:#fffbf0}
+  .aHead{font-size:11px;font-weight:800;padding:5px 10px;border-bottom:1px solid var(--border-strong);
+    background:var(--surface-3);border-radius:8px 8px 0 0;display:flex;align-items:center;gap:6px}
+  .aBlock.money .aHead{background:var(--amber-soft);border-bottom-color:var(--amber-border);color:var(--amber-dark)}
+  .aHead .warn{margin-left:auto;font-size:9.5px;font-weight:700;color:var(--amber-dark);background:#fff8e8;
+    border:1px solid #eccf85;border-radius:999px;padding:1px 8px}
+  .aBody{padding:5px 10px 6px}
+  .aRow{display:grid;grid-template-columns:105px 1fr;align-items:center;gap:6px;padding:3px 0;
+    border-bottom:1px dashed var(--border-soft)}
+  .aRow:last-child{border-bottom:0}
+  .aRow > label{font-size:11px;font-weight:700;color:var(--text-2);text-align:right;
+    display:flex;align-items:center;justify-content:flex-end;gap:3px;line-height:1.3}
+  .aRow > .val{display:flex;align-items:center;gap:6px}
+  .aInp{height:24px;border:1px solid var(--border);border-radius:5px;background:var(--surface);
+    display:flex;align-items:center;padding:0 8px;font-size:12px;font-weight:700;color:var(--text);
+    font-family:var(--f-num);flex:1;min-width:0}
+  .aInp.sel{font-family:var(--f)}
+  .aInp.sel::after{content:"▾";margin-left:auto;color:var(--text-3)}
+  .aInp.w1{max-width:90px}
+  .aInp.w2{max-width:120px}
+  .aInp.wide{max-width:none}
+  .aInp.jpy::before{content:"¥";color:var(--text-3);margin-right:4px;font-family:var(--f);font-weight:600}
+  .aInp.usd::before{content:"$";color:var(--text-3);margin-right:4px;font-family:var(--f);font-weight:600}
+  .aRow .split{display:flex;gap:5px;align-items:center;font-size:10.5px;color:var(--text-3);font-weight:600}
+  .aRow .split .aInp{max-width:60px}
+  .synced{font-size:10px;color:var(--ok);font-weight:700;background:var(--ok-soft);border-radius:4px;padding:1px 6px}
+
+  .aTitleRow{margin-top:8px;display:grid;grid-template-columns:105px 1fr;align-items:center;gap:6px;
+    padding:5px 10px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px}
+  .aTitleRow > label{font-size:11px;font-weight:700;color:var(--text-2);text-align:right;
+    display:flex;align-items:center;justify-content:flex-end;gap:3px}
+  .aTitleRow .val{display:flex;align-items:center;gap:6px}
+  .aTitleRow .aInp{height:26px;font-family:var(--f);font-weight:600;font-size:12px}
+  .aTitleRow .counter{font-size:10px;color:var(--text-3);font-weight:700;font-family:var(--f-num);white-space:nowrap}
+
+  /* ==== 案B: スプレッドシート密集グリッド ==== */
+  .bGrid{border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
+  .bHead{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-3);border-bottom:1px solid var(--border-strong);
+    font-size:10.5px;font-weight:800;color:var(--text-2);padding:0}
+  .bHead > div{padding:4px 10px}
+  .bHead > div:first-child{border-right:1px solid var(--border-strong);color:var(--amber-dark);background:var(--amber-soft)}
+  .bHead .warn{float:right;font-size:9px;font-weight:700;color:var(--amber-dark);background:#fff8e8;
+    border:1px solid #eccf85;border-radius:999px;padding:0 7px}
+  .bBody{display:grid;grid-template-columns:1fr 1fr}
+  .bBody > .bCol{padding:2px 0}
+  .bBody > .bCol:first-child{border-right:1px solid var(--border-strong);background:#fffbf0}
+  .bRow{display:grid;grid-template-columns:95px 1fr;align-items:center;height:22px;
+    border-bottom:1px solid var(--border-soft);padding:0 8px}
+  .bRow:last-child{border-bottom:0}
+  .bRow > label{font-size:10.5px;font-weight:700;color:var(--text-2);text-align:right;padding-right:6px;
+    display:flex;align-items:center;justify-content:flex-end;gap:3px}
+  .bRow > .val{display:flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;font-family:var(--f-num);
+    color:var(--text)}
+  .bRow > .val.sel{font-family:var(--f)}
+  .bRow > .val.sel::after{content:"▾";margin-left:auto;color:var(--text-3)}
+  .bRow > .val .unit{color:var(--text-3);font-weight:600;font-size:10px;margin-right:3px;font-family:var(--f)}
+  .bRow > .val .num-in{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 5px;
+    height:17px;display:inline-flex;align-items:center;min-width:60px;text-align:right;justify-content:flex-end}
+  .bRow > .val .num-in.wide{min-width:130px;justify-content:flex-start;font-family:var(--f);font-weight:600}
+  .bRow > .val .dim{display:inline-flex;gap:2px;align-items:center;font-size:10.5px;color:var(--text-3)}
+  .bRow > .val .dim .num-in{min-width:34px;padding:0 3px}
+
+  .bTitleRow{display:grid;grid-template-columns:95px 1fr;align-items:center;padding:4px 8px;
+    border-top:1px solid var(--border-strong);background:var(--surface-3);height:26px}
+  .bTitleRow label{font-size:10.5px;font-weight:700;color:var(--text-2);text-align:right;padding-right:6px}
+  .bTitleRow .val{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--text)}
+  .bTitleRow .num-in{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 6px;
+    height:18px;display:inline-flex;align-items:center;flex:1;font-family:var(--f)}
+  .bTitleRow .counter{font-size:10px;color:var(--text-3);font-weight:700;font-family:var(--f-num);white-space:nowrap}
+
+  /* ==== dimension note badge ==== */
+  .dim-note{display:inline-block;font-size:9.5px;font-weight:800;color:var(--text-2);background:var(--surface-3);
+    border:1px dashed var(--border-strong);border-radius:5px;padding:2px 8px;margin-left:8px}
+  .dim-note b{color:var(--teal-dark);font-family:var(--f-num)}
+
+  /* action row ==== */
+  .actionrow{display:flex;gap:6px;margin-top:8px}
+  .abtn{flex:1;border:0;border-radius:6px;padding:6px 4px;text-align:center;font-size:11.5px;font-weight:800;
+    cursor:pointer;font-family:var(--f)}
+  .abtn.save{background:var(--teal-soft);color:var(--teal-dark)}
+  .abtn.push{background:var(--teal);color:#fff}
+  .abtn.calc{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border)}
+
+  /* ==== outer measure box (縦寸法注記) ==== */
+  .measured{position:relative;border:1px dashed var(--teal-light);border-radius:8px;padding:8px;background:var(--teal-softer)}
+  .measured .tag{position:absolute;top:-9px;left:12px;font-size:9.5px;font-weight:800;color:var(--teal-dark);
+    background:var(--surface);border:1px solid var(--teal-light);border-radius:999px;padding:1px 8px}
+  .measured .tagR{position:absolute;top:-9px;right:12px;font-size:9.5px;font-weight:800;color:var(--teal-dark);
+    background:var(--surface);border:1px solid var(--teal-light);border-radius:999px;padding:1px 8px;font-family:var(--f-num)}
+
+  /* ==== compare / impl ==== */
+  .compare{max-width:1000px;margin:14px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:640px){.compare{grid-template-columns:1fr}}
+  .cbox{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .cbox .clabel{font-size:10.5px;font-weight:800;color:var(--text-3);margin-bottom:3px;letter-spacing:.2px}
+  .cbox .cval{font-size:22px;font-weight:800;font-family:var(--f-num);color:var(--teal-dark)}
+  .cbox .cnote{font-size:11px;color:var(--text-2);margin-top:3px;line-height:1.5}
+  .cbox .old-line{font-size:10.5px;color:var(--text-3);text-decoration:line-through;margin-top:3px}
+
+  .implnote{max-width:1000px;margin:14px auto 0;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:12px 16px}
+  .implnote h3{font-size:12px;margin:0 0 6px;font-weight:800;color:var(--text)}
+  .implnote ol{margin:0;padding-left:18px}
+  .implnote li{font-size:11.5px;color:var(--text-2);margin:4px 0;line-height:1.5}
+  .implnote li b{color:var(--teal-dark)}
+  .implnote code{font-family:var(--f-num);font-size:10.5px;background:var(--surface-3);padding:1px 5px;border-radius:4px}
+
+  .foot{max-width:1000px;margin:16px auto 0;text-align:center;color:var(--text-3);font-size:10.5px;font-weight:600}
+</style>
+</head>
+<body>
+
+  <div class="mockbanner">🧪 モックアップ v2 — v1「まだ横に長い/空白が多い/1行1項目の発想が残る」を受けた大幅密度アップ案（2026-07-03）</div>
+  <div class="rulerwrap"><span class="ruler">← モニター半分幅を再現・約 1000px →</span></div>
+
+  <div class="frame">
+
+    <!-- パネルヘッダ: 1 行 36px 圧縮版 -->
+    <div class="panelhead">
+      <div class="ph-thumb">🎧</div>
+      <div class="ph-title">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)<span class="sub">****1123 ・stock03</span></div>
+      <div class="ph-metrics">
+        <div class="metric"><span class="mv">$89.99</span><span class="ml">価格</span></div>
+        <div class="metric"><span class="mv ok">¥3,240</span><span class="ml">利益</span></div>
+        <div class="metric"><span class="mv">14.2%</span><span class="ml">率</span></div>
+        <div class="metric"><span class="mv">Active</span><span class="ml">状態</span></div>
+      </div>
+    </div>
+
+    <nav class="tabbar">
+      <button class="tabbtn active" onclick="showTab('A', this)">案 A: 2ブロック + ラベル横付け</button>
+      <button class="tabbtn" onclick="showTab('B', this)">案 B: スプレッドシート密集</button>
+    </nav>
+
+    <!-- ==================== 案 A ==================== -->
+    <section id="A" class="screen active">
+      <div class="measured">
+        <span class="tag">編集ゾーン</span>
+        <span class="tagR">縦 実測 約 296 px</span>
+
+        <div class="aFrame">
+          <!-- 左: 価格・採算 (money) -->
+          <div class="aBlock money">
+            <div class="aHead">💰 価格・採算 <span class="warn">money-direct・誤操作注意</span></div>
+            <div class="aBody">
+              <div class="aRow"><label>商品価格<span class="info" data-tip="eBay Start Price (USD)">i</span></label>
+                <div class="val"><div class="aInp w2 usd">89.99</div></div></div>
+              <div class="aRow"><label>送料 BP / +each<span class="info" data-tip="1個目 Buyer pays / 2個目以降 追加送料。DB保存値。実eBay同期: 6/20 10:30">i</span></label>
+                <div class="val split"><div class="aInp usd">15.00</div>/<div class="aInp usd">8.00</div><span class="synced">同期6/20</span></div></div>
+              <div class="aRow"><label>下限価格<span class="info" data-tip="商品価格のみの下限(送料含まず)。自動値下げはこれを下回らない。">i</span></label>
+                <div class="val"><div class="aInp w2 usd">75.00</div></div></div>
+              <div class="aRow"><label>区分<span class="info" data-tip="Terapeak 365日 sold 判定。送料差分式+DDP関税の前提区分。">i</span></label>
+                <div class="val"><div class="aInp sel wide">US_only</div></div></div>
+              <div class="aRow"><label>仕入価格</label>
+                <div class="val"><div class="aInp w2 jpy">9,800</div></div></div>
+              <div class="aRow"><label>ポイント還元<span class="info" data-tip="この仕入で得たポイント実額(¥)。採算判断の材料(利益額には合算しない)。">i</span></label>
+                <div class="val"><div class="aInp w2 jpy">500</div></div></div>
+              <div class="aRow"><label>Shipping Policy<span class="info" data-tip="変更で📤反映時にlistingのBPを差替え。custom送料のDDPbufferが消える場合あり要再設定。">i</span></label>
+                <div class="val"><div class="aInp sel wide">DDP_2-3kg_$030_7day</div></div></div>
+            </div>
+          </div>
+
+          <!-- 右: 商品属性 -->
+          <div class="aBlock">
+            <div class="aHead">📦 商品属性</div>
+            <div class="aBody">
+              <div class="aRow"><label>SKU<span class="info" data-tip="stock*=有在庫 / ebay*=無在庫">i</span></label>
+                <div class="val"><div class="aInp wide" style="font-family:var(--f)">stock03</div></div></div>
+              <div class="aRow"><label>在庫数</label>
+                <div class="val"><div class="aInp w1">3</div></div></div>
+              <div class="aRow"><label>ランク<span class="info" data-tip="eBay実Condition由来。N/S/A-D/PO/As-Is。">i</span></label>
+                <div class="val"><div class="aInp sel w1">A</div></div></div>
+              <div class="aRow"><label>重量 (g)</label>
+                <div class="val"><div class="aInp w1">180</div></div></div>
+              <div class="aRow"><label>寸法 L×W×H (cm)</label>
+                <div class="val split"><div class="aInp">12</div>×<div class="aInp">9</div>×<div class="aInp">4</div></div></div>
+              <div class="aRow"><label>eBay 数量同期</label>
+                <div class="val"><span class="synced">✅ 反映済 6/20 10:30 (数量 3)</span></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- タイトルは 2 ブロックの下に全幅 1 行 -->
+        <div class="aTitleRow">
+          <label>商品タイトル<span class="info" data-tip="eBay Title (80文字以内)。変更後📤反映で eBay Title も更新。">i</span></label>
+          <div class="val">
+            <div class="aInp wide">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</div>
+            <span class="counter">31 / 80</span>
+          </div>
+        </div>
+
+        <div class="actionrow">
+          <div class="abtn save">💾 DB保存</div>
+          <div class="abtn push">📤 eBay反映</div>
+          <div class="abtn calc">💡 利益計算</div>
+        </div>
+      </div>
+
+      <div class="dim-note">案 A の縦寸法: パネルヘッダ 36px + タブ 30px + 編集ゾーン <b>296px</b> = 合計 <b>約 362px</b> (1000px幅窓の半分以下)</div>
+    </section>
+
+    <!-- ==================== 案 B ==================== -->
+    <section id="B" class="screen">
+      <div class="measured">
+        <span class="tag">編集ゾーン</span>
+        <span class="tagR">縦 実測 約 218 px</span>
+
+        <div class="bGrid">
+          <div class="bHead">
+            <div>💰 価格・採算 <span class="warn">money-direct</span></div>
+            <div>📦 商品属性</div>
+          </div>
+          <div class="bBody">
+            <!-- 左列 (money): 8 rows -->
+            <div class="bCol">
+              <div class="bRow"><label>商品価格<span class="info" data-tip="eBay Start Price (USD)">i</span></label>
+                <div class="val"><span class="unit">$</span><span class="num-in">89.99</span></div></div>
+              <div class="bRow"><label>送料 BP<span class="info" data-tip="1個目 Buyer pays (USD)。DB保存値。">i</span></label>
+                <div class="val"><span class="unit">$</span><span class="num-in">15.00</span></div></div>
+              <div class="bRow"><label>送料 +each</label>
+                <div class="val"><span class="unit">$</span><span class="num-in">8.00</span></div></div>
+              <div class="bRow"><label>下限価格<span class="info" data-tip="商品価格のみの下限(送料含まず)">i</span></label>
+                <div class="val"><span class="unit">$</span><span class="num-in">75.00</span></div></div>
+              <div class="bRow"><label>区分<span class="info" data-tip="Terapeak 365日 sold 判定">i</span></label>
+                <div class="val sel"><span class="num-in wide">US_only</span></div></div>
+              <div class="bRow"><label>仕入価格</label>
+                <div class="val"><span class="unit">¥</span><span class="num-in">9,800</span></div></div>
+              <div class="bRow"><label>ポイント<span class="info" data-tip="採算判断の材料 (利益額に合算しない)">i</span></label>
+                <div class="val"><span class="unit">¥</span><span class="num-in">500</span></div></div>
+              <div class="bRow"><label>BP Policy<span class="info" data-tip="変更で📤反映時にlisting BPを差替え">i</span></label>
+                <div class="val sel"><span class="num-in wide">DDP_2-3kg_$030_7day</span></div></div>
+            </div>
+            <!-- 右列 (attr): 8 rows -->
+            <div class="bCol">
+              <div class="bRow"><label>SKU<span class="info" data-tip="stock*=有在庫 / ebay*=無在庫">i</span></label>
+                <div class="val"><span class="num-in wide">stock03</span></div></div>
+              <div class="bRow"><label>在庫数</label>
+                <div class="val"><span class="num-in">3</span></div></div>
+              <div class="bRow"><label>ランク<span class="info" data-tip="N/S/A-D/PO/As-Is">i</span></label>
+                <div class="val sel"><span class="num-in">A</span></div></div>
+              <div class="bRow"><label>重量</label>
+                <div class="val"><span class="num-in">180</span><span class="unit">g</span></div></div>
+              <div class="bRow"><label>寸法 L×W×H</label>
+                <div class="val"><span class="dim"><span class="num-in">12</span>×<span class="num-in">9</span>×<span class="num-in">4</span></span><span class="unit">cm</span></div></div>
+              <div class="bRow"><label>eBay同期</label>
+                <div class="val" style="font-family:var(--f);font-weight:700;color:var(--ok);font-size:10.5px">✅ 反映済 6/20 (数量 3)</div></div>
+              <div class="bRow"><label>eBay Cond</label>
+                <div class="val" style="font-family:var(--f);font-weight:600;font-size:10.5px;color:var(--text-2)">3000 (Used)</div></div>
+              <div class="bRow"><label>最終同期</label>
+                <div class="val" style="font-family:var(--f);font-weight:600;font-size:10.5px;color:var(--text-2)">2026-06-20 10:30</div></div>
+            </div>
+          </div>
+          <!-- タイトル: グリッド下部の全幅 1 行 -->
+          <div class="bTitleRow">
+            <label>タイトル<span class="info" data-tip="eBay Title (80文字以内)">i</span></label>
+            <div class="val">
+              <span class="num-in">Audio-Technica ATH-CKS330NC ワイヤレスイヤホン (元箱付き・美品)</span>
+              <span class="counter">31 / 80</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="actionrow">
+          <div class="abtn save">💾 DB保存</div>
+          <div class="abtn push">📤 eBay反映</div>
+          <div class="abtn calc">💡 利益計算</div>
+        </div>
+      </div>
+
+      <div class="dim-note">案 B の縦寸法: パネルヘッダ 36px + タブ 30px + 編集ゾーン <b>218px</b> = 合計 <b>約 284px</b> (1000px幅窓の 1/3 以下・電卓/取引ツール密度)</div>
+    </section>
+
+  </div>
+
+  <div class="compare">
+    <div class="cbox">
+      <div class="clabel">v1 の編集ゾーン縦寸法</div>
+      <div class="cval" style="color:var(--text-3)">~ 600 px 超</div>
+      <div class="cnote">改善案でも「ラベル上・入力欄下」の縦積みが残り、caption 帯もあった</div>
+    </div>
+    <div class="cbox">
+      <div class="clabel">v2 の編集ゾーン縦寸法</div>
+      <div class="cval">A: 296px / B: 218px</div>
+      <div class="cnote">A=ラベル横付けで見出しと入力の縦重複を排除、B=スプレッドシート密度で全項目を22px行に</div>
+    </div>
+  </div>
+
+  <div class="implnote">
+    <h3>🔧 実装方式メモ（Streamlit）</h3>
+    <ol>
+      <li><b>案 A の実現</b>: 各行を <code>st.columns([2, 5])</code> の [ラベル, 入力] ペアで組み、左列は <code>st.markdown</code> で右寄せテキスト・右列に既存 <code>st.number_input</code>/<code>st.selectbox</code>。CSS で行間 <code>padding</code> を 3px に圧縮 + 入力欄 <code>height:24px</code>。</li>
+      <li><b>案 B の実現</b>: 表示専用のセル (「変更したい行だけ入力欄」) は <code>st.dataframe(editable=True)</code> + カスタム CSS で行高 22px、あるいは HTML/CSS grid で 4 列レイアウトを組み <code>st.form</code> submit で一括保存。money-direct 側のみ <code>st.number_input</code> ラップを差し込む。</li>
+      <li><b>説明文の tooltip 化</b>: 常時表示の <code>st.caption(...)</code> を全て <code>help=</code> 引数に移動。money-direct 注意帯は価格ブロック見出しに <code>span</code> 1 行で統合。</li>
+    </ol>
+  </div>
+
+  <div class="foot">MonoDeck 商品管理画面 コンパクト化モックアップ v2 / 2026-07-03 — 実装前の設計イメージ（実コード未変更）</div>
+
+<script>
+function showTab(id, btn){
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tabbtn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
