@@ -24,6 +24,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -696,6 +697,15 @@ def session_heartbeat() -> EbaymagResult:
     return res
 
 
+def _build_stock_search_url(query: str) -> str:
+    """discover_product_id の検索 URL を組み立てる (URL エンコード必須、依頼ボード#40).
+
+    & / # / スペース連続 / 非 ASCII を含むタイトルでもクエリ境界が壊れないよう
+    urllib.parse.quote(safe="") で percent-encode する (paypay_search.py と同流儀)。
+    """
+    return f"https://ebaymag.com/stock?archived=true&name={urllib.parse.quote(query, safe='')}"
+
+
 def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
     """eBaymag を query で検索し、itm が expected_itm と一致する productId を返す。
 
@@ -722,7 +732,7 @@ def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
         )
 
     # アーカイブ一覧で検索 (実証済: archived=true がデフォルト検索対象)
-    search_url = f"https://ebaymag.com/stock?archived=true&name={query}"
+    search_url = _build_stock_search_url(query)
     try:
         with sync_playwright() as p:
             page = _get_ebaymag_page(p, res)
