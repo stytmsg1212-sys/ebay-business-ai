@@ -158,12 +158,18 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
     if not webhook:
         return False
     try:
-        from notifiers.discord_notifier import DiscordNotifier
-        notifier = DiscordNotifier(webhook, bypass_env=True)  # W207: 専用ch webhook を env で握り潰さない
+        # 2026-07-03 実機 0 点 fb 対応: DiscordNotifier.send_message は使わず、
+        # choke point (notifiers.notification_center.record_and_maybe_send) 経由で
+        # 意味のある title/body/link_target/link_ref を渡して INSERT + Discord POST
+        # を一括処理する。リトライだけ raw HTTP POST で行う (二重 INSERT 防止)。
+        from notifiers.notification_center import record_and_maybe_send
         site_label = '🛒 メルカリ' if watch['site'] == 'mercari' else '🔨 ヤフオク'
+        site_emoji = '🛒' if watch['site'] == 'mercari' else '🔨'
+        site_name = 'メルカリ' if watch['site'] == 'mercari' else 'ヤフオク'
         price_str = f"¥{hit.price_jpy:,}" if hit.price_jpy else "(価格不明)"
         range_str = _format_range(watch.get('price_min_jpy'), watch.get('price_max_jpy'))
-        title = (hit.title or "")[:80]
+        raw_title = (hit.title or "").strip() or "(タイトル未取得)"
+        title = raw_title[:80]
         fields = [
             {'name': '価格', 'value': f"{price_str}  (希望 {range_str})", 'inline': True},
             {'name': 'キーワード', 'value': (watch.get('keyword') or '')[:80], 'inline': True},
@@ -194,11 +200,40 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
         }
         if hit.image_url:
             embed['image'] = {'url': hit.image_url}
-        content = f"🔔 キーワード新着 ({site_label}) hit_id={hit_id}"
-        if notifier.send_message(content, embed=embed):
+
+        # 2026-07-03 実機 0 点 fb 対応: DASHBOARD 通知センター (S4) 向けの
+        # 意味のある title/body/link_target/link_ref を choke point 経由で直接渡す。
+        # 旧 content = "🔔 キーワード新着 ({site_label}) hit_id=..." だと通知一覧が
+        # ベル絵文字と内部 ID のみになり user 評価 0 点だった。
+        keyword_str = (watch.get('keyword') or '').strip() or '(キーワード未設定)'
+        nc_title = f"{site_emoji} {raw_title[:58]}"
+        nc_body = f"{price_str} | キーワード: {keyword_str} | {site_name}"
+
+        result = record_and_maybe_send(
+            category='keyword',
+            severity='info',
+            title=nc_title,
+            body=nc_body,
+            link_target='keyword',
+            link_ref=hit.url,
+            embed=embed,
+        )
+        if result.get('discord_sent'):
             return True
-        time.sleep(1.0)  # backoff
-        return bool(notifier.send_message(content, embed=embed))
+        # Codex HIGH-3 (a): 1 回失敗 → 1s backoff → 1 回 retry (Discord 側のみ)。
+        # DB 記録は上で確定済 (notification_log 行あり) なので、DiscordNotifier や
+        # record_and_maybe_send を再呼出すると同一 hit が二重 INSERT される。
+        # よって raw HTTP POST で Discord のみリトライする。
+        time.sleep(1.0)
+        try:
+            import requests as _rq
+            r = _rq.post(webhook, json={"embeds": [embed]}, timeout=10)
+            return r.status_code in (200, 204)
+        except Exception:
+            logger.exception(
+                f"W148 Discord retry POST failed (watch_id={watch.get('id')}, hit_id={hit_id})"
+            )
+            return False
     except Exception:
         logger.exception(f"W148 Discord send failed (watch_id={watch.get('id')}, hit_id={hit_id})")
         return False

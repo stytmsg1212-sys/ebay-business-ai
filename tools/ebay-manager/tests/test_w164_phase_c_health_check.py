@@ -22,35 +22,55 @@ from tasks.task_scheduler_health_check import (
 
 
 def test_self_error_triggers_red_alert():
-    """HIGH-1 回帰: db_query_error 単独で通知が fire し色は赤 (0xD84C38)."""
+    """HIGH-1 回帰: db_query_error 単独で通知が fire し色は赤 (0xD84C38).
+
+    依頼ボード#39 S2 (2026-07-03): 実送信は record_and_maybe_send("system", ...) 経由
+    に統合されたため、httpx.post ではなく record_and_maybe_send への呼出を捕捉する。
+    """
     findings = {
         "intermittent": [], "orphans": [],
         "db_locks": 0, "subprocess_errors": [],
         "db_query_error": "OperationalError: no such table",
     }
-    captured = []
-    fake_resp = MagicMock(status_code=204)
-    with patch("httpx.post", return_value=fake_resp) as mp:
-        mp.side_effect = lambda url, json, timeout: (captured.append(json), fake_resp)[1]
+    captured = {}
+
+    def _fake_record(category, severity, title, body="", **kwargs):
+        captured["category"] = category
+        captured["severity"] = severity
+        captured["embed"] = kwargs.get("embed")
+        return {"notification_id": 1, "discord_sent": True,
+                "gated": False, "deduped": False}
+
+    with patch("notifiers.notification_center.record_and_maybe_send",
+               side_effect=_fake_record):
         sent = _send_phase_c_alert("https://example.test/webhook", findings)
     assert sent is True, "self-error 単独で通知未発射 = HIGH-1 再発"
-    embed = captured[0]["embeds"][0]
+    assert captured["category"] == "system"
+    assert captured["severity"] == "critical", "self-error 時は critical (R-11 最緊急)"
+    embed = captured["embed"]
     assert embed["color"] == 0xD84C38, "self-error 時は赤色 (R-11 最緊急)"
     assert any("[最緊急]" in f["name"] for f in embed["fields"])
 
 
 def test_normal_alert_uses_orange():
-    """通常 4 検査異常時は橙色 (0xE69138) — self-error と severity 分離."""
+    """通常 4 検査異常時は橙色 (0xE69138) / severity=warning — self-error と分離."""
     findings = {
         "intermittent": [{"task_key": "x", "count": 3, "last_at": "2026-05-25 10:00:00"}],
         "orphans": [], "db_locks": 0, "subprocess_errors": [],
     }
-    captured = []
-    fake_resp = MagicMock(status_code=204)
-    with patch("httpx.post", return_value=fake_resp) as mp:
-        mp.side_effect = lambda url, json, timeout: (captured.append(json), fake_resp)[1]
+    captured = {}
+
+    def _fake_record(category, severity, title, body="", **kwargs):
+        captured["severity"] = severity
+        captured["embed"] = kwargs.get("embed")
+        return {"notification_id": 1, "discord_sent": True,
+                "gated": False, "deduped": False}
+
+    with patch("notifiers.notification_center.record_and_maybe_send",
+               side_effect=_fake_record):
         _send_phase_c_alert("https://example.test/webhook", findings)
-    assert captured[0]["embeds"][0]["color"] == 0xE69138
+    assert captured["embed"]["color"] == 0xE69138
+    assert captured["severity"] == "warning"
 
 
 def test_resolve_webhook_url_falls_back_to_env(monkeypatch):

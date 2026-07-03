@@ -54,7 +54,8 @@ def test_decrement_calls_sync_and_zero_triggers_discord(tmp_db):
 
     sent_embeds = []
 
-    def _fake_send(webhook, embed):
+    def _fake_send(webhook, embed, **kwargs):
+        # kwargs 受入 (依頼ボード#39 S2 severity= に対応、Q0: silent skip 防止)
         sent_embeds.append(embed)
         return True
 
@@ -126,7 +127,7 @@ def test_sync_suppressed_zero_unsafe_triggers_discord(tmp_db):
                return_value={"success": False, "skipped_zero_unsafe": True,
                              "message": "OOS未確認のため数量0 revise を抑止"}), \
          patch.object(task_order_alert, "_send_discord",
-                      side_effect=lambda w, e: sent.append(e) or True):
+                      side_effect=lambda w, e, **kw: sent.append(e) or True):
         task_order_alert.run_order_alert_check({}, num_days=1)
 
     inv_embeds = [e for e in sent if "在庫" in e.get("title", "")]
@@ -149,7 +150,7 @@ def test_no_inventory_zero_no_discord(tmp_db):
                return_value={"success": True, "skipped_zero_unsafe": False,
                              "message": "ok"}), \
          patch.object(task_order_alert, "_send_discord",
-                      side_effect=lambda w, e: sent.append(e) or True):
+                      side_effect=lambda w, e, **kw: sent.append(e) or True):
         task_order_alert.run_order_alert_check({}, num_days=1)
 
     inv_embeds = [e for e in sent if "在庫" in e.get("title", "")]

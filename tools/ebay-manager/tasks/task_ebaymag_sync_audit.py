@@ -269,7 +269,8 @@ def run_ebaymag_sync_audit(config: dict) -> dict:
             lines.append(f"画像不一致 {n_pic}件:\n" + "\n".join(f"  - {s}" for s in pic_mismatch_items[:3]))
         if n_desc:
             lines.append(f"説明文長乖離 {n_desc}件:\n" + "\n".join(f"  - {s}" for s in desc_outlier_items[:3]))
-        _discord_notify(config, "\n".join(lines))
+        # 乖離検知 (mutate 監査の失敗系 = money-direct) → severity='error'
+        _discord_notify(config, "\n".join(lines), severity="error")
         logger.warning("[ebaymag_sync_audit] 乖離検出: price=%d pic=%d desc=%d", n_price, n_pic, n_desc)
     else:
         logger.info("[ebaymag_sync_audit] 乖離なし (pairs=%d)", len(rows))
@@ -302,10 +303,15 @@ def run_ebaymag_sync_audit(config: dict) -> dict:
     }
 
 
-def _discord_notify(config: dict, message: str) -> None:
-    """Discord 既定 ch に通知。送信失敗は warn のみ。"""
+def _discord_notify(config: dict, message: str, *, severity: str = "info") -> None:
+    """Discord 既定 ch に通知。送信失敗は warn のみ。
+
+    依頼ボード#39 S2 follow-up (2026-07-03): severity 引数を追加。同期監査の乖離検知
+    (価格 / 画像 / 説明文乖離 = 各国版の実態が本体とずれている money-direct 検知) は
+    'error' で _ALWAYS_SEND_SEVERITIES bypass を効かせる。
+    """
     try:
         from notifiers.discord_notifier import notifier_for
-        notifier_for("default").send_message(message)
+        notifier_for("default").send_message(message, severity=severity)
     except Exception as e:  # noqa: BLE001
         logger.warning("[ebaymag_sync_audit] Discord 通知失敗: %s", e)

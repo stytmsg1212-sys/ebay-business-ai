@@ -167,7 +167,7 @@ class TestFailurePaths:
         discord_calls: list[str] = []
         monkeypatch.setattr(
             "tasks.task_ebaymag_relist._discord_notify",
-            lambda config, msg: discord_calls.append(msg),
+            lambda config, msg, **kwargs: discord_calls.append(msg),
         )
 
         from tasks.task_ebaymag_relist import _process_single_relist
@@ -207,7 +207,7 @@ class TestFailurePaths:
         discord_calls: list[str] = []
         monkeypatch.setattr(
             "tasks.task_ebaymag_relist._discord_notify",
-            lambda config, msg: discord_calls.append(msg),
+            lambda config, msg, **kwargs: discord_calls.append(msg),
         )
 
         from tasks.task_ebaymag_relist import _process_single_relist
@@ -281,7 +281,7 @@ class TestDiscoverDelegated:
 
         monkeypatch.setattr(
             "tasks.task_ebaymag_relist._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **kwargs: None,
         )
 
         enqueue_calls: list[tuple] = []
@@ -423,7 +423,7 @@ class TestFullSuccess:
 
         monkeypatch.setattr(
             "tasks.task_ebaymag_relist._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **kwargs: None,
         )
 
         from tasks.task_ebaymag_relist import _process_single_relist

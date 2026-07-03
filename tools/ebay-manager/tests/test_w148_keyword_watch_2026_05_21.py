@@ -489,17 +489,26 @@ def test_webhook_5xx_then_recovered_resends_on_next_crawl(tmp_db, monkeypatch):
 
 
 def test_send_discord_for_hit_retries_once(monkeypatch):
-    """_send_discord_for_hit は 1 回失敗 → 1s backoff → 2 回目成功で True を返す (a)."""
+    """_send_discord_for_hit は 1 回失敗 → 1s backoff → 2 回目成功で True を返す (a)。
+
+    2026-07-03 実機 fb 対応で 1 回目は choke point (record_and_maybe_send) 経由、
+    2 回目 (リトライ) は raw HTTP POST に変わった (DB 二重 INSERT 防止)。
+    """
     import tasks.task_keyword_watch_crawl as mod
-    import notifiers.discord_notifier as dn_mod
 
-    calls = {"n": 0}
+    fake_record = MagicMock(return_value={
+        "notification_id": 1, "discord_sent": False,
+        "gated": False, "deduped": False, "severity_bypassed": False,
+    })
+    fake_response = MagicMock(status_code=204)
+    fake_requests_post = MagicMock(return_value=fake_response)
 
-    def fake_send(self, message, embed=None):
-        calls["n"] += 1
-        return calls["n"] >= 2  # 1 回目 False / 2 回目 True
-
-    monkeypatch.setattr(dn_mod.DiscordNotifier, "send_message", fake_send)
+    monkeypatch.setattr(
+        "notifiers.notification_center.record_and_maybe_send", fake_record)
+    # raw retry の requests.post を捕捉。requests module は _send_discord_for_hit
+    # 内で `import requests as _rq` されるので monkeypatch は sys.modules 経由で当てる。
+    import requests as _real_requests
+    monkeypatch.setattr(_real_requests, "post", fake_requests_post)
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)  # backoff 高速化
 
     class _Hit:
@@ -514,7 +523,9 @@ def test_send_discord_for_hit_retries_once(monkeypatch):
         _Hit(), hit_id=1,
     )
     assert ok is True
-    assert calls["n"] == 2, "retry 1 回が走っていない"
+    # 1 回目 choke point、2 回目 raw POST の両方が走っていること
+    assert fake_record.call_count == 1, "choke point 1 回目呼出が無い"
+    assert fake_requests_post.call_count == 1, "raw HTTP retry が走っていない"
 
 
 # ---------- Codex 2 周目: HIGH-A (resend DB error silent gap) / HIGH-B (二重送信レース) ----------
@@ -962,17 +973,22 @@ def test_inherit_relist_no_keyword_watch_is_zero_rows(tmp_db):
 
 def test_discord_embed_includes_ebay_price(monkeypatch):
     """W206: watch._ebay_price / ebay_item_id があれば embed fields に追加される。
-    無ければ field 自体が出ない (mock notifier で field 差を検証)。"""
+    無ければ field 自体が出ない。
+
+    2026-07-03: send_message → record_and_maybe_send に choke point 変更のため
+    record_and_maybe_send の embed kwarg で受け取る。
+    """
     import tasks.task_keyword_watch_crawl as mod
-    import notifiers.discord_notifier as dn_mod
 
     sent = {}
 
-    def fake_send(self, message, embed=None):
-        sent["embed"] = embed
-        return True
+    def fake_record(**kwargs):
+        sent["embed"] = kwargs.get("embed")
+        return {"notification_id": 1, "discord_sent": True,
+                "gated": False, "deduped": False, "severity_bypassed": False}
 
-    monkeypatch.setattr(dn_mod.DiscordNotifier, "send_message", fake_send)
+    monkeypatch.setattr(
+        "notifiers.notification_center.record_and_maybe_send", fake_record)
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     class _Hit:

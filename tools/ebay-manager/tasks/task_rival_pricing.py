@@ -849,7 +849,9 @@ def _send_discord_reduced(config: Dict, reduced_items: list) -> None:
     if len(reduced_items) > 15:
         content += f"\n... 他 {len(reduced_items) - 15} 件"
     try:
-        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+        # 依頼ボード#39 S2 follow-up (2026-07-03): 値下げ実行結果サマリは severity='warning'
+        # (money-direct だが blocking ではない、DASHBOARD/S4 で拾える通知過多防止優先)。
+        DiscordNotifier(webhook, bypass_env=True).send_message(content, severity="warning")
     except Exception as e:
         logger.warning(f"W245: discord reduced notify failed: {e}")
 
@@ -891,7 +893,11 @@ def _send_discord_spiral_alert(config: Dict, ebay_item_id: str, streak: dict) ->
         f"ライバルとの値下げ合戦の疑いあり、必要なら手動確認をお願いします。"
     )
     try:
-        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+        # 依頼ボード#39 S2 follow-up (2026-07-03): 値下げ合戦スパイラルアラート =
+        # 2026-07-02 user 制定の第 3 安全弁。severity='critical' で
+        # _ALWAYS_SEND_SEVERITIES bypass を効かせ、万一 pricing gate=OFF でも黙殺
+        # されない (user 手動確認促し、money-direct)。
+        DiscordNotifier(webhook, bypass_env=True).send_message(content, severity="critical")
         logger.info(f"W183 spiral alert 送信: {ebay_item_id}")
     except Exception as e:
         logger.warning(f"W183 spiral alert send failed ({ebay_item_id}): {e}")
@@ -917,7 +923,10 @@ def _send_discord_failure_alert(
         + (f"\n... 他 {len(api_failures) - 5} 件" if len(api_failures) > 5 else "")
     )
     try:
-        DiscordNotifier(webhook, bypass_env=True).send_message(content)
+        # 依頼ボード#39 S2 follow-up (2026-07-03): refresh 失敗 alert は severity='error'
+        # で _ALWAYS_SEND_SEVERITIES bypass を効かせ、pricing gate=OFF でも
+        # 障害検知が黙殺されない (silent skip 防止、Q0)。
+        DiscordNotifier(webhook, bypass_env=True).send_message(content, severity="error")
     except Exception as e:
         logger.warning(f"W245: discord failure alert failed: {e}")
 

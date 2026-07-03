@@ -38,13 +38,15 @@ def _resolve_webhook_url(config: dict) -> str:
 
 
 def _send_discord_alert(webhook_url: str, fresh_missed: list[dict]) -> bool:
-    """欠落タスクのうち本日初通知のものを Discord に送る."""
+    """欠落タスクのうち本日初通知のものを Discord に送る (記録は notification_center 経由).
+
+    依頼ボード#39 S2 (2026-07-03): 実送信は record_and_maybe_send("system", ...) に
+    一本化。webhook_url は引数として残すが、実送信要否の最終判定 (category ゲート)
+    は record_and_maybe_send 側が行う。webhook_url が空/未実行 (呼出前提が崩れる
+    場合) は従来通り早期 return し、notification_log への記録も行わない
+    (webhook 未設定=システム全体が Discord 未接続の初期状態のみ想定、既存挙動保持)。
+    """
     if not webhook_url or not fresh_missed:
-        return False
-    try:
-        import httpx
-    except ImportError as e:
-        logger.error(f"httpx import 失敗: {e}")
         return False
 
     fields = []
@@ -67,12 +69,12 @@ def _send_discord_alert(webhook_url: str, fresh_missed: list[dict]) -> bool:
         "timestamp": datetime.now().isoformat(),
         "fields": fields,
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:
-        logger.error(f"Discord 通知送信エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical", embed["title"], embed["description"],
+        link_target="system", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def _send_coverage_alert(webhook_url: str, coverable: list, dlq: list) -> bool:
@@ -84,11 +86,6 @@ def _send_coverage_alert(webhook_url: str, coverable: list, dlq: list) -> bool:
                   自動解消不能、site_config 追加 = 人手対応要。
     """
     if not webhook_url or (not coverable and not dlq):
-        return False
-    try:
-        import httpx
-    except ImportError as e:  # noqa: BLE001
-        logger.error(f"httpx import 失敗: {e}")
         return False
     fields = []
     if coverable:
@@ -115,12 +112,12 @@ def _send_coverage_alert(webhook_url: str, coverable: list, dlq: list) -> bool:
         "timestamp": datetime.now().isoformat(),
         "fields": fields,
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
-        logger.error(f"Discord coverage 通知送信エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical", embed["title"], embed["description"],
+        link_target="system", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def _send_coverage_error_alert(webhook_url: str, err: str) -> bool:
@@ -131,11 +128,6 @@ def _send_coverage_error_alert(webhook_url: str, err: str) -> bool:
     気付けないため必ず Discord で緊急可視化する (R-11)。
     """
     if not webhook_url:
-        return False
-    try:
-        import httpx
-    except ImportError as e:  # noqa: BLE001
-        logger.error(f"httpx import 失敗: {e}")
         return False
     embed = {
         "title": "[最緊急] 監視カバレッジ算出が失敗 (W139)",
@@ -149,12 +141,12 @@ def _send_coverage_error_alert(webhook_url: str, err: str) -> bool:
         "fields": [{"name": "error", "value": str(err)[:900],
                     "inline": False}],
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
-        logger.error(f"Discord coverage-error 通知送信エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical", embed["title"], embed["description"],
+        link_target="system", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def _check_coverage(config: dict) -> dict:
@@ -224,11 +216,6 @@ def _send_url_divergence_alert(webhook_url: str, divergent: list[dict]) -> bool:
     """
     if not webhook_url or not divergent:
         return False
-    try:
-        import httpx
-    except ImportError as e:  # noqa: BLE001
-        logger.error(f"httpx import 失敗: {e}")
-        return False
     samples = []
     for d in divergent[:10]:
         samples.append(
@@ -254,12 +241,12 @@ def _send_url_divergence_alert(webhook_url: str, divergent: list[dict]) -> bool:
             }
         ],
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
-        logger.error(f"Discord url_divergence 通知送信エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical", embed["title"], embed["description"],
+        link_target="system", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def _check_url_divergence(config: dict) -> dict:
@@ -435,11 +422,6 @@ def _send_phase_c_alert(webhook_url: str, findings: dict) -> bool:
     ) or has_self_error
     if not webhook_url or not has_alert:
         return False
-    try:
-        import httpx
-    except ImportError as e:  # noqa: BLE001
-        logger.error(f"httpx import 失敗: {e}")
-        return False
     fields = []
     if findings.get("intermittent"):
         v = "\n".join(f"`{x['task_key']}` failed {x['count']}回 (last {x['last_at']})"
@@ -492,12 +474,12 @@ def _send_phase_c_alert(webhook_url: str, findings: dict) -> bool:
         "timestamp": datetime.now().isoformat(),
         "fields": fields,
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
-        logger.error(f"Phase C Discord 通知エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical" if has_self_error else "warning",
+        embed["title"], embed["description"], link_target="system", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def run_scheduler_health_check(config: dict) -> dict:

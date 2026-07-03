@@ -153,18 +153,33 @@ def _clear_sales_history_fetch_failure(order_id: str) -> None:
         )
 
 
-def _send_discord(webhook: str, embed: dict) -> bool:
+def _send_discord(webhook: str, embed: dict, *, severity: str = "critical") -> bool:
+    """依頼ボード#39 Phase A S2 統合レビュー HIGH-1 対応 (2026-07-03):
+    実送信を notifiers.notification_center.record_and_maybe_send("order", ...) に一本化.
+
+    従来は `webhook` を httpx で直接叩いて DASHBOARD (S4) 通知センターに記録が残らず、
+    order 系 money-direct アラートが「Discord は届いたが後から一覧できない」silent gap
+    になっていた。facade 経由で全通知が category='order' として notification_log に
+    記録される (Q0)。
+
+    - category='order' は既定 gate ON なので送信挙動は不変 (record_and_maybe_send の
+      severity bypass を待たずに従来通り Discord に届く)。
+    - severity 既定は 'critical' — 万一 user が config で order gate=OFF にした場合も
+      _ALWAYS_SEND_SEVERITIES bypass により money-direct 通知は黙殺されない (安全弁)。
+      情報系通知 (sold_notify 等) は呼び出し側で severity='info' 明示で下げられる。
+    - `webhook` 引数は後方互換 (空文字なら早期 return して従来ガード互換)。実際の URL
+      解決は record_and_maybe_send 側の resolve_webhook('order') が行うため、専用
+      DISCORD_ORDER_WEBHOOK_URL が設定されていればそちらへ届く (既存挙動と一致)。
+    """
     if not webhook:
         return False
-    try:
-        import httpx
-        r = httpx.post(webhook, json={"embeds": [embed]}, timeout=10.0)
-        return r.status_code in (200, 204)
-    except (httpx.HTTPError, httpx.TimeoutException) as e:
-        # H8 (Wave C): broad except → httpx specific exceptions.
-        # HTTPError は HTTPStatusError / RequestError 等の親、TimeoutException も含む.
-        logger.warning(f"Discord 送信失敗: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    title = str(embed.get("title") or "")
+    body = str(embed.get("description") or "")
+    result = record_and_maybe_send(
+        "order", severity, title, body, link_target="order", embed=embed,
+    )
+    return bool(result.get("discord_sent"))
 
 
 def _build_high_value_template(order: dict) -> str:
@@ -301,12 +316,13 @@ def _process_ddpb_dispatch(order: dict, webhook: str) -> bool:
                 ),
                 "color": 16753920,  # オレンジ (warning)
             }
-            # _send_discord は内部で httpx HTTPError を吸収して bool を返すため、
-            # 通常の path で例外は出ない. 防御的に httpx 系のみ catch.
-            import httpx as _h
+            # _send_discord は record_and_maybe_send 経由で通常 path 例外なし。
+            # W7-A 分析未済の警告なので severity='warning' (money-direct だが直ちに
+            # blocking ではない。order gate ON で従来通り送信、gate OFF でも
+            # bypass は効かないので DASHBOARD/S4 で拾う設計)。
             try:
-                _send_discord(webhook, warn_embed)
-            except (_h.HTTPError, _h.TimeoutException) as _e:
+                _send_discord(webhook, warn_embed, severity="warning")
+            except Exception as _e:  # noqa: BLE001 — facade 経由でも念のため全体 catch
                 logger.warning(f"Discord 通知失敗 (primary_market=NULL): {_e}")
             logger.warning(
                 f"primary_market=NULL listing で US 注文発生: ebay_item_id={ebay_item_id} "
@@ -368,7 +384,9 @@ def _process_ddpb_dispatch(order: dict, webhook: str) -> bool:
         ],
         "timestamp": datetime.now().isoformat(),
     }
-    sent = _send_discord(webhook, embed)
+    # DDP-B invoice 記載注意は money-direct (関税二重課税リスク) だが blocking ではないため
+    # severity='warning'。order gate ON の通常運用では従来通り送信。
+    sent = _send_discord(webhook, embed, severity="warning")
     logger.info(f"ddpb_dispatch alert: order={order_id} sku={sku} sent={sent}")
     return True
 
@@ -525,7 +543,9 @@ def _process_memo_sale_warning(order: dict, webhook: str) -> bool:
         "color": 0xE8A33D,
         "timestamp": datetime.now().isoformat(),
     }
-    sent = _send_discord(webhook, embed)
+    # メモ付き listing 売却は発送前確認が要る = severity='warning'
+    # (order gate ON なら従来通り送信、OFF なら bypass 対象外で DASHBOARD 経由)。
+    sent = _send_discord(webhook, embed, severity="warning")
     set_sale_warning_discord_sent(order_id, ebay_item_id, sent)
     logger.info(
         f"memo_sale_warning: order={order_id} eid={ebay_item_id} sent={sent}"
@@ -600,7 +620,10 @@ def _process_sold_actions(
             "timestamp": datetime.now().isoformat(),
         }
         if sold_webhook:
-            sent = _send_discord(sold_webhook, embed)
+            # sold_notify (売れました) は純粋な informational (money-direct action は
+            # 発送方法まで来る他 alert が担う) = severity='info'。order gate ON なら
+            # 従来通り送信、OFF なら bypass 対象外で DASHBOARD 経由に切り替わる。
+            sent = _send_discord(sold_webhook, embed, severity="info")
             out["notified"] = sent
             logger.info(
                 f"sold_notify: order={order_id} eid={ebay_item_id} sent={sent}"

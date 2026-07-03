@@ -4254,6 +4254,54 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v89 (依頼ボード #39 Phase A S1 / 2026-07-03): 通知ログ ----
+        # 通知タブ (Discord 送信有無に関わらず) の永続化。dedupe_key で直近 N
+        # 時間の重複通知を抑止できるよう設計。既読管理は read_at (NULL=未読)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 88:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS notification_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        category TEXT NOT NULL,
+                        severity TEXT NOT NULL DEFAULT 'info',
+                        title TEXT NOT NULL,
+                        body TEXT,
+                        link_target TEXT,
+                        link_ref TEXT,
+                        discord_sent INTEGER NOT NULL DEFAULT 0,
+                        dedupe_key TEXT,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        read_at TEXT
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_notiflog_unread "
+                    "ON notification_log(read_at, category, created_at)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_notiflog_created "
+                    "ON notification_log(created_at)"
+                )
+                logger.info("[init_db v89] notification_log created")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"[init_db v89] table create skipped: {e}")
+
+            _v89_tables = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='notification_log'"
+            ).fetchone()[0]
+            if _v89_tables == 1:
+                conn.execute("PRAGMA user_version = 89")
+                logger.info("[init_db v89] schema_ver bumped to 89")
+            else:
+                logger.warning(
+                    "[init_db v89] 未完了 (notification_log 未作成)。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -7429,12 +7477,13 @@ def get_listing_drafts(
 
 
 def get_nav_badge_counts() -> dict[str, int]:
-    """ナビバッジ用の未処理件数 3 つを返す (W258 Phase C)。
+    """ナビバッジ用の未処理件数 4 つを返す (W258 Phase C、依頼ボード #39 で notifications_unread 追加)。
 
     各件数は対応タブの表示と同一定義 (乖離するとバッジが嘘になる):
     - supplier_actionable: 仕入先候補タブのデフォルト表示 (status=pending) の actionable 件数
     - supply_risk: 在庫監視タブの get_ebay_listings_supply_risk() と同条件 COUNT
     - purchase_unconfirmed: 入荷確認タブの「未確認 N 件」と同一 (直近100件の supplier_purchase メール中 confirmed=0)
+    - notifications_unread: 通知ログの未読件数 (notification_log.read_at IS NULL)
     """
     try:
         with get_conn() as conn:
@@ -7461,10 +7510,15 @@ def get_nav_badge_counts() -> dict[str, int]:
                 ) WHERE c = 0
             """).fetchone()[0]
 
+            notifications_unread = conn.execute("""
+                SELECT COUNT(*) FROM notification_log WHERE read_at IS NULL
+            """).fetchone()[0]
+
         return {
             "supplier_actionable": int(supplier_actionable),
             "supply_risk": int(supply_risk),
             "purchase_unconfirmed": int(purchase_unconfirmed),
+            "notifications_unread": int(notifications_unread),
         }
     except Exception:
         logger.exception("get_nav_badge_counts failed")

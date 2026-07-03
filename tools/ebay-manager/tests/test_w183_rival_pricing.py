@@ -994,7 +994,8 @@ class TestW245RunLevelSuccess:
             def __init__(self, webhook, bypass_env=False):
                 self.webhook = webhook
 
-            def send_message(self, content):
+            def send_message(self, content, embed=None, **kwargs):
+                # kwargs 受入 (依頼ボード#39 S2 severity= に対応)
                 sent.append(content)
                 return True
 
@@ -1445,7 +1446,8 @@ class TestSpiralAlertDedupeAndDiscord:
             def __init__(self, webhook, bypass_env=False):
                 self.webhook = webhook
 
-            def send_message(self, content):
+            def send_message(self, content, embed=None, **kwargs):
+                # kwargs 受入 (依頼ボード#39 S2 severity= に対応)
                 sent.append(content)
                 return True
 
@@ -1507,7 +1509,8 @@ class TestSpiralAlertIntegration:
             def __init__(self, webhook, bypass_env=False):
                 self.webhook = webhook
 
-            def send_message(self, content):
+            def send_message(self, content, embed=None, **kwargs):
+                # kwargs 受入 (依頼ボード#39 S2 severity= に対応)
                 sent.append(content)
                 return True
 

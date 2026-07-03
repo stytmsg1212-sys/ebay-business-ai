@@ -64,12 +64,17 @@ _DISCOVER_WAIT_SEC = 5
 # helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _discord_notify(config: dict, message: str) -> None:
-    """Discord 既定 ch に通知 (失敗は warn のみ)。"""
+def _discord_notify(config: dict, message: str, *, severity: str = "info") -> None:
+    """Discord 既定 ch に通知 (失敗は warn のみ)。
+
+    依頼ボード#39 S2 follow-up (2026-07-03): severity 引数を追加。mutate 失敗系
+    (needs_manual / inherit 失敗 / 予期せぬ例外 / 失敗サマリ) は 'error' 明示で
+    _ALWAYS_SEND_SEVERITIES bypass、CDP 不在通知は 'info' 既定 (center 行き)。
+    """
     try:
         from notifiers.discord_notifier import notifier_for
         notifier = notifier_for("default")
-        notifier.send_message(message)
+        notifier.send_message(message, severity=severity)
     except Exception as e:  # noqa: BLE001
         logger.warning("[ebaymag_relist] Discord 通知失敗 (本処理に影響なし): %s", e)
 
@@ -276,7 +281,11 @@ def _process_single_relist(
                           source='ebaymag')
         except Exception as _e:  # noqa: BLE001
             logger.error("[ebaymag_relist] relist_history(失敗) 記録失敗: %s", _e)
-        _discord_notify(config, f"[eBaymag relist] needs_manual: {title[:40]}\n{err}")
+        # relist 失敗 (needs_manual) → severity='error'
+        _discord_notify(
+            config, f"[eBaymag relist] needs_manual: {title[:40]}\n{err}",
+            severity="error",
+        )
         return result
 
     result["new_item_id"] = new_item_id
@@ -297,10 +306,12 @@ def _process_single_relist(
             "[ebaymag_relist] relist_history 記録失敗 (cooldown不発リスク) %s→%s: %s",
             old_item_id, new_item_id, _e,
         )
+        # relist_history 記録漏れ (cooldown 不発リスク・money-direct) → severity='error'
         _discord_notify(
             config,
             f"[eBaymag relist] relist_history 記録漏れ {old_item_id}→{new_item_id} "
             "(要手動 cooldown 確認)",
+            severity="error",
         )
 
     # ── ③ inherit_listing_on_relist (ebaymag_desired_sites_json 含む継承) ──
@@ -345,7 +356,11 @@ def _process_single_relist(
         err = f"inherit_listing_on_relist 失敗: {e} (new_eid={new_item_id} はeBay上で生存)"
         logger.error("[ebaymag_relist] %s", err)
         result["error_message"] = err
-        _discord_notify(config, f"[eBaymag relist] inherit 失敗 needs_manual: {title[:40]}\n{err}")
+        # inherit 失敗 (relist 成立済だが継承不完全) → severity='error'
+        _discord_notify(
+            config, f"[eBaymag relist] inherit 失敗 needs_manual: {title[:40]}\n{err}",
+            severity="error",
+        )
         # relist 自体は成功なので新 item_id は記録して返す (孤児化防止)
         return result
 
@@ -599,9 +614,11 @@ def run_ebaymag_relist(config: dict) -> dict:
                 "discover_delegated": False,
                 "sites_applied": [],
             }
+            # 予期せぬ例外 (mutate 失敗) → severity='error'
             _discord_notify(
                 config,
                 f"[eBaymag relist] 予期せぬ例外 needs_manual: {target.get('title', '')[:40]}\n{err_msg}",
+                severity="error",
             )
 
         result_details.append(res)
@@ -643,9 +660,11 @@ def run_ebaymag_relist(config: dict) -> dict:
             f"{r.get('old_item_id')} → {r.get('error_message', '')[:60]}"
             for r in failed_items[:3]
         ]
+        # 失敗サマリ → severity='error' (default gate=OFF でも bypass で届く)
         _discord_notify(
             config,
             f"[eBaymag relist] 失敗 {stats['failed']}件:\n" + "\n".join(failed_titles),
+            severity="error",
         )
 
     success = stats["failed"] == 0

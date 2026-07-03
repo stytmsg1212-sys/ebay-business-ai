@@ -400,5 +400,17 @@
   "health_autofix": {
     "tier2_dryrun_enabled": false,
     "_tier2_note": "Phase 2: 定時実行ヘルスチェックが検知した『再実行で直らないコードバグ』(subprocess returncode≠0) に対し、claude (サブスク) が修正案 diff を生成し gate 検証だけ行う段階導入フラグ. true でドライラン発火 (commit/適用は一切しない、Discord に修正案を提示するのみ). false の間は従来通り escalate (記録のみ). これが killswitch を兼ねる. scheduler 再起動不要."
+  },
+  "discord_category_gate": {
+    "order": true,
+    "action_required": true,
+    "keyword": true,
+    "rival": true,
+    "system": false,
+    "inventory": false,
+    "research": false,
+    "pricing": false,
+    "default": false,
+    "_note": "依頼ボード#39 Phase A S2 (2026-07-03): notifiers.notification_center.record_and_maybe_send の choke point が参照するカテゴリ別 Discord 送信ゲート。true=Discord へ実送信、false=notification_log への記録のみ (DASHBOARD/S4 で閲覧、Discord へは送らない)。金銭直結/user対応が要る order・action_required・keyword・rival は既定 ON、それ以外は Discord 通知過多防止のため既定 OFF。本セクション欠落時は notifiers/notification_center.py の _DEFAULT_GATE (同じ値) にフォールバックする。ここを true/false に書き換えるだけで反映 (scheduler 再起動不要、都度ファイル読込)。"
   }
 }

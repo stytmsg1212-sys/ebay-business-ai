@@ -422,7 +422,8 @@ def test_notify_supplier_search_results_sends_embed(oos_db, monkeypatch):
     class _FakeNotifier:
         webhook_url = "https://discord.test/webhook"
 
-        def send_message(self, msg, embed=None):
+        def send_message(self, msg, embed=None, **kwargs):
+            # kwargs 受入 (依頼ボード#39 S2 severity= に対応)
             sent.append(embed)
             return True
 

@@ -98,6 +98,24 @@ def resolve_webhook(category: str = 'default') -> str:
     return (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
 
 
+def _infer_category_from_webhook(webhook_url: str) -> str:
+    """webhook_url からカテゴリを逆引きする (依頼ボード#39 S2: 通知ファサード連携).
+
+    `notifier_for(category)` を経由しない直接構築 (例:
+    `DiscordNotifier(webhook, bypass_env=True)`) でも、webhook_url がいずれかの
+    カテゴリ専用 env 値と一致すればそのカテゴリと判定する。一致しなければ
+    'default' (notification_log の NOTIFICATION_CATEGORIES whitelist に含まれる
+    フォールバック値)。呼び出し側 (全 call site) を変更せずに category 記録+
+    ゲートを一括で効かせるための最小限の推論。
+    """
+    if not webhook_url:
+        return 'default'
+    for cat, env_name in WEBHOOK_CATEGORY_ENV.items():
+        if webhook_url == (os.environ.get(env_name) or '').strip():
+            return cat
+    return 'default'
+
+
 def notifier_for(category: str = 'default') -> 'DiscordNotifier':
     """カテゴリ別 DiscordNotifier を返す (依頼ボード#22)。
 
@@ -105,13 +123,14 @@ def notifier_for(category: str = 'default') -> 'DiscordNotifier':
     よる上書きを避け、カテゴリ専用 webhook を確実に使用する。専用 env 未設定時は
     resolve_webhook が DISCORD_WEBHOOK_URL を返すため従来と同一の既定 ch に届く。
     """
-    return DiscordNotifier(resolve_webhook(category), bypass_env=True)
+    return DiscordNotifier(resolve_webhook(category), bypass_env=True, category=category)
 
 
 class DiscordNotifier:
     """Discord Webhook 通知クラス"""
 
-    def __init__(self, webhook_url: str, *, bypass_env: bool = False):
+    def __init__(self, webhook_url: str, *, bypass_env: bool = False,
+                 category: Optional[str] = None):
         """
         Args:
             webhook_url: Discord Webhook URL (後方互換 fallback only)
@@ -119,6 +138,9 @@ class DiscordNotifier:
                 webhook_url を直接使用する (W207 2026-06-01)。キーワード新着監視が
                 専用チャンネル webhook (DISCORD_KEYWORD_WEBHOOK_URL 由来) へ送る用途。
                 既定 False = 従来通り env DISCORD_WEBHOOK_URL を最優先 (他通知は不変)。
+            category: 依頼ボード#39 S2: notification_log / discord_category_gate で
+                使うカテゴリを明示指定する (notifier_for が渡す)。未指定時は
+                self.webhook_url から `_infer_category_from_webhook` で推論する。
 
         2026-05-25 改訂: .env DISCORD_WEBHOOK_URL を最優先.
         schedule_config.json から渡される webhook_url は legacy fallback で,
@@ -129,6 +151,7 @@ class DiscordNotifier:
             # 握り潰さない。これが無いと専用チャンネル分離が env 上書きで無効化される。
             self.webhook_url = webhook_url
             self.timeout = 10
+            self.category = category or _infer_category_from_webhook(self.webhook_url)
             return
         env_url = (os.environ.get('DISCORD_WEBHOOK_URL') or '').strip()
         if env_url:
@@ -142,34 +165,60 @@ class DiscordNotifier:
                 )
             self.webhook_url = webhook_url or ''
         self.timeout = 10
+        self.category = category or _infer_category_from_webhook(self.webhook_url)
 
-    def send_message(self, message: str, embed: Optional[Dict] = None) -> bool:
+    def send_message(self, message: str, embed: Optional[Dict] = None, *,
+                      severity: str = 'info') -> bool:
         """
         シンプルなメッセージを送信
 
         Args:
             message: メッセージテキスト
             embed: 埋め込みオブジェクト（オプション）
+            severity: notification_log 記録用 severity (info/warning/error/critical)。
+                既定 'info'。既存呼び出し元は未指定のままで動作する。
 
         Returns:
             成功: True, 失敗: False
+
+        依頼ボード#39 S2 (2026-07-03): 実送信は notifiers.notification_center.
+        record_and_maybe_send に一本化 (choke point 統合)。全 Discord 通知を
+        notification_log へ記録しつつ (Q0)、config discord_category_gate
+        [self.category] に従って実送信要否を判定する。呼び出し側 (send_daily_report /
+        send_inventory_alert / send_news_summary 等、本クラスの他メソッドも内部で
+        send_message を呼ぶため) は無改変で一括適用される。
         """
         try:
-            payload = {
-                'content': message,
-            }
-            if embed:
-                payload['embeds'] = [embed]
-
-            response = requests.post(
-                self.webhook_url,
-                json=payload,
-                timeout=self.timeout
+            from notifiers.notification_center import record_and_maybe_send
+            # notification_log.title は非空必須。かつ DASHBOARD 通知センター (S4)
+            # で見て意味が伝わる文字列を優先する必要がある (2026-07-03 実機 0 点
+            # fb: "🔔 キーワード新着 (🔨 ヤフオク) hit_id=3825743" のような内部
+            # ID 混じり content が title に流れ、ベル絵文字だけの行になって
+            # 「通知内容が無意味」と評価された)。
+            #
+            # 優先順位:
+            #   1. embed['title'] (呼出側が意味のあるタイトルを組んだもの)
+            #   2. embed['description'] 先頭 80 文字
+            #   3. message (embed 無し呼出しの content)
+            #   4. '(no title)'
+            #
+            # message は body (副次表示) として渡し、embed 有り呼出しでも
+            # 「hit_id=..." のような追跡文字列が主タイトルにならないようにする。
+            embed_title = str((embed or {}).get("title") or "").strip()
+            embed_desc = str((embed or {}).get("description") or "").strip()
+            msg_stripped = (message or "").strip()
+            record_title = (
+                embed_title
+                or embed_desc[:80]
+                or msg_stripped
+                or "(no title)"
             )
-            response.raise_for_status()
-            logger.info("Discord メッセージ送信成功")
-            return True
-
+            # body は「embed があれば message を副次情報、embed の description を優先」で残す。
+            record_body = msg_stripped if embed_title else (embed_desc or msg_stripped)
+            result = record_and_maybe_send(
+                self.category, severity, record_title, record_body, embed=embed,
+            )
+            return bool(result.get("discord_sent"))
         except Exception as e:
             logger.error(f"Discord メッセージ送信失敗: {e}")
             return False

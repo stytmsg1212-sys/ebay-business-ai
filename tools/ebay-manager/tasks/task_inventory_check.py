@@ -359,7 +359,10 @@ def _notify_supplier_search_results(config: dict, outcomes: list) -> None:
             "color": 0x3399FF if n_hit else 0xC89B2A,
             "timestamp": datetime.now().isoformat(),
         }
-        notifier.send_message("", embed=embed)
+        # 依頼ボード#39 S2 follow-up (2026-07-03): 探索結果は severity='warning'
+        # (inventory gate=OFF でも DASHBOARD/S4 で拾える。bypass 対象外だが視覚差
+        # 明示で「売り切れ通知のみ = 即時探索未動作」判別を維持)。
+        notifier.send_message("", embed=embed, severity="warning")
     except Exception as e:
         logger.warning(f"[supplier] 探索結果 Discord 通知失敗: {e}")
 
@@ -965,11 +968,13 @@ def _send_price_alert_discord(webhook: str, crossings: list) -> bool:
             "color": 15844367,  # amber
         }
         content = "🔔 仕入先の販売価格が基準から ±5% を超えて変動しました"
-        if notifier.send_message(content, embed=embed):
+        # 依頼ボード#39 S2 follow-up (2026-07-03): 価格変動 ±5% は severity='warning'
+        # (money-direct 情報だが blocking ではない、pricing gate に従い center 記録は必ず残る)。
+        if notifier.send_message(content, embed=embed, severity="warning"):
             return True
         import time
         time.sleep(1.0)  # backoff
-        return bool(notifier.send_message(content, embed=embed))
+        return bool(notifier.send_message(content, embed=embed, severity="warning"))
     except Exception:
         logger.exception("W193 価格変動 Discord 送信失敗")
         return False

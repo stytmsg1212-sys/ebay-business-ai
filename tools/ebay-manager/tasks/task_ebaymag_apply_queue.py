@@ -114,12 +114,17 @@ def _calc_next_attempt_at(attempts: int) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _discord_notify(config: dict, message: str) -> None:
-    """Discord 既定 ch に通知 (送信失敗は warn のみ、Q0 silent skip 禁止)。"""
+def _discord_notify(config: dict, message: str, *, severity: str = "info") -> None:
+    """Discord 既定 ch に通知 (送信失敗は warn のみ、Q0 silent skip 禁止)。
+
+    依頼ボード#39 S2 follow-up (2026-07-03): severity 引数を追加。mutate 失敗系
+    (needs_manual / 反映失敗サマリ) は 'error' 明示で _ALWAYS_SEND_SEVERITIES bypass、
+    情報通知 (CDP 不在) は 'info' 既定で center 行き。
+    """
     try:
         from notifiers.discord_notifier import notifier_for
         notifier = notifier_for("default")
-        notifier.send_message(message)
+        notifier.send_message(message, severity=severity)
     except Exception as e:  # noqa: BLE001
         logger.warning("Discord 通知失敗 (本処理に影響なし): %s", e)
 
@@ -187,7 +192,11 @@ def _process_job(job: dict, config: dict) -> dict:
             next_attempt_at=next_at,
         )
         if needs_manual:
-            _discord_notify(config, f"[eBaymag] 手動対応が必要です: {eid}\n{error_msg}")
+            # mutate 失敗の永続化 (自動 retry 上限到達) → severity='error'
+            _discord_notify(
+                config, f"[eBaymag] 手動対応が必要です: {eid}\n{error_msg}",
+                severity="error",
+            )
         logger.warning("[ebaymag_apply_queue] job=%d eid=%s %s: %s", job_id, eid, status, error_msg)
         return {"result": "failed", "error": error_msg}
 
@@ -493,9 +502,11 @@ def run_ebaymag_apply_queue(config: dict) -> dict:
         f"awaiting_import={stats['awaiting_import']} failed={stats['failed']}"
     )
     if errors:
+        # mutate 失敗サマリ → severity='error' (default gate=OFF でも bypass で届く)
         _discord_notify(
             config,
             f"[eBaymag] 反映失敗 {stats['failed']}件:\n" + "\n".join(errors[:5]),
+            severity="error",
         )
 
     logger.info("[ebaymag_apply_queue] 完了: %s", msg)

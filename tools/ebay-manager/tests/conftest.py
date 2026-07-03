@@ -96,3 +96,21 @@ def _block_news_ai_calls(monkeypatch):
         lambda *args, **kwargs: [],
         raising=False,
     )
+
+
+@pytest.fixture(autouse=True)
+def _block_real_discord_post(monkeypatch):
+    """依頼ボード#39 S2 (2026-07-03): notification_center choke point 経由で全 Discord
+    通知が一元化されたため、テストで実 webhook (.env DISCORD_WEBHOOK_URL は本番の実 URL)
+    へ実送信されないよう既定で requests.post を no-op 化する (204 相当の偽レスポンス)。
+    実送信の中身 (payload 等) を検証したい個別 test は
+    `notifiers.notification_center.requests.post` を再 monkeypatch すれば上書き可能。
+    """
+    class _FakeDiscordResponse:
+        status_code = 204
+
+    monkeypatch.setattr(
+        "notifiers.notification_center.requests.post",
+        lambda *args, **kwargs: _FakeDiscordResponse(),
+        raising=False,
+    )

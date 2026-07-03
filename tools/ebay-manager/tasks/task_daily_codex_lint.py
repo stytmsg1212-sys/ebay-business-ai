@@ -114,7 +114,12 @@ def run(config: Optional[dict] = None) -> dict:
                 )
                 + f"\n\n詳細: `{log_path.name}`"
             )
-            notifier.send(msg)
+            # 依頼ボード#39 S2 follow-up (2026-07-03): HIGH 3件+ の lint 障害通知は
+            # severity='error' で _ALWAYS_SEND_SEVERITIES bypass を効かせ、system
+            # gate=OFF でも黙殺されない。あわせて `.send` (存在しないメソッド、
+            # AttributeError で silent fail していた既存バグ) → `.send_message` に修正
+            # (severity 付与を有効化するための最小限の同時修正、K2 準拠)。
+            notifier.send_message(msg, severity="error")
             logger.info(f"daily_codex_lint: Discord 通知送信 (HIGH={high_count})")
         except Exception as e:
             logger.warning(f"daily_codex_lint: Discord 通知失敗: {e}")

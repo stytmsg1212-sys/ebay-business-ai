@@ -214,6 +214,25 @@ def run_research_duel(
             "scripts/start_chrome_cdp.bat + eBay ログイン後に再試行。"
         )
         logger.error(result["message"])
+        # W39 S3 (2026-07-03): 正当スキップだが success=False のまま return するため
+        # find_missed_tasks が「欠落」と誤検知していた。log_task_skip で skip 痕を
+        # 残す (success フラグの意味は変えない、skip 痕の emit のみ追加)。
+        try:
+            from daily_scheduler import _batch_ctx
+            from monitor.task_execution_log import log_task_skip
+            _bid = _batch_ctx.get("id")
+            _bhr = _batch_ctx.get("hour")
+            if _bid is not None and _bhr is not None:
+                log_task_skip(
+                    task_key="research_duel",
+                    display_name="research_duel",
+                    batch_id=_bid,
+                    batch_hour=int(_bhr),
+                    reason="cdp_absent (port 9222)",
+                    skip_kind="skip_other",
+                )
+        except Exception as _le:  # noqa: BLE001
+            logger.warning(f"research_duel: log_task_skip 失敗: {_le}")
         return result
 
     # ── harvest (1 セル分) ──

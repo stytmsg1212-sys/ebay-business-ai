@@ -92,7 +92,7 @@ def test_sold_notify_stock_null_residual_traced(fresh_db, monkeypatch):
     captured = {}
     monkeypatch.setattr(
         toa, "_send_discord",
-        lambda wh, embed: captured.update(embed) or True,
+        lambda wh, embed, **kwargs: captured.update(embed) or True,
     )
     r = toa._process_sold_actions(
         {"ebay_item_id": "I_NULL", "order_id": "O_NULL", "sku": "stock01"},
@@ -116,7 +116,7 @@ def test_sold_notify_uses_order_title_for_intl(fresh_db, monkeypatch):
     captured = {}
     monkeypatch.setattr(
         toa, "_send_discord",
-        lambda wh, embed: captured.update(embed) or True,
+        lambda wh, embed, **kwargs: captured.update(embed) or True,
     )
     # ebay_listings に登録なし (各国版相当)、order に title あり
     r = toa._process_sold_actions(

@@ -117,6 +117,20 @@ def _cd_active_tasks(db_version: int):
     return get_active_tasks()
 
 
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_notification_unread_counts(db_version: int) -> dict:
+    """依頼ボード #39 Phase A S4: カテゴリ別未読件数 (S1 monitor.notification_log_db 経由)。"""
+    from monitor.notification_log_db import get_unread_count_by_category
+    return get_unread_count_by_category()
+
+
+@st.cache_data(ttl=3, show_spinner=False)
+def _cd_notification_rows(db_version: int, unread_only: bool, category, limit: int):
+    """依頼ボード #39 Phase A S4: 通知一覧 (カテゴリ別 expander / 既読7日 折りたたみ 共用)。"""
+    from monitor.notification_log_db import get_notifications
+    return get_notifications(unread_only=unread_only, category=category, limit=limit)
+
+
 def render_dashboard_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
@@ -130,6 +144,99 @@ def render_dashboard_tab(s: dict) -> None:
     import re as _re_dash
     from monitor.database import get_recent_emails as _dash_get_emails, set_email_confirmed
     import streamlit.components.v1 as _components
+
+    # ── 通知センター (依頼ボード #39 Phase A S4, 2026-07-03) ──
+    # S1 (monitor/notification_log_db.py) と並行実装中。テーブル/モジュール未整備の
+    # 期間は ImportError / sqlite3.Error を「準備中」caption で明示 fallback する
+    # (Q0: silent 非表示にせず、未整備であることが分かる状態を保つ)。
+    try:
+        from monitor.notification_log_db import (
+            mark_read as _nc_mark_read,
+            mark_category_read as _nc_mark_category_read,
+            mark_all_read as _nc_mark_all_read,
+        )
+        from tabs._notification_center_html import (
+            render_notification_row_html as _nc_render_row,
+            category_emoji as _nc_cat_emoji,
+            category_label_ja as _nc_cat_label,
+            get_nav_target as _nc_get_nav_target,
+            is_within_days as _nc_is_within_days,
+        )
+
+        st.markdown(
+            '<div style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;'
+            'color:#0e4f4b;letter-spacing:2.5px;text-transform:uppercase;'
+            'padding:10px 16px;margin:0 0 10px 0;border:1px solid rgba(14,79,75,0.18);'
+            'border-left:3px solid #0e4f4b;border-radius:4px;background:rgba(14,79,75,0.04);">'
+            '🔔 通知センター</div>',
+            unsafe_allow_html=True,
+        )
+
+        _nc_unread_counts = _cd_notification_unread_counts(get_db_version())
+        _nc_total_unread = sum(_nc_unread_counts.values())
+
+        if _nc_total_unread == 0:
+            st.caption("新しい通知はありません")
+        else:
+            if st.button(f"✓ 全て既読にする ({_nc_total_unread}件)", key="nc_mark_all_read"):
+                _nc_mark_all_read()
+                bump_db_version()
+                st.rerun()
+
+            for _nc_cat, _nc_cnt in sorted(
+                _nc_unread_counts.items(), key=lambda kv: (-kv[1], kv[0])
+            ):
+                if _nc_cnt <= 0:
+                    continue
+                _nc_label = _nc_cat_label(_nc_cat)
+                _nc_emoji_c = _nc_cat_emoji(_nc_cat)
+                with st.expander(f"{_nc_emoji_c} {_nc_label} ({_nc_cnt})", expanded=False):
+                    _nc_rows = _cd_notification_rows(get_db_version(), True, _nc_cat, 10)
+                    for _nc_n in _nc_rows:
+                        # 1 通知 = コンパクト 1 行 (~30px)。ボタンは同一行右端に小型配置。
+                        # link_target で「開く」ボタンの有無を切り替える (マップ外は左詰め)。
+                        _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_cat)
+                        if _nc_nav:
+                            _c_body, _c_open, _c_read = st.columns([12, 1, 1])
+                        else:
+                            _c_body, _c_read = st.columns([13, 1])
+                            _c_open = None
+                        with _c_body:
+                            st.markdown(_nc_render_row(_nc_n), unsafe_allow_html=True)
+                        if _c_open is not None:
+                            with _c_open:
+                                if st.button("開く", key=f"nc_open_{_nc_cat}_{_nc_n['id']}"):
+                                    st.session_state["_w134_sel"] = _nc_nav[0]
+                                    st.session_state["_w217a_cat_view"] = _nc_nav[1]
+                                    _nc_mark_read([_nc_n["id"]])
+                                    bump_db_version()
+                                    st.rerun()
+                        with _c_read:
+                            if st.button("✓", key=f"nc_read_{_nc_cat}_{_nc_n['id']}"):
+                                _nc_mark_read([_nc_n["id"]])
+                                bump_db_version()
+                                st.rerun()
+                    _nc_over = _nc_cnt - len(_nc_rows)
+                    if _nc_over > 0:
+                        st.caption(f"... 他 {_nc_over} 件 (上位10件表示)")
+                    if st.button(f"「{_nc_label}」を全て既読にする", key=f"nc_cat_read_{_nc_cat}"):
+                        _nc_mark_category_read(_nc_cat)
+                        bump_db_version()
+                        st.rerun()
+
+        # 既読 (7日) — 空セクションは非表示 (実機 fb「既読 (7日) (0)」ノイズ根治)。
+        _nc_recent_rows = _cd_notification_rows(get_db_version(), False, None, 100)
+        _nc_read_recent = [
+            _r for _r in _nc_recent_rows
+            if _r.get("read_at") and _nc_is_within_days(_r.get("created_at") or "", 7)
+        ]
+        if _nc_read_recent:
+            with st.expander(f"既読 (7日) ({len(_nc_read_recent)})", expanded=False):
+                for _nc_n in _nc_read_recent[:50]:
+                    st.markdown(_nc_render_row(_nc_n), unsafe_allow_html=True)
+    except (ImportError, sqlite3.Error) as _nc_e:
+        st.caption("🔔 通知センター: 準備中 (基盤実装待ち)")
+        logger.info(f"通知センター 表示 skip (未整備): {_nc_e}")
 
     # ── W24: Research 脳 morning brief セクション (本日分があれば表示) ──
     try:

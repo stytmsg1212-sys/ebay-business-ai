@@ -501,6 +501,7 @@ _BADGE_MAP = {
     "仕入先候補": "supplier_actionable",
     "在庫監視": "supply_risk",
     "入荷確認": "purchase_unconfirmed",
+    "DASHBOARD": "notifications_unread",  # 依頼ボード #39 Phase A S4 (2026-07-03)
 }
 
 

@@ -343,6 +343,25 @@ def find_missed_tasks(
             """,
             (jst_today,),
         ).fetchall()
+        # W39 S3 (2026-07-03): 正当スキップ (CDP 不在等で success=False のまま
+        # log_task_skip のみ呼ばれるケース) の痕跡行を「充足」扱いにするための取得。
+        # log_task_skip は status='skip_disabled'/'skip_time'/'skip_weekday'/'skip_other'
+        # のいずれかで INSERT する (本モジュール内 skip_kind 参照)。真に何の痕跡も無い
+        # slot (成功も skip も無い) は従来通り missed のまま.
+        # HIGH-2 (統合レビュー 2026-07-03): 'skip_time' は「時刻ドリフトで誤スキップ
+        # された」signal (2026-04-25 daily_relist 5 日 silent skip / 2026-05-16 thread
+        # 跨ぎ clobber 事故の検知経路) につき、充足扱いにすると再発時に欠落検知が
+        # 沈黙する → 除外必須。skip_other / skip_disabled / skip_weekday は正当スキップ
+        # として充足扱いする。
+        skip_rows = conn.execute(
+            """
+            SELECT task_key, batch_hour
+              FROM task_execution_log
+             WHERE DATE(started_at) = ?
+               AND status LIKE 'skip%' AND status <> 'skip_time'
+            """,
+            (jst_today,),
+        ).fetchall()
         # in-flight バッチ (status='started', finished_at IS NULL, 直近 3h 以内) の
         # batch_hour 集合を取得。supplier_sweep 等の長時間バッチが走行中に health_check が
         # 後続タスク (daily_relist 等) を missed と誤判定 → autofix 二重実行するのを防ぐ。
@@ -361,6 +380,9 @@ def find_missed_tasks(
     completed_by_task: dict[str, set[int]] = {}
     for r in rows:
         completed_by_task.setdefault(str(r["task_key"]), set()).add(int(r["batch_hour"]))
+    skipped_by_task: dict[str, set[int]] = {}
+    for r in skip_rows:
+        skipped_by_task.setdefault(str(r["task_key"]), set()).add(int(r["batch_hour"]))
     # in-flight バッチの batch_hour 集合 (slot 窓の突合に使用)
     inflight_batch_hours: set[int] = {int(r["batch_hour"]) for r in inflight_rows}
 
@@ -386,6 +408,13 @@ def find_missed_tasks(
         actual = completed_by_task.get(task_key, set())
         lo, hi = _slot_window(eh)
         if any(lo <= bh <= hi for bh in actual):
+            continue
+        # W39 S3: 正当スキップ痕跡 (log_task_skip 由来の 'skip%' 行) が同一スロット窓
+        # 内にあれば充足扱い。CDP 不在等で success=False のまま skip 痕だけを残す
+        # タスク (research_harvest/research_duel の CDP 不在経路など) が毎日「欠落」
+        # 誤検知されるのを防ぐ。真に痕跡が無い slot は従来通り missed のまま.
+        skipped = skipped_by_task.get(task_key, set())
+        if any(lo <= bh <= hi for bh in skipped):
             continue
         # in-flight バッチが同一スロット窓内で走行中なら missed にしない。
         # 例: supplier_sweep (batch_hour=2) が 03:10〜04:16 走行中の場合、

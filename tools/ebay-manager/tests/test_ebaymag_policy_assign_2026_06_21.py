@@ -99,7 +99,7 @@ def _mock_cdp_alive(monkeypatch):
         "tasks.task_ebaymag_apply_queue._probe_cdp_ebaymag", lambda: (True, "")
     )
     monkeypatch.setattr(
-        "tasks.task_ebaymag_apply_queue._discord_notify", lambda config, msg: None
+        "tasks.task_ebaymag_apply_queue._discord_notify", lambda config, msg, **kwargs: None
     )
 
 
@@ -315,7 +315,7 @@ class TestTokenNotCreated:
         notify_calls = []
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: notify_calls.append(msg),
+            lambda config, msg, **kwargs: notify_calls.append(msg),
         )
         assign_calls = []
         monkeypatch.setattr(

@@ -589,22 +589,13 @@ def _notify_autofix_summary(config: dict, new_actions: list,
 
     要約 1 embed を送り、Tier2 proposed の diff 本文は **別メッセージ** で post する
     (commit/適用はしておらず人間レビュー用)。
-    """
-    try:
-        from tasks.task_scheduler_health_check import _resolve_webhook_url
-        webhook_url = _resolve_webhook_url(config)
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"autofix webhook 解決失敗: {e}")
-        return False
-    if not webhook_url:
-        logger.warning("autofix summary: webhook URL 未設定でスキップ")
-        return False
-    try:
-        import httpx
-    except ImportError as e:  # noqa: BLE001
-        logger.error(f"httpx import 失敗: {e}")
-        return False
 
+    依頼ボード#39 S2 (2026-07-03): 要約 embed の実送信は
+    record_and_maybe_send("system", ...) に一本化 (notification_log へ必ず記録 + config
+    discord_category_gate に従いDiscord送信要否を判定)。Tier2 diff 本文
+    (_post_fix_diff_message) は別メッセージのため choke point の対象外 (scope 外、
+    従来通り httpx で webhook_url に直接 post)。
+    """
     rerun_ok = [m for t, m in new_actions if t == "rerun_ok"]
     rerun_fail = [m for t, m in new_actions if t == "rerun_fail"]
     proposals = [m for t, m in new_actions if t == "proposal"]
@@ -641,15 +632,32 @@ def _notify_autofix_summary(config: dict, new_actions: list,
         "timestamp": datetime.now().isoformat(),
         "fields": fields,
     }
-    try:
-        r = httpx.post(webhook_url, json={"embeds": [embed]}, timeout=10.0)
-        ok = r.status_code in (200, 204)
-    except (httpx.HTTPError, OSError) as e:  # noqa: BLE001
-        logger.error(f"autofix summary Discord 送信エラー: {e}")
-        return False
+    from notifiers.notification_center import record_and_maybe_send
+    result = record_and_maybe_send(
+        "system", "critical" if has_problem else "info",
+        embed["title"], embed["description"], link_target="system", embed=embed,
+    )
+    ok = bool(result.get("discord_sent"))
+
     # Tier2 proposed の diff 本文を別メッセージで post (best-effort、ok 判定は変えない)。
-    for fd in (fix_diffs or []):
-        _post_fix_diff_message(webhook_url, httpx, fd)
+    # choke point (record_and_maybe_send) の対象外 (診断 diff の補足メッセージのため、
+    # 要約 embed とは別に webhook へ直接 post する従来経路を維持、K2 scope 限定)。
+    if fix_diffs:
+        try:
+            from tasks.task_scheduler_health_check import _resolve_webhook_url
+            webhook_url = _resolve_webhook_url(config)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"autofix diff post 用 webhook 解決失敗: {e}")
+            webhook_url = ""
+        if webhook_url:
+            try:
+                import httpx
+            except ImportError as e:  # noqa: BLE001
+                logger.error(f"httpx import 失敗 (diff post): {e}")
+                httpx = None
+            if httpx is not None:
+                for fd in fix_diffs:
+                    _post_fix_diff_message(webhook_url, httpx, fd)
     return ok
 
 
