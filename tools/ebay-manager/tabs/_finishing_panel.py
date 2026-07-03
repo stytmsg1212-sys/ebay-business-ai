@@ -49,11 +49,13 @@ from tabs._finishing_panel_state import (
     compute_header_metrics,
     dispatch_content_changes,
     fetch_description_from_ebay,
+    generate_description_via_ai,
     is_field_dirty,
     mark_field_synced,
     pf_key,
     rank_to_condition_id,
     resolve_rank_initial,
+    resolve_source_url,
     seed_initial,
     seed_session_value,
 )
@@ -202,55 +204,17 @@ def _render_content_group(
     st.caption(f"{len(new_title or '')}/80 文字")
     fields["title"] = {"before": title_initial, "after": new_title}
 
-    # ---- description ----
-    desc_key = pf_key(eid, "description")
-    desc_initial = seed_initial(
-        st.session_state, eid, "description", row.get("listing_description") or "",
+    # ---- description (3 方式: AI で生成 / eBay から取得 / 手動編集) ----
+    _render_description_field(
+        eid, row, config,
+        candidate_id=candidate_id, candidate_url=candidate_url, fields=fields,
     )
-    seed_session_value(st.session_state, desc_key, desc_initial)
-    with st.container(border=True):
-        st.caption("Description (現行プレビュー)")
-        _preview_src = desc_initial or "(未設定)"
-        st.markdown(_preview_src[:200] + ("…" if len(_preview_src) > 200 else ""))
-        dcols = st.columns([1, 4])
-        with dcols[0]:
-            if st.button("⬇️ eBay から取得", key=pf_key(eid, "desc_fetch_btn")):
-                _res = fetch_description_from_ebay(eid, config)
-                if _res["success"]:
-                    st.session_state[desc_key] = _res["description"]
-                    st.success("取得しました。下の編集欄に反映しました。")
-                    st.rerun(scope="fragment")
-                else:
-                    st.error(_res["message"])
-        st.text_area(
-            "説明文 (HTML) を編集",
-            key=desc_key,
-            height=150,
-        )
-    new_desc = st.session_state.get(desc_key, desc_initial)
-    fields["description"] = {"before": desc_initial, "after": new_desc}
 
-    # ---- 画像 (3モード、一括反映の対象外 — module docstring 参照) ----
-    st.markdown("**画像**")
-    st.caption(
-        "💡 画像はこのセクション内の「eBay に反映」ボタンで即時完結します"
-        "(下の「🚀 eBay へ反映」一括ボタンの対象外)。"
+    # ---- 画像 (3モード常時表示、一括反映の対象外 — module docstring 参照) ----
+    _render_image_field(
+        eid, row,
+        candidate_id=candidate_id, candidate_url=candidate_url,
     )
-    _effective_candidate_url = candidate_url or row.get("source_url") or ""
-    if _effective_candidate_url:
-        from tabs._supplier_photo_pipeline import render_supplier_photo_apply_section
-        _photo_cid = candidate_id if candidate_id is not None else eid
-        render_supplier_photo_apply_section(
-            candidate_id=_photo_cid,
-            candidate_url=_effective_candidate_url,
-            ebay_item_id=eid,
-            candidate_title=row.get("title") or "",
-        )
-    else:
-        st.info(
-            "仕入先 URL 未指定のため画像モードは利用できません。"
-            "仕入先候補タブから採用すると画像反映も選べます。"
-        )
 
     # ---- ランク ----
     rank_initial = seed_initial(st.session_state, eid, "rank", resolve_rank_initial(row))
@@ -305,6 +269,237 @@ def _render_content_group(
     ):
         _apply_content_changes(eid, fields, config, source_tab=source_tab, candidate_id=candidate_id)
     st.caption("価格・送料は含まれません（下の「💰 価格・送料」隔離セクションから）")
+
+
+# =============================================================================
+# description フィールド (3 方式: AI で生成 / eBay から取得 / 手動編集)
+# モックアップ tab_t1「コンテンツ」→「Description」ブロックに対応
+# =============================================================================
+
+_DESC_METHOD_AI = "🤖 AI で生成"
+_DESC_METHOD_EBAY = "⬇️ eBay から取得"
+_DESC_METHOD_MANUAL = "✏️ 手動編集"
+
+
+def _render_description_field(
+    eid: str,
+    row: dict,
+    config: Optional[dict],
+    *,
+    candidate_id: Optional[int],
+    candidate_url: Optional[str],
+    fields: dict[str, dict],
+) -> None:
+    """Description フィールド (3 方式選択 + プレビュー + 編集 textarea).
+
+    モックアップ .field > label='Description' + btnrow (🤖/⬇️/✏️) + desc-preview
+    に対応。3 方式は st.radio で明示 (task 指示「モックの見た目に寄せる」)。
+    生成/取得結果は共通 session_state (desc_key) に流し、textarea で編集可能。
+    反映は下の「🚀 eBay へ反映」一括ボタン経由 (K1: 反映経路を統一)。
+    """
+    desc_key = pf_key(eid, "description")
+    desc_initial = seed_initial(
+        st.session_state, eid, "description", row.get("listing_description") or "",
+    )
+    seed_session_value(st.session_state, desc_key, desc_initial)
+
+    with st.container(border=True):
+        st.markdown("**Description**")
+
+        # 現行プレビュー (先頭 200 字)
+        st.caption("現行プレビュー")
+        _preview_src = desc_initial or "(未設定)"
+        st.markdown(_preview_src[:200] + ("…" if len(_preview_src) > 200 else ""))
+
+        # 3 方式選択 radio (モック btnrow 相当)
+        method_key = pf_key(eid, "desc_method")
+        seed_session_value(st.session_state, method_key, _DESC_METHOD_MANUAL)
+        st.radio(
+            "生成/取得方式",
+            options=[_DESC_METHOD_AI, _DESC_METHOD_EBAY, _DESC_METHOD_MANUAL],
+            key=method_key,
+            horizontal=True,
+        )
+        method = st.session_state.get(method_key, _DESC_METHOD_MANUAL)
+
+        if method == _DESC_METHOD_AI:
+            _render_description_ai_controls(
+                eid, row, desc_key,
+                candidate_id=candidate_id, candidate_url=candidate_url,
+            )
+        elif method == _DESC_METHOD_EBAY:
+            _render_description_ebay_fetch(eid, config, desc_key)
+        else:
+            st.caption("✏️ 下の編集欄で直接編集してください。")
+
+        # textarea は常時表示 (全方式で最終編集可能)
+        st.text_area(
+            "説明文 (HTML) を編集",
+            key=desc_key,
+            height=180,
+        )
+
+    new_desc = st.session_state.get(desc_key, desc_initial)
+    fields["description"] = {"before": desc_initial, "after": new_desc}
+
+
+def _render_description_ai_controls(
+    eid: str,
+    row: dict,
+    desc_key: str,
+    *,
+    candidate_id: Optional[int],
+    candidate_url: Optional[str],
+) -> None:
+    """AI 生成方式の入力欄 (URL / ランク / 追加指示 / 生成ボタン).
+
+    URL 解決順: candidate_url > row["source_url"] > user 入力欄 (resolve_source_url)。
+    生成は `_finishing_panel_state.generate_description_via_ai` 経由で
+    `_supplier_description_pipeline.generate_supplier_description` を呼ぶ
+    (candidate_id=0 で URL 直接投入経路、既存 tab_product_management
+    `_render_url_direct_description_section` と同じ)。
+    """
+    from tabs._finishing_panel_state import RANK_CHOICES as _RANK_CHOICES
+
+    url_input_key = pf_key(eid, "desc_ai_url")
+    rank_key = pf_key(eid, "desc_ai_rank")
+    extra_key = pf_key(eid, "desc_ai_extra")
+
+    # URL 入力欄 (candidate_url / row.source_url があれば prefill、無ければ user 入力)
+    _prefilled_url = (candidate_url or row.get("source_url") or "").strip()
+    seed_session_value(st.session_state, url_input_key, _prefilled_url)
+    st.text_input(
+        "引用元 URL (メルカリ/ヤフオク/PayPay=専用解析、その他=AI解析)",
+        key=url_input_key,
+        placeholder="https://...",
+    )
+    _typed_url = (st.session_state.get(url_input_key) or "").strip()
+    resolved_url = resolve_source_url(candidate_url, row, _typed_url)
+
+    if not resolved_url:
+        st.warning("引用元 URL を入力してください (仕入先候補 URL の prefill が無い場合)。")
+
+    # ランク: 既存 condition_rank を default、"(引用元から AI 自動判定)" も選択可
+    _listing_rank = (row.get("condition_rank") or "").strip()
+    _rank_opts = ["(引用元から AI 自動判定)"] + list(_RANK_CHOICES)
+    _default_idx = _rank_opts.index(_listing_rank) if _listing_rank in _RANK_CHOICES else 0
+    seed_session_value(st.session_state, rank_key, _rank_opts[_default_idx])
+    st.selectbox(
+        "商品ランク (既存の商品状態を尊重。AI 判定に任せる場合は先頭を選択)",
+        options=_rank_opts,
+        key=rank_key,
+    )
+    _rank_sel = st.session_state.get(rank_key, _rank_opts[_default_idx])
+    _rank_override = _rank_sel if _rank_sel in _RANK_CHOICES else None
+
+    seed_session_value(st.session_state, extra_key, "")
+    st.text_area(
+        "description に入れたい文言・指示 (任意)",
+        key=extra_key,
+        placeholder="例: ギフト包装対応可と必ず書いて / バンドル品である点を強調",
+        height=70,
+    )
+    _extra = (st.session_state.get(extra_key) or "").strip() or None
+
+    sku = (row.get("sku") or "")
+    is_in_stock = sku.startswith("stock")
+
+    if st.button(
+        "🤖 生成",
+        key=pf_key(eid, "desc_ai_run_btn"),
+        type="primary",
+        disabled=not resolved_url,
+    ):
+        with st.spinner("scrape/AI 解析 + Claude description 生成中 (~30-60 秒)..."):
+            result = generate_description_via_ai(
+                resolved_url,
+                candidate_id=candidate_id or 0,
+                in_stock=is_in_stock,
+                rank_override_code=_rank_override,
+                extra_instructions=_extra,
+            )
+        if result.get("success"):
+            st.session_state[desc_key] = result.get("description_html") or ""
+            st.success(result.get("message") or "生成完了")
+            st.rerun(scope="fragment")
+        else:
+            st.error(result.get("message") or "生成に失敗しました")
+
+
+def _render_description_ebay_fetch(
+    eid: str,
+    config: Optional[dict],
+    desc_key: str,
+) -> None:
+    """eBay GetItem で現行 description を取得して textarea に流す (従来動作)."""
+    if st.button("⬇️ eBay から取得", key=pf_key(eid, "desc_fetch_btn")):
+        _res = fetch_description_from_ebay(eid, config)
+        if _res["success"]:
+            st.session_state[desc_key] = _res["description"]
+            st.success("取得しました。下の編集欄に反映しました。")
+            st.rerun(scope="fragment")
+        else:
+            st.error(_res["message"])
+
+
+# =============================================================================
+# 画像フィールド (3 モード常時表示、URL 未解決時は入力欄を提供)
+# モックアップ tab_t1「コンテンツ」→「画像」ブロックに対応
+# =============================================================================
+
+def _render_image_field(
+    eid: str,
+    row: dict,
+    *,
+    candidate_id: Optional[int],
+    candidate_url: Optional[str],
+) -> None:
+    """画像フィールド (常時 3 モード radio、URL 未解決時は入力欄を提供).
+
+    モックアップ .field > label='画像' + imgmode-select (①/②/③) + img-mode-panel に対応。
+    URL 解決順は description と同じ (candidate_url > row.source_url > user 入力)。
+
+    実描画は既存 `_supplier_photo_pipeline.render_supplier_photo_apply_section`
+    へ委譲 (3 モード radio + mode 別 UI + 反映は同関数内で完結。設計書§4 + task
+    指示「画像はセクション内の即時完結」)。URL が空文字でも渡せる (各モードが
+    自前で「画像取得できません」の error を出す = fail-loud、Q0)。ただし
+    task 指示に沿って URL 未解決時は section 上部に入力欄を出して user が URL を
+    与えられるようにする (candidate 由来 URL が無い商品でも運用可能)。
+    """
+    st.markdown("**画像**")
+    st.caption(
+        "💡 画像はこのセクション内の「eBay に反映」ボタンで即時完結します"
+        "(下の「🚀 eBay へ反映」一括ボタンの対象外)。"
+    )
+
+    img_url_key = pf_key(eid, "img_source_url")
+    _prefilled_url = (candidate_url or row.get("source_url") or "").strip()
+
+    if not _prefilled_url:
+        # モックの「(仕入先 URL 未指定時は入力欄)」— 入力後 rerun で下流に伝播
+        st.caption(
+            "仕入先 URL 未解決: ①合成 / ②そのまま採用 モードを使うには URL 入力が必要"
+            " (③メイン差し替えは URL 無しでも現行 eBay 画像は取得できます)。"
+        )
+        seed_session_value(st.session_state, img_url_key, "")
+        st.text_input(
+            "仕入先 URL (任意、モード①②で使用)",
+            key=img_url_key,
+            placeholder="https://... (candidate_url が未指定の商品向け)",
+        )
+    _typed_url = (st.session_state.get(img_url_key) or "").strip() if not _prefilled_url else ""
+    resolved_url = resolve_source_url(candidate_url, row, _typed_url)
+
+    from tabs._supplier_photo_pipeline import render_supplier_photo_apply_section
+    _photo_cid = candidate_id if candidate_id is not None else eid
+    # candidate_url= には空文字を渡してもよい (下流の 3 モード renderer が
+    # fail-loud で対応。①/② はエラー表示、③は現行 eBay 画像だけ表示される)。
+    render_supplier_photo_apply_section(
+        candidate_id=_photo_cid,
+        candidate_url=resolved_url,
+        ebay_item_id=eid,
+        candidate_title=row.get("title") or "",
+    )
 
 
 def _sync_description_db(eid: str, description: str) -> None:

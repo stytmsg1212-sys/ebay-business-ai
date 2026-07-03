@@ -645,12 +645,18 @@ def _render_mode1_ai_compose(
             with st.spinner("仕入先 URL から全画像を抽出中 (Yahoo/Mercari/PayPay 対応)..."):
                 all_urls = fetch_supplier_images_all(candidate_url)
             st.session_state[sk_all_urls] = all_urls
-            if not all_urls:
-                st.error(
-                    "画像が取得できません (scrape_supplier_url 失敗 + og:image meta も無し)。"
-                    "仕入先 URL を確認するか、対応サイト (Mercari/Yahoo/PayPay) を確認してください。"
-                )
-                return
+        # W314 実機 E2E 発覚バグ (2026-07-03): 空 list `[]` を fetch がキャッシュ済の状態で
+        # 2 回目 render (fragment rerun) すると、旧 `if not all_urls:` guard が `if all_urls
+        # is None:` 分岐の内側にあったため cached-empty で skip され、直後の
+        # `all_urls[src_idx]` (L665 相当) で `IndexError: list index out of range` が
+        # 発生した (Mode② L1226 は既に外側に置いていた = intended pattern)。guard を
+        # 外側へ引き上げて cached-empty も cached-None (初回) も同じ経路で graceful return。
+        if not all_urls:
+            st.error(
+                "画像が取得できません (scrape_supplier_url 失敗 + og:image meta も無し)。"
+                "仕入先 URL を確認するか、対応サイト (Mercari/Yahoo/PayPay) を確認してください。"
+            )
+            return
 
         # board#9: 合成元 picker + 位置/モデル選択 (共有部品)
         from tabs._image_pipeline_ui import (

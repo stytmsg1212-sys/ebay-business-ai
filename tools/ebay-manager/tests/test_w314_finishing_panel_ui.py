@@ -132,9 +132,23 @@ def test_apply_content_changes_does_not_reference_images_field():
 # 5. 仕入先 URL 未指定時の案内文言 (設計書§4 / タスク指示)
 # ─────────────────────────────────────────────────
 
-def test_no_candidate_url_shows_guidance_message():
+def test_image_field_always_renders_photo_apply_section():
+    """モックパリティ (2026-07-03 修正): 画像セクションは URL 未解決でも常時 3 モード表示.
+
+    従来「URL 未指定なら photo section を出さない」動作 (info メッセージのみ) は
+    モックアップ tab_t1 の 3 モード常時表示 (imgmode-select + 各 img-mode-panel)
+    と乖離していたため撤去。URL 未解決時はセクション上部に URL 入力欄を出し、
+    render_supplier_photo_apply_section は常に呼ぶ (③メイン差し替えは URL 無しでも
+    現行 eBay 画像を表示できるため無条件呼出しが正当)。
+    """
     src = _UI_PATH.read_text(encoding="utf-8")
-    assert "仕入先 URL 未指定のため画像モードは利用できません" in src
+    # (a) 3 モードは常時レンダー = render_supplier_photo_apply_section が
+    #     _render_image_field 内で無条件に呼ばれる
+    assert "render_supplier_photo_apply_section" in src
+    # (b) URL 未解決時のガイダンス文言 (モック §「(仕入先 URL 未指定時は入力欄)」)
+    assert "①合成 / ②そのまま採用 モードを使うには URL 入力が必要" in src
+    # (c) 旧「利用できません」メッセージが残っていないこと (混乱防止)
+    assert "画像モードは利用できません" not in src
 
 
 # ─────────────────────────────────────────────────
@@ -374,3 +388,148 @@ def test_apply_content_changes_strips_title_before_revise(monkeypatch):
     assert title_logs == ["New Title"], (
         f"監査ログの after も strip 済みであるべき (got {title_logs!r})"
     )
+
+
+# ─────────────────────────────────────────────────
+# 8. モックパリティ (2026-07-03 修正):
+#    description 3 方式 (🤖 AI で生成 / ⬇️ eBay から取得 / ✏️ 手動編集)
+# ─────────────────────────────────────────────────
+
+def test_description_field_renders_three_method_radio():
+    """モック .btnrow 相当: description に 3 方式選択が明示表示される."""
+    src = _UI_PATH.read_text(encoding="utf-8")
+    assert "🤖 AI で生成" in src
+    assert "⬇️ eBay から取得" in src
+    assert "✏️ 手動編集" in src
+    # 3 方式を明示する仕組み (radio) が入っていること
+    assert 'st.radio(' in src
+
+
+def test_description_ai_controls_helper_present():
+    fn = _find_function_def("_render_description_ai_controls")
+    assert fn is not None, "_render_description_ai_controls が定義されていない"
+    src = _UI_PATH.read_text(encoding="utf-8")
+    # AI 生成経路は state 層の wrapper を経由 (既存 pipeline を import 利用)
+    assert "generate_description_via_ai" in src
+
+
+def test_description_ebay_fetch_helper_present():
+    fn = _find_function_def("_render_description_ebay_fetch")
+    assert fn is not None, "_render_description_ebay_fetch が定義されていない"
+
+
+def test_description_ai_uses_resolve_source_url_order():
+    """URL 解決順は candidate_url > row.source_url > user 入力 (resolve_source_url 経由)."""
+    src = _UI_PATH.read_text(encoding="utf-8")
+    assert "resolve_source_url(" in src
+
+
+# ─────────────────────────────────────────────────
+# 9. モックパリティ: 画像 3 モードは URL 未解決でも常時表示
+# ─────────────────────────────────────────────────
+
+def test_image_field_helper_present():
+    fn = _find_function_def("_render_image_field")
+    assert fn is not None, "_render_image_field が定義されていない"
+
+
+def test_image_field_calls_photo_apply_section_unconditionally():
+    """_render_image_field は render_supplier_photo_apply_section を分岐なしで呼ぶ.
+
+    (URL 空文字でも 3 モード renderer 側が自前で error を出す設計。③モードは
+    URL 無しでも現行 eBay 画像を取得できるため、常時呼出しが正しい挙動。)
+    """
+    fn = _find_function_def("_render_image_field")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    assert "render_supplier_photo_apply_section(" in src_seg
+    # 3 モード常時表示のため section 全体をラップする if 分岐は無い
+    # (URL 未解決 → 入力欄を表示、resolved URL を下流に渡す構造)
+    assert "img_source_url" in src_seg
+
+
+# ─────────────────────────────────────────────────
+# 10. state 層 (新規追加): resolve_source_url / generate_description_via_ai
+# ─────────────────────────────────────────────────
+
+def test_state_resolve_source_url_priority():
+    from tabs._finishing_panel_state import resolve_source_url
+    # candidate_url > row.source_url > user_input
+    assert resolve_source_url(
+        "https://cand.example/1", {"source_url": "https://row.example/2"},
+        "https://user.example/3",
+    ) == "https://cand.example/1"
+    assert resolve_source_url(
+        None, {"source_url": "https://row.example/2"}, "https://user.example/3",
+    ) == "https://row.example/2"
+    assert resolve_source_url(
+        None, None, "https://user.example/3",
+    ) == "https://user.example/3"
+    assert resolve_source_url(None, None, None) == ""
+    assert resolve_source_url("", {}, "") == ""
+    # 空白のみは未指定扱い
+    assert resolve_source_url("   ", {"source_url": "https://row.example/x"}, None) \
+        == "https://row.example/x"
+
+
+def test_state_resolve_source_url_row_none_safe():
+    from tabs._finishing_panel_state import resolve_source_url
+    # row=None でも落ちず ""
+    assert resolve_source_url(None, None, None) == ""
+
+
+def test_state_generate_description_via_ai_empty_url_rejected():
+    from tabs._finishing_panel_state import generate_description_via_ai
+    r = generate_description_via_ai("")
+    assert r["success"] is False
+    assert "URL" in r["message"]
+    r2 = generate_description_via_ai("   ")
+    assert r2["success"] is False
+
+
+def test_state_generate_description_via_ai_delegates_to_pipeline(monkeypatch):
+    """既存 generate_supplier_description に candidate_id=0 で委譲される (既存 pipeline 再利用)."""
+    from tabs import _finishing_panel_state as fps_mod
+
+    calls = []
+
+    def _fake_gen(**kwargs):
+        calls.append(kwargs)
+        return {
+            "success": True, "description_html": "<p>hi</p>",
+            "rank_code": "A", "title_en": "Hi", "message": "ok",
+        }
+
+    # generate_supplier_description は関数内で lazy import されるため
+    # tabs._supplier_description_pipeline 側にパッチする
+    import tabs._supplier_description_pipeline as sdp_mod
+    monkeypatch.setattr(sdp_mod, "generate_supplier_description", _fake_gen)
+
+    result = fps_mod.generate_description_via_ai(
+        "https://example.com/x",
+        candidate_id=42, in_stock=True,
+        rank_override_code="B", extra_instructions="test",
+    )
+    assert result["success"] is True
+    assert result["description_html"] == "<p>hi</p>"
+    assert result["rank_code"] == "A"
+    assert len(calls) == 1
+    kw = calls[0]
+    assert kw["candidate_id"] == 42
+    assert kw["candidate_url"] == "https://example.com/x"
+    assert kw["in_stock"] is True
+    assert kw["rank_override_code"] == "B"
+    assert kw["extra_instructions"] == "test"
+
+
+def test_state_generate_description_via_ai_pipeline_exception_returns_failure(monkeypatch):
+    from tabs import _finishing_panel_state as fps_mod
+    import tabs._supplier_description_pipeline as sdp_mod
+
+    def _boom(**kwargs):
+        raise RuntimeError("scrape blew up")
+
+    monkeypatch.setattr(sdp_mod, "generate_supplier_description", _boom)
+    result = fps_mod.generate_description_via_ai("https://example.com/x")
+    assert result["success"] is False
+    assert "scrape blew up" in result["message"]

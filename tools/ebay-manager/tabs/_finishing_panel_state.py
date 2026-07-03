@@ -291,6 +291,30 @@ def compute_header_metrics(row: dict, settings: Optional[dict] = None) -> dict:
 
 
 # =============================================================================
+# 仕入先 URL 解決 (画像/description 生成の入力元)
+# =============================================================================
+
+def resolve_source_url(
+    candidate_url: Optional[str],
+    row: Optional[dict],
+    user_input: Optional[str] = None,
+) -> str:
+    """description 生成 / 画像取得で使う仕入先 URL を解決する.
+
+    優先順位 (設計書§4 + task 指示): candidate_url > row["source_url"] > user_input。
+    いずれも空なら "" を返す (呼出側が「URL 未指定」ハンドリング)。
+
+    (candidate_url) の空文字 "" は None と同じく "未指定" として扱う (S6 が
+    None を渡すか "" を渡すか実装差があるため両対応)。
+    """
+    for cand in (candidate_url, (row or {}).get("source_url"), user_input):
+        s = (cand or "").strip() if isinstance(cand, str) else ""
+        if s:
+            return s
+    return ""
+
+
+# =============================================================================
 # description の eBay 取得 (「⬇️ eBay から取得」ボタン)
 # =============================================================================
 
@@ -322,6 +346,76 @@ def fetch_description_from_ebay(ebay_item_id: str, config: Optional[dict] = None
             "message": "取得失敗 (GetItem 応答なし / Description 空)",
         }
     return {"success": True, "description": snap.get("description") or "", "message": "取得しました"}
+
+
+# =============================================================================
+# description の AI 生成 (「🤖 AI で生成」)
+# =============================================================================
+
+def generate_description_via_ai(
+    candidate_url: str,
+    *,
+    candidate_id: int = 0,
+    in_stock: bool = False,
+    rank_override_code: Optional[str] = None,
+    extra_instructions: Optional[str] = None,
+) -> dict:
+    """仕入先 URL から description HTML を AI 生成する (既存パイプライン再利用).
+
+    tab_product_management.py::_render_url_direct_description_section と同じ
+    `_supplier_description_pipeline.generate_supplier_description` を呼ぶ
+    (candidate_id=0 で「URL 直接投入」経路、supplier_candidates INSERT なし)。
+
+    候補が既に紐付いていれば呼出側で candidate_id を渡す (監査ログ紐付けに使う。
+    generate_supplier_description は candidate_id を DB 更新には使わないので
+    0 でも実処理は同じ、ログ属性としてのみ機能する)。
+
+    Args:
+        candidate_url: 仕入先 URL (空文字は事前弾き必須、本関数では success=False)
+        candidate_id: supplier_candidates.id (無ければ 0)
+        in_stock: 有在庫扱い (`sku.startswith("stock")` の判定結果を渡す)
+        rank_override_code: 手動指定ランク (N/S/A/B/C/D/PO/As-Is、None なら AI 判定)
+        extra_instructions: description に入れたい文言 (任意)
+
+    Returns:
+        {'success': bool, 'description_html': str, 'rank_code': str,
+         'title_en': str, 'message': str}
+    """
+    if not (candidate_url or "").strip():
+        return {
+            "success": False, "description_html": "", "rank_code": "",
+            "title_en": "", "message": "仕入先 URL が未指定のため生成できません",
+        }
+    try:
+        from tabs._supplier_description_pipeline import generate_supplier_description
+    except ImportError as e:
+        logger.exception("generate_supplier_description import 失敗")
+        return {
+            "success": False, "description_html": "", "rank_code": "",
+            "title_en": "", "message": f"description 生成モジュール読込失敗: {e}",
+        }
+    try:
+        result = generate_supplier_description(
+            candidate_id=candidate_id,
+            candidate_url=candidate_url.strip(),
+            in_stock=in_stock,
+            rank_override_code=rank_override_code,
+            extra_instructions=extra_instructions,
+        )
+    except Exception as e:  # noqa: BLE001 -- 生成パイプラインの多様な例外を UI に伝える
+        logger.exception("generate_supplier_description raised")
+        return {
+            "success": False, "description_html": "", "rank_code": "",
+            "title_en": "", "message": f"{type(e).__name__}: {e}",
+        }
+    # generate_supplier_description が返す dict をそのまま透過 (schema 同一)
+    return {
+        "success": bool(result.get("success")),
+        "description_html": result.get("description_html") or "",
+        "rank_code": result.get("rank_code") or "",
+        "title_en": result.get("title_en") or "",
+        "message": result.get("message") or "",
+    }
 
 
 # =============================================================================
