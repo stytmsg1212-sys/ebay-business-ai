@@ -225,6 +225,7 @@ def render_supplier_card_html(
     ebay_image_url: Optional[str] = None,
     candidate_image_url: Optional[str] = None,
     profit_excl_refund_jpy: Optional[float] = None,
+    include_css: bool = True,
 ) -> str:
     """1 候補カードの HTML 文字列を返す (Streamlit ``st.markdown`` 用).
 
@@ -235,7 +236,7 @@ def render_supplier_card_html(
             ``junk_likely_untested`` / ``match_reasoning`` / ``alt_listing_note`` /
             ``ebay_item_id`` / ``sku`` / ``eval_model`` を参照.
         ebay_price_usd: 親 listing の現在 USD 価格 (caller が
-            ``get_ebay_listing_by_item_id`` で取得済). 不明時 None.
+            一括 SELECT 済の dict から渡す). 不明時 None.
         ebay_price_jpy: 上記 JPY 換算 (caller 側の為替). 不明時 None.
         profit_jpy: ``row['profit_jpy']`` をそのまま渡す (DB 値、消費税還付込み). None 可.
         profit_excl_refund_jpy: 還付抜き利益 (caller が profit_jpy から消費税還付
@@ -247,9 +248,15 @@ def render_supplier_card_html(
             None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
         candidate_image_url: W258/Phase-B (2026-06-11) 仕入先候補の 1 枚目画像 URL.
             None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
+        include_css: True (既定) なら ``<style>`` を同梱 (自己完結・単体呼出でも
+            unit test でも常に見た目が正しい)。W314 Phase 4 (2026-07-03 性能設計書§7):
+            同一 render pass で複数カードを描く caller (tab_supplier_candidates.py)
+            は 1 回だけ ``<style>`` を出し、2 枚目以降は ``include_css=False`` で
+            重複 CSS (145 行 × カード数) の再送信を避ける。関数の既定挙動は不変
+            (既存 test の ``"<style>" in html`` assertion に影響しない)。
 
     Returns:
-        ``str``: ``<style>`` + ``<div class="sc-card">...</div>`` を含む HTML.
+        ``str``: (``include_css`` なら ``<style>`` +) ``<div class="sc-card">...</div>``.
 
     Note:
         DB アクセスを行わない (純関数、unit test 容易). caller は本関数の
@@ -448,4 +455,4 @@ def render_supplier_card_html(
         f'</div>'
     )
 
-    return _CARD_CSS + card_html
+    return (_CARD_CSS if include_css else "") + card_html

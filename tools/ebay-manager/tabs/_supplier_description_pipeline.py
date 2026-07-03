@@ -897,6 +897,15 @@ def render_supplier_description_section(
                         if not _cond_result.get('success'):
                             ar = dict(ar)
                             ar['success'] = False
+                        else:
+                            # W314 Phase 4 性能監査 (2026-07-03): _apply_supplier_condition
+                            # 成功時は ebay_listings.condition_rank/ebay_condition_id を
+                            # DB 書込む (成功 branch は必ず DB 書込を伴う、_supplier_
+                            # description_pipeline.py:367/376/385 参照)。従来 bump 漏れで
+                            # 商品管理タブの _cd_fetch_all_products read-cache (ttl=3s) が
+                            # 最大 3 秒古い状態を表示していた (M1 fix と同型パターン)。
+                            from ui_cache import bump_db_version
+                            bump_db_version()
                 st.session_state[sk_apply_result] = ar
                 st.rerun()
         with cols2[1]:

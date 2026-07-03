@@ -228,7 +228,22 @@ def _fetch_all_products() -> list[dict]:
 # であり app.py 側に置くと app.py⇄tab の循環 import になるため。spec の
 # 「database.py 不改修・UI 層で wrap」の意図には沿う。db_version は先頭 _ を
 # 付けない = st.cache_data の hash 対象に含めるため)。
-@st.cache_data(ttl=3, show_spinner=False)
+#
+# W314 Phase 4 (2026-07-03): ttl=3→60 に延長 (性能設計書§7)。延長前に UI
+# 到達可能な書込経路 (Streamlit 内で bump_db_version が呼べる経路) を全 grep
+# 監査し、1 件の bump 漏れ (_supplier_description_pipeline.py の候補カード
+# description 反映後の condition 同期) を発見・修正済み (同日 commit)。
+# ⚠️ 残存する staleness 源泉 (bump 対象外・本 ttl のみが safety net):
+#   daily_scheduler.py 配下の tasks/*.py (pythonw 別プロセスで実行される
+#   ebay_sync / inventory_check 等) は Streamlit の st.session_state を
+#   物理的に共有できないため bump_db_version() を呼べない (ui_cache.py の
+#   設計思想どおり、これは「漏れ」ではなく元々の想定構造)。この経路由来の
+#   反映遅延は 3s→60s に拡大する (例: 05:00/17:00 定時 inventory_check 直後、
+#   既に開いていた商品管理タブは最大 60 秒古い在庫状態を表示し得る)。
+#   money-direct 表示への影響は「表示の遅延」のみで DB 実値は正しい
+#   (次回 bump 済み書込 or 60s 経過で自己修復)。ttl=60 が許容できない場合は
+#   ttl=15 等へ再調整可 (本 W314 Phase 4 では設計書 §7 の指示どおり 60 を採用)。
+@st.cache_data(ttl=60, show_spinner=False)
 def _cd_fetch_all_products(db_version: int) -> list[dict]:
     return _fetch_all_products()
 

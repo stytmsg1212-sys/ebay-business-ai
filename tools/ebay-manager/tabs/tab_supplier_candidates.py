@@ -27,9 +27,20 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
     import json
-    from monitor.database import get_conn, get_ebay_listing_by_item_id, get_supplier_candidates, update_supplier_candidate_status
+    from monitor.database import get_conn, get_supplier_candidates, update_supplier_candidate_status
     from tabs._adopt_candidate import adopt_candidate
     from typing import Optional
+
+    # W314 Phase 4 (2026-07-03 性能設計書§7): 候補カード CSS (_CARD_CSS, 145行) を
+    # このタブの全 render で 1 回だけ出す。旧実装はカード毎 (render_supplier_card_html
+    # の既定 include_css=True) に同一 CSS 文字列を毎回同梱しており、候補件数ぶん
+    # (最大 20+/タブ) 重複送信されていた。ここは st.fragment の外 (通常の top-level
+    # render 経路) で毎回無条件に実行するため、Streamlit の要素ツリーから消える
+    # リスクはない (session_state センチネルでの「1 セッション 1 回だけ」ゲートは
+    # 使わない = fragment 部分 rerun でカード側が個別に再描画されても影響を受けない)。
+    from tabs._supplier_card_html import _CARD_CSS
+    st.markdown(_CARD_CSS, unsafe_allow_html=True)
+
     st.title("仕入先候補レビュー")
     st.caption(
         "Claude API が評価した仕入先候補を一覧。"
@@ -263,9 +274,14 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # 同 SKU 多 listing (有在庫プール 8 SKU で 107 listings) で dict[sku] が衝突する事故防止.
     # W115 v2 (2026-05-10): _sup_history_raw の eids も含めて parent metadata を完全化
     # (履歴行の「仕入先復活警告」表示を担保).
+    # W314 Phase 4 (2026-07-03): current_price / ebay_image_url も同じ一括 SELECT に
+    # 相乗り (性能設計書§7 N+1 解消)。旧実装はカード毎 (_render_candidate_card ループ内)
+    # に get_ebay_listing_by_item_id(eid) = SELECT * FROM ebay_listings を個別発行して
+    # おり、候補件数ぶん (最大 20+) の DB 接続開閉+全列 SELECT が発生していた。
     _sup_parent_status: dict[str, str] = {}
     _sup_parent_qty: dict[str, int] = {}
     _sup_parent_ended: dict[str, int] = {}
+    _sup_parent_listing: dict[str, dict] = {}
     _sup_eids = list({
         r.get("ebay_item_id")
         for r in (_sup_all + _sup_history_raw)
@@ -276,7 +292,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
         with _sup_conn() as _sup_cc:
             _ph = ",".join("?" * len(_sup_eids))
             for _srow in _sup_cc.execute(
-                f"""SELECT ebay_item_id, source_status, is_ended, quantity_ebay
+                f"""SELECT ebay_item_id, source_status, is_ended, quantity_ebay,
+                           current_price, ebay_image_url
                     FROM ebay_listings WHERE ebay_item_id IN ({_ph})""",
                 _sup_eids,
             ).fetchall():
@@ -286,6 +303,10 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 )
                 _sup_parent_qty[_srow["ebay_item_id"]] = int(_srow["quantity_ebay"] or 0)
                 _sup_parent_ended[_srow["ebay_item_id"]] = _ended
+                _sup_parent_listing[_srow["ebay_item_id"]] = {
+                    "current_price": _srow["current_price"],
+                    "ebay_image_url": _srow["ebay_image_url"],
+                }
 
     # 4 区分に分離 (2026-04-24 rev2):
     #   revive: eBay qty=0 + alt=0 + status IN (pending,accepted) → 復活候補 (actionable 最優先)
@@ -393,8 +414,13 @@ def render_supplier_candidates_tab(s: dict) -> None:
         # money-direct path (採用/不採用/ReviseItem) は不変、純粋に表示整理のみ.
         # 2026-04-26: eBay 出品額 (USD + JPY 換算) 表示。user 要望対応.
         # ebay_item_id から ebay_listings.current_price を引いて利益判断と並列表示.
+        # W314 Phase 4 (2026-07-03): N+1 解消。旧実装はカード毎に
+        # get_ebay_listing_by_item_id(SELECT * FROM ebay_listings) を個別発行して
+        # いたが、caller (render_supplier_candidates_tab) が既に _sup_parent_status
+        # 等と同じ一括 SELECT で current_price / ebay_image_url を取得済のため、
+        # そのキャッシュ dict から引く (sku-rules: ebay_item_id キー、DB 再アクセスなし)。
         _ebay_price_usd: Optional[float] = None
-        _ebay_listing = get_ebay_listing_by_item_id(row.get("ebay_item_id"))
+        _ebay_listing = _sup_parent_listing.get(row.get("ebay_item_id") or "")
         if _ebay_listing:
             _ebay_price_usd = _ebay_listing.get("current_price")
         # 為替レートで JPY 換算 (settings の exchange_rate 使用、無ければ 150 fallback)
@@ -410,7 +436,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
 
         from tabs._supplier_card_html import render_supplier_card_html
         # W258/Phase-B (2026-06-11): eBay 画像 + 仕入先画像を比較カードに渡す。
-        # ebay_image_url: get_ebay_listing_by_item_id で取得した listing dict から。
+        # ebay_image_url: _sup_parent_listing (caller の一括 SELECT) から
+        # (W314 Phase 4 で get_ebay_listing_by_item_id 個別呼出から統合).
         # candidate_image_url: supplier_candidates 行の列 (v71 migration 後) から。
         _ebay_img_url: Optional[str] = (
             _ebay_listing.get("ebay_image_url") if _ebay_listing else None
@@ -444,6 +471,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 ebay_image_url=_ebay_img_url,
                 candidate_image_url=_cand_img_url,
                 profit_excl_refund_jpy=_profit_excl,
+                # W314 Phase 4: CSS はタブ先頭で 1 回だけ出力済み (_CARD_CSS 直接注入)。
+                include_css=False,
             ),
             unsafe_allow_html=True,
         )

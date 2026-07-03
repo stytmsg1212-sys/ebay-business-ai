@@ -62,22 +62,31 @@ from tabs._finishing_panel_state import (
 
 logger = logging.getLogger(__name__)
 
-_CSS_SENTINEL = "_pf_css_injected"
-
 _RANK_BLANK = "（未設定 / eBay未取得）"
+
+_PANEL_CSS = """<style>
+.pf-money-note { color:#7a5407; font-size:12px; font-weight:600; }
+</style>"""
 
 
 def _inject_css_once() -> None:
-    """パネル用 CSS を 1 回だけ注入する (設計書§7 性能設計、session_state センチネル)."""
-    if st.session_state.get(_CSS_SENTINEL):
-        return
-    st.session_state[_CSS_SENTINEL] = True
-    st.markdown(
-        """<style>
-        .pf-money-note { color:#7a5407; font-size:12px; font-weight:600; }
-        </style>""",
-        unsafe_allow_html=True,
-    )
+    """パネル用 CSS を注入する.
+
+    W314 Phase 4 (2026-07-03 性能監査): 旧実装は ``st.session_state`` センチネルで
+    「このセッションで最初の呼出のみ」に絞っていたが、``render_finishing_panel`` は
+    ``@st.fragment`` の**外側** (top-level script の通常フロー) から呼ばれるため、
+    2 回目以降の full rerun ではこの ``st.markdown`` 自体が呼ばれず、Streamlit の
+    要素ツリーからその delta path が消える → 以前注入した ``<style>`` タグが
+    DOM から除去され、``.pf-money-note`` の配色が最初の 1 回しか効かなくなる
+    (Streamlit は「今回の run で再送されなかった要素は破棄される」仕様のため、
+    静的コンテンツであっても毎 full rerun で再送しないと表示が消える)。
+    本 CSS は 3 行のみで再送コストが無視できるため、センチネルは撤去し
+    無条件で毎回出力する (正しさ優先、K1)。360 行規模の商品管理 CSS /
+    仕入先候補カード CSS (145 行×カード数) のような重い重複は
+    tab_product_management.py / tab_supplier_candidates.py / tab_inventory_monitor.py
+    側で「1 render 内で 1 回だけ」(session 単位でなく) の安全な方式に対応済み。
+    """
+    st.markdown(_PANEL_CSS, unsafe_allow_html=True)
 
 
 def render_finishing_panel(

@@ -661,7 +661,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
                             _oos_ebay_img = item.get("ebay_image_url") or ""
                             _oos_cand_img = _c.get("candidate_image_url") or ""
                             if _oos_ebay_img or _oos_cand_img:
-                                from tabs._supplier_card_html import _CARD_CSS
                                 from html import escape as _hesc
                                 _oos_price = item.get("current_price")
 
@@ -690,8 +689,10 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                     f'{_imgcell(_oos_cand_img, _cand_cap)}'
                                     f'</div>'
                                 )
+                                # W314 Phase 4: CSS はループ手前で 1 回だけ出力済み
+                                # (_oos_card_css)。ここでは div のみ送出。
                                 st.markdown(
-                                    _CARD_CSS + _oos_imgpair,
+                                    _oos_imgpair,
                                     unsafe_allow_html=True,
                                 )
                         with _link_col:
@@ -909,6 +910,17 @@ def render_inventory_monitor_tab(s: dict) -> None:
                 "各商品のすぐ下に仕入先候補(上位3件)を表示。「採用」を押すとその場で eBay へ "
                 "SKU 反映まで実行されます。候補がない商品は「在庫を0にする」で販売停止できます。"
             )
+
+            # W314 Phase 4 (2026-07-03 性能設計書§7): _CARD_CSS (145行/仕入先候補
+            # カードと共有) を OOS 一覧の全 render で 1 回だけ出す。旧実装は
+            # _render_oos_block (@st.fragment、商品毎に個別インスタンス) の内部で
+            # 画像比較ブロックがある商品ごとに毎回 _CARD_CSS を同梱していた
+            # (最大 oos_items 件ぶん重複)。ここは fragment の外 (通常の top-level
+            # render 経路) で無条件に実行するため、要素ツリーから消えるリスクはない
+            # (tab_supplier_candidates.py と同一パターン)。
+            if oos_items:
+                from tabs._supplier_card_html import _CARD_CSS as _oos_card_css
+                st.markdown(_oos_card_css, unsafe_allow_html=True)
 
             # [3] st.fragment 方式 (依頼ボード#18 / 2026-06-13 全面簡素化):
             # 各商品ブロックは @st.fragment 化。候補ありは「採用」「不採用」の
