@@ -5,12 +5,24 @@ app.py L5531-5557 の巨大 ``st.markdown`` を抽出し、表示専用ヘルパ
 money-direct path (採用/不採用 eBay ReviseItem・在庫 revise・候補 DB、SKU 規約)
 は一切変更しない. **表示・配置・CSS のみ** の整理.
 
+依頼ボード #50 (2026-07-04、A2 2 カラム化への差し戻し):
+「2 つ別のものを横に並べる」(カード 2 枚横並び) は密度は上がったが見づらいと
+user 差し戻し。カード 2 枚横並びは廃止し 1 カラム縦積みに戻す (caller 側
+``tabs/tab_supplier_candidates.py`` の ``_render_card_page``)。カード内部を
+**左ペイン = eBay 側情報 / 右ペイン = 仕入先候補側情報** の 2 分割に再設計し、
+密度は「1 カードの中で情報を横に逃がす」ことで確保する。旧 ``sc-imgpair``
+(画像だけの横比較行) は本構造 (``sc-split`` / ``sc-pane``) に統合されて廃止
+(supplier candidate カードでの使用のみ廃止。``tab_inventory_monitor.py`` は
+``_CARD_CSS`` を import して独自に ``sc-imgpair`` 系 class を使い続けるため、
+CSS 定義自体は削除しない = 後方互換維持)。
+
 設計指針:
 - 純関数 (caller が ``ebay_price_usd`` / ``ebay_price_jpy`` / ``profit_jpy`` /
   ``parent_status`` を取得済の値として渡す). DB を引かない.
-- 採算 2 軸 (eBay 出品 $ / 仕入 ¥ → 利益 +¥(率)) を 2 行レイアウトで強調.
+- 採算 2 軸 (eBay 出品 $ / 仕入 ¥ → 利益 +¥(率)) を左右ペインへ分離、利益結果
+  (共通情報) はカード下部の全幅帯で強調.
 - 利益正負で緑/赤 (3 色: profitable/loss/N/A).
-- score / 採算 / model 評価を inline badge で可視化.
+- score / 採算 / model 評価を inline badge で可視化 (カード上部の全幅帯).
 - self-contained CSS (ヘルパ先頭で一度だけ ``<style>`` 出力. 商品管理 pm-*
   注入には非依存).
 """
@@ -172,6 +184,62 @@ _CARD_CSS = """
   text-overflow:ellipsis;
   max-width:100%;
 }
+.sc-split{
+  display:flex;
+  gap:8px;
+  margin-top:5px;
+  align-items:stretch;
+}
+.sc-pane{
+  flex:1 1 50%;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.sc-pane-left{
+  border-right:1px dashed rgba(166,150,121,0.35);
+  padding-right:8px;
+}
+.sc-pane-label{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:0.3px;
+  text-transform:uppercase;
+  color:#8d927f;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sc-pane-img{
+  height:96px;
+  width:100%;
+  object-fit:contain;
+  border-radius:4px;
+  background:rgba(166,150,121,0.12);
+}
+.sc-pane-img-placeholder{
+  height:96px;
+  width:100%;
+  background:rgba(166,150,121,0.10);
+  border:1px dashed rgba(166,150,121,0.35);
+  border-radius:4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  color:#8d927f;
+}
+.sc-pane-title{
+  font-size:11px;
+  color:#2a2e2a;
+  line-height:1.3;
+}
+.sc-pane-price{
+  font-family:Share Tech Mono,monospace;
+  font-size:12px;
+  color:#5f6557;
+}
 </style>
 """
 
@@ -229,8 +297,14 @@ def render_supplier_card_html(
     candidate_image_url: Optional[str] = None,
     profit_excl_refund_jpy: Optional[float] = None,
     include_css: bool = True,
+    ebay_title: Optional[str] = None,
 ) -> str:
     """1 候補カードの HTML 文字列を返す (Streamlit ``st.markdown`` 用).
+
+    依頼ボード #50 (2026-07-04): カード内部は **左ペイン = eBay 側情報 /
+    右ペイン = 仕入先候補側情報** の 2 分割 (``sc-split`` / ``sc-pane``)。
+    score・SKU・ItemID・採算バッジ等の共通メタはカード上部の全幅帯 (``sc-row1``)、
+    利益計算結果・リンクは下部の全幅帯 (``sc-money``) に残す。
 
     Args:
         row: ``supplier_candidates`` 1 行 (DB row dict). ``match_score`` /
@@ -248,15 +322,18 @@ def render_supplier_card_html(
         parent_status: 親 listing の ``source_status`` (``"在庫有"`` で復活警告
             出す). caller の ``_sup_parent_status`` dict から渡す.
         ebay_image_url: W258/Phase-B (2026-06-11) eBay 出品の 1 枚目画像 URL.
-            None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
+            None の場合は左ペインにプレースホルダを表示.
         candidate_image_url: W258/Phase-B (2026-06-11) 仕入先候補の 1 枚目画像 URL.
-            None の場合はプレースホルダを表示. 両方 None なら imgpair ブロック非表示.
+            None の場合は右ペインにプレースホルダを表示.
         include_css: True (既定) なら ``<style>`` を同梱 (自己完結・単体呼出でも
             unit test でも常に見た目が正しい)。W314 Phase 4 (2026-07-03 性能設計書§7):
             同一 render pass で複数カードを描く caller (tab_supplier_candidates.py)
             は 1 回だけ ``<style>`` を出し、2 枚目以降は ``include_css=False`` で
             重複 CSS (145 行 × カード数) の再送信を避ける。関数の既定挙動は不変
             (既存 test の ``"<style>" in html`` assertion に影響しない)。
+        ebay_title: 依頼ボード #50 (2026-07-04) eBay 側の現行タイトル
+            (``ebay_listings.title``). caller の一括 SELECT dict から渡す。
+            None の場合は「(タイトル未取得)」を表示。
 
     Returns:
         ``str``: (``include_css`` なら ``<style>`` +) ``<div class="sc-card">...</div>``.
@@ -314,10 +391,7 @@ def render_supplier_card_html(
         f'</div>'
     )
 
-    # ── 商品名 ──
-    title_html = f'<div class="sc-title">{_esc(title)}</div>'
-
-    # ── Row 2: 採算 2 軸 (eBay $ → 仕入 ¥ → 利益 +¥(率)) ──
+    # ── 採算 2 軸の材料 (eBay $ / 仕入 ¥、左右ペインの価格行に使う) ──
     if ebay_price_usd:
         ebay_part = (
             f'<span class="sc-ebay">eBay出品 ${ebay_price_usd:.2f}'
@@ -372,59 +446,52 @@ def render_supplier_card_html(
         if url else ''
     )
 
+    # ── 共通情報帯 (下部): 利益計算結果 + リンク。eBay $ / 仕入 ¥ は左右
+    # ペインへ移動 (依頼ボード #50、旧実装はここに ebay_part/cost_part も同居) ──
     money_html = (
         f'<div class="sc-money">'
-        f'{ebay_part}{cost_part}{profit_part}{link_part}'
+        f'{profit_part}{link_part}'
         f'</div>'
     )
 
-    # ── 画像比較カード (W258/Phase-B): eBay 1枚目 × 仕入先 1枚目 ──
-    # 両方 None の場合はブロック自体を出さない (空白を増やさない)。
-    # 片方 None の場合はプレースホルダ div (高さ 150px 維持、左右ズレ防止)。
-    imgpair_html = ""
+    # ── 左ペイン: eBay 側情報 (画像 + 現行タイトル + 現行価格) ──
     _ebay_img = (ebay_image_url or "").strip()
+    _ebay_title_disp = ebay_title or "(タイトル未取得)"
+    _ebay_img_html = (
+        f'<a href="{_esc(_ebay_img)}" target="_blank" rel="noopener">'
+        f'<img class="sc-pane-img" src="{_esc(_ebay_img)}" alt="eBay" loading="lazy">'
+        f'</a>'
+        if _ebay_img else
+        '<div class="sc-pane-img-placeholder">画像未取得</div>'
+    )
+    left_pane_html = (
+        f'<div class="sc-pane sc-pane-left">'
+        f'<div class="sc-pane-label">eBay出品</div>'
+        f'{_ebay_img_html}'
+        f'<div class="sc-pane-title">{_esc(_ebay_title_disp)}</div>'
+        f'<div class="sc-pane-price">{ebay_part}</div>'
+        f'</div>'
+    )
+
+    # ── 右ペイン: 仕入先候補側情報 (画像 + 候補タイトル + 候補価格) ──
     _cand_img = (candidate_image_url or "").strip()
-    if _ebay_img or _cand_img:
-        # eBay 側セル
-        if _ebay_img:
-            _ebay_cap = f"eBay ${ebay_price_usd:.2f}" if ebay_price_usd else "eBay"
-            _ebay_cell = (
-                f'<div class="sc-imgpair-cell">'
-                f'<a href="{_esc(_ebay_img)}" target="_blank" rel="noopener">'
-                f'<img src="{_esc(_ebay_img)}" alt="eBay" loading="lazy">'
-                f'</a>'
-                f'<div class="sc-imgpair-caption">{_esc(_ebay_cap)}</div>'
-                f'</div>'
-            )
-        else:
-            _ebay_cell = (
-                '<div class="sc-imgpair-cell">'
-                '<div class="sc-imgpair-placeholder">画像未取得</div>'
-                '<div class="sc-imgpair-caption">eBay</div>'
-                '</div>'
-            )
-        # 仕入先側セル
-        _cand_price = row.get("candidate_price_jpy")
-        _cand_cap = f"¥{_cand_price:,}" if _cand_price else "仕入先"
-        if _cand_img:
-            _cand_cell = (
-                f'<div class="sc-imgpair-cell">'
-                f'<a href="{_esc(_cand_img)}" target="_blank" rel="noopener">'
-                f'<img src="{_esc(_cand_img)}" alt="仕入先" loading="lazy">'
-                f'</a>'
-                f'<div class="sc-imgpair-caption">{_esc(_cand_cap)}</div>'
-                f'</div>'
-            )
-        else:
-            _cand_cell = (
-                '<div class="sc-imgpair-cell">'
-                '<div class="sc-imgpair-placeholder">画像未取得</div>'
-                f'<div class="sc-imgpair-caption">{_esc(_cand_cap)}</div>'
-                '</div>'
-            )
-        imgpair_html = (
-            f'<div class="sc-imgpair">{_ebay_cell}{_cand_cell}</div>'
-        )
+    _cand_img_html = (
+        f'<a href="{_esc(_cand_img)}" target="_blank" rel="noopener">'
+        f'<img class="sc-pane-img" src="{_esc(_cand_img)}" alt="仕入先" loading="lazy">'
+        f'</a>'
+        if _cand_img else
+        '<div class="sc-pane-img-placeholder">画像未取得</div>'
+    )
+    right_pane_html = (
+        f'<div class="sc-pane sc-pane-right">'
+        f'<div class="sc-pane-label">仕入先候補 ({_esc(str(platform))})</div>'
+        f'{_cand_img_html}'
+        f'<div class="sc-pane-title">{_esc(title)}</div>'
+        f'<div class="sc-pane-price">{cost_part}</div>'
+        f'</div>'
+    )
+
+    split_html = f'<div class="sc-split">{left_pane_html}{right_pane_html}</div>'
 
     # ── Note (判定理由 / 別出品提案 / ジャンク警告 / 仕入先復活警告) ──
     reasoning_html = (
@@ -453,7 +520,7 @@ def render_supplier_card_html(
 
     card_html = (
         f'<div class="sc-card">'
-        f'{row1_html}{imgpair_html}{title_html}{money_html}'
+        f'{row1_html}{split_html}{money_html}'
         f'{reasoning_html}{alt_html}{junk_html}{recovered_html}'
         f'</div>'
     )

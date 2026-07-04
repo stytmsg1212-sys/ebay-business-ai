@@ -242,11 +242,18 @@ class TestMigrationV71RealInitDb:
 
 
 # ---------------------------------------------------------------------------
-# B-5 _supplier_card_html: imgpair 3 ケース
+# B-5 _supplier_card_html: 左右ペイン画像 3 ケース
+#
+# 依頼ボード #50 (2026-07-04): カード内部を左ペイン (eBay 側) / 右ペイン
+# (仕入先候補側) の 2 分割に再設計。旧 ``sc-imgpair`` (画像だけの横比較行、
+# 両方 None ならブロック自体非表示) は ``sc-split`` / ``sc-pane`` に統合され
+# 廃止 (supplier candidate カードでの使用のみ)。ペインは画像の有無に関わらず
+# 常に描画される (タイトル・価格も内包するため)。画像が無い場合はペイン内の
+# 画像スロットにプレースホルダが出る。
 # ---------------------------------------------------------------------------
 
-class TestSupplierCardHtmlImgpair:
-    """render_supplier_card_html の imgpair ブロックを 3 ケースで検証する。"""
+class TestSupplierCardHtmlSplitPane:
+    """render_supplier_card_html の左右ペイン (画像スロット) を 3 ケースで検証する。"""
 
     def _make_row(self) -> dict:
         return {
@@ -270,7 +277,7 @@ class TestSupplierCardHtmlImgpair:
         }
 
     def test_both_images_present(self):
-        """両画像あり: sc-imgpair ブロックが存在し、両 img タグが含まれる。"""
+        """両画像あり: sc-split ブロックが存在し、両 img タグが含まれる。"""
         from tabs._supplier_card_html import render_supplier_card_html
         row = self._make_row()
         html = render_supplier_card_html(
@@ -282,7 +289,9 @@ class TestSupplierCardHtmlImgpair:
             ebay_image_url="https://i.ebayimg.com/images/g/abc/s-l1600.jpg",
             candidate_image_url="https://static.mercdn.net/item/detail/orig/photos/m123_1.jpg",
         )
-        assert 'class="sc-imgpair"' in html
+        assert 'class="sc-split"' in html
+        assert 'class="sc-pane sc-pane-left"' in html
+        assert 'class="sc-pane sc-pane-right"' in html
         assert 'i.ebayimg.com' in html
         assert 'static.mercdn.net' in html
         # img タグが 2 つ存在する
@@ -291,7 +300,7 @@ class TestSupplierCardHtmlImgpair:
         assert "画像未取得" not in html
 
     def test_ebay_image_only(self):
-        """eBay 画像あり、仕入先なし: 仕入先側にプレースホルダが出る。"""
+        """eBay 画像あり、仕入先なし: 右ペイン (仕入先側) にプレースホルダが出る。"""
         from tabs._supplier_card_html import render_supplier_card_html
         row = self._make_row()
         html = render_supplier_card_html(
@@ -303,14 +312,14 @@ class TestSupplierCardHtmlImgpair:
             ebay_image_url="https://i.ebayimg.com/images/g/abc/s-l1600.jpg",
             candidate_image_url=None,
         )
-        assert 'class="sc-imgpair"' in html
+        assert 'class="sc-split"' in html
         assert 'i.ebayimg.com' in html
         assert "画像未取得" in html
         # img タグは eBay 側の 1 つのみ
         assert html.count("<img ") == 1
 
     def test_candidate_image_only(self):
-        """仕入先画像あり、eBay なし: eBay 側にプレースホルダが出る。"""
+        """仕入先画像あり、eBay なし: 左ペイン (eBay 側) にプレースホルダが出る。"""
         from tabs._supplier_card_html import render_supplier_card_html
         row = self._make_row()
         html = render_supplier_card_html(
@@ -322,13 +331,13 @@ class TestSupplierCardHtmlImgpair:
             ebay_image_url=None,
             candidate_image_url="https://static.mercdn.net/item/detail/orig/photos/m123_1.jpg",
         )
-        assert 'class="sc-imgpair"' in html
+        assert 'class="sc-split"' in html
         assert 'static.mercdn.net' in html
         assert "画像未取得" in html
         assert html.count("<img ") == 1
 
     def test_both_images_absent(self):
-        """両方 None: sc-imgpair ブロック自体が出ない。"""
+        """両方 None: sc-split / 両ペインは描画されるがプレースホルダ 2 つ (画像スロットのみ空)。"""
         from tabs._supplier_card_html import render_supplier_card_html
         row = self._make_row()
         html = render_supplier_card_html(
@@ -340,8 +349,9 @@ class TestSupplierCardHtmlImgpair:
             ebay_image_url=None,
             candidate_image_url=None,
         )
-        assert 'class="sc-imgpair"' not in html
-        assert "画像未取得" not in html
+        assert 'class="sc-split"' in html
+        assert html.count("<img ") == 0
+        assert html.count("画像未取得") == 2
 
     def test_url_escaped_in_html(self):
         """XSS: URL に特殊文字が含まれる場合に HTML エスケープされる。"""

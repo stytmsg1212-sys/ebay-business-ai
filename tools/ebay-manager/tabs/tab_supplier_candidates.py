@@ -355,7 +355,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
             _ph = ",".join("?" * len(_sup_eids))
             for _srow in _sup_cc.execute(
                 f"""SELECT ebay_item_id, source_status, is_ended, quantity_ebay,
-                           current_price, ebay_image_url
+                           current_price, ebay_image_url, title
                     FROM ebay_listings WHERE ebay_item_id IN ({_ph})""",
                 _sup_eids,
             ).fetchall():
@@ -368,6 +368,9 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 _sup_parent_listing[_srow["ebay_item_id"]] = {
                     "current_price": _srow["current_price"],
                     "ebay_image_url": _srow["ebay_image_url"],
+                    # 依頼ボード #50 (2026-07-04): カード左ペイン (eBay 側) に
+                    # 現行タイトルを表示するため追加 (表示のみ、money-direct 無関係).
+                    "title": _srow["title"],
                 }
 
     # 4 区分に分離 (2026-04-24 rev2):
@@ -535,6 +538,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
                 profit_excl_refund_jpy=_profit_excl,
                 # W314 Phase 4: CSS はタブ先頭で 1 回だけ出力済み (_CARD_CSS 直接注入)。
                 include_css=False,
+                # 依頼ボード #50 (2026-07-04): 左ペイン (eBay 側) の現行タイトル.
+                ebay_title=(_ebay_listing.get("title") if _ebay_listing else None),
             ),
             unsafe_allow_html=True,
         )
@@ -846,19 +851,14 @@ def render_supplier_candidates_tab(s: dict) -> None:
         (W174-pm と同 pattern)。page_key は履歴タブで rejected/applied の 2 リストを
         区別するため context と別引数 (widget key 衝突防止)。
 
-        タブ密度化リファクタ A2 (2026-07-04): カード 2 枚を横並び (2 カラム)
-        に変更 (user 承認済み密度スペック、1000px 窓で 490px×2 相当)。
-        _render_candidate_card は元々 @st.fragment (button 押下時のタブ維持
-        目的、W174-pm) なので、st.columns の内側に置いても fragment nesting
-        は 1 段のまま (columns→columns の nest も 1 段のみ、既存 _btn_cols=
-        st.columns(4) と合わせて最大 2 層、Streamlit 許容範囲内)。件数/表示
-        ロジックは不変、配置のみ変更。"""
+        依頼ボード #50 (2026-07-04): タブ密度化 A2 (カード 2 枚横並び) は
+        「2 つ別のものを横に並べる形」が見づらいと user 差し戻し。1 カラム
+        縦積みに戻す (密度はカード内部の左右ペイン分割 [``sc-split``] で確保)。
+        件数/ページングロジックは不変、配置のみ変更。"""
         _key = f"_sup_shown_{page_key}"
         _shown = st.session_state.setdefault(_key, 10)
-        _col_a, _col_b = st.columns(2, gap="small")
-        for _i, _row in enumerate(rows[:_shown]):
-            with (_col_a if _i % 2 == 0 else _col_b):
-                _render_candidate_card(_row, context=context)
+        for _row in rows[:_shown]:
+            _render_candidate_card(_row, context=context)
         _remain = len(rows) - _shown
         if _remain > 0:
             def _show_more(k: str = _key) -> None:
