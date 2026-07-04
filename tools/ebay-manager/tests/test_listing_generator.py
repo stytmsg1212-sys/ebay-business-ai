@@ -692,6 +692,58 @@ class TestGenerateListing:
                 result = generate_listing(product, None, rank, self._tpl())
         assert len(result.ebay_title) == 80
 
+    # -----------------------------------------------------------------
+    # #44 (2026-07-04) 原産国混入チェーン封鎖 2/3: generate_listing のパース層
+    # (プロンプト guard だけに頼らず、Claude が禁止 Name を返しても機械的に除外)
+    # -----------------------------------------------------------------
+    def test_forbidden_manufacturer_keys_excluded_from_item_specifics(self):
+        product = _ScrapedProduct(title_ja="X", price_jpy=1000)
+        rank = _Rank()
+        claude_payload = {
+            "title": "X", "product_name": "X", "quick_notes": "n",
+            "includes_items": [], "specs": [],
+            "item_specifics": {
+                "Brand": "Sony",
+                "Country of Origin": "Japan",
+                "Country/Region of Manufacture": "China",
+                "Country of Manufacture": "Vietnam",
+                "Manufacturer": "Sony Corp",
+                "Model": "WH-1000XM5",
+            },
+        }
+        resp = _make_claude_response(claude_payload)
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = resp
+
+        with patch("monitor.listing_generator._get_client", return_value=fake_client):
+            with patch("monitor.listing_generator.log_anthropic_response", create=True):
+                result = generate_listing(product, None, rank, self._tpl())
+
+        assert result.item_specifics == {"Brand": "Sony", "Model": "WH-1000XM5"}
+        for forbidden in (
+            "Country of Origin", "Country/Region of Manufacture",
+            "Country of Manufacture", "Manufacturer",
+        ):
+            assert forbidden not in result.item_specifics
+
+    def test_forbidden_manufacturer_key_case_insensitive_excluded(self):
+        product = _ScrapedProduct(title_ja="X", price_jpy=1000)
+        rank = _Rank()
+        claude_payload = {
+            "title": "X", "product_name": "X", "quick_notes": "n",
+            "includes_items": [], "specs": [],
+            "item_specifics": {"Brand": "Sony", "MANUFACTURER": "Sony Corp"},
+        }
+        resp = _make_claude_response(claude_payload)
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = resp
+
+        with patch("monitor.listing_generator._get_client", return_value=fake_client):
+            with patch("monitor.listing_generator.log_anthropic_response", create=True):
+                result = generate_listing(product, None, rank, self._tpl())
+
+        assert result.item_specifics == {"Brand": "Sony"}
+
 
 # =========================================================================
 # GeneratedListing dataclass

@@ -19,8 +19,14 @@ from monitor.database import get_conn
 
 logger = logging.getLogger(__name__)
 
-# field 許容値 (設計書 §6 API 契約 コメント準拠)
-VALID_FIELDS = frozenset({"title", "description", "images", "rank", "quantity"})
+# field 許容値 (設計書 §6 API 契約 コメント準拠)。
+# condition_description: #44 パネルの CD 反映で使用 (元 VALID_FIELDS 漏れで
+# ValueError → 呼出側 try/except に飲まれ監査証跡欠落するバグを修正、2026-07-04)。
+# item_specifics: #44 で ItemSpecifics 反映実装中のため先行追加。
+VALID_FIELDS = frozenset({
+    "title", "description", "images", "rank", "quantity",
+    "condition_description", "item_specifics",
+})
 
 
 def _serialize(value):

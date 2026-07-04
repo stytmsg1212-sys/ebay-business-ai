@@ -140,6 +140,8 @@ def generate_supplier_description(
          'description_html': str,    # 生成された HTML body
          'rank_code': str,           # 使用したランク (override or 自動)
          'title_en': str,            # Claude 生成 英語タイトル (preview 用)
+         'item_specifics': dict,     # #44 (2026-07-04): Claude 生成 Item Specifics
+         'condition_description': str,  # #44: eBay ConditionDescription 用ランク要約 (65字以内)
          'message': str}
     """
     # W226 (2026-06-06): scrape_supplier_url → resolve_product_from_url。
@@ -309,6 +311,11 @@ def generate_supplier_description(
         'description_html': desc,
         'rank_code': rank.rank_code,
         'title_en': getattr(gl, 'title_en', '') or '',
+        # #44 (2026-07-04): item_specifics/condition_description は generate_listing が
+        # 既にパース済み (listing_generator.py L883-890 / L783-784) だったが従来ここで
+        # 捨てていた。呼出側 (_finishing_panel_state.generate_description_via_ai) へ通す。
+        'item_specifics': dict(getattr(gl, 'item_specifics', {}) or {}),
+        'condition_description': (getattr(gl, 'condition_description', '') or '')[:65],
         'message': (
             f'description 生成成功 (rank={rank.rank_code}, '
             f'{len(desc)} 文字)'

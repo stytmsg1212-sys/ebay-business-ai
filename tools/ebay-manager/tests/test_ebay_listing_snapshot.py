@@ -145,3 +145,77 @@ def test_http_error_returns_ok_false():
         s = _call()
     assert s.ok is False
     assert "通信エラー" in (s.error or "")
+
+
+# ── #44 Wave2 (2026-07-04): title/condition_description/item_specifics/picture_count ──
+
+_SPECIFICS_XML = """<?xml version="1.0" encoding="utf-8"?>
+<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <Item>
+    <ItemID>356364841116</ItemID>
+    <SKU>stock:01</SKU>
+    <Title>Sony WH-1000XM5 Wireless Headphones Black</Title>
+    <StartPrice currencyID="USD">148.0</StartPrice>
+    <ConditionID>3000</ConditionID>
+    <ConditionDescription>Tested and fully working (2026-07). Minor cosmetic wear.</ConditionDescription>
+    <PictureDetails>
+      <PictureURL>https://i.ebayimg.com/images/g/abc/s-l500.jpg</PictureURL>
+      <PictureURL>https://i.ebayimg.com/images/g/def/s-l500.jpg</PictureURL>
+    </PictureDetails>
+    <ItemSpecifics>
+      <NameValueList>
+        <Name>Brand</Name>
+        <Value>Sony</Value>
+      </NameValueList>
+      <NameValueList>
+        <Name>Country of Origin</Name>
+        <Value>Japan</Value>
+      </NameValueList>
+    </ItemSpecifics>
+  </Item>
+</GetItemResponse>"""
+
+
+def test_request_xml_includes_item_specifics_flag():
+    """#44 Wave2: outbound GetItem request に
+    <IncludeItemSpecifics>true</IncludeItemSpecifics> が含まれる (実 API probe
+    で確定した必須要素、data/tmp/coo_scan.py 参照)。#44 G2 で共通ビルダー
+    `_build_get_item_xml` (monitor/ebay_client.py) 側が既定送出するよう
+    修正済のため、fetch_listing_snapshot は追加パラメータ無しでこれを満たす。"""
+    import monitor.ebay_listing_snapshot as m
+    captured = {}
+
+    def _fake_post(url, content=None, **kwargs):
+        captured["xml"] = content.decode("utf-8") if isinstance(content, bytes) else content
+        return _resp(_SPECIFICS_XML)
+
+    with patch.object(m, "_resolve_active_token", side_effect=lambda t: t), \
+         patch.object(m.httpx, "post", side_effect=_fake_post):
+        _call()
+    assert "<IncludeItemSpecifics>true</IncludeItemSpecifics>" in captured["xml"]
+
+
+def test_parses_title_condition_description_specifics_and_pictures():
+    import monitor.ebay_listing_snapshot as m
+    with patch.object(m, "_resolve_active_token", side_effect=lambda t: t), \
+         patch.object(m.httpx, "post", return_value=_resp(_SPECIFICS_XML)):
+        s = _call()
+    assert s.ok is True
+    assert s.title == "Sony WH-1000XM5 Wireless Headphones Black"
+    assert s.condition_description == (
+        "Tested and fully working (2026-07). Minor cosmetic wear."
+    )
+    assert s.item_specifics == {"Brand": ["Sony"], "Country of Origin": ["Japan"]}
+    assert s.picture_count == 2
+
+
+def test_title_and_specifics_default_to_empty_when_absent():
+    """Title/ItemSpecifics/PictureDetails が応答に無い場合でも壊れない
+    (item_specifics=空dict, picture_count=0)."""
+    import monitor.ebay_listing_snapshot as m
+    with patch.object(m, "_resolve_active_token", side_effect=lambda t: t), \
+         patch.object(m.httpx, "post", return_value=_resp(_OK_XML)):
+        s = _call()
+    assert s.item_specifics == {}
+    assert s.picture_count == 0

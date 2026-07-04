@@ -236,9 +236,55 @@ def test_log_content_change_rejects_empty_ebay_item_id(tmp_db):
 
 
 @pytest.mark.parametrize(
-    "field", ["title", "description", "images", "rank", "quantity"]
+    "field",
+    [
+        "title", "description", "images", "rank", "quantity",
+        "condition_description", "item_specifics",
+    ],
 )
 def test_log_content_change_accepts_all_valid_fields(tmp_db, field):
     from monitor.listing_content_change_log import log_content_change
     new_id = log_content_change("110000000009", field, "before", "after")
     assert new_id > 0
+
+
+# ---- #44 追加 field (condition_description / item_specifics) round-trip ----
+
+def test_log_content_change_condition_description_roundtrip(tmp_db):
+    """#44: パネルの CD 反映が ValueError で飲まれず監査証跡が残ることを保証."""
+    from monitor.listing_content_change_log import (
+        log_content_change, get_content_changes,
+    )
+    new_id = log_content_change(
+        "110000000010", "condition_description", "old CD", "new CD",
+        source_tab="finishing_panel", success=True, ebay_ack="Success",
+    )
+    assert new_id is not None and new_id > 0
+
+    rows = get_content_changes("110000000010")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["field"] == "condition_description"
+    assert row["before_value"] == "old CD"
+    assert row["after_value"] == "new CD"
+    assert row["success"] is True
+
+
+def test_log_content_change_item_specifics_roundtrip(tmp_db):
+    """#44: ItemSpecifics 反映用 field (先行追加分) の round-trip."""
+    from monitor.listing_content_change_log import (
+        log_content_change, get_content_changes,
+    )
+    new_id = log_content_change(
+        "110000000011", "item_specifics", "Brand: Old", "Brand: New",
+        source_tab="finishing_panel", success=True,
+    )
+    assert new_id is not None and new_id > 0
+
+    rows = get_content_changes("110000000011")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["field"] == "item_specifics"
+    assert row["before_value"] == "Brand: Old"
+    assert row["after_value"] == "Brand: New"
+    assert row["success"] is True

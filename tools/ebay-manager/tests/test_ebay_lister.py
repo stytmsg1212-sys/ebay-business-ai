@@ -330,6 +330,57 @@ class TestBuildItemSpecificsXml:
         xml = _build_item_specifics_xml({'Field': val})
         assert f'<Value>{"X" * 65}</Value>' in xml
 
+    # -----------------------------------------------------------------
+    # #44 (2026-07-04) 原産国混入チェーン封鎖 1/3: AddItem XML builder が
+    # 禁止 Name (原産国/Manufacturer 系) を「値が正当でも」除外すること。
+    # (旧 test_unknown_placeholder_value_excluded は value=N/A による placeholder
+    #  除外の副産物で Name 自体を狙ったテストでは無かったため、本テストで固定する)
+    # -----------------------------------------------------------------
+    def test_country_of_origin_excluded_even_with_valid_value(self):
+        xml = _build_item_specifics_xml({
+            'Brand': 'Sony', 'Country of Origin': 'Japan',
+        })
+        assert '<Name>Brand</Name>' in xml
+        assert '<Name>Country of Origin</Name>' not in xml
+        assert '<Value>Japan</Value>' not in xml
+
+    def test_all_forbidden_manufacturer_name_variants_excluded(self):
+        xml = _build_item_specifics_xml({
+            'Brand': 'Sony',
+            'Country of Origin': 'Japan',
+            'Country/Region of Manufacture': 'China',
+            'Country of Manufacture': 'Vietnam',
+            'Manufacturer': 'Sony Corp',
+        })
+        assert '<Name>Brand</Name>' in xml
+        for forbidden in (
+            'Country of Origin', 'Country/Region of Manufacture',
+            'Country of Manufacture', 'Manufacturer',
+        ):
+            assert f'<Name>{forbidden}</Name>' not in xml
+
+    def test_forbidden_name_case_insensitive(self):
+        xml = _build_item_specifics_xml({
+            'Brand': 'Sony', 'MANUFACTURER': 'Sony Corp', 'country of origin': 'Japan',
+        })
+        assert '<Name>MANUFACTURER</Name>' not in xml
+        assert '<Name>country of origin</Name>' not in xml
+
+    def test_all_forbidden_names_omits_itemspecifics_block(self):
+        """全 field が禁止 Name → ItemSpecifics ブロック自体を出力しない."""
+        xml = _build_item_specifics_xml({
+            'Manufacturer': 'Sony Corp', 'Country of Origin': 'Japan',
+        })
+        assert xml == ''
+
+    def test_forbidden_name_exclusion_logs_warning(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger='monitor.ebay_lister'):
+            _build_item_specifics_xml({'Brand': 'Sony', 'Manufacturer': 'Sony Corp'})
+        assert any('Manufacturer' in r.message for r in caplog.records), (
+            "禁止 Name 除外は Q0 (silent skip 禁止) のため warning ログが必要"
+        )
+
 
 # =========================================================================
 # _build_pictures_xml

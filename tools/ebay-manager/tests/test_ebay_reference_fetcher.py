@@ -222,6 +222,45 @@ class TestParseGetItemResponse:
         except ET.ParseError:
             pass  # 期待動作
 
+    # -----------------------------------------------------------------
+    # #44 (2026-07-04) 原産国混入チェーン封鎖 3/3: 参考 listing の
+    # ItemSpecifics Keys 抽出時点で禁止 Name (原産国/Manufacturer 系) を除外する
+    # (源流フィルタ。listing_generator.py の「Keys 完全一致で必須埋込」指示に
+    # 乗せない、多層防御)。
+    # -----------------------------------------------------------------
+    _XML_WITH_FORBIDDEN_KEYS = """<?xml version="1.0" encoding="UTF-8"?>
+<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <Item>
+    <ItemID>358463512773</ItemID>
+    <ItemSpecifics>
+      <NameValueList><Name>Brand</Name><Value>Sony</Value></NameValueList>
+      <NameValueList><Name>Country of Origin</Name><Value>Japan</Value></NameValueList>
+      <NameValueList><Name>Country/Region of Manufacture</Name><Value>China</Value></NameValueList>
+      <NameValueList><Name>Country of Manufacture</Name><Value>Vietnam</Value></NameValueList>
+      <NameValueList><Name>Manufacturer</Name><Value>Sony Corp</Value></NameValueList>
+      <NameValueList><Name>Model</Name><Value>WH-1000XM5</Value></NameValueList>
+    </ItemSpecifics>
+  </Item>
+</GetItemResponse>"""
+
+    def test_forbidden_manufacturer_keys_excluded_from_specifics_keys(self):
+        result = _parse_get_item_response(self._XML_WITH_FORBIDDEN_KEYS, '358463512773')
+        assert result.item_specifics_keys == ['Brand', 'Model']
+        for forbidden in (
+            'Country of Origin', 'Country/Region of Manufacture',
+            'Country of Manufacture', 'Manufacturer',
+        ):
+            assert forbidden not in result.item_specifics_keys
+
+    def test_forbidden_key_exclusion_logs_warning(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger='monitor.ebay_reference_fetcher'):
+            _parse_get_item_response(self._XML_WITH_FORBIDDEN_KEYS, '358463512773')
+        assert any('Manufacturer' in r.message for r in caplog.records), (
+            "禁止 Name 除外は Q0 (silent skip 禁止) のため warning ログが必要"
+        )
+
 
 # =========================================================================
 # fetch_reference_listing — 認証欠如 / invalid URL などのガードパス

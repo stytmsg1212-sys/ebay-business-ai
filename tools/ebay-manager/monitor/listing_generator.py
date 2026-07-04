@@ -110,6 +110,10 @@ class GeneratedListing:
     ebay_category_id: Optional[str] = None               # 参考 listing から or Claude 推定
     ebay_category_name: Optional[str] = None
     item_specifics: dict[str, str] = field(default_factory=dict)
+    # #44 (2026-07-04): eBay ConditionDescription 用、65字以内の英文ランク要約。
+    # 付属品欠品/傷の位置などの細部は description 本文へ (condition_description には
+    # 入れない、CLAUDE.md「Quick Notes」との役割分離)。生成失敗/未出力時は空文字。
+    condition_description: str = ""
     # 参考 listing が無い場合の Claude 提案 category 3候補
     # 各要素は {"category_id": "...", "category_name": "...", "reasoning": "..."}
     category_candidates: list[dict] = field(default_factory=list)
@@ -307,6 +311,7 @@ eBay 出品用の英語タイトル、Item Specifics、description placeholder �
     "Model": "WH-1000XM5",
     ...
   },
+  "condition_description": "eBay ConditionDescription 用のランク要約 (65字以内、英語)",
   "shipping_origin": "Tokyo, Japan (固定推奨)",
   "shipping_carrier": "FedEx International Priority / DHL SpeedPAK \u00b7 tracked, insured (settings.json shipping_timing.carrier_label で上書き可)",
   "shipping_handling": "(settings.json shipping_timing で上書きされる前提。fallback 1\u20133 business days)",
@@ -365,7 +370,17 @@ eBay 出品用の英語タイトル、Item Specifics、description placeholder �
 | Color | 単語 1-2 (Black / Silver 等) |
 | Seller Notes | **最長 65 字厳守**。短く簡潔に。長文は description に書く |
 | MPN | manufacturer part number、正確な型番 |
-| Country/Region of Manufacture | "Japan" / "China" 等。推定なら出さない |
+| Type | 商品種別 (Headphones / Speaker 等)、具体値のみ |
+
+### 🚫 絶対禁止 Keys (原産国・製造者系、2026-07-04 追加)
+
+**Country of Origin / Country/Region of Manufacture / Country of Manufacture /
+Manufacturer は item_specifics に絶対出力しない** (大文字小文字表記ゆれ含め
+一切禁止)。参考 listing の Item Specifics Keys にこれらが含まれていても、
+**Keys 完全一致の指示より本禁止が優先する**。理由: eBay 出品文に原産国情報を
+含めると US Customs が原産国を再計算する根拠を与え関税リスクに直結する
+(tools/ebay-manager/CLAUDE.md「Country of Origin / Manufacturer の layer 分離」)。
+description / condition_description と同格の絶対ガードとして扱うこと。
 
 ## Quick Notes ルール (テンプレ正源の rank_code 別仕様)
 
@@ -375,6 +390,22 @@ eBay 出品用の英語タイトル、Item Specifics、description placeholder �
 - **PO**: "Powered on successfully, but full function not verified.
   Other operations (audio/data/Bluetooth) NOT tested."
 - **As-Is**: 理由必須。"No AC adapter available for testing" / "For parts" 等
+
+## Condition Description ルール (eBay ConditionDescription 用、65字以内、2026-07-04 追加)
+
+`condition_description` は eBay の ConditionDescription フィールド (買い手に表示される
+コンディション説明) に直接反映される **短い要約** です。quick_notes とは役割が異なります。
+
+- **condition_description はランクの要約のみ**。65字以内・英語。
+  - 例 (A): "Tested and fully working (2026-07). Minor cosmetic wear."
+  - 例 (PO): "Powered on, but full function not verified."
+  - 例 (As-Is): "As-Is — No AC adapter for testing" (形式: `As-Is — <reason>`)
+- **付属品欠品・傷の位置・詳細な使用感などの細かい情報は condition_description に
+  書かない**。それらは quick_notes / includes_items / description 本文へ記載する。
+- 原産国 (Country of Origin/Manufacture) や Manufacturer に触れる語は一切含めない
+  (eBay ポリシー違反、CLAUDE.md「Country of Origin / Manufacturer の layer 分離」)。
+- 65字を超える場合は要約し直す (収まらない情報は description へ)。65字超過分は
+  呼出側で機械的に truncate されるため、途中で意味が切れないよう先に短く書くこと。
 
 ## Category 候補提示ルール (参考 listing なし時)
 
@@ -492,6 +523,10 @@ def _compose_user_prompt(product, reference, rank, extra_instructions: Optional[
         lines.append(
             "\n**重要**: 上記 CategoryID をそのまま category_id に採用し、\n"
             "Item Specifics Keys の配列に完全に一致するキーで item_specifics を返すこと。\n"
+            "ただし Country of Origin / Country/Region of Manufacture / "
+            "Country of Manufacture / Manufacturer が Keys に含まれていても "
+            "**絶対に item_specifics へ出力しない** (Keys 完全一致の指示より "
+            "絶対禁止 Keys ルールが優先する、上記「🚫 絶対禁止 Keys」参照)。\n"
             "Description / Images / Price は参考 listing からコピーしない。"
         )
     else:
@@ -780,6 +815,9 @@ def generate_listing(
     title = str(data.get("title", "")).strip()[:80]
     result.ebay_title = title
 
+    # #44 (2026-07-04): condition_description (65字以内、ランク要約のみ)
+    result.condition_description = str(data.get("condition_description", "")).strip()[:65]
+
     # category
     cat_id = data.get("category_id")
     if cat_id is not None:
@@ -881,13 +919,28 @@ def generate_listing(
                 result.ebay_category_name = reference.category_name
 
     # item_specifics
+    # #44 (2026-07-04) 原産国混入チェーン封鎖 (3点封鎖の2、generator パース層):
+    # プロンプト guard (「🚫 絶対禁止 Keys」) だけでは LLM が確実に守る保証がない
+    # ため、parse 結果からも Country of Origin / Country/Region of Manufacture /
+    # Country of Manufacture / Manufacturer を機械的に除外する (G2 の
+    # revise_item_specifics と同一の禁止 Name 集合を共有 import、多層防御)。
+    # 除外は Q0 (silent skip 禁止) のため logger.warning で痕跡を残す。
+    from monitor.ebay_client import _is_forbidden_specific_name
+
     raw_specifics = data.get("item_specifics") or {}
     if isinstance(raw_specifics, dict):
-        result.item_specifics = {
-            str(k).strip(): str(v).strip()
-            for k, v in raw_specifics.items()
-            if str(k).strip()
-        }
+        result.item_specifics = {}
+        for k, v in raw_specifics.items():
+            name = str(k).strip()
+            if not name:
+                continue
+            if _is_forbidden_specific_name(name):
+                logger.warning(
+                    "generate_listing: 禁止 item_specifics Name '%s' を除外 "
+                    "(原産国/Manufacturer 系、CLAUDE.md 規約)", name,
+                )
+                continue
+            result.item_specifics[name] = str(v).strip()
 
     # category_candidates (参考 listing なし時のみ意味を持つ)
     # 2026-04-22 FIX (code-reviewer HIGH-1): Taxonomy v2 が既に有効 leaf 候補をセット
@@ -982,6 +1035,7 @@ if __name__ == "__main__":
         "mode_class": gl.mode_class,
         "category_id": gl.ebay_category_id,
         "specifics_count": len(gl.item_specifics),
+        "condition_description": gl.condition_description,
         "generate_error": gl.generate_error,
         "description_head": gl.ebay_description[:200],
     }, ensure_ascii=False, indent=2))

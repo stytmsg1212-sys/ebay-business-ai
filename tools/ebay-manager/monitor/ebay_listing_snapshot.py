@@ -56,6 +56,16 @@ class ListingSnapshot:
     # --- W220 追加 (末尾、default 付き = 既存構築不変) ---
     # 商品ランク → eBay Condition 反映 (slice3) の pre/post verify 用。
     condition_id: Optional[str] = None         # Item/ConditionID (1000/1500/3000/7000)
+    # --- #44 Wave2 (2026-07-04) 追加 (末尾、default 付き = 既存構築不変) ---
+    # tasks/task_listing_content_audit.py (US 本体 DB↔eBay 整合性 日次突合) 用。
+    title: Optional[str] = None                  # Item/Title
+    condition_description: Optional[str] = None   # Item/ConditionDescription
+    # ItemSpecifics: {Name: [Value, ...]}。_build_get_item_xml が #44 G2 で
+    # <IncludeItemSpecifics>true</IncludeItemSpecifics> を既定送出するよう
+    # 修正されたため常時取得できる (実 API probe で IncludeSelector=Details,
+    # ItemSpecifics だけでは値が返らないと確定済、data/tmp/coo_scan.py 参照)。
+    item_specifics: Optional[dict] = None
+    picture_count: Optional[int] = None           # PictureDetails/PictureURL の件数
 
 
 def _f(text: Optional[str]) -> Optional[float]:
@@ -78,6 +88,11 @@ def fetch_listing_snapshot(
 
     ok=False の時、呼出側は「実 eBay 不明」として変更検出/verify を中断する
     (Q0: 不明を「変更なし」「成功」と誤魔化さない).
+
+    #44 Wave2 (2026-07-04) 追記: title/condition_description/item_specifics/
+    picture_count も本関数で常時 parse する (`_build_get_item_xml` は #44 G2 で
+    `<IncludeItemSpecifics>true</IncludeItemSpecifics>` を既定送出するよう
+    修正済のため、ItemSpecifics も追加パラメータ無しで取得できる)。
     """
     base = ListingSnapshot(
         item_id=item_id, sku=None, start_price_usd=None,
@@ -194,6 +209,26 @@ def fetch_listing_snapshot(
             ship_id = (shp.findtext("n:ShippingProfileID", namespaces=_NS)
                        or None)
 
+    # --- #44 Wave2 (2026-07-04): 監査用フィールド (常に parse、無ければ None/0) ---
+    title = item.findtext("n:Title", namespaces=_NS) or None
+    condition_description = (
+        item.findtext("n:ConditionDescription", namespaces=_NS) or None
+    )
+    item_specifics: dict[str, list] = {}
+    isp = item.find("n:ItemSpecifics", namespaces=_NS)
+    if isp is not None:
+        for nvl in isp.findall("n:NameValueList", namespaces=_NS):
+            name = nvl.findtext("n:Name", namespaces=_NS)
+            if not name:
+                continue
+            values = [
+                v.text for v in nvl.findall("n:Value", namespaces=_NS) if v.text
+            ]
+            item_specifics.setdefault(name, []).extend(values)
+    picture_count = len(
+        item.findall(".//n:PictureDetails/n:PictureURL", namespaces=_NS)
+    )
+
     return ListingSnapshot(
         item_id=item_id,
         sku=item.findtext("n:SKU", namespaces=_NS),
@@ -210,6 +245,10 @@ def fetch_listing_snapshot(
         ship_override_priority=ov_priority,
         # W220: ConditionID (GetItem が標準で返す)。rank→Condition verify 用。
         condition_id=(item.findtext("n:ConditionID", namespaces=_NS) or None),
+        title=title,
+        condition_description=condition_description,
+        item_specifics=item_specifics,
+        picture_count=picture_count,
     )
 
 

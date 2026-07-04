@@ -35,7 +35,11 @@ if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
         pass
 
 from monitor.credentials import get_ebay_credentials, ebay_credentials_ok
-from monitor.ebay_client import _build_get_item_xml, _call_trading_api
+from monitor.ebay_client import (
+    _build_get_item_xml,
+    _call_trading_api,
+    _is_forbidden_specific_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +253,13 @@ def _parse_get_item_response(raw_xml: str, item_id: str) -> ReferenceListing:
         result.title_sample = title_el.text.strip()[:300]
 
     # ItemSpecifics Keys
+    # #44 (2026-07-04) 原産国混入チェーン封鎖 (3点封鎖の3、源流フィルタ):
+    # 参考 listing (他セラー) の ItemSpecifics Keys を無除外で抽出すると、
+    # Country of Origin / Country/Region of Manufacture / Manufacturer が
+    # listing_generator.py の「Keys 完全一致で必須埋込」指示に乗って AddItem
+    # XML まで伝播する (CLAUDE.md「Country of Origin / Manufacturer の layer
+    # 分離」違反)。G2 の禁止 Name 集合 (revise_item_specifics と同一) を共有
+    # import し、抽出時点 (源流) でも除外する多層防御。
     keys: list[str] = []
     item_specifics = item_el.find(_ns('ItemSpecifics'))
     if item_specifics is not None:
@@ -256,7 +267,15 @@ def _parse_get_item_response(raw_xml: str, item_id: str) -> ReferenceListing:
             name_el = nvl.find(_ns('Name'))
             if name_el is not None and name_el.text:
                 name = name_el.text.strip()
-                if name and name not in keys:
+                if not name:
+                    continue
+                if _is_forbidden_specific_name(name):
+                    logger.warning(
+                        "fetch_reference_listing: 禁止 Name '%s' を item_specifics_keys "
+                        "から除外 (原産国/Manufacturer 系、CLAUDE.md 規約)", name,
+                    )
+                    continue
+                if name not in keys:
                     keys.append(name)
     result.item_specifics_keys = keys
 

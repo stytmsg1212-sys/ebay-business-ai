@@ -25,6 +25,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
@@ -610,6 +611,10 @@ class _RenderCaptureStreamlit:
         self.tables: list = []
         self.errors: list[str] = []
         self.successes: list[str] = []
+        # #44 (2026-07-04): Item Specifics data_editor 用の最小スタブ。
+        self.column_config = SimpleNamespace(
+            TextColumn=lambda *a, **kw: {"label": a[0] if a else None, "kw": kw},
+        )
 
     def button(self, label, *a, **kw):
         self.buttons.append({"label": label, "kw": kw})
@@ -690,6 +695,10 @@ class _RenderCaptureStreamlit:
     def image(self, *a, **kw):
         pass
 
+    def data_editor(self, data, *a, **kw):
+        # #44 (2026-07-04): 素通し (rows をそのまま返す = 行編集なしのデフォルト)。
+        return data
+
 
 def _install_render_capture(monkeypatch):
     from tabs import _finishing_panel as fp
@@ -697,6 +706,13 @@ def _install_render_capture(monkeypatch):
     fake = _RenderCaptureStreamlit()
     monkeypatch.setattr(fp, "st", fake)
     monkeypatch.setattr(fps, "logger", fake)  # 未使用だが念のため
+    # #44 (2026-07-04): CD / Item Specifics baseline fetch (GetItem) が
+    # _render_condition_subblock / _render_item_specifics_field から呼ばれるように
+    # なったため、実 API を叩かないよう credentials を明示的に「未設定」に固定する
+    # (Q1: 実 API 禁止、real .env の実 credentials に依存しない決定的テストにする)。
+    import monitor.credentials as cred_mod
+    monkeypatch.setattr(cred_mod, "get_ebay_credentials", lambda config=None: {})
+    monkeypatch.setattr(cred_mod, "ebay_credentials_ok", lambda c: False)
     return fake
 
 

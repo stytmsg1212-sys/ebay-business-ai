@@ -244,7 +244,18 @@ def get_active_listings(
 def _build_get_item_xml(item_id: str) -> str:
     """
     GetItem リクエストXML生成（1ItemIDごと）
-    WatchCount, HitCount, QuantitySold を取得
+    WatchCount, HitCount, QuantitySold, ItemSpecifics を取得
+
+    #44 G2 C1 fix (2026-07-04): Trading API GetItem で ItemSpecifics を確実に
+    返させるには `<IncludeItemSpecifics>true</IncludeItemSpecifics>` が必須
+    (実 API probe + eBay 公式 doc で確定)。既存の `<IncludeSelector>` は
+    Shopping API 用の request tag で、Trading API では **no-op** (silently
+    無視される)。以前は IncludeSelector だけを載せていたため ItemSpecifics
+    が常に空応答となり、revise_item_specifics の merge / read-back verify
+    が「現行 specifics=なし」を前提に動いて全置換で既存 Item Specifics を
+    silent 消去する経路になっていた。IncludeSelector 行は Trading では
+    no-op のため副作用ゼロだが、削除も改名もしない (K2 Surgical、他 caller
+    が同 XML を使っている点への影響最小化)。
     """
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -254,6 +265,8 @@ def _build_get_item_xml(item_id: str) -> str:
   <ItemID>{item_id}</ItemID>
   <DetailLevel>ReturnAll</DetailLevel>
   <IncludeWatchCount>true</IncludeWatchCount>
+  <IncludeItemSpecifics>true</IncludeItemSpecifics>
+  <!-- IncludeSelector は Shopping API 用・Trading API では no-op (削除しない、K2) -->
   <IncludeSelector>Details,ItemSpecifics</IncludeSelector>
 </GetItemRequest>"""
 
@@ -1891,6 +1904,350 @@ def revise_fixed_price_item(
             except ET.ParseError:
                 pass  # parse 不能は元の result をそのまま返す
     return result
+
+
+# =========================================================================
+# #44 G2 (2026-07-04): ReviseItem で ItemSpecifics を更新
+# =========================================================================
+
+_REVISE_SPECIFICS_MAX_VALUE_LEN = 65
+
+# 当社規約: 原産国関連の Item Specific Name は eBay 出品文に絶対記載禁止
+# (tools/ebay-manager/CLAUDE.md「Country of Origin / Manufacturer の layer 分離」)。
+# ReviseItem の ItemSpecifics は送信 NameValueList で全置換される仕様のため、
+# 入力・現行(merge元) どちらに含まれていても送信前に必ず除外する。
+_REVISE_SPECIFICS_FORBIDDEN_NAMES = frozenset({
+    "country of origin",
+    "country/region of manufacture",
+    "country of manufacture",
+    "manufacturer",
+})
+
+
+def _is_forbidden_specific_name(name: str) -> bool:
+    """Name が原産国関連の禁止 Name か判定 (前後空白除去 + 大文字小文字無視)."""
+    return (str(name) if name is not None else "").strip().lower() in \
+        _REVISE_SPECIFICS_FORBIDDEN_NAMES
+
+
+def _filter_forbidden_specifics(specifics: dict) -> tuple[dict, list[str]]:
+    """禁止 Name (原産国系) を dict から除外する.
+
+    Returns:
+        (filtered_dict, removed_names) — removed_names は除外した実際の Name
+        文字列のリスト (Q0: 除外を silent にしない、呼出側が報告に使う).
+    """
+    filtered: dict = {}
+    removed: list[str] = []
+    for name, value in (specifics or {}).items():
+        if _is_forbidden_specific_name(name):
+            removed.append(str(name))
+            continue
+        filtered[name] = value
+    return filtered, removed
+
+
+def _build_item_specifics_nvl_xml(specifics: dict) -> str:
+    """ItemSpecifics の NameValueList 群を組み立てる (revise_item_specifics 専用).
+
+    ebay_lister._build_item_specifics_xml と同じ流儀 (Name ごとに
+    NameValueList、Value は list 展開可) だが、65 字超過時は **truncate せず
+    ValueError を送出する** (revise は送信後 GetItem read-back で verify する
+    ため、無音 truncate が verify 不一致の原因になるのを避ける狙い。ADD 経路
+    の _sanitize_item_specific_value とは意図的に挙動を変えている)。
+
+    Returns:
+        '' (specifics が空 / 有効値ゼロ) または
+        '    <ItemSpecifics>\\n      <NameValueList>...\\n    </ItemSpecifics>\\n'
+    """
+    from xml.sax.saxutils import escape
+    if not specifics or not isinstance(specifics, dict):
+        return ''
+    lines: list[str] = []
+    for name, value in specifics.items():
+        if not name:
+            continue
+        raw_values = value if isinstance(value, (list, tuple)) else [value]
+        str_values: list[str] = []
+        for v in raw_values:
+            s = str(v).strip() if v is not None else ""
+            if not s:
+                continue
+            if len(s) > _REVISE_SPECIFICS_MAX_VALUE_LEN:
+                raise ValueError(
+                    f"Item Specific '{name}' の値が "
+                    f"{_REVISE_SPECIFICS_MAX_VALUE_LEN} 字を超過しています "
+                    f"({len(s)} 字): {s!r}"
+                )
+            str_values.append(s)
+        if not str_values:
+            continue
+        lines.append('      <NameValueList>')
+        lines.append(f'        <Name>{escape(str(name))}</Name>')
+        for s in str_values:
+            lines.append(f'        <Value>{escape(s)}</Value>')
+        lines.append('      </NameValueList>')
+    if not lines:
+        return ''
+    return '    <ItemSpecifics>\n' + '\n'.join(lines) + '\n    </ItemSpecifics>\n'
+
+
+def _build_revise_item_specifics_xml(item_id: str, specifics_xml: str) -> str:
+    """ReviseItem の ItemSpecifics 更新 XML を組立 (specifics_xml は呼出側で
+    _build_item_specifics_nvl_xml から生成済のブロックを渡す)."""
+    from xml.sax.saxutils import escape
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">\n'
+        '  <RequesterCredentials>\n'
+        '    <eBayAuthToken>{USER_TOKEN}</eBayAuthToken>\n'
+        '  </RequesterCredentials>\n'
+        '  <Item>\n'
+        f'    <ItemID>{escape(item_id)}</ItemID>\n'
+        f'{specifics_xml}'
+        '  </Item>\n'
+        '</ReviseItemRequest>\n'
+    )
+
+
+def _parse_item_specifics_from_get_item_xml(response_text: str) -> dict:
+    """GetItem 応答 XML (envelope 全体) から ItemSpecifics を Name→Value
+    (単一値) / Name→[Value,...] (複数値) の dict に変換する.
+
+    parse 失敗時は空 dict を返す (呼出側は None と区別して通信失敗を判定する
+    ため、本関数自体は None を返さない = 「parse できたが空」を表す).
+    """
+    if not response_text:
+        return {}
+    try:
+        root = ET.fromstring(response_text)
+    except ET.ParseError:
+        return {}
+    ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+    result: dict = {}
+    for nvl in root.findall(
+        ".//ns:Item/ns:ItemSpecifics/ns:NameValueList", namespaces=ns
+    ):
+        name = nvl.findtext("ns:Name", namespaces=ns)
+        if not name:
+            continue
+        values = [
+            v.text.strip() for v in nvl.findall("ns:Value", namespaces=ns)
+            if v.text and v.text.strip()
+        ]
+        if not values:
+            continue
+        result[name] = values[0] if len(values) == 1 else values
+    return result
+
+
+def _get_item_specifics_for_merge(
+    item_id: str, app_id: str, dev_id: str, cert_id: str, user_token: str,
+) -> Optional[dict]:
+    """merge / read-back verify 用に GetItem を呼び ItemSpecifics を取得する.
+
+    Returns:
+        dict (成功、specifics 無しなら空 dict) / None (通信・API エラーで
+        取得不能。Q0: 空 dict と取得不能を混同しない).
+    """
+    result = _call_trading_api(
+        "GetItem", _build_get_item_xml(item_id),
+        app_id, dev_id, cert_id, user_token,
+    )
+    if not result.get("success") or not result.get("raw"):
+        return None
+    return _parse_item_specifics_from_get_item_xml(result["raw"])
+
+
+def revise_item_specifics(
+    item_id: str,
+    item_specifics: dict,
+    *,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+    replace_all: bool = True,
+) -> dict:
+    """#44 G2 (2026-07-04): eBay Trading API ReviseItem で ItemSpecifics を更新.
+
+    eBay 仕様: ReviseItem に送る ItemSpecifics は送信した NameValueList で
+    **全置換**される (部分 patch ではない)。
+
+    - replace_all=True: item_specifics をそのまま送信対象にする (現行は参照しない)
+    - replace_all=False: GetItem で現行 specifics を取得し、item_specifics の
+      Name で上書き merge してから全置換として送信する (呼出側からは merge の
+      ように振る舞う)
+
+    **原産国 Name 禁止 (最重要)**: Country of Origin / Country/Region of
+    Manufacture / Country of Manufacture / Manufacturer は、入力 dict・
+    現行 (merge元) のどちらに含まれていても送信 XML から必ず除外する
+    (tools/ebay-manager/CLAUDE.md「Country of Origin / Manufacturer の layer
+    分離」= 関税リスク回避の当社規約)。除外した Name は戻り値 removed_names
+    で報告する (Q0: silent 除外禁止)。
+
+    Brand 欠落 reject: 禁止 Name 除外後の送信対象 specifics に Brand が
+    存在しないケースは eBay Listing Quality 直撃のため API を呼ばず reject
+    する (大文字小文字無視で 'brand' 一致判定)。
+
+    値は 65 字上限 (超過時は _build_item_specifics_nvl_xml が ValueError を
+    送出、本関数は捕捉して success:False に変換する。呼出側に例外を伝播
+    させない = 他 revise_* 関数と同じ dict-based エラー表現に統一)。
+
+    送信後は GetItem read-back で反映を verify する (Ack 偽装成功防止 Q0、
+    revise_item_title と同じ流儀)。
+
+    Args:
+        item_id: eBay ItemID
+        item_specifics: 送信したい Name→Value(str) または Name→[Value,...] dict
+        replace_all: True=そのまま送信 / False=現行との merge
+
+    Returns:
+        {
+          'success': bool,
+          'message': str,
+          'removed_names': list[str],  # 禁止 Name 除外リスト (入力/現行いずれか)
+          'sent_specifics': dict,      # 実際に送信した (禁止Name除外後) specifics
+        }
+    """
+    if not item_id:
+        return {
+            'success': False, 'message': 'item_id is empty',
+            'removed_names': [], 'sent_specifics': {},
+        }
+    if not item_specifics or not isinstance(item_specifics, dict):
+        return {
+            'success': False, 'message': 'item_specifics is empty',
+            'removed_names': [], 'sent_specifics': {},
+        }
+
+    user_token = _resolve_active_token(user_token)
+
+    merged = dict(item_specifics)
+    if not replace_all:
+        current = _get_item_specifics_for_merge(
+            item_id, app_id, dev_id, cert_id, user_token,
+        )
+        if current is None:
+            return {
+                'success': False,
+                'message': (
+                    f"GetItem (merge 用現行 ItemSpecifics 取得) 失敗: "
+                    f"ItemID {item_id}"
+                ),
+                'removed_names': [], 'sent_specifics': {},
+            }
+        merged = {**current, **item_specifics}
+
+    # 禁止 Name 除外 (入力・現行 双方をまとめて 1 回で処理)
+    filtered, removed_names = _filter_forbidden_specifics(merged)
+
+    if not filtered:
+        return {
+            'success': False,
+            'message': 'ItemSpecifics が全て禁止 Name のため送信対象がありません',
+            'removed_names': removed_names, 'sent_specifics': {},
+        }
+
+    has_brand = any(str(k).strip().lower() == 'brand' for k in filtered)
+    if not has_brand:
+        return {
+            'success': False,
+            'message': (
+                "送信後 ItemSpecifics に Brand が含まれません "
+                "(Listing Quality 直撃のため送信を中止しました)"
+            ),
+            'removed_names': removed_names, 'sent_specifics': filtered,
+        }
+
+    try:
+        specifics_xml = _build_item_specifics_nvl_xml(filtered)
+    except ValueError as e:
+        return {
+            'success': False, 'message': str(e),
+            'removed_names': removed_names, 'sent_specifics': filtered,
+        }
+
+    xml_body = _build_revise_item_specifics_xml(item_id, specifics_xml)
+    result = _call_trading_api(
+        "ReviseItem", xml_body, app_id, dev_id, cert_id, user_token,
+    )
+    if not result.get('success'):
+        return {
+            **result,
+            'removed_names': removed_names, 'sent_specifics': filtered,
+        }
+
+    # Ack=Warning でも Errors 内 SeverityCode=Error 混入は失敗扱いに降格
+    # (revise_fixed_price_item / revise_shipping_profile と挙動統一)。
+    if result.get('ack') == 'Warning':
+        raw_xml = result.get('raw') or ''
+        if raw_xml:
+            try:
+                root = ET.fromstring(raw_xml)
+                ns = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+                fatal_msgs = []
+                for err in root.findall(".//ns:Errors", namespaces=ns):
+                    sev = err.findtext("ns:SeverityCode", namespaces=ns)
+                    if sev == "Error":
+                        long_msg = err.findtext("ns:LongMessage", namespaces=ns) or ""
+                        code = err.findtext("ns:ErrorCode", namespaces=ns) or "?"
+                        fatal_msgs.append(f"[{code}] {long_msg}")
+                if fatal_msgs:
+                    return {
+                        'success': False,
+                        'message': (
+                            "API Warning に重大エラー混入 (SeverityCode=Error): "
+                            + "; ".join(fatal_msgs)
+                        ),
+                        'removed_names': removed_names, 'sent_specifics': filtered,
+                    }
+            except ET.ParseError:
+                pass
+
+    # post-verify: GetItem read-back で実値と一致するか確認 (Ack だけで
+    # 成功と偽装しない、revise_item_title と同じ流儀)。
+    actual = _get_item_specifics_for_merge(
+        item_id, app_id, dev_id, cert_id, user_token,
+    )
+    if actual is None:
+        return {
+            'success': False,
+            'message': (
+                f"Revise Ack={result.get('ack')} だが verify GetItem "
+                f"通信/parse エラー"
+            ),
+            'removed_names': removed_names, 'sent_specifics': filtered,
+        }
+
+    def _normalize(v) -> list[str]:
+        if isinstance(v, (list, tuple)):
+            return sorted(str(x).strip() for x in v)
+        return [str(v).strip()]
+
+    mismatches = [
+        name for name, expected in filtered.items()
+        if name not in actual or _normalize(expected) != _normalize(actual[name])
+    ]
+    if mismatches:
+        return {
+            'success': False,
+            'message': (
+                f"ItemSpecifics 反映 verify 失敗 (不一致 Name: "
+                f"{', '.join(mismatches)}) — GetItem で不一致。"
+                f"eBay 管理画面を確認してください。"
+            ),
+            'removed_names': removed_names, 'sent_specifics': filtered,
+        }
+
+    return {
+        'success': True,
+        'message': (
+            f"ItemID {item_id} の ItemSpecifics を更新しました "
+            f"({len(filtered)} Name)"
+        ),
+        'removed_names': removed_names, 'sent_specifics': filtered,
+    }
 
 
 def _build_get_orders_xml(

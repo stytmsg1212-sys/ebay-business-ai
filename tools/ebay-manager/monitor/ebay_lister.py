@@ -52,7 +52,7 @@ if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
 
 from monitor.api_logger import log_api_call
 from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
-from monitor.ebay_client import _call_trading_api
+from monitor.ebay_client import _call_trading_api, _is_forbidden_specific_name
 
 # Phase 3 の dataclass を import (型ヒント・helper 用途。UI 側は build_draft_params_from_phase3 を使う)
 try:
@@ -675,6 +675,18 @@ def _build_item_specifics_xml(specifics: dict) -> str:
     """ItemSpecifics ブロックを組み立てる。空なら空文字を返す。
 
     各値は 65 字で truncate し、placeholder 値 (Unknown 等) は除外する。
+
+    #44 (2026-07-04) 原産国混入チェーン封鎖 (3点封鎖の1): 参考 listing の
+    ItemSpecifics Keys がノーフィルタで抽出され (ebay_reference_fetcher.py)、
+    listing_generator.py のプロンプトが Keys 完全一致を強制した結果、
+    Country of Origin / Country/Region of Manufacture / Manufacturer が
+    AddItem XML にそのまま送出されるバグがあった (tools/ebay-manager/CLAUDE.md
+    「Country of Origin / Manufacturer の layer 分離」違反、関税リスク)。
+    G2 の `monitor.ebay_client._is_forbidden_specific_name` (revise_item_specifics
+    と同一の禁止 Name 集合) を共有 import して AddItem 経路でも同じフィルタを
+    適用する (多層防御、md-files-can-be-wrong: CLAUDE.md に「空送出」と記載が
+    あったが実装が存在しなかった)。除外は Q0 (silent skip 禁止) のため
+    logger.warning で痕跡を残す。
     """
     if not specifics or not isinstance(specifics, dict):
         return ''
@@ -682,6 +694,12 @@ def _build_item_specifics_xml(specifics: dict) -> str:
     emitted_count = 0
     for name, value in specifics.items():
         if not name:
+            continue
+        if _is_forbidden_specific_name(name):
+            logger.warning(
+                "_build_item_specifics_xml: 禁止 Name '%s' を除外 "
+                "(原産国/Manufacturer 系、CLAUDE.md 規約)", name,
+            )
             continue
         # Value が list の場合は複数 <Value> に展開 (eBay 仕様)
         if isinstance(value, (list, tuple)):
