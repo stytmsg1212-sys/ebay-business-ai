@@ -131,6 +131,51 @@ def _resolve_classify_webhook(config: dict) -> str:
     return (disc.get('rival_webhook_url') or disc.get('webhook_url') or "").strip()
 
 
+def _fetch_review_backlog() -> int:
+    """review 判定で status='new' のまま滞留している discovery の累計件数.
+
+    real/noise は status が dismissed/monitoring_added に遷移するため、run 後に
+    status='new' で残るのは review 判定 (+ 未処理分) のみ (本ファイル冒頭 docstring
+    「責務 3.」の 3 分岐反映を参照)。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM listing_rival_discoveries WHERE status='new'"
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _send_daily_summary(config: dict, result: dict) -> None:
+    """依頼ボード#46: rival_classify 完了時に AI 店長の稼働状況を日次 1 通発行.
+
+    「動きが見えない」への対応 (Q0 可視化)。分類 0 件の日でも「実行済」を明示して
+    送る (silent skip との誤認防止)。既存 `_send_discord_issue_alert` (cap 超過 /
+    AI 例外系、warning) とは役割分離 — 本関数は稼働報告 (severity='info')。
+    通知記録 (notification_log) は notifiers.notification_center.record_and_maybe_send
+    choke point 経由で行い、category='rival' の既存 discord_category_gate
+    (config/schedule_config.json) にそのまま従う (新カテゴリを増やさない, K1)。
+    通知処理自体の失敗でタスク結果 (result) を壊さない (Q0: 既に result は確定済)。
+    """
+    try:
+        review_backlog = _fetch_review_backlog()
+        title = "🤖 AI店長 日次"
+        body = (
+            f"本日 real {result.get('real', 0)} 件 / noise {result.get('noise', 0)} 件 "
+            f"(実行済) / review 滞留 {review_backlog} 件 (累計)\n"
+            f"Shadow 運用中 — 自動値付けへの反映はまだありません (監視・分類のみ)"
+        )
+        from datetime import date as _date
+        dedupe_key = f"rival_classify_daily_summary_{_date.today().isoformat()}"
+
+        from notifiers.notification_center import record_and_maybe_send
+        record_and_maybe_send(
+            "rival", "info", title, body,
+            link_target="rival", dedupe_key=dedupe_key,
+        )
+    except Exception as e:  # noqa: BLE001 — 通知失敗を run_rival_classify の失敗にしない
+        logger.warning(f"[W301 S4] daily summary 通知失敗 (痕跡のみ): {e}")
+
+
 def _send_discord_issue_alert(config: dict, summary: dict, issue_items: list[dict]) -> None:
     """cap 超過 / AI 例外系の review 転落を Discord 通知 (Q0: review+log+Discord)."""
     webhook = _resolve_classify_webhook(config)
@@ -182,6 +227,7 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
             result["success"] = True
             result["message"] = "0 discoveries (status='new') — skip"
             logger.info(f"[W301 S4] {result['message']}")
+            _send_daily_summary(cfg, result)
             return result
 
         dou_blacklist = get_ddu_seller_ids()
@@ -272,6 +318,7 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
 
         if issue_items:
             _send_discord_issue_alert(cfg, result, issue_items)
+        _send_daily_summary(cfg, result)
     except Exception as e:
         logger.exception("[W301 S4] run_rival_classify failed")
         result["message"] = f"top-level: {type(e).__name__}: {e}"

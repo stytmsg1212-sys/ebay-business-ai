@@ -153,6 +153,15 @@ _LONG_TTL_ALLOWED = {
     "_cached_shipping_policies": (
         300, "Account API の BP 一覧カタログ。DB-backed でなく per-listing "
              "金銭データでもないため bump 漏れ stale の対象外 (W138-A)。"),
+    # W314 Phase 4 (設計書 §7): bump_db_version 経路が物理的に届かない
+    # (tabs/tab_product_management.py 内コメント参照) ため ttl=3→60 に拡大採用済。
+    # DB 実値は正しいまま、表示のみ最大 60s stale (次回書込 bump or 60s 経過で
+    # 自己修復)。本来 W134 番人が想定する「DB-backed per-listing 金銭データ」
+    # そのものだが、設計書合意の上での例外として明記 (money-direct につき
+    # 変更時は要再確認)。
+    "_cd_fetch_all_products": (
+        60, "W314 Phase 4 設計書 §7 承認済み。bump_db_version が届かない経路が"
+            "あるため ttl=3→60 採用、表示遅延のみで DB 実値は正 (自己修復)。"),
 }
 
 

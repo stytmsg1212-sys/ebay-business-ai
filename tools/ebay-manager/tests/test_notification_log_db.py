@@ -59,12 +59,19 @@ def test_v89_table_and_indexes_exist_and_version(tmp_db):
 
 
 def test_v89_idempotent_user_version(tmp_db):
-    """init_db 2 回実行後も user_version が 89 のまま (冪等)。"""
+    """init_db 2 回実行後も user_version が変わらない (冪等)。
+
+    v90 (依頼ボード #45 / 2026-07-04): supplier_candidates に
+    availability_attempted_at / availability_pending_reject を追加する
+    migration が乗り、schema_ver が 89→90 に進んだ。本テストの目的は
+    「特定バージョン固定」ではなく「2 回実行で drift しない」冪等性検証
+    のため、現行最新バージョンに追従する。
+    """
     import monitor.database as db_mod
     db_mod.init_db()  # 2 回目
     with sqlite3.connect(str(tmp_db)) as conn:
         ver = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert ver == 89, f"user_version が 89 でない: {ver}"
+    assert ver == 90, f"user_version が 90 でない: {ver}"
 
 
 def test_v89_idempotent_data_preserved(tmp_db):

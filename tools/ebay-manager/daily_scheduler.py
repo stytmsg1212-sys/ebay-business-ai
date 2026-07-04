@@ -1138,6 +1138,47 @@ def setup_scheduler():
     else:
         logger.info("W284 eBaymag 反映キュー消化: disabled (tasks_enabled.ebaymag_apply_queue.enabled=false)")
 
+    # ── #44 Wave2 出品内容監査 (2026-07-04 追加) ──
+    # 日次 (02:15 JST、主 batch 02:30 と重ならない時刻)。GetItem で
+    # title/condition/ItemSpecifics(禁止Name)/ConditionDescription/画像を突合。
+    # enabled は config (tasks_enabled.listing_content_audit.enabled) で制御。
+    _lca_cfg = (config.get('tasks_enabled', {}) or {}).get('listing_content_audit', {}) or {}
+    if _lca_cfg.get('enabled', True):
+        scheduler.add_job(
+            _run_listing_content_audit,
+            trigger=CronTrigger(hour=2, minute=15, second=0),
+            args=[config, 2],
+            id='listing_content_audit_02_15',
+            name='#44 出品内容監査 (02:15)',
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info("#44 出品内容監査 発火: 毎日 02:15 JST")
+    else:
+        logger.info("#44 出品内容監査: disabled (tasks_enabled.listing_content_audit.enabled=false)")
+
+    # ── #45 仕入先候補 availability 再チェック (2026-07-04 追加) ──
+    # 日次 (02:50 JST、主 batch 02:30 後・daily_codex_lint/rival_classify 03:00 前)。
+    # pending/accepted の候補を再チェックし sold_out/not_found を却下 (混入の恒久対策)。
+    # enabled は config (tasks_enabled.supplier_availability_recheck.enabled) で制御。
+    _sar_cfg = (config.get('tasks_enabled', {}) or {}).get('supplier_availability_recheck', {}) or {}
+    if _sar_cfg.get('enabled', True):
+        scheduler.add_job(
+            _run_supplier_availability_recheck,
+            trigger=CronTrigger(hour=2, minute=50, second=0),
+            args=[config, 2],
+            id='supplier_availability_recheck_02_50',
+            name='#45 仕入先候補 availability 再チェック (02:50)',
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info("#45 仕入先候補 availability 再チェック 発火: 毎日 02:50 JST")
+    else:
+        logger.info(
+            "#45 仕入先候補 availability 再チェック: disabled "
+            "(tasks_enabled.supplier_availability_recheck.enabled=false)"
+        )
+
     # ── W284 Phase 2 eBaymag 更新同期 監査 (2026-06-20 追加) ──
     # 日次 (02:45 JST、主 batch 02:30 直後)。GetItem で US本体 vs 各国版を突合。
     # enabled は config (tasks_enabled.ebaymag_sync_audit.enabled) で制御。
@@ -1632,6 +1673,30 @@ def _run_ebaymag_sync_audit(config: dict, scheduled_hour: int = 2):
         return
     _run_isolated_task('ebaymag_sync_audit', 'W284 eBaymag 更新同期 監査',
                        lambda: run_ebaymag_sync_audit(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_listing_content_audit(config: dict, scheduled_hour: int = 2):
+    """#44 Wave2 US本体 DB↔eBay 整合性 日次突合 — title/condition/ItemSpecifics/画像."""
+    try:
+        from tasks.task_listing_content_audit import run_listing_content_audit
+    except ImportError as e:
+        logger.error(f"task_listing_content_audit import 失敗: {e}")
+        return
+    _run_isolated_task('listing_content_audit', '#44 出品内容監査 (DB↔eBay 突合)',
+                       lambda: run_listing_content_audit(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_supplier_availability_recheck(config: dict, scheduled_hour: int = 2):
+    """#45 仕入先候補 (pending/accepted) の availability 定期再チェック."""
+    try:
+        from tasks.task_supplier_availability_recheck import run_supplier_availability_recheck
+    except ImportError as e:
+        logger.error(f"task_supplier_availability_recheck import 失敗: {e}")
+        return
+    _run_isolated_task('supplier_availability_recheck', '#45 仕入先候補 availability 再チェック',
+                       lambda: run_supplier_availability_recheck(config),
                        scheduled_hour=scheduled_hour)
 
 

@@ -126,6 +126,12 @@ def sync_inventory_status_to_db() -> Dict:
     conn = get_conn()
     updated = 0
     not_found = 0
+    guarded = 0  # 依頼ボード#47: user 手動確定値の上書き防止 skip 件数
+    # 依頼ボード#47 (2026-07-04): user が在庫監視タブ (#21) で仕入先ページを実見して
+    # 保存した明確な状態 (在庫有/在庫無/ページなし) を、翌晩以降のスクレイパーが
+    # 判定不能 (不明/エラー/DBデフォルトのunknown) を返しただけで無条件上書きしていた。
+    # 新status が不明系 かつ 既存が明確な値の時のみ status 上書きを skip する。
+    CLEAR_STATUSES = ('在庫有', '在庫無', 'ページなし')
     # 2026-06-05: 仕入先OOS → eBay在庫 自動0化 の候補 (履行不能販売の防止)。
     # 仕入先(Yahoo等)が売切なのに eBay在庫が残り売れてしまう事故の恒久対策。
     # ページなし = 即時 (ページ消滅 = 確定終了)。在庫無 = prev も在庫無 (2回連続) で誤検知回避。
@@ -178,12 +184,30 @@ def sync_inventory_status_to_db() -> Dict:
         # BUG-2: source_out_of_stock_since の管理は ebay_sync.match_source_status_to_ebay に一元化
         # 以前はここで checked_at を使っていたが、ebay_sync 側が CURRENT_TIMESTAMP で
         # セットする値と競合し上書きされる問題があった。この関数は status と last_checked のみ更新。
-        conn.execute(
-            """UPDATE ebay_listings SET
-               source_status=?, source_last_checked=?
-               WHERE ebay_item_id=?""",
-            (status, checked_at, ebay_item_id),
-        )
+        #
+        # 依頼ボード#47: 新status が不明系 (不明/エラー/unknown) かつ 既存が明確な値
+        # (在庫有/在庫無/ページなし) の場合のみ status 上書きを skip する。既存も不明系
+        # なら、より新しい (最新の) 不明系 status の方が情報量が多いため上書きする。
+        # last_checked は skip 時もチェック自体は実施されたので更新する。
+        guard_skip = status not in CLEAR_STATUSES and prev_status in CLEAR_STATUSES
+        if guard_skip:
+            guarded += 1
+            logger.warning(
+                f"sync_inventory_status_to_db: 明確な状態を保護 (上書きskip) "
+                f"ebay_item_id={ebay_item_id} prev_status={prev_status!r} "
+                f"new_status={status!r} sku={sku!r}"
+            )
+            conn.execute(
+                "UPDATE ebay_listings SET source_last_checked=? WHERE ebay_item_id=?",
+                (checked_at, ebay_item_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE ebay_listings SET
+                   source_status=?, source_last_checked=?
+                   WHERE ebay_item_id=?""",
+                (status, checked_at, ebay_item_id),
+            )
 
         # 在庫切れ開始日は、ebay_sync が未処理 (source_out_of_stock_since IS NULL) かつ
         # ここで新規に仕入先OOS になる場合のみ、フォールバックで UTC タイムスタンプをセット。
@@ -232,8 +256,14 @@ def sync_inventory_status_to_db() -> Dict:
     conn.commit()
     conn.close()
 
-    logger.info(f"在庫ステータス統合: {updated}件更新, {not_found}件未一致")
-    return {'updated': updated, 'not_found': not_found, 'oos_to_zero': oos_to_zero}
+    logger.info(
+        f"在庫ステータス統合: {updated}件更新, {not_found}件未一致, "
+        f"{guarded}件は明確な状態を保護 (上書きskip)"
+    )
+    return {
+        'updated': updated, 'not_found': not_found, 'guarded': guarded,
+        'oos_to_zero': oos_to_zero,
+    }
 
 
 def sync_enrichment_to_db() -> Dict:

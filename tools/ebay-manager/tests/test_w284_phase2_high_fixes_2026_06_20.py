@@ -77,7 +77,7 @@ def test_failed_reaches_max_then_needs_manual(monkeypatch):
                         lambda pid, expected_itm: _fake(False, error="boom"))
     notified: list = []
     monkeypatch.setattr("tasks.task_ebaymag_apply_queue._discord_notify",
-                        lambda cfg, msg: notified.append(msg))
+                        lambda cfg, msg, **_kw: notified.append(msg))
     _process_job(_job(jid), {})
     assert _job(jid)["status"] == "needs_manual"
     assert any("手動対応" in m for m in notified), "上限到達で Discord 通知が出ていない"

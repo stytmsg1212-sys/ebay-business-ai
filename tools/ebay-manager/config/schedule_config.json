@@ -357,6 +357,22 @@
       "max_calls_per_run": 100,
       "description": "W301 AI店長 Phase1 S4: pricing_eligible=1 の active 競合 + rival_classifications real/review 競合を対象に GetItem で QuantitySold/在庫/評価/国/価格/送料を取得し competitor_snapshots へ蓄積 (Phase1 は消費しない)。",
       "note": "毎日 05:30 JST。設計書は Shopping API GetMultipleItems (20件/コール) 前提だったが本 codebase は Trading API GetItem (1件/コール) のみ実装済のため max_calls_per_run=1件/コールとして運用 (design doc との差異は tasks/task_competitor_snapshot.py docstring 参照)。cap 超過分は最終取得が古い順に並べ直され翌回以降へ自然に持ち越し (starvation なし)。"
+    },
+    "listing_content_audit": {
+      "enabled": true,
+      "max_total_per_run": 50,
+      "random_n_per_run": 20,
+      "recent_applied_days": 7,
+      "description": "#44 Wave2: US本体 DB↔eBay 整合性 日次突合。supplier_candidates.status='applied' 直近7日分 (乗り換え直後の stale 検出) + ランダム20件/日、上限50件/日を GetItem し、title不一致/condition不一致/ConditionDescription前商品痕跡/禁止ItemSpecifics(原産国系)残存/画像0枚 を検出。",
+      "note": "毎日 02:15 JST (主batch 02:30の前、独立)。read-only (GetItem のみ、eBay書込み・DB書込み共になし)。不整合検出時は severity='error' で category gate に関わらず Discord 必達。禁止Nameの定義は monitor/ebay_client.py の書込み時4層防御 (_is_forbidden_specific_name) を再利用し単一ソースに揃えている。"
+    },
+    "supplier_availability_recheck": {
+      "enabled": true,
+      "stale_days": 3,
+      "max_candidates_per_run": 100,
+      "sleep_between_checks_sec": 1.0,
+      "description": "依頼ボード#45: 仕入先候補 (pending/accepted) の在庫状態を定期再チェックし、売り切れ/削除済 (unavailable/not_found) を却下する。",
+      "note": "毎日 02:50 JST (主batch 02:30後・daily_codex_lint/rival_classify 03:00前)。Yahooオークションは fetch_yahoo_end_status で「落札者なし終了」24h猶予を考慮 (feedback_yahoo_auction_end_two_patterns.md 準拠)、他は既存 W182 gate (monitor.scrapers.check_candidate_availability) を流用。判定不能は据え置き (Q0)。W148-Y one-shot (scripts/check_supplier_candidates_oos_2026_05_20.py) の定時実行化。"
     }
   },
   "rate_table_batch": {

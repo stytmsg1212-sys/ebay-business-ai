@@ -4302,6 +4302,44 @@ def init_db():
                     "次回 init_db で再試行。"
                 )
 
+        # ---- v90 (依頼ボード #45 / 2026-07-04): 仕入先候補 availability 再チェック 2 段構え ----
+        # 追加カラム:
+        #   availability_attempted_at: 全ての再チェック試行時刻 (unknown/grace/例外含む).
+        #     stale 判定と ORDER BY の基準になり、判定不能候補が
+        #     availability_checked_at=NULL のまま先頭を占め続ける starvation を防ぐ (MED-1).
+        #   availability_pending_reject: 1 回目 conclusive-unavailable のストライク (0/1).
+        #     単発誤判定 (404 誤返し等) 1 回で恒久 auto_rejected=1 化する不可視消失を防ぐ.
+        #     2 回連続 conclusive-unavailable で初めて実 reject を発行し、間に
+        #     conclusive-available が来れば 0 クリア (MED-2).
+        # Q2: try/except OperationalError で冪等 (2 回連続 init_db でデータ保持を verify).
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver == 89:
+            _V90_SC_COLS = {
+                "availability_attempted_at": "TIMESTAMP",
+                "availability_pending_reject": "INTEGER DEFAULT 0",
+            }
+            for _col, _type in _V90_SC_COLS.items():
+                try:
+                    conn.execute(
+                        f"ALTER TABLE supplier_candidates ADD COLUMN {_col} {_type}"
+                    )
+                    logger.info(f"[init_db v90] supplier_candidates.{_col} added")
+                except sqlite3.OperationalError:
+                    pass  # 既存 (重複適用) = OK、冪等
+            _v90_post = set(
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(supplier_candidates)"
+                ).fetchall()
+            )
+            if set(_V90_SC_COLS).issubset(_v90_post):
+                conn.execute("PRAGMA user_version = 90")
+                logger.info("[init_db v90] schema_ver bumped to 90")
+            else:
+                logger.warning(
+                    "[init_db v90] 未完了 (availability_attempted_at/"
+                    "availability_pending_reject が揃わず)。次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 
@@ -6766,6 +6804,151 @@ def update_supplier_candidate_status(candidate_id: int, status: str):
         )
 
 
+def update_supplier_candidate_availability(
+    candidate_id: int,
+    availability_status: str,
+    availability_signal: Optional[str] = None,
+    availability_checked_at: Optional[str] = None,
+) -> bool:
+    """#45 再チェック: availability_* + attempted_at を更新 (status/user_action_at は変えない)。
+
+    'available' 確定時など、候補を却下するほどではない結果の記録に使う。
+    availability_pending_reject も 0 クリア (直前に 1st strike で立てられていた場合の
+    「間に available が入ったらシグナル解除」対応、MED-2)。
+    status IN ('pending','accepted') のみ対象 (user 判断済 rejected/applied は不可侵)。
+    Returns: 実際に更新できたか (rowcount>0、Q0 silent skip 防止用)。
+    """
+    from datetime import datetime, timezone as _tz
+    checked_at = availability_checked_at or datetime.now(_tz.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE supplier_candidates
+               SET availability_status=?, availability_checked_at=?, availability_signal=?,
+                   availability_attempted_at=?, availability_pending_reject=0
+               WHERE id=? AND status IN ('pending', 'accepted')""",
+            (availability_status, checked_at, availability_signal, checked_at, candidate_id),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def reject_supplier_candidate_availability(
+    candidate_id: int,
+    availability_status: str,
+    availability_signal: Optional[str] = None,
+    availability_checked_at: Optional[str] = None,
+) -> bool:
+    """#45 再チェック: sold_out/not_found 確定候補を却下する (W148-Y 一回限りスクリプトの恒久版)。
+
+    status='rejected', auto_rejected=1 (user 判断枠を汚さない、既存 W148-Y 踏襲) を
+    availability_* と同時に記録。attempted_at / pending_reject も同時更新。
+    status IN ('pending','accepted') のみ対象。
+    Returns: 実際に更新できたか (rowcount>0、Q0 silent skip 防止用)。
+    """
+    from datetime import datetime, timezone as _tz
+    checked_at = availability_checked_at or datetime.now(_tz.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE supplier_candidates
+               SET status='rejected', auto_rejected=1, user_action_at=CURRENT_TIMESTAMP,
+                   availability_status=?, availability_checked_at=?, availability_signal=?,
+                   availability_attempted_at=?, availability_pending_reject=0
+               WHERE id=? AND status IN ('pending', 'accepted')""",
+            (availability_status, checked_at, availability_signal, checked_at, candidate_id),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def record_supplier_candidate_availability_attempt(
+    candidate_id: int, attempted_at: Optional[str] = None,
+) -> bool:
+    """#45 MED-1: 判定不能 (unknown/grace/例外) 時に attempted_at のみ更新する.
+
+    availability_checked_at / availability_status は変えない (「保留は checked に
+    しない」方針を維持)。attempted_at 更新で ORDER BY の先頭固定 = starvation を防ぐ。
+    status IN ('pending','accepted') のみ対象。
+    """
+    from datetime import datetime, timezone as _tz
+    ts = attempted_at or datetime.now(_tz.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE supplier_candidates
+               SET availability_attempted_at=?
+               WHERE id=? AND status IN ('pending', 'accepted')""",
+            (ts, candidate_id),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def mark_supplier_candidate_pending_reject(
+    candidate_id: int,
+    availability_status_signal: str,
+    availability_signal: Optional[str] = None,
+    attempted_at: Optional[str] = None,
+) -> bool:
+    """#45 MED-2: 1 回目の conclusive-unavailable/not_found を「保留 reject」で記録.
+
+    実 reject はまだ行わない (status は 'pending'/'accepted' のまま = UI 上に残り
+    2 回目の走査を待つ)。availability_status も 'unavailable'/'not_found' へは
+    書き換えない (UI 非表示化を避ける)。代わりに availability_pending_reject=1 の
+    ストライクフラグと availability_signal (デバッグ用の 1 回目シグナル + 何を検知
+    したかの status 語) を残し、attempted_at も同時に更新する。
+    Returns: 実際に更新できたか。
+    """
+    from datetime import datetime, timezone as _tz
+    ts = attempted_at or datetime.now(_tz.utc).isoformat()
+    signal_text = f"1st strike ({availability_status_signal}): {availability_signal or ''}"
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE supplier_candidates
+               SET availability_pending_reject=1,
+                   availability_signal=?,
+                   availability_attempted_at=?
+               WHERE id=? AND status IN ('pending', 'accepted')""",
+            (signal_text, ts, candidate_id),
+        )
+        return (cur.rowcount or 0) > 0
+
+
+def get_supplier_candidates_for_availability_recheck(
+    stale_days: int, limit: int,
+) -> list[dict]:
+    """#45: availability 未試行 or 直近 stale_days 日超試行の pending/accepted 候補を返す。
+
+    MED-1 修正 (2026-07-04): 判定不能でも attempted_at を更新するため、stale 判定と
+    ORDER BY は attempted_at 基準にする (旧: checked_at 基準は unknown 候補で
+    NULL のまま残り毎回 LIMIT 先頭を占めて starvation)。
+    MED-3 修正 (2026-07-04): タイムスタンプ表記が混在 (ISO 'T'+timezone / datetime()
+    space 区切り) しても julianday() 比較で境界日誤判定を防ぐ。
+
+    listing 識別は ebay_item_id (sku-rules.md)。古い順 (NULL 優先) に limit 件。
+    status / candidate_title / listing_title (JOIN ebay_listings) /
+    availability_pending_reject (2 段構え判定) も併せて返す。
+    """
+    if limit <= 0:
+        return []
+    sql = """
+        SELECT sc.id, sc.ebay_item_id, sc.sku, sc.candidate_url, sc.source_platform,
+               sc.availability_checked_at, sc.availability_attempted_at,
+               sc.availability_pending_reject,
+               sc.status, sc.candidate_title,
+               l.title AS listing_title
+        FROM supplier_candidates sc
+        LEFT JOIN ebay_listings l ON l.ebay_item_id = sc.ebay_item_id
+        WHERE sc.status IN ('pending', 'accepted')
+          AND sc.candidate_url IS NOT NULL AND sc.candidate_url != ''
+          AND (
+              sc.availability_attempted_at IS NULL
+              OR julianday(sc.availability_attempted_at) <= julianday('now', ?)
+          )
+        ORDER BY (sc.availability_attempted_at IS NOT NULL),
+                 sc.availability_attempted_at ASC, sc.id ASC
+        LIMIT ?
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, (f"-{int(stale_days)} days", int(limit))).fetchall()
+    return [dict(r) for r in rows]
+
+
 def set_yahoo_grace_until(ebay_item_id: str, until_ts: Optional[str]):
     """ヤフオク 24h 猶予 (W100 / 2026-05-06 再定義): リサーチ実行可能時刻を設定.
 
@@ -7523,6 +7706,162 @@ def get_nav_badge_counts() -> dict[str, int]:
     except Exception:
         logger.exception("get_nav_badge_counts failed")
         return {}
+
+
+def get_dashboard_kpis() -> dict:
+    """DASHBOARD 刷新 (#43, 2026-07-04) 用の KPI 集約ヘルパー。READ ONLY (SELECT のみ)。
+
+    セクションごとに独立した try/except で守り、1 セクションの取得失敗が
+    他 KPI を道連れにしないようにする (Q0: 失敗は 0 埋め + logger.warning で
+    痕跡を残す。silent success を装わない)。
+
+    sold_at (sales_history) は eBay PaidTime 由来の UTC ISO 文字列 (末尾 'Z')。
+    SQLite の date()/datetime() は 'Z' サフィックスを UTC として認識するため、
+    `DATE(sold_at, '+9 hours')` で JST 暦日に変換して集計する
+    (sqlite-timezone.md Option C 準拠)。
+
+    started_at (task_execution_log) は Python `datetime.now()` bind (JST naive
+    文字列、sqlite-timezone.md 記載の例外カラム)。同じ naive JST の比較値を
+    Python 側で作って渡す。
+
+    返り値:
+      - today_sales_usd / today_sales_count: 本日 (JST 暦日) の sales_history 実績
+      - week_sales_usd / week_sales_count: 今週 (JST 月曜起点) の sales_history 実績
+      - task_24h_completed / task_24h_failed / task_24h_rate:
+        直近 24h の task_execution_log 完了/失敗数と成功率 (%, 対象 0 件なら None)
+      - customs_pending: 通関未送信件数 (customs_requests)
+      - request_board_awaiting: 依頼ボード awaiting_check 件数 (user_requests)
+      - notification_unread_critical: 通知センター未読のうち severity=error/critical
+      - action_needed_total: 上記 3 件数 (通関/依頼ボード/通知) の合算。
+        緊急メール件数は DASHBOARD 側 (INBOX urgent 判定と同一ロジック) で加算する
+        (ロジック二重化を避けるため本関数には含めない)。
+    """
+    from datetime import timedelta as _timedelta
+
+    result: dict = {
+        "today_sales_usd": 0.0, "today_sales_count": 0,
+        "week_sales_usd": 0.0, "week_sales_count": 0,
+        "task_24h_completed": 0, "task_24h_failed": 0, "task_24h_rate": None,
+        "customs_pending": 0,
+        "request_board_awaiting": 0,
+        "notification_unread_critical": 0,
+        # #43 fix (2026-07-04): 情報消失 2 点の最小復元
+        # - own_stock_out / own_stock_unset: 有在庫 (stock% SKU) の在庫切れ/未入力
+        #   件数。旧 DASHBOARD の「📦 在庫通知」を右カラム「在庫・価格の要点」の
+        #   1 行にコンパクト化して復元。sku LIKE 'stock%' は sku-rules.md 許可済
+        #   (種別フィルタ / 集合クエリ、listing 特定用途ではない)。
+        # - price_restock: monitored_items.price_alert_state='restock' 件数
+        #   (v2 モックにあった要素)。「価格急変」行に併記して復元。
+        "own_stock_out": 0,
+        "own_stock_unset": 0,
+        "price_restock": 0,
+    }
+
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """SELECT
+                     SUM(CASE WHEN DATE(sold_at,'+9 hours') = DATE('now','+9 hours')
+                              THEN sold_price_usd ELSE 0 END) AS today_usd,
+                     SUM(CASE WHEN DATE(sold_at,'+9 hours') = DATE('now','+9 hours')
+                              THEN 1 ELSE 0 END) AS today_cnt,
+                     SUM(CASE WHEN DATE(sold_at,'+9 hours') >=
+                              DATE('now','+9 hours','weekday 0','-6 days')
+                              THEN sold_price_usd ELSE 0 END) AS week_usd,
+                     SUM(CASE WHEN DATE(sold_at,'+9 hours') >=
+                              DATE('now','+9 hours','weekday 0','-6 days')
+                              THEN 1 ELSE 0 END) AS week_cnt
+                   FROM sales_history
+                   WHERE sold_at >= datetime('now', '-8 days')"""
+            ).fetchone()
+        result["today_sales_usd"] = float(row["today_usd"] or 0.0)
+        result["today_sales_count"] = int(row["today_cnt"] or 0)
+        result["week_sales_usd"] = float(row["week_usd"] or 0.0)
+        result["week_sales_count"] = int(row["week_cnt"] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis sales 集計失敗: {e}")
+
+    try:
+        since = (datetime.now() - _timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        with get_conn() as conn:
+            rows = conn.execute(
+                """SELECT status, COUNT(*) AS c FROM task_execution_log
+                   WHERE started_at >= ? AND status IN ('completed','failed')
+                   GROUP BY status""",
+                (since,),
+            ).fetchall()
+        for r in rows:
+            if r["status"] == "completed":
+                result["task_24h_completed"] = int(r["c"])
+            elif r["status"] == "failed":
+                result["task_24h_failed"] = int(r["c"])
+        _total = result["task_24h_completed"] + result["task_24h_failed"]
+        result["task_24h_rate"] = (
+            result["task_24h_completed"] / _total * 100 if _total > 0 else None
+        )
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis task 集計失敗: {e}")
+
+    try:
+        with get_conn() as conn:
+            result["customs_pending"] = int(conn.execute(
+                "SELECT COUNT(*) FROM customs_requests "
+                "WHERE status IN ('detected','drafted','drafted_no_photo')"
+            ).fetchone()[0] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis customs 集計失敗: {e}")
+
+    try:
+        with get_conn() as conn:
+            result["request_board_awaiting"] = int(conn.execute(
+                "SELECT COUNT(*) FROM user_requests WHERE status='awaiting_check'"
+            ).fetchone()[0] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis request_board 集計失敗: {e}")
+
+    try:
+        with get_conn() as conn:
+            result["notification_unread_critical"] = int(conn.execute(
+                "SELECT COUNT(*) FROM notification_log "
+                "WHERE read_at IS NULL AND severity IN ('error','critical')"
+            ).fetchone()[0] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis notification 集計失敗: {e}")
+
+    # #43 fix: 自社在庫 (stock% SKU) の 切れ / 未入力 件数 (旧 DASHBOARD 復元)。
+    # 1 クエリで両方 SUM 集計 (sku LIKE 'stock%' は sku-rules.md 許可済)。
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """SELECT
+                     SUM(CASE WHEN inventory_count IS NOT NULL
+                              AND inventory_count = 0 THEN 1 ELSE 0 END) AS n_out,
+                     SUM(CASE WHEN inventory_count IS NULL THEN 1 ELSE 0 END) AS n_unset
+                   FROM ebay_listings
+                   WHERE (is_ended IS NULL OR is_ended = 0)
+                     AND sku LIKE 'stock%'"""
+            ).fetchone()
+        result["own_stock_out"] = int(row["n_out"] or 0)
+        result["own_stock_unset"] = int(row["n_unset"] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis own_stock 集計失敗: {e}")
+
+    # #43 fix: 仕入先 在庫復活 件数 (v2 モック要素、価格急変行に併記)。
+    try:
+        with get_conn() as conn:
+            result["price_restock"] = int(conn.execute(
+                "SELECT COUNT(*) FROM monitored_items "
+                "WHERE is_active=1 AND price_alert_state='restock'"
+            ).fetchone()[0] or 0)
+    except sqlite3.Error as e:
+        logger.warning(f"get_dashboard_kpis price_restock 集計失敗: {e}")
+
+    result["action_needed_total"] = (
+        result["customs_pending"]
+        + result["request_board_awaiting"]
+        + result["notification_unread_critical"]
+    )
+    return result
 
 
 # ---- 依頼ボード (user_requests / W266, 2026-06-12) ----

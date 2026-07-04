@@ -154,17 +154,27 @@ class TestSelfErrorAlert:
         assert result["divergence_count"] == -1
         assert "simulated" in result.get("divergence_error", "")
 
-    def test_phase_c_alert_includes_url_divergence_error(self, tmp_db):
+    def test_phase_c_alert_includes_url_divergence_error(self, tmp_db,
+                                                          monkeypatch):
         """T8: _send_phase_c_alert が url_divergence_error を field 化."""
         from tasks.task_scheduler_health_check import _send_phase_c_alert
         from unittest.mock import patch
+        import notifiers.discord_notifier as dn
         findings = {
             "intermittent": [], "orphans": [], "db_locks": 0,
             "subprocess_errors": [],
             "url_divergence_error": "simulated lock"
         }
-        # webhook あれば送信処理に入る (実 HTTP は mock)
-        with patch("httpx.post") as mock_post:
+        # 依頼ボード#39 Phase A S2 (2026-07-03) choke point 化により、実送信は
+        # notification_center.record_and_maybe_send → resolve_webhook →
+        # requests.post 経由になった (httpx ではない)。resolve_webhook が空文字
+        # を返すと record_and_maybe_send が早期 False になり検証にならないため
+        # webhook 解決先を mock する。
+        monkeypatch.setattr(
+            dn, "resolve_webhook",
+            lambda category="default": "https://discord.fake/webhook",
+        )
+        with patch("requests.post") as mock_post:
             mock_post.return_value.status_code = 200
             result = _send_phase_c_alert("https://discord.fake/webhook",
                                          findings)

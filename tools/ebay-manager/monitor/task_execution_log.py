@@ -95,6 +95,12 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "rival_classify", "display": "W301 AI店長 競合分類 (毎日 03:00, Shadow)", "hours": [3], "weekdays": None, "owner": "rival_classify"},
     # W301 AI 店長 Phase1 S4 (2026-07-02): 競合 GetItem 定点観測 (蓄積のみ、消費は Phase2).
     {"key": "competitor_snapshot", "display": "W301 AI店長 競合定点観測 (毎日 05:30)", "hours": [5], "weekdays": None, "owner": "competitor_snapshot"},
+    # #44 Wave2 (2026-07-04): US 本体 DB↔eBay 整合性 日次突合 (title/condition/
+    # ItemSpecifics禁止Name/ConditionDescription/画像). 毎日 02:15 JST.
+    {"key": "listing_content_audit", "display": "#44 出品内容監査 (DB↔eBay突合, 毎日 02:15)", "hours": [2], "weekdays": None, "owner": "listing_content_audit"},
+    # #45 (2026-07-04): 仕入先候補 (pending/accepted) の availability 定期再チェック.
+    # 毎日 02:50 JST (主 batch 02:30 後、daily_codex_lint/rival_classify 03:00 前).
+    {"key": "supplier_availability_recheck", "display": "#45 仕入先候補 availability 再チェック (毎日 02:50)", "hours": [2], "weekdays": None, "owner": "supplier_availability_recheck"},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

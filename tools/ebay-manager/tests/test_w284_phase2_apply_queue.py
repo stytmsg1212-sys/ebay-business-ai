@@ -86,7 +86,9 @@ class TestCdpAbsent:
         def _fake_probe():
             return False, "CDP not reachable"
 
-        def _fake_notify(config, msg):
+        def _fake_notify(config, msg, **_kw):
+            # **_kw: 本番 _discord_notify(config, message, *, severity=...) の
+            # severity kwarg を受け流す (依頼ボード#45 severity 付き呼出し追従)
             discord_calls.append(msg)
 
         def _fake_should_notify(config, n_pending):
@@ -131,7 +133,7 @@ class TestCdpAbsent:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: discord_calls.append(msg),
+            lambda config, msg, **_kw: discord_calls.append(msg),
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._should_send_cdp_absent_notify",
@@ -168,7 +170,7 @@ class TestDiscoverAwaitingImport:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         # ebaymag_driver: discover 失敗
@@ -226,7 +228,7 @@ class TestDiscoverAwaitingImport:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: discord_calls.append(msg),
+            lambda config, msg, **_kw: discord_calls.append(msg),
         )
 
         from monitor.ebaymag_driver import EbaymagResult
@@ -270,7 +272,7 @@ class TestApplied:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         # fetch_site_states: 実態 UK=on, DE=off (desired と差あり)
@@ -321,7 +323,7 @@ class TestApplied:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         from monitor.ebaymag_driver import EbaymagResult
@@ -380,7 +382,7 @@ class TestFailurePaths:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         from tasks.task_ebaymag_apply_queue import run_ebaymag_apply_queue
@@ -405,7 +407,7 @@ class TestFailurePaths:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         from monitor.ebaymag_driver import EbaymagResult
@@ -442,7 +444,7 @@ class TestFailurePaths:
         )
         monkeypatch.setattr(
             "tasks.task_ebaymag_apply_queue._discord_notify",
-            lambda config, msg: None,
+            lambda config, msg, **_kw: None,
         )
 
         from monitor.ebaymag_driver import EbaymagResult

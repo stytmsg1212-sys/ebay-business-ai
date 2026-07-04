@@ -267,7 +267,9 @@ class _FakeNotifier:
         self._results = list(results)
         self.calls = 0
 
-    def send_message(self, content, embed=None):
+    def send_message(self, content, embed=None, *, severity="info"):
+        # severity kwarg: 本番 DiscordNotifier.send_message(..., severity=...)
+        # の signature に追従 (notification_log 記録用、fake では不使用)。
         self.calls += 1
         return self._results.pop(0) if self._results else False
 
