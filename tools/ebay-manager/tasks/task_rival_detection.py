@@ -473,11 +473,12 @@ def _send_discord_aggregate(config: dict, new_by_listing: dict) -> None:
         for v in new_by_listing.values()
     ]
     content = (
-        f"🎯 **W153 新規ライバル検出** ({len(new_by_listing)} listings)\n"
+        f"🎯 **新規ライバル検出** ({len(new_by_listing)} listings)\n"
         + "\n".join(lines[:20])
     )
     if len(lines) > 20:
         content += f"\n... 他 {len(lines) - 20} listings"
+    content += "\n→ 最安値チェックタブで価格対応を確認してください。"
     try:
         DiscordNotifier(webhook, bypass_env=True).send_message(content)
     except Exception as e:
@@ -499,11 +500,12 @@ def _send_discord_errors_alert(
     ]
     extra = len(err_entries) - 5
     content = (
-        f"⚠️ **W153 errors 検出** "
-        f"(listings={summary['listings_processed']}, "
-        f"errors={summary['errors']})\n"
+        f"⚠️ **ライバル監視エラー** "
+        f"({summary['errors']}/{summary['listings_processed']} listings で取得失敗)\n"
         + "\n".join(excerpt)
         + (f"\n... 他 {extra} listings" if extra > 0 else "")
+        + "\n→ 多くは一時的な取得エラーです。次回実行 (毎日) で自動的に再取得されるため、"
+          "対応不要な場合が多いです。継続する場合のみ scheduler.log の rival_detection を確認してください。"
     )
     try:
         DiscordNotifier(webhook, bypass_env=True).send_message(content)

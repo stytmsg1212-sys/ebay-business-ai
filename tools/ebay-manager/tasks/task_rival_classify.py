@@ -187,17 +187,17 @@ def _send_discord_issue_alert(config: dict, summary: dict, issue_items: list[dic
     from notifiers.discord_notifier import DiscordNotifier
     excerpt = []
     for it in issue_items[:5]:
-        excerpt.append(
-            f"- {it.get('ebay_item_id', '?')} / {it.get('competitor_item_id', '?')}: "
-            f"{it.get('route')} — {(it.get('reason') or '')[:100]}"
-        )
+        eid = str(it.get("ebay_item_id") or "")
+        title = (it.get("our_title") or eid or "?")[:40]
+        excerpt.append(f"- {title} ({eid[-4:]}): {(it.get('reason') or '')[:80]}")
     extra = len(issue_items) - 5
     content = (
-        f"⚠️ **W301 rival_classify 要確認** "
-        f"(processed={summary.get('processed', 0)}, issues={len(issue_items)})\n"
+        f"🤖 **AI店長 要確認 {len(issue_items)} 件** "
+        f"(本日処理 {summary.get('processed', 0)} 件中)\n"
         + "\n".join(excerpt)
         + (f"\n... 他 {extra} 件" if extra > 0 else "")
-        + "\n(cap 超過 / AI 呼出エラーは全て review へ倒しています。fail-closed)"
+        + "\n→ AI が自動判定できず保留した商品です。現状は Shadow 運用中で自動値付けへの"
+          "影響はありません（対応不要。内容確認は商品管理タブの「新規発見ライバル」）。"
     )
     try:
         DiscordNotifier(webhook, bypass_env=True).send_message(content)
@@ -300,6 +300,7 @@ def run_rival_classify(config: Optional[dict] = None) -> dict:
             if res.route in _ISSUE_ROUTES:
                 issue_items.append({
                     "ebay_item_id": signals.get("ebay_item_id"),
+                    "our_title": signals.get("our_title"),
                     "competitor_item_id": signals.get("competitor_item_id"),
                     "route": res.route,
                     "reason": res.reason,

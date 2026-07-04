@@ -284,6 +284,7 @@ def _build_discord_message(
             lines.append(f"  ・{title} {profit_str}{cond_tag}")
         if len(awaiting_items) > 10:
             lines.append(f"  他 {len(awaiting_items) - 10} 件")
+        lines.append("→ 商品リサーチ(W228)タブで承認してください。")
 
     msg = "\n".join(lines)
     # 1900 字で安全に truncate (Discord embed description 上限 ~4096 だが W257 対策)

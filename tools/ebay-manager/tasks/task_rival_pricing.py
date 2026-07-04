@@ -844,10 +844,11 @@ def _send_discord_reduced(config: Dict, reduced_items: list) -> None:
             f"${it['old_price']:.2f} → ${it['new_price']:.2f}{comp_s}"
         )
     content = (
-        f"💲 **W183 自動値下げ実行** ({len(reduced_items)} 件)\n" + "\n".join(lines)
+        f"💲 **自動値下げ実行** ({len(reduced_items)} 件)\n" + "\n".join(lines)
     )
     if len(reduced_items) > 15:
         content += f"\n... 他 {len(reduced_items) - 15} 件"
+    content += "\n（対応不要・自動実行結果の記録です。取消したい場合は最安値チェックタブで確認）"
     try:
         # 依頼ボード#39 S2 follow-up (2026-07-03): 値下げ実行結果サマリは severity='warning'
         # (money-direct だが blocking ではない、DASHBOARD/S4 で拾える通知過多防止優先)。
@@ -886,11 +887,12 @@ def _send_discord_spiral_alert(config: Dict, ebay_item_id: str, streak: dict) ->
     title = _get_listing_title(ebay_item_id)
     prices_s = " → ".join(f"${p:.2f}" for p in reversed(streak['prices']))
     content = (
-        f"⚠️ **W183 値下げ合戦アラート**: {title} ({ebay_item_id[-4:]})\n"
+        f"⚠️ **値下げ合戦アラート**: {title} ({ebay_item_id[-4:]})\n"
         f"直近 {streak['count']} 回連続値下げ (間に値上げなし、"
         f"{CONSECUTIVE_REDUCTION_WINDOW_DAYS} 日以内): {prices_s}\n"
         f"値下げは継続中 (床 lp_min_price / 1 回 {int(MAX_SINGLE_DROP_PCT * 100)}% 上限は既存通り適用)。"
-        f"ライバルとの値下げ合戦の疑いあり、必要なら手動確認をお願いします。"
+        f"ライバルとの値下げ合戦の疑いあり — 追従を止めたい場合は"
+        f"最安値チェックタブで手動確認をお願いします。"
     )
     try:
         # 依頼ボード#39 S2 follow-up (2026-07-03): 値下げ合戦スパイラルアラート =
@@ -917,10 +919,12 @@ def _send_discord_failure_alert(
         eid = str(f['ebay_item_id'])
         excerpt.append(f"- {_get_listing_title(eid)} ({eid[-4:]}): {f['message'][:100]}")
     content = (
-        f"⚠️ **W183 ライバル価格 refresh 失敗** — {reason}\n"
+        f"⚠️ **ライバル価格の取得に失敗** — {reason}\n"
         f"{summary}"
         + ("\n" + "\n".join(excerpt) if excerpt else "")
         + (f"\n... 他 {len(api_failures) - 5} 件" if len(api_failures) > 5 else "")
+        + "\n→ 自動値下げは今回見送られています。次回実行で自動的に再試行されるため、"
+          "多くは対応不要です。継続する場合は最安値チェックタブで対象商品を確認してください。"
     )
     try:
         # 依頼ボード#39 S2 follow-up (2026-07-03): refresh 失敗 alert は severity='error'

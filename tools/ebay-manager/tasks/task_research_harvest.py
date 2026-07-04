@@ -663,6 +663,14 @@ def run_research_harvest(config: Optional[dict] = None) -> dict:
         summary_lines.append(f"エラー: {error_count} 件")
         for e in result["errors"][:5]:
             summary_lines.append(f"  ・{e[:80]}")
+        summary_lines.append(
+            "→ 翌日の実行で自動的に再試行されます。継続する場合のみ scheduler.log の "
+            "research_harvest を確認してください。"
+        )
+    else:
+        summary_lines.append(
+            "（対応不要・自動記録です。ゲート通過分は自動的に次のリサーチ探索(04:30)に引き継がれます）"
+        )
 
     msg = "\n".join(summary_lines)
     severity = "error" if error_count > 0 and result["gate_passed"] == 0 else "info"

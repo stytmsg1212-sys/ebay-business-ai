@@ -133,9 +133,11 @@ def _notify_budget_exceeded(config: Optional[dict], answer) -> None:
             )
             return
         ok = notifier.send_message(
-            f"⚠️ **morning_brief 予算超過**\n"
-            f"Opus 4.8 budget $1.0 を超過. cost={getattr(answer, 'cost_usd', '?')} "
-            f"qa_id={getattr(answer, 'qa_id', '?')}. CLAUDE.md Q6 1日30 calls 上限近接の可能性."
+            f"⚠️ **朝の商況ブリーフ 予算超過**\n"
+            f"本日のAI利用コストが上限 $1.0 を超過したため今回の生成を見送りました "
+            f"(cost={getattr(answer, 'cost_usd', '?')} "
+            f"qa_id={getattr(answer, 'qa_id', '?')})。\n"
+            f"→ 対応不要です。明日また自動生成されます。頻発する場合は利用量をご確認ください。"
         )
         if not ok:
             logger.error("budget_exceeded notify: Discord 送信失敗 (R-11 user 不達)")
