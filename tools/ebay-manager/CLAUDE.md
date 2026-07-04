@@ -31,14 +31,35 @@ eBay 出品 / 関税 / 送料 / 商品ランク等の **規制業務 rules** を
 ### Country of Origin / Manufacturer の layer 分離
 
 - **eBay 出品文 (Title / HTML description / Item Specifics)**: Country of Origin / Country of Manufacture / Manufacturer の **いずれも記載禁止** (US Customs が原産国を再計算する根拠を与えない)
-- **通関書類 (FedEx Invoice / HS code)**: Manufacturer = **日本代理店** (詳細は本ファイル下の「通関ルール」section)
-- 混同事故防止: eBay XML builder は Manufacturer 欄を **空文字列で送出**
+- **通関書類 (FedEx Invoice / HS code)**: Manufacturer = **日本代理店** (詳細は本ファイル下の「通関ルール」section)。**この通関書類側の Manufacturer 運用は不変** — 上記の eBay 出品文からの除外と混同しないこと (layer が別)
+
+#### 現状の見解 (2026-07-04 〜)
+
+原産国・製造者系の禁止 Name 集合 (`country of origin` / `country/region of manufacture` / `country of manufacture` / `manufacturer`、大文字小文字表記ゆれ含め一切禁止) を **4 層で除外する多層防御** を実装済み (#44):
+
+1. 参考 listing からの ItemSpecifics Keys 抽出時 (`monitor/ebay_reference_fetcher.py`、源流フィルタ)
+2. 生成 LLM の parse 結果 (`monitor/listing_generator.py`。プロンプト guard だけでは LLM 遵守を保証できないため機械的除外も併用)
+3. AddItem XML 組立時 (`monitor/ebay_lister.py`)
+4. ReviseItem 送信直前 (`monitor/ebay_client.py` の `_is_forbidden_specific_name` / `revise_item_specifics`。除外した Name は `removed_names` で呼出元に報告)
+
+除外は Q0 (silent skip 禁止) のため各層で `logger.warning` により痕跡を残す。**ItemSpecifics の更新経路 (新設)**: 出品後の Item Specifics 修正は `ebay_client.revise_item_specifics` 経由。ReviseItem の NameValueList は全置換仕様のため、入力・現行 (merge元) どちらに原産国系 Name が含まれていても送信前に自動除去される。
+
+#### 過去の見解 (〜2026-07-04)
+
+「混同事故防止: eBay XML builder は Manufacturer 欄を **空文字列で送出**」と記述していた。
+
+#### 矛盾点 / 変更理由
+
+- 変更日: 2026-07-04
+- 契機: #44 原産国混入チェーン封鎖対応。参考 listing の ItemSpecifics Keys がノーフィルタで抽出され、生成プロンプトの「Keys 完全一致」指示に乗って Country of Origin / Manufacturer 等がそのまま AddItem XML に送出されるバグが発覚
+- 何が違うか: 「eBay XML builder は Manufacturer 欄を空文字列で送出」という実装は **調査時点で存在しなかった** (`md-files-can-be-wrong.md` R-1 実例)。#44 対応で実際に上記 4 層フィルタとして新規実装した
+- 何が同じか: 「eBay 出品文には原産国・Manufacturer を記載しない」という規約自体は不変。通関書類側の Manufacturer = 日本代理店運用も不変 (layer が別、混同しない)
 
 ### eBay XML 制約 (出品前 自動 validate)
 
 - **Title ≤ 80 文字** (Mojibake 後文字数 / バイト数注意)
 - **Item Specifics 各値 ≤ 65 文字**、**Brand / MPN 必須** (Listing Quality 直撃)
-- 中古品 (S/A/B/C/D/PO/As-Is) は **ConditionDescription 必須** (これ無いと defect 増)
+- 中古品 (S/A/B/C/D/PO/As-Is) は **ConditionDescription 必須** (これ無いと defect 増)。**内容の方針は本ファイル下「ConditionDescription 運用方針」section 参照** (短いランク定型文のみ、商品固有の長文は description へ)
 - VeRO 該当ブランドは `data/vero_brands.json` で事前判定
 
 ### SKU 規約 (用途は 2 つのみ、キー使用禁止)
@@ -245,10 +266,21 @@ The shipper is a retailer and is not the manufacturer.
 - **A/B/C/D**: 具体的動作確認結果。例: `Tested and confirmed working (2026-04). Power on/off: OK / Audio: OK / Bluetooth: OK`
 - **PO**: `Powered on, but full function not verified`
 - **As-Is**: **必ず理由明示**。例: `No AC adapter for testing` / `PCB burn damage` / `Heavy contamination prevented testing`
+- Quick Notes は **description 本文用の詳細情報**。eBay XML `<ConditionDescription>` (下記) とは別フィールド・別役割 — 混同しない
+
+### ConditionDescription 運用方針 (2026-07-04 更新)
+
+`condition_description` (eBay XML `<ConditionDescription>`、買い手に表示されるコンディション説明) は **ランクの短い定型文のみ** (AI 生成、65 字以内・英語)。Quick Notes (description 本文) とは別フィールドで役割が異なる:
+
+- **ConditionDescription = ランク要約のみ**。例 (A): `Tested and fully working (2026-07). Minor cosmetic wear.` / 例 (PO): `Powered on, but full function not verified.`
+- **付属品欠品・傷の位置・詳細な使用感などの商品固有の長文情報は ConditionDescription に書かない**。それらは Quick Notes / includes_items / description 本文へ記載する
+- **As-Is のみ例外**: 理由を ConditionDescription へ必ず転記 (下記「As-Is 出品の XML 必須要件」、eBay 対策として不変)
+- 原産国 (Country of Origin/Manufacture) や Manufacturer に触れる語は一切含めない (上記「Country of Origin / Manufacturer の layer 分離」)
+- 実装 (生成プロンプト正源): `monitor/listing_generator.py`「Condition Description ルール」
 
 ### As-Is 出品の XML 必須要件
 
-- eBay XML `<ConditionDescription>` に Quick Notes の As-Is 理由を **必ず転記**
+- eBay XML `<ConditionDescription>` に Quick Notes の As-Is 理由を **必ず転記** (上記「ConditionDescription 運用方針」の唯一の例外、eBay 対策として維持)
 - **65 字以内** (eBay 制約) / 英文 / `As-Is — <reason>` 形式
 - 欠落時は VerifyAdd 警告だが通る → buyer 紛争で **Defect 確定リスク** (アカウント停止直結)
 

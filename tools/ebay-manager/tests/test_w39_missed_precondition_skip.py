@@ -67,7 +67,14 @@ _CONFIG = {"execution_schedule": {"times": ["02:30", "11:00", "15:00", "18:00", 
 
 def test_skip_trace_satisfies_slot_not_missed():
     """research_harvest の CDP 不在 skip 痕 (status='skip_other') がある slot は
-    missed に含まれないこと (find_missed_tasks の新充足条件)."""
+    missed に含まれないこと (find_missed_tasks の新充足条件).
+
+    レビュアー指摘 (2026-07-03) の日付境界 flake 修正: このテストは実 log_task_skip()
+    を通すため started_at が実行日の datetime.now() で bind される。find_missed_tasks
+    に固定日を渡すと 7/4 以降 `WHERE DATE(started_at)=固定日` に合致せず常に fail する
+    → 対策 (a): DB に実 INSERT された started_at を読み戻し、その日付を起点に now を
+    構築する (log_task_skip 経由の実挙動検証を保ったまま日付境界に耐性を持たせる)。
+    """
     init_db()
     # research_harvest は hours=[3] (独立 cron). skip 痕を batch_hour=3 で INSERT.
     log_task_skip(
@@ -79,7 +86,18 @@ def test_skip_trace_satisfies_slot_not_missed():
         skip_kind="skip_other",
     )
 
-    now = datetime(2026, 7, 3, 12, 0, 0)  # 03:00 slot の後
+    # DB に実 bind された started_at (JST naive) から日付を復元し、同日 12:00 を now
+    # とする。03:00 slot は expected (12:00 > 03:00) かつ WHERE DATE(started_at) に
+    # 合致する。ローカル `datetime.now()` を別途取ると log_task_skip 内の now と
+    # 日付跨ぎで乖離しうるため、DB 実値からのみ導出する。
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT started_at FROM task_execution_log "
+            "WHERE task_key='research_harvest' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    stored_dt = datetime.strptime(str(row[0])[:19], "%Y-%m-%d %H:%M:%S")
+    now = stored_dt.replace(hour=12, minute=0, second=0, microsecond=0)
+
     missed = find_missed_tasks(now=now, config=_CONFIG)
 
     missed_keys = [m["task_key"] for m in missed]

@@ -69,7 +69,7 @@ WebSearch で以下を調べる:
 
 ※ Cond ID 1500 はカテゴリ依存 (Consumer Electronics > Portable Audio 等で制限)。GetCategoryFeatures / Taxonomy API で事前確認、不可カテゴリでは 1000 fallback or 3000 + "Open box" description に降格 (`tools/ebay-manager/CLAUDE.md` 「コンディションランク 8 段階」section 参照)。
 
-A/B/C/D/PO の 5 段階差異は **ConditionDescription / Quick Notes** 内のテキストで表現する (eBay ConditionID 体系では 3000 単一に集約される。`Used - Like New` 等の細分化文字列は Books/Music/DVD カテゴリ専用で主要カテゴリに存在しない)。
+A/B/C/D/PO の 5 段階差異は **description 本文の Quick Notes** で詳細表現する (eBay ConditionID 体系では 3000 単一に集約される。`Used - Like New` 等の細分化文字列は Books/Music/DVD カテゴリ専用で主要カテゴリに存在しない)。ConditionDescription XML はランクの短い定型文 (65 字以内、AI 生成) のみとし、動作確認結果等の商品固有詳細は書かない (2026-07-04 方針、下記 XML 制約表の注釈参照)。
 
 詳細 (Cond ID 別軸 / 自動推定キーワード / VeRO 特例) は `feedback_condition_rank_system.md` 参照。
 
@@ -100,13 +100,21 @@ HTML テンプレート: `parts/htmltxt` の `【記載内容】` を以下 4 se
 | Item Specific name | 65 字以内 | AddItem reject |
 | Item Specific value | 65 字以内 / 1 spec あたり 30 値まで | AddItem reject |
 | Description | HTML 500,000 字以内 | AddItem reject |
-| Condition Description | XML 制約 1,000 字以内 / 中古品は記載必須 / 簡潔推奨 (社内目安: 250 字程度で要点に絞る、出典未確定) | Defect リスク + 過長は UI で truncate 表示崩れ |
+| Condition Description | XML 制約 1,000 字以内 / 中古品は記載必須 / **社内運用: ランクの短い定型文のみ 65 字以内 (AI 生成)、商品固有詳細は description 本文へ** | Defect リスク + 過長は UI で truncate 表示崩れ |
 | 画像 | 1 出品 24 枚上限 | EPS Upload エラー |
 | Promoted Listings | 2% 以上推奨 | 露出低下 |
 | 送料 | 商品価格の **20% margin** + `<ShippingType>Flat</ShippingType>` 必須 | $30 default のまま (silently ignore) |
 | Country of Origin / Manufacture | **絶対に記載しない** | 関税リスク |
 | Brand | 真贋確認できない場合は "Unbranded" | VeRO 違反リスク |
 | MPN | 不明なら "Does Not Apply" | AddItem reject |
+
+> **矛盾アノテーション — Condition Description 文字数**
+>
+> **現状の見解 (2026-07-04 〜)**: ConditionDescription XML はランクの短い定型文のみ (65 字以内、AI 生成)。付属品欠品などの商品固有詳細は description 本文へ記載する。As-Is のみ「As-Is — <理由>」形式で理由必須 (不変)。
+>
+> **過去の見解 (〜2026-07-04)**: 社内目安 250 字程度で「要点に絞る」運用 (出典未確定)。商品固有詳細を ConditionDescription に含める余地があった。
+>
+> **矛盾点 / 変更理由**: 変更日 2026-07-04。契機は user 確定方針 (ConditionDescription 短文定型化 + 商品固有詳細を description 本文へ分離)。差分は文字数目安 250字→65字 + 内容を「ランク定型文のみ」に限定。中古品は記載必須 / As-Is は理由必須の運用は不変。
 
 ## 完了判定 (DoD - Boris Tip 2 自己検証)
 
