@@ -187,9 +187,12 @@ def build_draft_params_from_phase3(
     if rank_code == 'As-Is':
         # As-Is は理由が必須 (quick_notes = 商品固有理由)。不在時は placeholder で
         # defect リスク警告 (silent fall-through 防止、Q0)。
-        if quick_notes:
-            _as_is_reason = str(quick_notes).rstrip(' .')
-        else:
+        # HIGH-2 修正 (2026-07-04 Codex): 旧 `if quick_notes:` は空白のみ文字列
+        # (`"   "` / `" ."`) を truthy 判定して placeholder / warning を bypass →
+        # `As-Is —  ` (理由なし) が Ack Success で eBay へ届き buyer 紛争で defect
+        # 確定リスク。strip 後に評価して空文字なら必ず placeholder 分岐へ合流させる。
+        _as_is_reason = str(quick_notes or "").rstrip(' .').strip()
+        if not _as_is_reason:
             _as_is_reason = 'Reason not provided'
             logger.warning(
                 "ConditionDescription: As-Is rank without quick_notes; "

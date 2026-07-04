@@ -121,12 +121,104 @@ RANK_LABELS_EN: dict[str, str] = {
 # `<h3>Rank B &mdash; Good</h3>` の entity 形式で、リテラル em-dash に絞ると無音 no-op
 # だった (v4 テンプレ正源準拠)。置換文字列も `Rank {code} &mdash; {label}` の entity
 # 形式に統一 (テンプレとの整合)。
+#
+# 【MED-3 hardening 2026-07-04】 label 部を「RANK_LABELS_EN の 8 値の whitelist」に
+# 限定 (`[A-Za-z ()\-]{0,29}` の char class 版だと prose 中の
+# `Rank B — Good condition overall` を `Good condition overall` まで飲み込む latent)。
+# 順番は「長いラベルを先」に並べる (regex は最左優先で最初のマッチを取るため、
+# `New (Opened)` を `New` より先に置かないと `New (Opened)` が `New` で切れる)。
 _RANK_HEADER_PATTERN = re.compile(
     r"Rank\s+"
     r"(?P<code>N|S|A|B|C|D|PO|As-Is)"                              # 8 段階のいずれか、完全一致
     r"\s+(?:[—\-–]|&mdash;|&ndash;|&#8212;|&#8211;)\s+"           # em-dash リテラルまたは entity (必須)
-    r"[A-Za-z][A-Za-z ()\-]{0,29}"                                 # Label 30 字以内
+    r"(?:New \(Opened\)|Power-On Only|Excellent|Issues|Fair|Good|As-Is|New)"  # 既知 8 ラベルのみ
 )
+
+# 【round-trip fix 2026-07-04 実機再確認】As-Is 遷移時に置換形 `Rank As-Is` (em-dash
+# + Label 無し) を吐いていた旧実装のため、そこから戻り遷移 (As-Is → A 等) の再
+# マッチが不可能で片道切符になっていた。fix:
+#   (a) 置換文字列を常に `Rank {code} &mdash; {label}` の**完全形**で emit
+#       (以降の書込は round-trip-safe、v4 テンプレ実物 358042514439 と同形状)
+#   (b) 過去 stale の bare `Rank As-Is` を回収するため専用パターンを追加
+#       (`Rank As-Is` 単独 = 直後に em-dash が続かないケースだけ)
+_RANK_HEADER_BARE_AS_IS_PATTERN = re.compile(
+    r"Rank\s+As-Is\b(?!\s*(?:[—\-–]|&mdash;|&ndash;|&#8212;|&#8211;))"
+)
+
+# 【v4 テンプレ Rank ブロック 3 要素の追従、2026-07-04 実機再確認】
+# 実物構造 (data/testdesc16_previews/358*.html で確認):
+#   <div class="mh-rb-letter">B</div>                          ← letter (rank code)
+#   <h3>Rank B &mdash; Good</h3>                                ← header (既存 helper)
+#   <div class="mh-rank-jp">Tested &middot; Working</div>       ← chip (状態語彙)
+#   <div class="mh-quick">...(自由文)...</div>                  ← quick notes (自動追従不可)
+_RANK_LETTER_PATTERN = re.compile(
+    r'(<div\s+class="mh-rb-letter"[^>]*>)([^<]*)(</div>)'
+)
+_RANK_CHIP_PATTERN = re.compile(
+    r'(<div\s+class="mh-rank-jp"[^>]*>)([^<]*)(</div>)'
+)
+
+# ランク別 chip 語彙 (v4 テンプレの `mh-rank-jp` セクション用)。
+# coordinator 指示 (2026-07-04): テンプレ実物 (`Tested &middot; Working` 等) と
+# 揃えつつ user 意図 (「ランクを明示」) を反映した語彙。`&middot;` エンティティで統一。
+RANK_CHIP_EN: dict[str, str] = {
+    "N":     "Sealed",
+    "S":     "Unused",
+    "A":     "Tested &middot; Minor Wear",
+    "B":     "Tested &middot; Visible Wear",
+    "C":     "Tested &middot; Heavy Wear",
+    "D":     "Tested &middot; Has Issues",
+    "PO":    "Power-On Only",
+    "As-Is": "Not Tested",
+}
+
+
+# =============================================================================
+# description retarget pending キー (HIGH crash 修正 2026-07-04 live QA)
+#
+# description text_area (widget) が既に instantiate 済みの状態で `desc_key` へ
+# 直接書込むと Streamlit は「widget 生成後の session_state 変更不可」制約で
+# StreamlitAPIException を投げる (panel 全体クラッシュ)。retarget は widget
+# 生成前に pending へ書き、次サイクルの widget 生成前で吸い上げる二段方式にする。
+# =============================================================================
+
+
+def _pending_desc_retarget_key(eid: str) -> str:
+    return pf_key(eid, "desc_retarget_pending")
+
+
+def schedule_desc_retarget(
+    session_state: MutableMapping[str, Any], eid: str, new_html: str,
+) -> None:
+    """description 本文の retarget 結果を pending キーに書く.
+
+    呼び出し側 (`_render_condition_subblock` のランク変更ハンドラ) は本関数を
+    呼んだ後 `st.rerun(scope="fragment")` して次サイクルへ譲る。次サイクルの
+    widget 生成前に `consume_pending_desc_retarget` が desc_key へ反映する。
+
+    直接 `desc_key` を触らないので widget instantiate 制約に抵触しない。
+    """
+    session_state[_pending_desc_retarget_key(eid)] = new_html
+
+
+def consume_pending_desc_retarget(
+    session_state: MutableMapping[str, Any], eid: str,
+) -> bool:
+    """pending 済み retarget を desc_key に反映し pending をクリアする.
+
+    `_render_description_field` の description text_area (widget) 生成**直前**で
+    呼ぶ。pending が無ければ何もしない (False)、あれば desc_key へ書いて pending を
+    削除 (True)。
+
+    Returns:
+        pending を消費して desc_key を更新したかどうか。
+    """
+    pending_key = _pending_desc_retarget_key(eid)
+    if pending_key not in session_state:
+        return False
+    new_html = session_state.pop(pending_key)
+    session_state[pf_key(eid, "description")] = new_html
+    return True
 
 
 def retarget_rank_headers_in_description(
@@ -155,18 +247,94 @@ def retarget_rank_headers_in_description(
     """
     if not html or not rank_code:
         return html, False
-    label = (rank_label or RANK_LABELS_EN.get(rank_code) or "").strip()
+    label = (rank_label or RANK_LABELS_EN.get(rank_code) or "").strip() or rank_code
     # 【HIGH-1 修正 2026-07-04 verify wave】置換文字列は `&mdash;` エンティティで統一
-    # (v4 テンプレ正源 `listing-description-template.md` L239 に整合、リテラル em-dash と
+    # (v4 テンプレ正源 `listing-description-template.md` に整合、リテラル em-dash と
     # 混在させると同一 description 内で表記ゆれが発生するのを避ける)。
-    # `Rank As-Is &mdash; As-Is` のような label 重複は "Rank As-Is" のみに落として自然化。
-    if label and label != rank_code:
-        replacement = f"Rank {rank_code} &mdash; {label}"
-    else:
-        replacement = f"Rank {rank_code}"
-    if not _RANK_HEADER_PATTERN.search(html):
-        return html, False
-    return _RANK_HEADER_PATTERN.sub(replacement, html), True
+    # 【round-trip fix 2026-07-04 実機再確認】As-Is も `Rank As-Is &mdash; As-Is` の
+    # 完全形で emit する (v4 テンプレ実物 358042514439.html と同形状、以降のランク
+    # 変更で `_RANK_HEADER_PATTERN` に再マッチ可能 = 往復対応)。従来「As-Is は label
+    # 重複を避けて "Rank As-Is" のみ」の分岐は片道切符バグの原因だったため削除。
+    replacement = f"Rank {rank_code} &mdash; {label}"
+    changed = False
+    # 完全形マッチ (通常経路)
+    if _RANK_HEADER_PATTERN.search(html):
+        html = _RANK_HEADER_PATTERN.sub(replacement, html)
+        changed = True
+    # legacy `Rank As-Is` bare (旧 emit) を回収 (round-trip 往復対応)
+    if _RANK_HEADER_BARE_AS_IS_PATTERN.search(html):
+        html = _RANK_HEADER_BARE_AS_IS_PATTERN.sub(replacement, html)
+        changed = True
+    return html, changed
+
+
+def retarget_rank_block_in_description(
+    html: str, rank_code: Optional[str], rank_label: Optional[str] = None,
+) -> dict:
+    """v4 テンプレ Rank ブロックの 3 要素 (letter / h3 / chip) を同時にランク変更へ追従.
+
+    出典: 2026-07-04 実機再確認 — 従来 `retarget_rank_headers_in_description` は h3 のみ
+    追従で、`<div class="mh-rb-letter">B</div>` バッジ文字と
+    `<div class="mh-rank-jp">Tested · Working</div>` 状態チップが古いランクのまま
+    stale する部分追従バグ。決定論で書き換え可能な 3 要素 (letter/h3/chip) を同時
+    追従し、自由文 `mh-quick` は「自動追従不可」と報告する (呼出側で caption 表示)。
+
+    決定論書換え不可の要素:
+      - `mh-quick` の Quick Notes 自由文 (商品固有) → `quick_notes_present=True`
+        で呼出側に flag だけ返す。整合させるには Description 再生成が必要。
+
+    Args:
+        html: description HTML
+        rank_code: 新ランクコード
+        rank_label: 新ランクラベル EN (省略時 RANK_LABELS_EN から補完)
+
+    Returns:
+        {
+          "new_html": str,
+          "h3_changed": bool,
+          "letter_changed": bool,
+          "chip_changed": bool,
+          "any_changed": bool,
+          "quick_notes_present": bool,   # mh-quick クラスの自由文が存在するか
+        }
+    """
+    result = {
+        "new_html": html or "",
+        "h3_changed": False,
+        "letter_changed": False,
+        "chip_changed": False,
+        "any_changed": False,
+        "quick_notes_present": False,
+    }
+    if not html or not rank_code:
+        return result
+
+    # (a) h3 見出し (既存 helper 経由、bare As-Is 回収込み)
+    new_html, h3_changed = retarget_rank_headers_in_description(html, rank_code, rank_label)
+    result["h3_changed"] = h3_changed
+
+    # (b) letter バッジ (`<div class="mh-rb-letter">X</div>`)
+    letter_before = new_html
+    def _sub_letter(m: re.Match) -> str:
+        return f"{m.group(1)}{rank_code}{m.group(3)}"
+    new_html = _RANK_LETTER_PATTERN.sub(_sub_letter, new_html)
+    result["letter_changed"] = (new_html != letter_before)
+
+    # (c) chip 状態語彙 (`<div class="mh-rank-jp">X</div>`)
+    chip_text = RANK_CHIP_EN.get(rank_code)
+    if chip_text:
+        chip_before = new_html
+        def _sub_chip(m: re.Match) -> str:
+            return f"{m.group(1)}{chip_text}{m.group(3)}"
+        new_html = _RANK_CHIP_PATTERN.sub(_sub_chip, new_html)
+        result["chip_changed"] = (new_html != chip_before)
+
+    result["new_html"] = new_html
+    result["any_changed"] = (
+        result["h3_changed"] or result["letter_changed"] or result["chip_changed"]
+    )
+    result["quick_notes_present"] = ('mh-quick' in new_html)
+    return result
 
 
 def resolve_condition_description_for_rank(
@@ -891,6 +1059,22 @@ def validate_as_is_condition_description(
             f"As-Is のコンディション理由は {AS_IS_CD_MAX_LEN} 字以内 (現在 {len(cd)} 字)。"
             "eBay XML 制約のため短縮してください "
             "(推奨形式: 'As-Is — <reason>')。"
+        )
+    # HIGH-1 修正 (2026-07-04 Codex): 別ランク定型 (`Rank B — Good. ...`) が cd_key に
+    # 残留した状態で As-Is へ切替えても validate は「非空・65字以内」しか見ず素通り
+    # していた → As-Is 商品に「動作確認済」等の矛盾 Seller Notes が送信される事故経路。
+    # 二重ゲート: `Rank ` prefix / `As-Is` 不在のいずれも reject する。
+    if cd.startswith("Rank "):
+        return (
+            "As-Is に別ランクの定型文が残留しています (例: 'Rank B — Good. ...')。"
+            "As-Is の商品固有理由 (`As-Is — <reason>`) を入力してください "
+            "(旧ランク定型のまま送信すると Seller Notes と実状が矛盾します)。"
+        )
+    if "As-Is" not in cd:
+        return (
+            "As-Is 理由は 'As-Is — <reason>' 形式で書いてください "
+            "(現在の値には 'As-Is' が含まれていません。buyer に「なぜ As-Is か」を"
+            "明示する必要があります)。"
         )
     return None
 

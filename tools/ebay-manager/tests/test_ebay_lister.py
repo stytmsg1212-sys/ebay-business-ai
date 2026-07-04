@@ -1146,6 +1146,33 @@ class TestConditionDescriptionFormat2026_05_01:
         cd = params['condition_description']
         assert len(cd) <= 65, f'over 65 chars: len={len(cd)} cd={cd!r}'
 
+    def test_as_is_whitespace_only_quick_notes_uses_placeholder(self):
+        """HIGH-2 修正 (2026-07-04 Codex): whitespace-only quick_notes (`"   "` /
+        `" ."`) は truthy 判定を回避して placeholder + logger.warning 分岐に合流。
+        旧 `if quick_notes:` は空白 str を truthy にして `As-Is —  ` 送信 → buyer
+        紛争で defect 確定リスクだった."""
+        for ws in ("   ", " .", " . ", "\t", "\n\n", " . . "):
+            class _AsIsWS:
+                rank_code = 'As-Is'
+                rank_label = 'As-Is'
+                rank_jp = ''
+                reasoning = ''
+                quick_notes = ws
+                ebay_condition_id = '7000'
+            params = build_draft_params_from_phase3(
+                product=None, reference=None, rank=_AsIsWS(), listing=_FakeListing(),
+                shipping_policy_id='SSS', sku='X',
+                listing_price_usd=100.0, image_urls=[], config=self._config(),
+            )
+            cd = params['condition_description']
+            assert 'Reason not provided' in cd, (
+                f"whitespace-only quick_notes ({ws!r}) must fall through to placeholder: "
+                f"got {cd!r}"
+            )
+            assert cd.startswith('As-Is —')
+            assert cd != 'As-Is —  '  # 空白理由が送信されないこと
+            assert cd != 'As-Is — '
+
     def test_as_is_without_quick_notes_uses_placeholder(self):
         """As-Is で quick_notes 空 = silent fall-through を防ぐため明示的 placeholder.
 

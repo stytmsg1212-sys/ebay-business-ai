@@ -787,16 +787,43 @@ def test_retarget_rank_headers_multiple_occurrences_all_replaced():
     assert "Rank B — Good" not in new_html
 
 
-def test_retarget_rank_headers_as_is_no_duplicate_label():
-    """As-Is は rank_code == RANK_LABELS_EN["As-Is"] のため "Rank As-Is — As-Is" ではなく
-    "Rank As-Is" のみを replacement として使う (エンティティ区切りは付かない)."""
+def test_retarget_rank_headers_as_is_uses_full_form_for_round_trip():
+    """【round-trip fix 2026-07-04 実機再確認】As-Is も `Rank As-Is &mdash; As-Is` の
+    完全形で emit する (旧「Rank As-Is」bare は次のランク変更で再マッチ不可能 = 片道
+    切符バグの原因)。v4 テンプレ実物 (358042514439.html) と同形状に統一."""
     from tabs._finishing_panel_state import retarget_rank_headers_in_description
     html = "<h3>Rank B — Good</h3>"
     new_html, changed = retarget_rank_headers_in_description(html, "As-Is")
     assert changed is True
-    assert "Rank As-Is" in new_html
-    assert "Rank As-Is &mdash; As-Is" not in new_html
-    assert "Rank As-Is — As-Is" not in new_html
+    assert "Rank As-Is &mdash; As-Is" in new_html
+
+
+def test_retarget_rank_headers_recovers_legacy_bare_as_is():
+    """【round-trip fix 2026-07-04】旧 bug で emit された bare `Rank As-Is`
+    (em-dash + Label 無し) を新書式 `Rank A &mdash; Excellent` に回収する
+    (legacy 遷移救済、`_RANK_HEADER_BARE_AS_IS_PATTERN` で拾う)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank As-Is</h3><p>Some content.</p>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True
+    assert "Rank A &mdash; Excellent" in new_html
+    assert ">Rank As-Is<" not in new_html
+
+
+def test_retarget_rank_headers_round_trip_as_is_then_a():
+    """As-Is → A → As-Is → A の連続遷移で最終値に収束すること (片道切符バグの回帰保証)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank B &mdash; Good</h3>"
+    html, _ = retarget_rank_headers_in_description(html, "As-Is")
+    assert "Rank As-Is &mdash; As-Is" in html
+    html, _ = retarget_rank_headers_in_description(html, "A")
+    assert "Rank A &mdash; Excellent" in html
+    html, _ = retarget_rank_headers_in_description(html, "As-Is")
+    assert "Rank As-Is &mdash; As-Is" in html
+    html, _ = retarget_rank_headers_in_description(html, "A")
+    assert "Rank A &mdash; Excellent" in html
+    assert "Rank As-Is" not in html
+    assert "Rank B" not in html
 
 
 # ─────────────────────────────────────────────────
@@ -900,3 +927,308 @@ def test_retarget_rank_headers_only_matches_8_rank_codes():
     new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
     assert changed is False
     assert new_html == html
+
+
+# ─────────────────────────────────────────────────
+# 14c. MED-3 hardening (2026-07-04 Codex): label whitelist で prose 誤爆防止
+# ─────────────────────────────────────────────────
+
+def test_retarget_rank_headers_prose_not_over_consumed():
+    """prose 中の `Rank B — Good condition overall.` を label whitelist で "Good" だけ
+    切り取って追従。旧 `[A-Za-z ()\\-]{0,29}` greedy だと `Good condition overall`
+    まで飲み込んで prose 破壊 (latent) だった。"""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "Note: Rank B — Good condition overall. Also see below."
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True
+    assert "Rank A &mdash; Excellent condition overall." in new_html, (
+        f"label 'Good' だけ置換され prose ' condition overall' は保持される "
+        f"(got {new_html!r})"
+    )
+    assert "Good condition overall" not in new_html
+
+
+def test_retarget_rank_headers_all_known_labels_matched():
+    """RANK_LABELS_EN 全 8 値 (N/S/A-D/PO/As-Is) が label 部として認識されること."""
+    from tabs._finishing_panel_state import (
+        RANK_LABELS_EN, retarget_rank_headers_in_description,
+    )
+    label_pairs = [
+        ("N", "New"), ("S", "New (Opened)"),
+        ("A", "Excellent"), ("B", "Good"),
+        ("C", "Fair"), ("D", "Issues"),
+        ("PO", "Power-On Only"), ("As-Is", "As-Is"),
+    ]
+    for code, label in label_pairs:
+        assert RANK_LABELS_EN[code] == label
+        html = f"<h3>Rank {code} &mdash; {label}</h3>"
+        # 別 rank (A) に追従。As-Is から A への遷移も含む。
+        target_code = "B" if code != "B" else "A"
+        target_label = RANK_LABELS_EN[target_code]
+        new_html, changed = retarget_rank_headers_in_description(
+            html, target_code, target_label,
+        )
+        assert changed is True, f"code={code} label={label} が unmatched"
+
+
+# ─────────────────────────────────────────────────
+# 15. HIGH-1 修正 (2026-07-04 Codex): validate_as_is_condition_description が
+#     旧ランク定型残留 / `As-Is` 不在を reject すること
+# ─────────────────────────────────────────────────
+
+def test_validate_as_is_rejects_stale_rank_template():
+    """B → As-Is 切替時に cd_key に `Rank B — Good. ...` が残ったまま送信を試みる
+    ケースを reject する (二重ゲート、UI 側の事前クリアと state 層 validate)."""
+    from tabs._finishing_panel_state import validate_as_is_condition_description
+    msg = validate_as_is_condition_description(
+        "As-Is", "Rank B — Good. Tested, fully working. Visible wear.",
+    )
+    assert msg is not None
+    assert "旧ランク" in msg or "Rank" in msg
+    assert "Rank B" in msg or "残留" in msg or "定型" in msg
+
+
+def test_validate_as_is_rejects_missing_as_is_token():
+    """As-Is 理由に 'As-Is' が含まれない値 (例: user が自由に書いた
+    'No AC adapter for testing') は reject し、正しい書式を促す."""
+    from tabs._finishing_panel_state import validate_as_is_condition_description
+    msg = validate_as_is_condition_description("As-Is", "No AC adapter for testing")
+    assert msg is not None
+    assert "As-Is" in msg
+
+
+def test_validate_as_is_accepts_proper_format():
+    """`As-Is — <reason>` 形式は PASS (回帰、既存挙動不変)."""
+    from tabs._finishing_panel_state import validate_as_is_condition_description
+    assert validate_as_is_condition_description(
+        "As-Is", "As-Is — No AC adapter for testing",
+    ) is None
+
+
+def test_validate_as_is_empty_still_rejected():
+    """空文字は従来通り reject (回帰)."""
+    from tabs._finishing_panel_state import validate_as_is_condition_description
+    msg = validate_as_is_condition_description("As-Is", "")
+    assert msg is not None
+    assert "必須" in msg
+
+
+def test_validate_non_as_is_rank_returns_none():
+    """As-Is 以外は validate を素通り (回帰)."""
+    from tabs._finishing_panel_state import validate_as_is_condition_description
+    for rank in ("N", "S", "A", "B", "C", "D", "PO", None):
+        assert validate_as_is_condition_description(
+            rank, "Rank B — Good. Tested, fully working. Visible wear.",
+        ) is None
+
+
+# ─────────────────────────────────────────────────
+# 16. HIGH crash 修正 (2026-07-04 live QA): description retarget pending パターン
+#     (Streamlit widget instantiate 後の session_state 書込禁止に抵触しないこと)
+# ─────────────────────────────────────────────────
+
+def test_schedule_desc_retarget_writes_to_pending_key_not_desc_key():
+    """`_render_condition_subblock` からの retarget は desc_key 直接書込せず
+    pending キー (`desc_retarget_pending`) 経由で書くこと (widget 制約回避)."""
+    from tabs._finishing_panel_state import pf_key, schedule_desc_retarget
+    ss: dict = {}
+    eid = "123456789012"
+    schedule_desc_retarget(ss, eid, "<h3>Rank A &mdash; Excellent</h3>")
+    # 直接 desc_key は触られていない
+    assert pf_key(eid, "description") not in ss
+    # pending にだけ書かれている
+    assert ss[pf_key(eid, "desc_retarget_pending")] == "<h3>Rank A &mdash; Excellent</h3>"
+
+
+def test_consume_pending_desc_retarget_applies_and_clears():
+    """次サイクルで widget 生成前に呼ばれ、pending を desc_key へ反映して
+    pending を削除する (widget instantiate より前なので制約に抵触しない)."""
+    from tabs._finishing_panel_state import (
+        consume_pending_desc_retarget, pf_key, schedule_desc_retarget,
+    )
+    ss: dict = {}
+    eid = "999"
+    schedule_desc_retarget(ss, eid, "NEW")
+    applied = consume_pending_desc_retarget(ss, eid)
+    assert applied is True
+    assert ss[pf_key(eid, "description")] == "NEW"
+    # pending は消えている
+    assert pf_key(eid, "desc_retarget_pending") not in ss
+
+
+def test_consume_pending_desc_retarget_no_pending_returns_false():
+    """pending が無ければ何もしない (通常フローで毎回呼ばれるためコスト無視)."""
+    from tabs._finishing_panel_state import consume_pending_desc_retarget, pf_key
+    ss: dict = {}
+    eid = "999"
+    ss[pf_key(eid, "description")] = "ORIGINAL"
+    applied = consume_pending_desc_retarget(ss, eid)
+    assert applied is False
+    assert ss[pf_key(eid, "description")] == "ORIGINAL"
+
+
+def test_desc_retarget_helpers_do_not_touch_desc_key_directly():
+    """AST 静的解析: `_render_condition_subblock` は st.session_state[_desc_key] へ
+    直接代入しない (pending 経由のみ)。1 回目の実装で live クラッシュした形の再発防止."""
+    import ast
+    import inspect
+    from tabs import _finishing_panel
+    src = inspect.getsource(_finishing_panel._render_condition_subblock)
+    tree = ast.parse(src)
+    # `st.session_state[_desc_key] = ...` の代入が存在しないこと
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if not isinstance(tgt, ast.Subscript):
+                    continue
+                # Subscript.value = st.session_state, slice = _desc_key
+                v = tgt.value
+                if (isinstance(v, ast.Attribute) and v.attr == "session_state"
+                        and isinstance(tgt.slice, ast.Name)
+                        and tgt.slice.id == "_desc_key"):
+                    raise AssertionError(
+                        "`_render_condition_subblock` が st.session_state[_desc_key] へ"
+                        "直接代入している (Streamlit widget instantiate 制約に抵触)。"
+                        "schedule_desc_retarget/consume_pending_desc_retarget 経由に"
+                        "変更してください。"
+                    )
+
+
+# ─────────────────────────────────────────────────
+# 17. retarget_rank_block_in_description (v4 テンプレ 3 要素同時追従)
+#     部分追従バグ完遂 2026-07-04 実機再確認
+# ─────────────────────────────────────────────────
+
+# v4 テンプレ実物 fixture (data/testdesc16_previews/358027482174.html から抜粋)
+_V4_RANK_BLOCK_B_HTML = (
+    '<div class="mh-rank">'
+    '<div class="mh-rank-brush">'
+    '<div class="mh-rb-letter">B</div>'
+    '</div>'
+    '<h3>Rank B &mdash; Good</h3>'
+    '<div class="mh-rank-jp">Tested &middot; Visible Wear</div>'
+    '<div class="mh-quick">Tested and confirmed working. Cosmetic wear visible on the housing but does not affect operation.</div>'
+    '</div>'
+)
+
+
+def test_retarget_rank_block_all_three_elements_change_for_a():
+    """v4 テンプレ実構造 B → A 遷移で letter/h3/chip の 3 要素が同時追従."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    res = retarget_rank_block_in_description(_V4_RANK_BLOCK_B_HTML, "A", "Excellent")
+    assert res["h3_changed"] is True
+    assert res["letter_changed"] is True
+    assert res["chip_changed"] is True
+    assert res["any_changed"] is True
+    assert res["quick_notes_present"] is True  # mh-quick 存在
+    new_html = res["new_html"]
+    assert '<div class="mh-rb-letter">A</div>' in new_html
+    assert '<h3>Rank A &mdash; Excellent</h3>' in new_html
+    assert '<div class="mh-rank-jp">Tested &middot; Minor Wear</div>' in new_html
+    # 旧値の残存無し
+    assert '<div class="mh-rb-letter">B</div>' not in new_html
+    assert 'Rank B &mdash; Good' not in new_html
+    assert 'Tested &middot; Visible Wear' not in new_html
+
+
+def test_retarget_rank_block_round_trip_a_to_b_to_as_is_to_a():
+    """A → B → As-Is → A の 3 連遷移で letter/h3/chip 全てが最終 A に収束."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    html = _V4_RANK_BLOCK_B_HTML
+    # B → A
+    html = retarget_rank_block_in_description(html, "A", "Excellent")["new_html"]
+    assert '<div class="mh-rb-letter">A</div>' in html
+    # A → B
+    html = retarget_rank_block_in_description(html, "B", "Good")["new_html"]
+    assert '<div class="mh-rb-letter">B</div>' in html
+    assert '<h3>Rank B &mdash; Good</h3>' in html
+    assert 'Tested &middot; Visible Wear' in html
+    # B → As-Is (完全形で emit されるため round-trip 可能)
+    html = retarget_rank_block_in_description(html, "As-Is")["new_html"]
+    assert '<div class="mh-rb-letter">As-Is</div>' in html
+    assert '<h3>Rank As-Is &mdash; As-Is</h3>' in html
+    assert '<div class="mh-rank-jp">Not Tested</div>' in html
+    # As-Is → A (往復対応の hard check)
+    html = retarget_rank_block_in_description(html, "A", "Excellent")["new_html"]
+    assert '<div class="mh-rb-letter">A</div>' in html
+    assert '<h3>Rank A &mdash; Excellent</h3>' in html
+    assert '<div class="mh-rank-jp">Tested &middot; Minor Wear</div>' in html
+    # As-Is / B の残存無し
+    assert '<div class="mh-rb-letter">As-Is</div>' not in html
+    assert '<div class="mh-rb-letter">B</div>' not in html
+    assert 'Rank B &mdash; Good' not in html
+    assert 'Rank As-Is' not in html
+    assert 'Not Tested' not in html
+    assert 'Visible Wear' not in html
+
+
+def test_retarget_rank_block_no_structure_falls_back_to_h3_only():
+    """v4 テンプレ構造 (mh-rb-letter / mh-rank-jp) が無い自作 HTML の場合、
+    h3 だけ追従して letter/chip は変更なし (該当要素は skip)."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    html = "<h3>Rank B &mdash; Good</h3><p>plain description</p>"
+    res = retarget_rank_block_in_description(html, "A", "Excellent")
+    assert res["h3_changed"] is True
+    assert res["letter_changed"] is False
+    assert res["chip_changed"] is False
+    assert res["any_changed"] is True
+    assert res["quick_notes_present"] is False  # mh-quick 無し
+    assert '<h3>Rank A &mdash; Excellent</h3>' in res["new_html"]
+
+
+def test_retarget_rank_block_no_pattern_at_all_returns_no_change():
+    """Rank 見出しも Rank ブロック要素も含まない description は any_changed=False."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    html = "<h1>Product title</h1><p>Just a description.</p>"
+    res = retarget_rank_block_in_description(html, "A", "Excellent")
+    assert res["any_changed"] is False
+    assert res["new_html"] == html
+
+
+def test_retarget_rank_block_prose_not_over_consumed_by_h3():
+    """prose 誤爆防止 (MED-3 hardening 継承): `Rank B — Good condition overall`
+    は label whitelist の 'Good' だけ切り取って追従、 prose は保持."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    html = "Note: Rank B — Good condition overall. See below."
+    res = retarget_rank_block_in_description(html, "A", "Excellent")
+    assert res["h3_changed"] is True
+    assert "Rank A &mdash; Excellent condition overall." in res["new_html"]
+    assert "Rank A &mdash; Excellent condition overall condition overall" not in res["new_html"]
+
+
+def test_retarget_rank_block_quick_notes_flag_only_when_present():
+    """quick_notes_present は mh-quick クラス存在で判定 (自由文自動追従不可の
+    警告 caption を呼出側に出させるための flag)."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    # mh-quick あり
+    res1 = retarget_rank_block_in_description(_V4_RANK_BLOCK_B_HTML, "A", "Excellent")
+    assert res1["quick_notes_present"] is True
+    # mh-quick なし
+    html = '<div class="mh-rb-letter">B</div><h3>Rank B &mdash; Good</h3>'
+    res2 = retarget_rank_block_in_description(html, "A", "Excellent")
+    assert res2["quick_notes_present"] is False
+
+
+def test_retarget_rank_block_letter_uses_rank_code_not_label():
+    """letter バッジの中身は rank code (単一/短縮)。As-Is はコード自体を入れる."""
+    from tabs._finishing_panel_state import retarget_rank_block_in_description
+    html = '<div class="mh-rb-letter">B</div>'
+    for code in ("N", "S", "A", "B", "C", "D", "PO", "As-Is"):
+        res = retarget_rank_block_in_description(html, code)
+        assert f'<div class="mh-rb-letter">{code}</div>' in res["new_html"]
+
+
+def test_retarget_rank_block_chip_uses_middot_entity():
+    """chip 語彙は `&middot;` エンティティで統一 (v4 テンプレ実物と整合)."""
+    from tabs._finishing_panel_state import (
+        RANK_CHIP_EN, retarget_rank_block_in_description,
+    )
+    html = '<div class="mh-rank-jp">Tested &middot; Working</div>'
+    res = retarget_rank_block_in_description(html, "A")
+    assert RANK_CHIP_EN["A"] in res["new_html"]
+    # A/B/C/D は `&middot;` を含む
+    for code in ("A", "B", "C", "D"):
+        assert "&middot;" in RANK_CHIP_EN[code], f"rank {code} chip missing middot"
+    # PO/S/N/As-Is は単一語なので middot 無し (回帰)
+    for code in ("PO", "S", "N", "As-Is"):
+        assert "&middot;" not in RANK_CHIP_EN[code], f"rank {code} chip has unexpected middot"

@@ -47,8 +47,11 @@ from tabs._finishing_panel_state import (
     FIELD_LABELS_JA,
     RANK_CHOICES,
     RANK_LABELS_JA,
+    RANK_CONDITION_DESCRIPTION_TEMPLATE,
     RANK_LABELS_EN,
     apply_item_specifics_to_ebay,
+    consume_pending_desc_retarget,
+    schedule_desc_retarget,
     build_change_preview,
     compute_dirty_dispatch_fields,
     compute_header_metrics,
@@ -62,6 +65,7 @@ from tabs._finishing_panel_state import (
     rank_to_condition_id,
     resolve_condition_description_for_rank,
     resolve_effective_condition_id_for_cd_dispatch,
+    retarget_rank_block_in_description,
     retarget_rank_headers_in_description,
     resolve_rank_initial,
     resolve_source_url,
@@ -427,6 +431,13 @@ def _render_description_field(
     )
     seed_session_value(st.session_state, desc_key, desc_initial)
 
+    # HIGH crash 修正 (2026-07-04 live QA): description text_area (下記 L468) が
+    # 既に instantiate 済みの状態で `_render_condition_subblock` が `desc_key` へ
+    # 直接書込むと StreamlitAPIException で panel 全体が落ちる (「widget 生成後の
+    # session_state 変更不可」制約)。retarget 経路を pending キー経由に変え、
+    # widget 生成前 (ここ) で pending → desc_key を反映する (`consume_pending_desc_retarget`)。
+    consume_pending_desc_retarget(st.session_state, eid)
+
     with st.container(border=True):
         st.markdown("**📝 Description & Condition (商品説明とコンディション)**")
         st.caption(
@@ -704,32 +715,87 @@ def _render_condition_subblock(
     # 追跡値を先に seed する。
     _cd_auto_rank_key = pf_key(eid, "cd_auto_last_rank")
     seed_session_value(st.session_state, _cd_auto_rank_key, rank_initial or None)
-    if (
-        new_rank
-        and new_rank != "As-Is"
-        and new_rank != st.session_state.get(_cd_auto_rank_key)
-    ):
-        st.session_state[cd_key] = resolve_condition_description_for_rank(new_rank)
+
+    # HIGH-1 修正 (2026-07-04 Codex): 「As-Is へ切替時に旧ランク定型が cd_key に
+    # 残留 → validate は非空・65字以内しか見ず素通り → As-Is 商品に『動作確認済』の
+    # 矛盾 Seller Notes」事故経路の根治。
+    #   (a) description 見出し retarget を As-Is ガードの外へ (As-Is 切替時も本文
+    #       見出しを `Rank As-Is` へ追従)
+    #   (b) As-Is へ遷移した時、現行 CD が rank テンプレ由来 (テンプレ値一致 or
+    #       `Rank ` 始まり) ならクリアして「As-Is は理由入力が必須」caption を表示
+    #   (c) validate_as_is_condition_description に「`Rank ` 始まり / `As-Is`
+    #       不在」reject を追加 (state 層、二重ゲート)
+    _rank_changed = bool(new_rank and new_rank != st.session_state.get(_cd_auto_rank_key))
+    if _rank_changed:
+        if new_rank != "As-Is":
+            st.session_state[cd_key] = resolve_condition_description_for_rank(new_rank)
+            # MED-1 (2026-07-04 T3 レビュー): user が手動編集した CD がランク変更に伴い
+            # 定型文で無警告に上書きされるのを明示する (Q0: silent 更新禁止)。
+            st.caption(
+                "ℹ️ ランク変更に伴いコンディション定型文へ更新しました "
+                "(手動編集していた場合は上書きされています)。"
+            )
+        else:
+            # As-Is 遷移時: 旧ランク定型が残留していたらクリア (二重ゲート、
+            # validate は state 層でも `Rank ` prefix reject するが、UI 側で
+            # 事前クリアして user に理由入力を促す)。
+            _cur_cd = (st.session_state.get(cd_key) or "").strip()
+            _is_template = (
+                _cur_cd.startswith("Rank ")
+                or _cur_cd in RANK_CONDITION_DESCRIPTION_TEMPLATE.values()
+            )
+            if _is_template:
+                st.session_state[cd_key] = ""
+                st.caption(
+                    "⚠️ As-Is へ変更したため旧ランクのコンディション定型文をクリアしました。"
+                    "As-Is は理由入力が必須です "
+                    "(例: 'As-Is — No AC adapter for testing')。"
+                )
+            else:
+                st.caption(
+                    "ℹ️ As-Is は商品固有の理由が必須です "
+                    "(例: 'As-Is — <reason>')。"
+                )
         st.session_state[_cd_auto_rank_key] = new_rank
-        # MED-1 (2026-07-04 T3 レビュー): user が手動編集した CD がランク変更に伴い
-        # 定型文で無警告に上書きされるのを明示する (Q0: silent 更新禁止)。
-        st.caption(
-            "ℹ️ ランク変更に伴いコンディション定型文へ更新しました "
-            "(手動編集していた場合は上書きされています)。"
-        )
+
         # バグ2修正 (2026-07-04 358754421540): AI 生成済み description 本文の
-        # CONDITION RANK 見出し (`<h3>Rank B — Good</h3>` 等) をランク変更に追従。
-        # 見出しパターン不在なら何もしない (regex 変更フラグで caption 分岐)。
+        # CONDITION RANK 見出し (`<h3>Rank B &mdash; Good</h3>` 等) をランク変更に追従。
+        # HIGH-1 修正 (2026-07-04 Codex): As-Is 遷移時も含めて追従させるため
+        # As-Is ガードの外に配置。
+        # HIGH crash 修正 (2026-07-04 live QA): description text_area は既に
+        # instantiate 済み (`_render_description_field` L468) のため desc_key への
+        # 直接書込は StreamlitAPIException で panel クラッシュ。**pending キー経由**
+        # (`schedule_desc_retarget`) で書いて fragment rerun し、次サイクルの
+        # widget 生成前 (`consume_pending_desc_retarget`) で desc_key へ反映する。
+        # 【部分追従バグ完遂 2026-07-04 実機再確認】従来 h3 のみ追従で letter/chip が
+        # stale していた + As-Is 遷移が「Rank As-Is」(bare) を吐いて片道切符だった。
+        # `retarget_rank_block_in_description` で 3 要素同時追従 + bare 回収 + Quick
+        # Notes 自由文の警告表示に切替。
         _desc_key = pf_key(eid, "description")
         _desc_html = st.session_state.get(_desc_key) or ""
-        _new_desc, _changed = retarget_rank_headers_in_description(
+        _rt = retarget_rank_block_in_description(
             _desc_html, new_rank, RANK_LABELS_EN.get(new_rank),
         )
-        if _changed:
-            st.session_state[_desc_key] = _new_desc
+        if _rt["any_changed"]:
+            schedule_desc_retarget(st.session_state, eid, _rt["new_html"])
+            _changed_parts: list[str] = []
+            if _rt["h3_changed"]:
+                _changed_parts.append("見出し")
+            if _rt["letter_changed"]:
+                _changed_parts.append("バッジ文字")
+            if _rt["chip_changed"]:
+                _changed_parts.append("状態チップ")
             st.caption(
-                "ℹ️ description 本文の Rank 表記もランク変更に追従しました。"
+                "ℹ️ description 本文の Rank 表記 "
+                f"({' / '.join(_changed_parts)}) をランク変更に追従しました。"
             )
+            if _rt["quick_notes_present"]:
+                st.caption(
+                    "⚠️ 本文の状態説明文 (Quick Notes) は旧ランク時の内容のままです。"
+                    "整合させるには Description を再生成してください。"
+                )
+            # 次サイクルで pending が widget 生成前に反映されるよう fragment rerun。
+            st.rerun(scope="fragment")
 
     if not _snap.get("success"):
         st.caption(
