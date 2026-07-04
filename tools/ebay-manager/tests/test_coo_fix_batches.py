@@ -31,7 +31,7 @@ from unittest.mock import patch
 import pytest
 
 
-_TMP_DIR = Path(__file__).resolve().parent.parent / "data" / "tmp"
+_TMP_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
 
 def _load_module(name: str, path: Path):
@@ -163,6 +163,33 @@ def test_batch_c_valid_used_ranks_still_have_templates(batch_c):
             f"rank={rank} のテンプレが 65 字超過"
         )
     assert "As-Is" not in batch_c._RANK_CD_TEMPLATES
+
+
+def test_batch_c_cd_template_matches_single_source_of_truth(batch_c):
+    """cascade sync (2026-07-04): batch C の _RANK_CD_TEMPLATES は
+    tabs/_finishing_panel_state.RANK_CONDITION_DESCRIPTION_TEMPLATE と
+    完全一致 (単一情報源、独自書式コピー禁止)."""
+    from tabs._finishing_panel_state import RANK_CONDITION_DESCRIPTION_TEMPLATE
+    assert batch_c._RANK_CD_TEMPLATES == RANK_CONDITION_DESCRIPTION_TEMPLATE, (
+        f"batch C の CD テンプレが正源と乖離。batch={batch_c._RANK_CD_TEMPLATES} "
+        f"src={RANK_CONDITION_DESCRIPTION_TEMPLATE}"
+    )
+
+
+def test_batch_c_cd_template_new_format_rank_prefix(batch_c):
+    """書式仕様 (2026-07-04): テンプレは全て「Rank X — Label. 短い状態文.」
+    形式で始まる (user 意図「conditionはランクを記載」= 明示的ランク表記)."""
+    for rank, text in batch_c._RANK_CD_TEMPLATES.items():
+        assert text.startswith(f"Rank {rank} — "), (
+            f"rank={rank} のテンプレが新書式 'Rank {rank} — ...' で始まっていない: "
+            f"{text!r}"
+        )
+
+
+def test_batch_c_s_canary_cd_matches_expected(batch_c):
+    """canary 358346794459 (rank=S) で送る CD が仕様書の期待値と一致すること."""
+    assert batch_c._RANK_CD_TEMPLATES["S"] == \
+        "Rank S — New (Opened). Unused, no visible wear."
 
 
 # ---------------------------------------------------------------------------
