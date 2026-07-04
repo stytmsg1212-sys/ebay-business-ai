@@ -280,7 +280,13 @@ def _make_snap(ok=True, cid="3000"):
 
 
 def test_apply_bundled_rank_and_cd_single_revise_condition_call(monkeypatch):
-    """rank + cd 両方 dirty → revise_item_condition 1 回呼出 (cd 引数付き = bundle)."""
+    """rank + cd 両方 dirty → revise_item_condition 1 回呼出 (cd 引数付き = bundle).
+
+    HIGH-1 修正 (2026-07-04): N (ConditionID 1000) は eBay 仕様上 CD 非対応のため
+    別テスト (`test_apply_rank_new_1000_does_not_send_condition_description`) で
+    N は CD を送らないことを固定する。本テストは 3000 系 (A) を対象にして
+    bundle 挙動を verify する (旧テストは誤って N + CD 送信を正としていた)。
+    """
     revise_calls = []
 
     def _fake_revise(item_id, cid, app_id, dev_id, cert_id, token, condition_description=None):
@@ -290,7 +296,7 @@ def test_apply_bundled_rank_and_cd_single_revise_condition_call(monkeypatch):
         return {"success": True, "message": "ok", "condition_id": cid}
 
     # pre snapshot returns old cid so revise runs; post snapshot returns new cid so verify PASS
-    snap_seq = [_make_snap(ok=True, cid="3000"), _make_snap(ok=True, cid="1000")]
+    snap_seq = [_make_snap(ok=True, cid="1500"), _make_snap(ok=True, cid="3000")]
 
     def _fake_snap(*a, **kw):
         return snap_seq.pop(0)
@@ -303,7 +309,7 @@ def test_apply_bundled_rank_and_cd_single_revise_condition_call(monkeypatch):
     fields = {
         "title": {"before": "T", "after": "T"},
         "description": {"before": "d", "after": "d"},
-        "rank": {"before": "B", "after": "N"},                              # dirty
+        "rank": {"before": "S", "after": "A"},                              # dirty (S→A、共に非N)
         "condition_description": {"before": "", "after": "Tested OK"},       # dirty
         "quantity": {"before": 1, "after": 1},
     }
@@ -311,13 +317,85 @@ def test_apply_bundled_rank_and_cd_single_revise_condition_call(monkeypatch):
                            source_tab="product_management", candidate_id=None)
 
     assert len(revise_calls) == 1, f"bundle should call revise once, got {len(revise_calls)}"
-    assert revise_calls[0]["cid"] == "1000"  # N → 1000
+    assert revise_calls[0]["cid"] == "3000"  # A → 3000
     assert revise_calls[0]["condition_description"] == "Tested OK"
     # dispatch 経由の rank log + apply 内で追加した condition_description log = 2 件
     fields_logged = {a[0][1] for a in log_calls}
     assert "rank" in fields_logged
     assert "condition_description" in fields_logged
     assert bump_calls == [1]
+
+
+def test_apply_rank_new_1000_does_not_send_condition_description(monkeypatch):
+    """HIGH-1 (2026-07-04): N (ConditionID 1000) は eBay 仕様上 CD 非対応のため、
+    rank + cd 両方 dirty でも revise_item_condition には CD=None で送る."""
+    revise_calls = []
+
+    def _fake_revise(item_id, cid, app_id, dev_id, cert_id, token, condition_description=None):
+        revise_calls.append({"cid": cid, "condition_description": condition_description})
+        return {"success": True, "message": "ok", "condition_id": cid}
+
+    # pre 3000 → revise 走行 → post 1000 (verify PASS)
+    snap_seq = [_make_snap(ok=True, cid="3000"), _make_snap(ok=True, cid="1000")]
+
+    def _fake_snap(*a, **kw):
+        return snap_seq.pop(0)
+
+    _, _log_calls, _bump_calls = _install_common(
+        monkeypatch, revise_condition_impl=_fake_revise, snap_impl=_fake_snap,
+    )
+
+    from tabs._finishing_panel import _apply_content_changes
+    fields = {
+        "title": {"before": "T", "after": "T"},
+        "description": {"before": "d", "after": "d"},
+        "rank": {"before": "B", "after": "N"},                              # dirty (N=1000)
+        "condition_description": {"before": "", "after": "Tested OK"},       # dirty (user 手動)
+        "quantity": {"before": 1, "after": 1},
+    }
+    _apply_content_changes("111", fields, config=None,
+                           source_tab="product_management", candidate_id=None)
+
+    assert len(revise_calls) == 1
+    assert revise_calls[0]["cid"] == "1000"
+    assert revise_calls[0]["condition_description"] is None, (
+        f"N (1000) には CD を送ってはいけない (eBay 仕様非対応、"
+        f"got {revise_calls[0]['condition_description']!r})"
+    )
+
+
+def test_apply_cd_only_dirty_on_new_1000_listing_skips_send(monkeypatch):
+    """HIGH-1 (2026-07-04): 現行 ConditionID=1000 の listing に対する cd 単独 dirty は
+    revise_item_condition を呼ばず、success:True で「送信スキップ」メッセージを返す
+    (eBay 仕様非対応 → 送っても通らないため事前に遮断)."""
+    revise_calls = []
+
+    def _fake_revise(*a, **kw):
+        revise_calls.append((a, kw))
+        return {"success": True, "message": "ok"}
+
+    def _fake_snap(*a, **kw):
+        return _make_snap(ok=True, cid="1000")  # 現行 = 新品
+
+    fake, _log_calls, _bump_calls = _install_common(
+        monkeypatch, revise_condition_impl=_fake_revise, snap_impl=_fake_snap,
+    )
+
+    from tabs._finishing_panel import _apply_content_changes
+    fields = {
+        "title": {"before": "T", "after": "T"},
+        "description": {"before": "d", "after": "d"},
+        "rank": {"before": "N", "after": "N"},                              # not dirty
+        "condition_description": {"before": "", "after": "Tested OK"},       # dirty
+        "quantity": {"before": 1, "after": 1},
+    }
+    _apply_content_changes("111", fields, config=None,
+                           source_tab="product_management", candidate_id=None)
+
+    assert revise_calls == [], "N (1000) の cd 単独 dirty は revise を呼ばない"
+    assert any(
+        "1000" in m and "スキップ" in m for m in fake.successes
+    ), f"「送信スキップ」の success メッセージが出るべき (got {fake.successes!r})"
 
 
 def test_apply_cd_only_dirty_uses_current_condition_id(monkeypatch):

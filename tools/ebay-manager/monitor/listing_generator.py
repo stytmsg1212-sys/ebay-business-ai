@@ -390,6 +390,10 @@ description / condition_description と同格の絶対ガードとして扱う�
 - **PO**: "Powered on successfully, but full function not verified.
   Other operations (audio/data/Bluetooth) NOT tested."
 - **As-Is**: 理由必須。"No AC adapter available for testing" / "For parts" 等
+- **出品者からの追加指示 (extra_instructions) がある場合**: 上記ランク別ルールの内容を
+  書いた後に、追加指示を自然な一文として追記する (無視しない。quick_notes が
+  description 内で唯一の自由記述欄であるため、ここに反映しないと出品者の指示が
+  出力に一切反映されない)。
 
 ## Condition Description ルール (eBay ConditionDescription 用、65字以内、2026-07-04 追加)
 
@@ -478,11 +482,22 @@ def _compose_user_prompt(product, reference, rank, extra_instructions: Optional[
     """DYNAMIC プロンプト部を構築。
 
     Args:
-        product: ScrapedProduct 風 (duck typed)
+        product: ScrapedProduct 風 (duck typed)。2026-07-04 user 恒久仕様:
+            product は必ずしも実スクレイプ結果とは限らない — 引用元 URL が
+            未指定の場合、呼出元 (`tabs._supplier_description_pipeline
+            .generate_supplier_description`) は既存 listing 情報を代替コンテキスト
+            とした duck-typed product (`_build_context_only_product`) を渡す。
         reference: ReferenceListing 風 or None
         rank: RankClassification
         extra_instructions: 出品者が手入力した「必ず入れたい文言/方針」。
-            None/空なら無視。指定時は description に自然に反映するよう Claude に指示。
+            None/空なら無視。指定時は quick_notes に自然に反映するよう Claude に
+            指示する (出力 JSON に自由記述の description フィールドが無いため)。
+            **優先順位ルール (2026-07-04 user 恒久仕様)**: 上記「仕入先商品情報」
+            (product/reference 由来) と extra_instructions の内容が矛盾する場合は、
+            **extra_instructions を必ず優先**するようプロンプトで明示する
+            (出品者が最新の判断で上書きした内容のため)。ただし eBay ポリシー違反
+            (Country of Origin / Country of Manufacture / Manufacturer の記載) は
+            優先指示であっても反映しない (この例外は不変)。
     """
     lines: list[str] = []
     lines.append("## 仕入先商品情報")
@@ -543,9 +558,16 @@ def _compose_user_prompt(product, reference, rank, extra_instructions: Optional[
         lines.append(
             "↑ これは出品者が必ず description に含めたい文言・方針です。意味を理解し、"
             "eBay buyer 向けの自然な英語 description に適切に組み込むこと "
-            "(そのままコピペでなく文脈に溶け込ませる)。ただし商品事実と矛盾する内容、"
-            "および eBay ポリシー違反 (Country of Origin / Country of Manufacture / "
-            "Manufacturer の記載) は反映せず無視すること。"
+            "(そのままコピペでなく文脈に溶け込ませる)。"
+            "**出力 JSON には自由記述の 'description' フィールドは無いため、"
+            "必ず quick_notes の文末に自然な一文として追記すること** "
+            "(quick_notes ルールで書いた内容の後ろに続ける。quick_notes 以外の"
+            "フィールドに紛れ込ませて事実上無視される状態にしない)。"
+            "**上記「仕入先商品情報」やスクレイプ結果とこの追加指示の内容が矛盾する場合は、"
+            "この追加指示を必ず優先すること** (出品者が最新の判断で上書きした内容のため)。"
+            "ただし eBay ポリシー違反 "
+            "(Country of Origin / Country of Manufacture / Manufacturer の記載) だけは"
+            "優先指示であっても反映せず無視すること。"
         )
 
     lines.append("")

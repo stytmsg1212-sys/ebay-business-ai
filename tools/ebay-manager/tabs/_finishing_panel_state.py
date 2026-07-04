@@ -52,6 +52,67 @@ RANK_TO_CONDITION_ID: dict[str, str] = {
     "As-Is": "7000",
 }
 
+# #44 バグ2修正 (2026-07-04): ConditionDescription をランクから決定論的に導出する
+# 定型文マップ (tools/ebay-manager/CLAUDE.md「ConditionDescription 運用方針」準拠、
+# 65字以内・英語)。以下のランクは意図的に**含めない**:
+#   - N (ConditionID 1000): eBay は新品 1000 で ConditionDescription 非対応。
+#     カテゴリによっては Ack=Failure で N への変更操作自体が通らないため、
+#     N には CD を一切送らない (HIGH-1 修正 2026-07-04 T3 レビュー)。
+#   - As-Is (7000): 商品固有の理由が必須で定型化不能。
+# `resolve_condition_description_for_rank` は上記に該当するランクで空文字 or
+# AI 生成値を返し (As-Is のみ)、送信直前 `_apply_content_changes` 側で
+# ConditionID==1000 の時は最終的に None に落として送信除外する二段防御。
+RANK_CONDITION_DESCRIPTION_TEMPLATE: dict[str, str] = {
+    "S": "New (opened), unused. No visible wear.",
+    "A": "Tested and fully working. Minor cosmetic wear.",
+    "B": "Tested and fully working. Visible cosmetic wear.",
+    "C": "Tested and fully working. Heavy cosmetic wear.",
+    "D": "Tested; works within limits. Cosmetic/functional issues present.",
+    "PO": "Powered on, but full function not verified.",
+}
+
+
+def resolve_condition_description_for_rank(
+    rank_code: Optional[str], ai_generated: Optional[str] = None,
+) -> str:
+    """ランクから ConditionDescription を決定論的に導出する (#44 バグ2修正 2026-07-04).
+
+    出典: user 報告「コンディション欄 (ConditionDescription/Seller Notes) に商品説明が
+    残る・入る」。AI 自由文 (`monitor.listing_generator.generate_listing` が返す
+    `condition_description`) は system prompt でランク要約のみと指示しているが、
+    LLM が商品固有の長文を紛れ込ませるリスクを完全には排除できない
+    (プロンプト guard のみに依存する脆さ、原産国 4層防御と同じ教訓)。
+
+    定型を持つランク (S/A/B/C/D/PO) は機械的にテンプレへ差し替え、AI 自由文は一切使わない
+    (65字を確実に守り、商品固有の長文が混入する経路そのものを断つ)。
+
+    ランク別の例外挙動:
+      - **N (ConditionID 1000)**: eBay 仕様上 ConditionDescription 非対応。テンプレを
+        意図的に持たない。AI 生成値も採用せず**空文字**を返す
+        (HIGH-1 修正 2026-07-04 T3 レビュー)。apply 層 (`_apply_content_changes`) 側でも
+        cond_id==1000 で CD を None 化するが、state 層でも入口で空にする二段防御。
+      - **As-Is (7000)**: 商品固有の理由が必須で定型化不能。AI 生成値
+        (ai_generated) をそのまま使う (呼出側 `validate_as_is_condition_description`
+        で 65字 + 必須を検証)。
+
+    Args:
+        rank_code: 'N'/'S'/'A'-'D'/'PO'/'As-Is' のいずれか (None なら AI 生成値 fallback)
+        ai_generated: As-Is 時にのみ参照する AI 生成の理由テキスト
+
+    Returns:
+        ConditionDescription 文字列。N は "" 固定、As-Is は ai_generated、
+        その他は RANK_CONDITION_DESCRIPTION_TEMPLATE の定型、
+        rank_code=None/未知は ai_generated の strip 済み値。
+    """
+    if not rank_code:
+        return (ai_generated or "").strip()
+    if rank_code == "N":
+        # eBay ConditionID 1000 は CD 非対応 (Ack=Failure リスク)。空文字固定。
+        return ""
+    if rank_code == AS_IS_RANK:
+        return (ai_generated or "").strip()
+    return RANK_CONDITION_DESCRIPTION_TEMPLATE.get(rank_code) or (ai_generated or "").strip()
+
 FIELD_LABELS_JA: dict[str, str] = {
     "title": "タイトル",
     "description": "Description",
@@ -61,13 +122,19 @@ FIELD_LABELS_JA: dict[str, str] = {
     # 中古ランクでの「動作確認結果」記載欄。As-Is (7000) は eBay 制約で必須
     # (tools/ebay-manager/CLAUDE.md 「As-Is 出品の XML 必須要件」)。
     "condition_description": "コンディション理由",
+    # #44 (2026-07-04): eBay Item Specifics (name:value)。AI 生成/手動編集どちらも
+    # 対応、rank/condition_description と同様 DISPATCH_FIELD_ORDER には含めず
+    # dirty 時のみ _finishing_panel.py 側で動的に register する。
+    "item_specifics": "Item Specifics",
     "quantity": "数量",
 }
 
 # 変更プレビュー表示順 (設計書§3 の表と同順)。condition_description は rank の直後
-# (「Description と Condition はセット」の視覚的順序 = user 要望)。
+# (「Description と Condition はセット」の視覚的順序 = user 要望)。item_specifics は
+# その直後 (Description & Condition 枠の下に描画される UI 配置と同順、#44)。
 PREVIEW_FIELD_ORDER: tuple[str, ...] = (
-    "title", "description", "images", "rank", "condition_description", "quantity",
+    "title", "description", "images", "rank", "condition_description",
+    "item_specifics", "quantity",
 )
 
 # コンテンツ一括反映 (🚀 eBay へ反映 ボタン) の対象フィールド。
@@ -75,6 +142,7 @@ PREVIEW_FIELD_ORDER: tuple[str, ...] = (
 # された時は rank apply 内で送信 (同 revise_item_condition 呼出、二重 API 回避)。
 # cd 単独 dirty 時は _finishing_panel.py 側で `condition_description` 固有の
 # dispatch エントリを register する (dispatch 順序上ここには含めない = 動的判断)。
+# item_specifics も同様に動的判断 (#44、revise_item_specifics 経由で独立送信)。
 DISPATCH_FIELD_ORDER: tuple[str, ...] = ("title", "description", "rank", "quantity")
 
 
@@ -141,6 +209,86 @@ def rank_to_condition_id(rank: Optional[str]) -> Optional[str]:
     return RANK_TO_CONDITION_ID.get(rank)
 
 
+def compute_dirty_dispatch_fields(
+    fields: dict[str, dict], effective_condition_id: Optional[str] = None,
+) -> list[str]:
+    """変更プレビュー / 反映ボタン件数の元になる dirty フィールド名リストを返す
+    (T1 修正 2026-07-04 実機 E2E: 表示件数と実送信件数の一致を保つ).
+
+    ロジック (`_render_content_group` の実装と同期):
+      1. `DISPATCH_FIELD_ORDER` (title/description/rank/quantity) の中で dirty のもの
+      2. `condition_description` は特殊: dirty ならリストに追加するが、以下は除外:
+         - effective_condition_id == "1000" (N=新品): eBay 仕様上 CD 非対応で
+           apply 層が送信しないため、件数からも除外して不整合を防ぐ
+      3. `item_specifics` は特殊: dirty かつ `dispatch_disabled` が False の時のみ追加
+         (H2 = baseline 取得失敗 / MED = multi-value 検出のいずれも抑止対象)
+
+    Returns:
+        dirty フィールド名の list (順序保持、DISPATCH_FIELD_ORDER 順 → cd → specifics)。
+        UI 側はこの長さを「反映 (N件の変更)」ラベルに出す。
+    """
+    out: list[str] = []
+    for f in DISPATCH_FIELD_ORDER:
+        data = fields.get(f)
+        if not data:
+            continue
+        if is_field_dirty(f, data.get("before"), data.get("after")):
+            out.append(f)
+
+    _cd = fields.get("condition_description")
+    if (
+        _cd
+        and is_field_dirty(
+            "condition_description", _cd.get("before", ""), _cd.get("after", ""),
+        )
+        and effective_condition_id != "1000"
+    ):
+        out.append("condition_description")
+
+    _sp = fields.get("item_specifics")
+    if (
+        _sp
+        and is_field_dirty(
+            "item_specifics", _sp.get("before") or {}, _sp.get("after") or {},
+        )
+        and not _sp.get("dispatch_disabled")
+    ):
+        out.append("item_specifics")
+
+    return out
+
+
+def resolve_effective_condition_id_for_cd_dispatch(
+    rank_field: Optional[dict], fallback_ebay_condition_id: Optional[str] = None,
+) -> Optional[str]:
+    """CD (ConditionDescription) 送信判定に使う effective ConditionID を解決する
+    (T1 修正 2026-07-04 実機 E2E).
+
+    優先順位:
+      1. rank_field['after'] (user が編集中のランク) → rank_to_condition_id
+      2. rank_field['before'] (現行ランク) → rank_to_condition_id
+      3. fallback_ebay_condition_id (row から直接、DB `ebay_condition_id` を想定)
+
+    Args:
+        rank_field: `_render_content_group` が `fields["rank"]` に立てる dict
+            ({'before': str|None, 'after': str|None})。None/欠損可。
+        fallback_ebay_condition_id: rank から解決できない時に使う DB 側の値
+
+    Returns:
+        ConditionID 文字列 (例: "1000"/"1500"/"3000"/"7000") または None。
+        呼出側は "1000" 判定で CD dispatch を抑止する
+        (eBay は N=1000 で ConditionDescription 非対応)。
+    """
+    rf = rank_field or {}
+    for key in ("after", "before"):
+        _cid = rank_to_condition_id(rf.get(key))
+        if _cid:
+            return _cid
+    _fb = (fallback_ebay_condition_id or "")
+    _fb = str(_fb).strip()
+    return _fb or None
+
+
 # =============================================================================
 # dirty 判定
 # =============================================================================
@@ -178,6 +326,12 @@ def is_field_dirty(field: str, before: Any, after: Any) -> bool:
             return int(after) != int(before or 0)
         except (TypeError, ValueError):
             return False
+    if field == "item_specifics":
+        # #44 (2026-07-04): dict 比較 (str キー/値へ正規化)。行の追加/削除/値変更の
+        # いずれも dirty (data_editor の num_rows="dynamic" で行数が変わり得るため)。
+        a = {str(k): str(v) for k, v in after.items()} if isinstance(after, dict) else {}
+        b = {str(k): str(v) for k, v in before.items()} if isinstance(before, dict) else {}
+        return a != b
     return bool(after) and after != before
 
 
@@ -202,9 +356,21 @@ def summarize_images(mode_label: str, count: int) -> str:
     return f"{mode_label} ({count}枚)"
 
 
+def summarize_specifics(specifics: Optional[dict], max_items: int = 5) -> str:
+    """Item Specifics の UI プレビュー用要約 (先頭 max_items 件 + 総項目数, #44)."""
+    if not specifics:
+        return "—"
+    items = list(specifics.items())
+    head = ", ".join(f"{k}: {v}" for k, v in items[:max_items])
+    suffix = f" …他{len(items) - max_items}件" if len(items) > max_items else ""
+    return f"{head}{suffix} ({len(items)}項目)"
+
+
 def _default_display(field: str, value: Any) -> str:
     if field == "description":
         return summarize_description(value)
+    if field == "item_specifics":
+        return summarize_specifics(value)
     if value is None or value == "":
         return "—"
     return str(value)
@@ -369,6 +535,131 @@ def fetch_description_from_ebay(ebay_item_id: str, config: Optional[dict] = None
 
 
 # =============================================================================
+# ConditionDescription / Item Specifics の eBay 取得 (CD 欄・Item Specifics
+# プレビュー欄の baseline、#44 2026-07-04)
+# =============================================================================
+
+def fetch_condition_and_specifics_from_ebay(
+    ebay_item_id: str, config: Optional[dict] = None,
+) -> dict:
+    """eBay GetItem で現行 ConditionDescription + ItemSpecifics を取得する.
+
+    CD 欄 / Item Specifics プレビュー欄の baseline (dirty 判定・監査ログ before の
+    正確化) に使う。`monitor.ebay_client` / `monitor.ebay_listing_snapshot` は
+    G2 が並行実装中のため触らず、既存の `_build_get_item_xml`
+    (IncludeSelector=Details,ItemSpecifics 済) を import のみで再利用し、本関数内で
+    ConditionDescription / ItemSpecifics を追加 parse する
+    (`monitor.ebay_listing_snapshot.fetch_listing_snapshot` と同じ「ebay_client の
+    private helper を import して独自 parse」パターン)。
+
+    Returns:
+        {'success': bool, 'condition_description': str,
+         'item_specifics': dict[str, str],
+         'multi_value_names': list[str],  # MED (2026-07-04 Codex): 同一 Name に複数
+             # <Value> が並ぶ Item Specific (multi-value aspect) を検出したら Name を
+             # 列挙する。UI 側 (`_render_item_specifics_field`) はこのリストが非空なら
+             # dispatch_disabled 扱いにして反映を抑止する (先頭値だけ dict 化した状態で
+             # replace_all=True 送信すると追加値が消えるため。データモデル拡張は Phase3)。
+         'message': str}
+    """
+    import xml.etree.ElementTree as ET
+
+    import httpx
+
+    from monitor.credentials import ebay_credentials_ok, get_ebay_credentials
+    from monitor.ebay_client import (
+        API_VERSION,
+        TRADING_API_URL,
+        _build_get_item_xml,
+        _resolve_active_token,
+    )
+
+    out: dict = {
+        "success": False, "condition_description": "", "item_specifics": {},
+        "multi_value_names": [], "message": "",
+    }
+
+    try:
+        creds = get_ebay_credentials(config)
+    except Exception as e:  # noqa: BLE001 -- credentials 解決の多様な例外を UI に伝える
+        out["message"] = f"credentials 取得エラー: {e}"
+        return out
+    if not ebay_credentials_ok(creds):
+        out["message"] = "eBay credentials 未設定"
+        return out
+
+    token = _resolve_active_token(creds["user_token"])
+    xml_body = _build_get_item_xml(ebay_item_id).replace("{USER_TOKEN}", token)
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": API_VERSION,
+        "X-EBAY-API-CALL-NAME": "GetItem",
+        "X-EBAY-API-APP-NAME": creds["app_id"],
+        "X-EBAY-API-DEV-NAME": creds["dev_id"],
+        "X-EBAY-API-CERT-NAME": creds["cert_id"],
+        "Content-Type": "text/xml",
+    }
+    try:
+        resp = httpx.post(
+            TRADING_API_URL, content=xml_body.encode("utf-8"), headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+    except (httpx.HTTPError, OSError) as e:
+        out["message"] = f"通信エラー: {e}"
+        return out
+
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        out["message"] = f"XML parse error: {e}"
+        return out
+
+    ns = {"n": "urn:ebay:apis:eBLBaseComponents"}
+    ack = root.findtext("n:Ack", namespaces=ns) or "Fail"
+    if ack not in ("Success", "Warning"):
+        errs = root.findall(".//n:Errors/n:LongMessage", namespaces=ns)
+        msg = "; ".join(e.text for e in errs if e.text) or "Unknown error"
+        out["message"] = f"API エラー: {msg}"
+        return out
+
+    item = root.find(".//n:Item", namespaces=ns)
+    if item is None:
+        out["message"] = "GetItem に Item ノードが無い"
+        return out
+
+    condition_description = item.findtext("n:ConditionDescription", namespaces=ns) or ""
+    specifics: dict[str, str] = {}
+    # MED (2026-07-04 Codex): multi-value aspect (同一 Name に複数 <Value>) を検出する。
+    # 例: Item Specifics で "Features" が ["Waterproof", "Bluetooth", "Noise Cancelling"] の
+    # ように配列で登録されているケース。従来 `findtext("n:Value")` は先頭値しか読まず、
+    # dict[Name]=Value 化してそのまま replace_all=True で送ると追加値が消える。
+    # 最小対応として本 parse で **検出のみ** 行い、UI 側で dispatch_disabled 扱いに落とす
+    # (dict[Name]=list[str] へのデータモデル拡張は Phase3 で扱う、K1)。
+    multi_value_names: list[str] = []
+    nvl = item.find("n:ItemSpecifics", namespaces=ns)
+    if nvl is not None:
+        for nv in nvl.findall("n:NameValueList", namespaces=ns):
+            name = (nv.findtext("n:Name", namespaces=ns) or "").strip()
+            if not name:
+                continue
+            value_nodes = nv.findall("n:Value", namespaces=ns)
+            values = [(v.text or "").strip() for v in value_nodes if (v.text or "").strip()]
+            if len(values) > 1:
+                multi_value_names.append(name)
+            # dict は先頭値で保持 (UI プレビュー用。dispatch_disabled で反映は起きない)
+            specifics[name] = values[0] if values else ""
+
+    out.update({
+        "success": True,
+        "condition_description": condition_description,
+        "item_specifics": specifics,
+        "multi_value_names": multi_value_names,
+        "message": "取得しました",
+    })
+    return out
+
+
+# =============================================================================
 # description の AI 生成 (「🤖 AI で生成」)
 # =============================================================================
 
@@ -379,6 +670,7 @@ def generate_description_via_ai(
     in_stock: bool = False,
     rank_override_code: Optional[str] = None,
     extra_instructions: Optional[str] = None,
+    existing_listing_context: Optional[dict] = None,
 ) -> dict:
     """仕入先 URL から description HTML を AI 生成する (既存パイプライン再利用).
 
@@ -390,21 +682,35 @@ def generate_description_via_ai(
     generate_supplier_description は candidate_id を DB 更新には使わないので
     0 でも実処理は同じ、ログ属性としてのみ機能する)。
 
+    2026-07-04 user 恒久仕様追加: 引用元 URL が無くても extra_instructions が
+    あれば生成可能にする (既存 listing 情報を代替コンテキストとして使う)。
+    - URL のみ: 従来通り (scrape ベース)
+    - 指示のみ: URL scrape をスキップし、existing_listing_context + 指示のみで生成
+    - 両方: scrape + 指示を両方使う (矛盾時は指示を優先、プロンプト側で明示)
+    - 両方空: エラー (「URL か指示のどちらかを入力してください」)
+
     Args:
-        candidate_url: 仕入先 URL (空文字は事前弾き必須、本関数では success=False)
+        candidate_url: 仕入先 URL (空文字可、extra_instructions があれば生成続行)
         candidate_id: supplier_candidates.id (無ければ 0)
         in_stock: 有在庫扱い (`sku.startswith("stock")` の判定結果を渡す)
         rank_override_code: 手動指定ランク (N/S/A/B/C/D/PO/As-Is、None なら AI 判定)
-        extra_instructions: description に入れたい文言 (任意)
+        extra_instructions: description に入れたい文言 (任意、URL 空時は必須)
+        existing_listing_context: URL 空時に使う代替コンテキスト
+            ({'title': str, 'condition_rank': str, 'listing_description': str} 等、
+            仕上げパネルの既存 listing row から渡される。呼出元指定なしなら None)
 
     Returns:
         {'success': bool, 'description_html': str, 'rank_code': str,
-         'title_en': str, 'message': str}
+         'title_en': str, 'item_specifics': dict, 'condition_description': str,
+         'message': str}
     """
-    if not (candidate_url or "").strip():
+    _url = (candidate_url or "").strip()
+    _extra = (extra_instructions or "").strip()
+    if not _url and not _extra:
         return {
             "success": False, "description_html": "", "rank_code": "",
-            "title_en": "", "message": "仕入先 URL が未指定のため生成できません",
+            "title_en": "", "item_specifics": {}, "condition_description": "",
+            "message": "引用元 URL か「description に入れたい文言・指示」のいずれかを入力してください",
         }
     try:
         from tabs._supplier_description_pipeline import generate_supplier_description
@@ -412,21 +718,24 @@ def generate_description_via_ai(
         logger.exception("generate_supplier_description import 失敗")
         return {
             "success": False, "description_html": "", "rank_code": "",
-            "title_en": "", "message": f"description 生成モジュール読込失敗: {e}",
+            "title_en": "", "item_specifics": {}, "condition_description": "",
+            "message": f"description 生成モジュール読込失敗: {e}",
         }
     try:
         result = generate_supplier_description(
             candidate_id=candidate_id,
-            candidate_url=candidate_url.strip(),
+            candidate_url=_url,
             in_stock=in_stock,
             rank_override_code=rank_override_code,
             extra_instructions=extra_instructions,
+            existing_listing_context=existing_listing_context,
         )
     except Exception as e:  # noqa: BLE001 -- 生成パイプラインの多様な例外を UI に伝える
         logger.exception("generate_supplier_description raised")
         return {
             "success": False, "description_html": "", "rank_code": "",
-            "title_en": "", "message": f"{type(e).__name__}: {e}",
+            "title_en": "", "item_specifics": {}, "condition_description": "",
+            "message": f"{type(e).__name__}: {e}",
         }
     # generate_supplier_description が返す dict をそのまま透過 (schema 同一)
     return {
@@ -434,6 +743,10 @@ def generate_description_via_ai(
         "description_html": result.get("description_html") or "",
         "rank_code": result.get("rank_code") or "",
         "title_en": result.get("title_en") or "",
+        # #44 (2026-07-04): AI 生成が CD 欄/Item Specifics プレビュー欄へ自動セット
+        # される経路 (_finishing_panel.py::_render_description_ai_controls)。
+        "item_specifics": dict(result.get("item_specifics") or {}),
+        "condition_description": (result.get("condition_description") or "")[:65],
         "message": result.get("message") or "",
     }
 
@@ -483,6 +796,57 @@ def validate_as_is_condition_description(
             "(推奨形式: 'As-Is — <reason>')。"
         )
     return None
+
+
+# =============================================================================
+# Item Specifics の eBay 反映 (#44 2026-07-04)
+# =============================================================================
+
+def apply_item_specifics_to_ebay(
+    ebay_item_id: str,
+    item_specifics: dict,
+    *,
+    app_id: str,
+    dev_id: str,
+    cert_id: str,
+    user_token: str,
+) -> dict:
+    """Item Specifics を eBay へ反映する (G2 `revise_item_specifics` 契約に委譲).
+
+    `monitor.ebay_client.revise_item_specifics` は G2 が並行実装中のため import は
+    try/except ImportError で no-op fallback する (未実装環境でもパネル全体を
+    壊さない。Q0: 理由を明示したメッセージを返す、サイレント失敗にしない)。
+
+    契約: `revise_item_specifics(ebay_item_id, item_specifics: dict, *, app_id,
+    dev_id, cert_id, user_token, replace_all=True) -> dict` (keys: success, message,
+    removed_names)。removed_names は eBay ポリシー上除去された項目名 (原産国等)。
+
+    Returns:
+        {'success': bool, 'message': str, 'removed_names': list[str]}
+    """
+    try:
+        from monitor.ebay_client import revise_item_specifics
+    except ImportError as e:
+        logger.warning("revise_item_specifics import 失敗 (G2 未実装?): %s", e)
+        return {
+            "success": False,
+            "message": "Item Specifics 反映機能は未実装です (revise_item_specifics 未提供)",
+            "removed_names": [],
+        }
+    try:
+        result = revise_item_specifics(
+            ebay_item_id, item_specifics,
+            app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=user_token,
+            replace_all=True,
+        )
+    except Exception as e:  # noqa: BLE001 -- revise 呼出の多様な例外を UI に伝える
+        logger.exception("revise_item_specifics raised eid=%s", ebay_item_id)
+        return {"success": False, "message": f"{type(e).__name__}: {e}", "removed_names": []}
+    return {
+        "success": bool(result.get("success")),
+        "message": result.get("message") or "",
+        "removed_names": list(result.get("removed_names") or []),
+    }
 
 
 # =============================================================================

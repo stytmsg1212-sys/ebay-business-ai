@@ -35,6 +35,7 @@ Phase 2 スコープ外 (Phase 3 以降、設計書§8):
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Callable, Optional
 
@@ -46,15 +47,20 @@ from tabs._finishing_panel_state import (
     FIELD_LABELS_JA,
     RANK_CHOICES,
     RANK_LABELS_JA,
+    apply_item_specifics_to_ebay,
     build_change_preview,
+    compute_dirty_dispatch_fields,
     compute_header_metrics,
     dispatch_content_changes,
+    fetch_condition_and_specifics_from_ebay,
     fetch_description_from_ebay,
     generate_description_via_ai,
     is_field_dirty,
     mark_field_synced,
     pf_key,
     rank_to_condition_id,
+    resolve_condition_description_for_rank,
+    resolve_effective_condition_id_for_cd_dispatch,
     resolve_rank_initial,
     resolve_source_url,
     seed_initial,
@@ -212,6 +218,21 @@ def _render_header(eid: str, row: dict) -> None:
             st.metric("ステータス", metrics["status"])
 
 
+def _get_condition_snapshot(eid: str, config: Optional[dict]) -> dict:
+    """CD / Item Specifics の eBay 現在値を 1 回だけ取得しキャッシュする (baseline 用).
+
+    #44 (2026-07-04): 従来 CD baseline は空文字固定だった (dirty 判定・監査ログの
+    before が実態と乖離) ため、GetItem 実値を fetch して baseline にする。
+    取得失敗時は空文字/空 dict にフォールバックし、呼出側が「現在値取得失敗」
+    キャプションを出す (Q0: 失敗を隠さない)。session_state にキャッシュするため
+    同一 render 内で CD 欄 / Item Specifics 欄の双方から呼んでも GetItem は 1 回のみ。
+    """
+    sk = pf_key(eid, "cond_snapshot")
+    if sk not in st.session_state:
+        st.session_state[sk] = fetch_condition_and_specifics_from_ebay(eid, config)
+    return st.session_state[sk]
+
+
 # =============================================================================
 # コンテンツグループ
 # =============================================================================
@@ -250,6 +271,9 @@ def _render_content_group(
         candidate_id=candidate_id, candidate_url=candidate_url, fields=fields,
     )
 
+    # ---- Item Specifics (#44、Description & Condition 枠の下、編集可プレビュー) ----
+    _render_item_specifics_field(eid, row, config, fields)
+
     # ---- 画像 (3モード常時表示、一括反映の対象外 — module docstring 参照) ----
     _render_image_field(
         eid, row,
@@ -275,23 +299,60 @@ def _render_content_group(
     # 別ボタンで即時反映される) で「🚀 eBay へ反映」ボタンが一度も現れず、
     # user が「反映ボタンが見当たらない」と迷う。dirty ゼロでも案内 + 無効ボタンを
     # 常時描画して視認性を確保する。
-    preview = build_change_preview(fields)
+    #
+    # T1 修正 (2026-07-04 実機 E2E): N ランク (ConditionID 1000) は eBay 仕様上
+    # ConditionDescription 非対応のため apply 層で CD を送信しない (HIGH-1)。
+    # UI 側の変更プレビュー表 / 「反映 (N件)」件数からも CD dirty を除外して、
+    # 「反映 (2件)」と表示したのに実送信が rank だけ = 1 件、という不整合を防ぐ
+    # (user 方針「反映漏れ・不整合は許されない」)。rank 変更自体の計上は維持する
+    # (rank は revise_item_condition で送られる)。
+    _effective_cond_id_for_cd_dispatch = resolve_effective_condition_id_for_cd_dispatch(
+        fields.get("rank"), row.get("ebay_condition_id"),
+    )
+    _cd_dispatch_suppressed_by_n = (_effective_cond_id_for_cd_dispatch == "1000")
 
-    # ボタン件数表示: DISPATCH_FIELD_ORDER (title/description/rank/quantity) に加え、
-    # condition_description dirty も 1 件としてカウント (state 層の DISPATCH_FIELD_ORDER
-    # には含まれないが、_apply_content_changes は rank と bundle または cd 単独で送信する)。
-    _dirty_dispatch_fields = [
-        f for f in DISPATCH_FIELD_ORDER
-        if is_field_dirty(f, fields[f]["before"], fields[f]["after"])
-    ]
+    # 変更プレビュー表からも CD を除外する。build_change_preview は fields dict の
+    # dirty のみを列挙するため、事前に fields から抜くか事後に filter するかの 2 択。
+    # 事後 filter を選ぶ (fields 自体は _apply_content_changes に渡って apply 層側の
+    # 二段防御でも CD=None 化されるため、fields を変えずに保つ方が挙動の予測が容易)。
+    preview = build_change_preview(fields)
+    if _cd_dispatch_suppressed_by_n:
+        preview = [p for p in preview if p.get("field") != "condition_description"]
+
+    # ボタン件数表示: `compute_dirty_dispatch_fields` に集約 (state 層の純関数)。
+    # 内訳: DISPATCH_FIELD_ORDER + condition_description (N=1000 は除外) +
+    # item_specifics (dispatch_disabled は除外)。テストしやすさと UI/apply の
+    # 「表示件数と実送信件数の一致」を守るための単一情報源。
     _cd_present = fields.get("condition_description") or None
-    if _cd_present and is_field_dirty(
-        "condition_description",
-        _cd_present.get("before", ""), _cd_present.get("after", ""),
-    ):
-        # rank と cd がどちらも dirty の場合は同 revise で bundle されるが、user 視点では
-        # 「2 件の変更」として見える方が自然 (プレビュー表と件数を一致させる)。
-        _dirty_dispatch_fields.append("condition_description")
+    _spec_present = fields.get("item_specifics") or None
+    _dirty_dispatch_fields = compute_dirty_dispatch_fields(
+        fields, _effective_cond_id_for_cd_dispatch,
+    )
+
+    # H2 (2026-07-04): Item Specifics の dirty があっても baseline 失敗で dispatch
+    # 抑止中のケースを反映ボタン側にも波及させる (dispatch 対象がゼロの時は反映不可)。
+    _spec_disabled_dirty = bool(
+        _spec_present
+        and _spec_present.get("dispatch_disabled")
+        and is_field_dirty(
+            "item_specifics",
+            _spec_present.get("before") or {}, _spec_present.get("after") or {},
+        )
+    )
+
+    # T1 修正 (2026-07-04): N の時の CD 除外を user に明示するため、CD dirty があった
+    # 場合のみ 1 行 caption を出す (dirty が無い時は静かに何もしない)。
+    _cd_present_dirty = bool(
+        _cd_present and is_field_dirty(
+            "condition_description",
+            _cd_present.get("before", ""), _cd_present.get("after", ""),
+        )
+    )
+    if _cd_dispatch_suppressed_by_n and _cd_present_dirty:
+        st.caption(
+            "ℹ️ 新品 (N) はコンディション説明が無いため CD は送信対象外です "
+            "(ランク変更は反映されます)。"
+        )
 
     if preview:
         st.markdown("**変更プレビュー** (変更されたフィールドのみ表示)")
@@ -299,8 +360,18 @@ def _render_content_group(
             {"フィールド": p["label"], "Before": p["before"], "After": p["after"]}
             for p in preview
         ])
-        _btn_label = f"🚀 eBay へ反映 ({len(_dirty_dispatch_fields)}件の変更)"
-        _btn_disabled = False
+        if _spec_disabled_dirty:
+            st.warning(
+                "⚠ 現行値を取得できないため Item Specifics の反映は無効化中です "
+                "(再読み込みで再試行)。他フィールドのみ反映されます。"
+            )
+        if _dirty_dispatch_fields:
+            _btn_label = f"🚀 eBay へ反映 ({len(_dirty_dispatch_fields)}件の変更)"
+            _btn_disabled = False
+        else:
+            # Item Specifics のみ dirty で dispatch 抑止中 = 反映対象ゼロ。
+            _btn_label = "🚀 eBay へ反映 (Item Specifics のみ・反映無効化中)"
+            _btn_disabled = True
     else:
         # dirty ゼロ: 2 行案内 + 無効化ボタン (常時表示で視認性確保)。
         st.info(
@@ -399,7 +470,7 @@ def _render_description_field(
 
         # ── (2) Condition サブブロック (Description とセット、user 2026-07-03 要望) ──
         st.divider()
-        _render_condition_subblock(eid, row, fields)
+        _render_condition_subblock(eid, row, fields, config)
 
     new_desc = st.session_state.get(desc_key, desc_initial)
     fields["description"] = {"before": desc_initial, "after": new_desc}
@@ -420,6 +491,11 @@ def _render_description_ai_controls(
     `_supplier_description_pipeline.generate_supplier_description` を呼ぶ
     (candidate_id=0 で URL 直接投入経路、既存 tab_product_management
     `_render_url_direct_description_section` と同じ)。
+
+    2026-07-04 user 恒久仕様: URL が無くても「description に入れたい文言・指示」が
+    あれば生成可能 (既存 listing 情報 = row の title/condition_rank/description を
+    代替コンテキストとして渡す)。両方空の時のみ生成ボタンを disabled にする
+    (URL 必須の従来制約は撤廃)。
     """
     from tabs._finishing_panel_state import RANK_CHOICES as _RANK_CHOICES
 
@@ -437,9 +513,6 @@ def _render_description_ai_controls(
     )
     _typed_url = (st.session_state.get(url_input_key) or "").strip()
     resolved_url = resolve_source_url(candidate_url, row, _typed_url)
-
-    if not resolved_url:
-        st.warning("引用元 URL を入力してください (仕入先候補 URL の prefill が無い場合)。")
 
     # ランク: 既存 condition_rank を default、"(引用元から AI 自動判定)" も選択可
     _listing_rank = (row.get("condition_rank") or "").strip()
@@ -463,6 +536,14 @@ def _render_description_ai_controls(
     )
     _extra = (st.session_state.get(extra_key) or "").strip() or None
 
+    # 2026-07-04 user 恒久仕様: URL が無くても「description に入れたい文言・指示」が
+    # あれば生成を続行できる (URL 必須の従来制約を緩和)。両方空の時のみ案内・disabled。
+    if not resolved_url and not _extra:
+        st.warning(
+            "引用元 URL か「description に入れたい文言・指示」のいずれかを"
+            "入力してください。"
+        )
+
     sku = (row.get("sku") or "")
     is_in_stock = sku.startswith("stock")
 
@@ -470,8 +551,15 @@ def _render_description_ai_controls(
         "🤖 生成",
         key=pf_key(eid, "desc_ai_run_btn"),
         type="primary",
-        disabled=not resolved_url,
+        disabled=not (resolved_url or _extra),
     ):
+        # existing_listing_context: URL 未指定時の代替コンテキスト (2026-07-04)。
+        # URL があっても無害 (URL 空時のみ generate_supplier_description 側で使う)。
+        _existing_ctx = {
+            "title": row.get("title") or "",
+            "condition_rank": row.get("condition_rank") or "",
+            "listing_description": row.get("listing_description") or "",
+        }
         with st.spinner("scrape/AI 解析 + Claude description 生成中 (~30-60 秒)..."):
             result = generate_description_via_ai(
                 resolved_url,
@@ -479,9 +567,53 @@ def _render_description_ai_controls(
                 in_stock=is_in_stock,
                 rank_override_code=_rank_override,
                 extra_instructions=_extra,
+                existing_listing_context=_existing_ctx,
             )
         if result.get("success"):
             st.session_state[desc_key] = result.get("description_html") or ""
+            # #44 (2026-07-04) user 要望: description AI 生成時、CD 欄 / Item Specifics
+            # プレビュー欄にも自動セット (どちらも dirty 化 → 変更プレビューに出る)。
+            # baseline (*_initial) は eBay 現在値のまま変えない (dirty 判定を保つ)。
+            #
+            # バグ2修正 (2026-07-04): CD は AI 自由文をそのまま採用せず、ランクから
+            # 決定論的に導出する (`resolve_condition_description_for_rank`)。AI が
+            # 商品固有の長文を condition_description に混入させても採用しないことで、
+            # 「コンディション欄に商品説明が残る・入る」事故の経路を断つ (As-Is のみ
+            # 定型化不能なため AI 生成値をそのまま使う、同関数内で分岐)。
+            _effective_rank_for_cd = (
+                _rank_override or (result.get("rank_code") or "").strip() or None
+            )
+            _cd_final = resolve_condition_description_for_rank(
+                _effective_rank_for_cd, (result.get("condition_description") or "").strip(),
+            )
+            if _cd_final:
+                st.session_state[pf_key(eid, "condition_description")] = _cd_final
+                if _effective_rank_for_cd:
+                    st.session_state[pf_key(eid, "cd_auto_last_rank")] = _effective_rank_for_cd
+            _specs_ai = result.get("item_specifics") or {}
+            if _specs_ai:
+                # HIGH (2026-07-04 Codex 外部レビュー): AI 生成 (generate_listing) は
+                # reference Keys しか埋めず (URL-less 時は Brand/Model/Type/Color/
+                # Connectivity の 5 個程度)、不明項目は key ごと省略する = 出力は eBay
+                # 既存 Item Specifics の**真部分集合**になりがち。従来の完全置換
+                # `= dict(_specs_ai)` + apply の replace_all=True の組合せで、既存の
+                # Brand/MPN/UPC 等が消失する事故 (Q0 silent 変更) が起きる経路だった。
+                # 対策: baseline (item_specifics_initial = eBay 現在値) と **merge** し、
+                # 既存全項目を保持しつつ AI 生成値は上書き/追加のみ許す。
+                # baseline 取得失敗時は H2 ガードで dispatch が抑止されるので、その
+                # ケースは merge 元が空でも安全側に振れる (どうせ送信されない)。
+                _baseline_full = dict(
+                    st.session_state.get(pf_key(eid, "item_specifics_initial"), {}) or {}
+                )
+                st.session_state[pf_key(eid, "item_specifics_current")] = {
+                    **_baseline_full, **_specs_ai,
+                }
+                # data_editor は key 付き widget の内部状態を優先するため、次の
+                # data 引数を反映させるには widget key 自体を削除して再初期化させる
+                # 必要がある (tab_individual_listing.py の「生成結果に戻す」と同型)。
+                _de_key = pf_key(eid, "dataeditor_item_specifics")
+                if _de_key in st.session_state:
+                    del st.session_state[_de_key]
             st.success(result.get("message") or "生成完了")
             st.rerun(scope="fragment")
         else:
@@ -508,7 +640,9 @@ def _render_description_ebay_fetch(
 # Condition サブブロック (Description コンテナ内、user 2026-07-03 要望で統合)
 # =============================================================================
 
-def _render_condition_subblock(eid: str, row: dict, fields: dict[str, dict]) -> None:
+def _render_condition_subblock(
+    eid: str, row: dict, fields: dict[str, dict], config: Optional[dict],
+) -> None:
     """ランク + コンディション理由 (ConditionDescription) を Description とセットで編集.
 
     2026-07-03 user 要望「コンディションは Description とセットで編集する」に基づき、
@@ -519,6 +653,11 @@ def _render_condition_subblock(eid: str, row: dict, fields: dict[str, dict]) -> 
 
     As-Is (7000) の理由必須ガード + 65 字制約は
     `_finishing_panel_state.validate_as_is_condition_description` で dispatch 直前に検証。
+
+    #44 (2026-07-04): CD の dirty 判定 baseline は従来「常に空文字」固定だったため、
+    eBay に既存の ConditionDescription が設定されている listing で「未変更」が
+    dirty 誤検知/未検知になっていた (監査ログの before も不正確)。
+    `_get_condition_snapshot` (GetItem 1 回) で実値を取得し baseline にする。
     """
     st.markdown("**🏷️ Condition (商品ランク + 理由)**")
     st.caption(
@@ -547,11 +686,41 @@ def _render_condition_subblock(eid: str, row: dict, fields: dict[str, dict]) -> 
 
     # ── コンディション理由 (eBay ConditionDescription) ──
     # DB には保存しない (eBay 専用、tab_product_management 従来動作を踏襲)。
-    # `condition_description_initial` = 未設定固定 = "" にすることで、
-    # dirty 判定は「空 → 非空」または「非空 → 別値」を捉える。
-    cd_initial = seed_initial(st.session_state, eid, "condition_description", "")
+    # baseline (`condition_description_initial`) は eBay 実値を GetItem で 1 回だけ
+    # 取得して使う (#44)。取得失敗時は空文字 fallback + 警告キャプション (Q0)。
+    _snap = _get_condition_snapshot(eid, config)
+    _cd_baseline = (_snap.get("condition_description") or "") if _snap.get("success") else ""
+    cd_initial = seed_initial(st.session_state, eid, "condition_description", _cd_baseline)
     cd_key = pf_key(eid, "condition_description")
     seed_session_value(st.session_state, cd_key, cd_initial)
+
+    # #44 バグ2修正 (2026-07-04): ランク変更時は CD (ConditionDescription) を
+    # ランク定型文へ強制同期し dirty 化する (user 報告バグ2「description だけ
+    # 反映した場合に旧 CD が dirty 扱いにならず残存する」経路を断つ対策)。
+    # As-Is は商品固有の理由が必須で定型化不能なため対象外 (user 入力に委ねる)。
+    # 初回 render (rank 未変更) を「変更」と誤検知しないよう baseline rank で
+    # 追跡値を先に seed する。
+    _cd_auto_rank_key = pf_key(eid, "cd_auto_last_rank")
+    seed_session_value(st.session_state, _cd_auto_rank_key, rank_initial or None)
+    if (
+        new_rank
+        and new_rank != "As-Is"
+        and new_rank != st.session_state.get(_cd_auto_rank_key)
+    ):
+        st.session_state[cd_key] = resolve_condition_description_for_rank(new_rank)
+        st.session_state[_cd_auto_rank_key] = new_rank
+        # MED-1 (2026-07-04 T3 レビュー): user が手動編集した CD がランク変更に伴い
+        # 定型文で無警告に上書きされるのを明示する (Q0: silent 更新禁止)。
+        st.caption(
+            "ℹ️ ランク変更に伴いコンディション定型文へ更新しました "
+            "(手動編集していた場合は上書きされています)。"
+        )
+
+    if not _snap.get("success"):
+        st.caption(
+            f"⚠️ eBay 現在値取得失敗: {_snap.get('message') or '不明'} "
+            "(空欄を基準に編集します)"
+        )
     _cd_help_lines = [
         "中古ランク (A-PO) では動作確認結果 (例: 'Tested OK. Power on/off: OK / Audio: OK')。",
         f"As-Is は必須 (欠落 = buyer 紛争で Defect 確定リスク、eBay XML {AS_IS_CD_MAX_LEN} 字以内・"
@@ -578,6 +747,124 @@ def _render_condition_subblock(eid: str, row: dict, fields: dict[str, dict]) -> 
             f"⚠️ As-Is 理由は {AS_IS_CD_MAX_LEN} 字以内 (現在 {len(new_cd)} 字)。"
             "短縮してください。"
         )
+
+
+# =============================================================================
+# Item Specifics フィールド (#44 2026-07-04、Description & Condition 枠の下)
+# =============================================================================
+
+def _render_item_specifics_field(
+    eid: str, row: dict, config: Optional[dict], fields: dict[str, dict],
+) -> None:
+    """Item Specifics プレビュー欄 (name:value 編集可、Description & Condition 枠の下).
+
+    user 要望「description を AI 生成/編集したら Item Specifics も自動生成して
+    変更してほしい」に対応する編集可能プレビュー。baseline は eBay 現在値
+    (`_get_condition_snapshot` 経由、CD と同じ GetItem 1 回でまとめて取得)。
+    AI 生成時は `_render_description_ai_controls` が
+    `pf_key(eid, "item_specifics_current")` を直接書き換えて自動セットする
+    (tab_individual_listing.py の data_editor 編集パターンを踏襲)。
+
+    一括反映は `_apply_content_changes` が dirty 時のみ動的に
+    `apply_item_specifics_to_ebay` (revise_item_specifics 経由) を dispatch する
+    (rank/condition_description と同じ「DISPATCH_FIELD_ORDER 外の動的判断」方式)。
+    """
+    st.markdown("**🏷️ Item Specifics**")
+    st.caption("eBay Item Specifics (項目名 / 値)。行を追加・削除して編集できます。")
+
+    _snap = _get_condition_snapshot(eid, config)
+    _snap_ok = bool(_snap.get("success"))
+    _baseline = dict(_snap.get("item_specifics") or {}) if _snap_ok else {}
+    _multi_value_names = list(_snap.get("multi_value_names") or []) if _snap_ok else []
+    specifics_initial = seed_initial(st.session_state, eid, "item_specifics", _baseline)
+
+    # H2 (2026-07-04 T3 レビュー): baseline fetch (GetItem) が失敗している状態で
+    # revise_item_specifics (replace_all=True) を走らせると、eBay 側の現行 Item
+    # Specifics を「取得できていない不明な値」で全置換して既存を消し得る (transient
+    # 失敗時の事故)。「全置換は直前の GetItem 成功が前提条件」として、baseline
+    # 失敗時は編集 UI を残しつつ dispatch を抑止するフラグを fields に載せる
+    # (`_apply_content_changes` 側が dispatch を skip、st.error で理由を表示)。
+    if not _snap_ok:
+        st.warning(
+            "⚠️ eBay 現在値の取得に失敗しました "
+            f"(理由: {_snap.get('message') or '不明'})。"
+            " Item Specifics は eBay 仕様上「全置換」で反映されるため、"
+            "現行値が不明な状態で反映すると **既存の Item Specifics が消える恐れ** があります。"
+            " このため Item Specifics の反映は一時的に無効化されています "
+            "(編集自体は可能。ページを再読み込みして再取得すると再度有効化されます)。"
+        )
+    # MED (2026-07-04 Codex): multi-value aspect (同一 Name に複数 Value) を持つ
+    # listing は、baseline dict[Name]=先頭値 で保持しているため、そのまま
+    # replace_all=True で送ると追加値が消える。データモデル拡張 (dict[Name]=list) は
+    # Phase3 に回し、ここでは反映を抑止する (最小対応)。編集は許可する
+    # (user が全部手動で再入力すれば理論上反映可能だが、Phase3 まで案内のみ)。
+    if _snap_ok and _multi_value_names:
+        st.warning(
+            "⚠️ 複数値項目 (multi-value aspect) を検出しました: "
+            f"{', '.join(_multi_value_names)}。"
+            " この listing の Item Specifics は現在の実装では追加値が失われる恐れがあるため、"
+            "反映を一時的に無効化しています (編集自体は可能、Phase3 で対応予定)。"
+        )
+
+    cur_key = pf_key(eid, "item_specifics_current")
+    seed_session_value(st.session_state, cur_key, dict(specifics_initial))
+    _current = st.session_state.get(cur_key) or {}
+
+    _rows = [{"項目名": str(k), "値": str(v)} for k, v in _current.items()]
+    _edited_rows = st.data_editor(
+        _rows,
+        column_config={
+            "項目名": st.column_config.TextColumn("項目名", width="medium"),
+            "値": st.column_config.TextColumn("値", width="large"),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        key=pf_key(eid, "dataeditor_item_specifics"),
+    )
+    _new_specifics: dict = {}
+    for _r in _edited_rows:
+        _name = str(_r.get("項目名") or "").strip()
+        if not _name:
+            continue
+        _new_specifics[_name] = str(_r.get("値") or "").strip()
+    st.session_state[cur_key] = _new_specifics
+    st.caption(f"{len(_new_specifics)} 項目 (行を追加/削除して編集可)")
+
+    # HIGH (2026-07-04 Codex): 項目数が減っている時は削除意図の確認 warning。
+    # 削除は eBay 側で該当 aspect が消えるため、AI 生成 auto-set の merge 化 (下記
+    # 追加コメント参照) と併せて「意図しない消失」の見落としを二重に防ぐ。
+    if len(_new_specifics) < len(specifics_initial or {}):
+        _missing = [
+            n for n in (specifics_initial or {}) if n not in _new_specifics
+        ]
+        st.warning(
+            "⚠️ Item Specifics の項目数が減少しています "
+            f"(現在値 {len(specifics_initial or {})} → 編集後 {len(_new_specifics)}"
+            f"、削除された Name: {', '.join(_missing[:5])}"
+            + (" …" if len(_missing) > 5 else "")
+            + ")。反映すると eBay 側の該当項目が削除されます。意図した変更か確認してください。"
+        )
+
+    _has_multivalue = bool(_snap_ok and _multi_value_names)
+    fields["item_specifics"] = {
+        "before": specifics_initial,
+        "after": _new_specifics,
+        # H2 (2026-07-04 T3): baseline 失敗時 / MED (2026-07-04 Codex): multi-value
+        # aspect 検出時のどちらかで dispatch を抑止する
+        # (`_apply_content_changes` / dirty カウント表示側で参照)。
+        "dispatch_disabled": (not _snap_ok) or _has_multivalue,
+        "dispatch_disabled_reason": (
+            "現行 Item Specifics を取得できないため全置換を保留 "
+            "(既存の Item Specifics を消さないよう安全側)"
+            if not _snap_ok
+            else (
+                f"複数値項目 ({', '.join(_multi_value_names)}) の追加値が消える"
+                "恐れがあるため保留 (Phase3 で対応予定)"
+                if _has_multivalue else None
+            )
+        ),
+    }
 
 
 # =============================================================================
@@ -765,6 +1052,14 @@ def _apply_content_changes(
             from monitor.listing_content_change_log import log_content_change
             snap_pre = fetch_listing_snapshot(eid, app_id, dev_id, cert_id, token)
             _cd_arg = _cd_to_send if (_cd_to_send or "") else None
+            # HIGH-1 (2026-07-04 T3 レビュー): eBay は ConditionID=1000 (新品 N) で
+            # ConditionDescription をサポートしない (カテゴリによっては Ack=Failure で
+            # ランク変更操作自体が通らない)。N への変更時は CD を絶対に送らない。
+            # `RANK_CONDITION_DESCRIPTION_TEMPLATE` からも "N" を除外済みだが、user が
+            # 手動入力した CD が dirty で bundle されるケースを apply 層でも遮断する
+            # (二段防御、Q0: silent 送信でなく明示的に None 化)。
+            if _cond_id == "1000":
+                _cd_arg = None
             # 既に同 ConditionID (rank 一致) の時、conddesc 変更が無ければ DB 同期のみ。
             # conddesc dirty なら revise を必ず走らせて eBay に送る (rank 一致でも cd は更新)。
             if (snap_pre.ok
@@ -874,6 +1169,20 @@ def _apply_content_changes(
                     "message": f"現行 ConditionID を取得できません: {snap.error or '不明'}",
                 }
             _cur_cid = str(snap.condition_id).strip()
+            # HIGH-1 (2026-07-04 T3 レビュー): ConditionID=1000 (新品 N) は eBay 仕様上
+            # ConditionDescription 非対応。カテゴリによっては Ack=Failure で通らず、
+            # 通ってもゴミデータ残存リスクがあるため、cd 単独 dirty でも N の listing
+            # には送らず「送信対象なし」として success 扱いにする (user 意図は「cd を
+            # 消したい/直したい」だが N では eBay 側に反映できないため、DB 側の
+            # session_state だけ後段 mark_field_synced で追従させる)。
+            if _cur_cid == "1000":
+                return {
+                    "success": True,
+                    "message": (
+                        "新品 (ConditionID 1000) は eBay 仕様上 ConditionDescription を "
+                        "受け付けないため送信をスキップしました (現在値を維持)"
+                    ),
+                }
             r = revise_item_condition(
                 eid, _cur_cid, app_id, dev_id, cert_id, token,
                 condition_description=(_cd_after or None),
@@ -888,6 +1197,48 @@ def _apply_content_changes(
             "field": "condition_description",
             "before": _cd_before, "after": _cd_after,
             "apply": _apply_cd_only,
+        })
+
+    # ── Item Specifics (#44、動的判断: DISPATCH_FIELD_ORDER には含めず condition_
+    #    description と同様 dirty 時のみ register)。before/after は監査ログ
+    #    (listing_content_change_log) が str のみを想定するため JSON 文字列化し、
+    #    baseline 同期用の生 dict は raw_after_by_field に別途保持する。
+    raw_after_by_field: dict = {}
+    _spec_field = fields.get("item_specifics") or {"before": {}, "after": {}}
+    _spec_before = _spec_field.get("before") or {}
+    _spec_after = _spec_field.get("after") or {}
+    _spec_dirty = is_field_dirty("item_specifics", _spec_before, _spec_after)
+    if _spec_dirty and _spec_field.get("dispatch_disabled"):
+        # H2 最終ガード (2026-07-04 T3 レビュー残課題): baseline (GetItem) 取得失敗時は
+        # apply_item_specifics_to_ebay (replace_all=True) を絶対に呼ばない。UI 側
+        # (反映ボタンの活性化 / 件数カウント) は既に対応済みだが、ボタンだけに頼らず
+        # apply 関数自体にも防御を入れる (Q0: 呼出経路が増えても事故らない多層防御)。
+        st.warning(
+            "⚠ Item Specifics は現行値取得に失敗しているため反映をスキップしました "
+            f"({_spec_field.get('dispatch_disabled_reason') or '理由不明'})。"
+            " 他フィールドは通常どおり反映します。"
+        )
+    elif _spec_dirty:
+        raw_after_by_field["item_specifics"] = _spec_after
+
+        def _apply_item_specifics(_spec_after=_spec_after):
+            r = apply_item_specifics_to_ebay(
+                eid, _spec_after,
+                app_id=app_id, dev_id=dev_id, cert_id=cert_id, user_token=token,
+            )
+            _removed = r.get("removed_names") or []
+            if _removed:
+                r = dict(r)
+                r["message"] = (
+                    (r.get("message") or "") + f" (自動除去: {', '.join(_removed)})"
+                ).strip()
+            return r
+
+        changes.append({
+            "field": "item_specifics",
+            "before": json.dumps(_spec_before, ensure_ascii=False),
+            "after": json.dumps(_spec_after, ensure_ascii=False),
+            "apply": _apply_item_specifics,
         })
 
     if is_field_dirty("quantity", fields["quantity"]["before"], fields["quantity"]["after"]):
@@ -919,7 +1270,11 @@ def _apply_content_changes(
         label = FIELD_LABELS_JA.get(field, field)
         if res["success"]:
             st.success(f"{label}: {res['message'] or '反映しました'}")
-            mark_field_synced(st.session_state, eid, field, after_by_field[field])
+            # item_specifics は監査ログ用に JSON 文字列化した after を dispatch したが、
+            # baseline (dirty 判定用) は生 dict でないと次回描画の比較が壊れるため
+            # raw_after_by_field を優先する (無ければ従来通り after_by_field)。
+            _sync_value = raw_after_by_field.get(field, after_by_field[field])
+            mark_field_synced(st.session_state, eid, field, _sync_value)
             any_success = True
         else:
             st.error(f"{label}: {res['message'] or '反映に失敗しました'}")

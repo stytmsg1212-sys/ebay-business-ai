@@ -803,6 +803,15 @@ class TestExtraInstructions:
         p = _compose_user_prompt(*self._args(), extra_instructions="   ")
         assert "出品者からの追加指示" not in p
 
+    def test_instructs_claude_to_target_quick_notes(self):
+        """バグ1修正 (2026-07-04): 出力 JSON には自由記述の 'description' フィールドが
+        無いため、quick_notes に埋め込むよう明示指示すること (指示がなければ Claude が
+        どのフィールドにも反映せず出品者の指示が黙って消える)."""
+        from monitor.listing_generator import _compose_user_prompt
+        p = _compose_user_prompt(*self._args(),
+                                 extra_instructions="ギフト包装対応可と必ず書いて")
+        assert "quick_notes" in p
+
     def test_generate_listing_threads_extra_instructions(self):
         """generate_listing が extra_instructions を Claude prompt まで届けること。"""
         captured = {}

@@ -192,6 +192,8 @@ class _FakeStreamlit:
         self.spinner_calls: list = []
         self.success_msgs: list = []
         self.error_msgs: list = []
+        self.warning_msgs: list = []
+        self.info_msgs: list = []
         self.rerun_calls: list = []
 
     def spinner(self, msg):
@@ -203,6 +205,12 @@ class _FakeStreamlit:
 
     def error(self, msg):
         self.error_msgs.append(msg)
+
+    def warning(self, msg):
+        self.warning_msgs.append(msg)
+
+    def info(self, msg):
+        self.info_msgs.append(msg)
 
     def rerun(self, *a, **kw):
         # rerun は本物の streamlit では例外を raise して抜けるが、テストでは
@@ -654,3 +662,416 @@ def test_pm_no_longer_calls_panel_without_top_slot():
         'render_finishing_panel(eid, config, source_tab="product_management")'
         not in src
     ), "商品管理タブは top_slot 引数付きで呼び出すべき (2026-07-03 user 要望)"
+
+
+# ─────────────────────────────────────────────────
+# 13. #44 バグ2修正 (2026-07-04): コンディション欄に商品説明が残る/入る対策
+# ─────────────────────────────────────────────────
+
+def test_condition_subblock_auto_syncs_cd_on_rank_change():
+    """ランク変更時は CD (ConditionDescription) をランク定型へ強制同期し dirty 化する
+    (description だけ反映して旧 CD が残存する事故対策、As-Is は対象外)."""
+    fn = _find_function_def("_render_condition_subblock")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    assert "cd_auto_last_rank" in src_seg
+    assert "resolve_condition_description_for_rank" in src_seg
+    assert 'new_rank != "As-Is"' in src_seg
+
+
+def test_description_ai_controls_uses_deterministic_cd_not_ai_freeform():
+    """description AI 生成時、CD は resolve_condition_description_for_rank 経由で
+    決定論的に決まる (AI の condition_description をそのまま採用しない)."""
+    fn = _find_function_def("_render_description_ai_controls")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    assert "resolve_condition_description_for_rank" in src_seg
+
+
+# ─────────────────────────────────────────────────
+# 14. #44 H2 最終ガード (2026-07-04): item_specifics dispatch_disabled
+# ─────────────────────────────────────────────────
+
+def test_apply_content_changes_skips_item_specifics_when_dispatch_disabled(monkeypatch):
+    """H2 最終ガード: baseline (GetItem) 取得失敗時は item_specifics が dirty でも
+    apply_item_specifics_to_ebay を呼ばない (全置換で既存 Item Specifics を消す事故防止,
+    ボタン disabled だけに頼らず apply 関数自体にも防御を入れる)."""
+    fake = _install_fake_streamlit(monkeypatch)
+    _install_fake_credentials(monkeypatch)
+    _install_neutral_db_updates(monkeypatch)
+    _install_log_stub(monkeypatch)
+
+    from tabs import _finishing_panel as fp
+    spy_calls = []
+    monkeypatch.setattr(
+        fp, "apply_item_specifics_to_ebay",
+        lambda *a, **kw: spy_calls.append((a, kw)) or {
+            "success": True, "message": "ok", "removed_names": [],
+        },
+    )
+
+    from tabs._finishing_panel import _apply_content_changes
+
+    fields = {
+        "title": {"before": "Same", "after": "Same"},
+        "description": {"before": "same", "after": "same"},
+        "rank": {"before": None, "after": None},
+        "quantity": {"before": 3, "after": 3},
+        "item_specifics": {
+            "before": {"Brand": "Sony"},
+            "after": {"Brand": "Sony", "Model": "X"},
+            "dispatch_disabled": True,
+            "dispatch_disabled_reason": "現行値取得失敗",
+        },
+    }
+    _apply_content_changes(
+        "123456789012", fields, config=None,
+        source_tab="product_management", candidate_id=None,
+    )
+    assert spy_calls == [], (
+        "dispatch_disabled=True では apply_item_specifics_to_ebay を呼んではいけない"
+    )
+    assert any("現行値取得に失敗" in m for m in fake.warning_msgs), (
+        "dispatch_disabled のスキップは st.warning で明示すべき (Q0: silent skip 禁止)"
+    )
+
+
+def test_apply_content_changes_applies_item_specifics_when_baseline_ok(monkeypatch):
+    """回帰: dispatch_disabled=False (baseline 取得成功) では従来通り反映される."""
+    _install_fake_streamlit(monkeypatch)
+    _install_fake_credentials(monkeypatch)
+    _install_neutral_db_updates(monkeypatch)
+    _install_log_stub(monkeypatch)
+
+    from tabs import _finishing_panel as fp
+    spy_calls = []
+    monkeypatch.setattr(
+        fp, "apply_item_specifics_to_ebay",
+        lambda eid, specifics, **kw: spy_calls.append((eid, specifics)) or {
+            "success": True, "message": "ok", "removed_names": [],
+        },
+    )
+
+    from tabs._finishing_panel import _apply_content_changes
+
+    fields = {
+        "title": {"before": "Same", "after": "Same"},
+        "description": {"before": "same", "after": "same"},
+        "rank": {"before": None, "after": None},
+        "quantity": {"before": 3, "after": 3},
+        "item_specifics": {
+            "before": {"Brand": "Sony"},
+            "after": {"Brand": "Sony", "Model": "X"},
+            "dispatch_disabled": False,
+        },
+    }
+    _apply_content_changes(
+        "123456789012", fields, config=None,
+        source_tab="product_management", candidate_id=None,
+    )
+    assert len(spy_calls) == 1
+    assert spy_calls[0][0] == "123456789012"
+    assert spy_calls[0][1] == {"Brand": "Sony", "Model": "X"}
+
+
+def test_apply_content_changes_item_specifics_not_dirty_no_call(monkeypatch):
+    """回帰: item_specifics が dirty でなければ dispatch_disabled 有無に関わらず
+    apply_item_specifics_to_ebay を呼ばない (既存 dirty ガード自体は不変)."""
+    _install_fake_streamlit(monkeypatch)
+    _install_fake_credentials(monkeypatch)
+    _install_neutral_db_updates(monkeypatch)
+    _install_log_stub(monkeypatch)
+
+    from tabs import _finishing_panel as fp
+    spy_calls = []
+    monkeypatch.setattr(
+        fp, "apply_item_specifics_to_ebay",
+        lambda *a, **kw: spy_calls.append((a, kw)) or {
+            "success": True, "message": "ok", "removed_names": [],
+        },
+    )
+
+    from tabs._finishing_panel import _apply_content_changes
+
+    same = {"Brand": "Sony"}
+    fields = {
+        "title": {"before": "Same", "after": "Same"},
+        "description": {"before": "same", "after": "same"},
+        "rank": {"before": None, "after": None},
+        "quantity": {"before": 3, "after": 3},
+        "item_specifics": {"before": same, "after": dict(same), "dispatch_disabled": True},
+    }
+    _apply_content_changes(
+        "123456789012", fields, config=None,
+        source_tab="product_management", candidate_id=None,
+    )
+    assert spy_calls == []
+
+
+# ─────────────────────────────────────────────────
+# 15. HIGH (2026-07-04 Codex): AI 生成 item_specifics は baseline と merge、
+#     完全置換で既存 Brand/MPN 等が消えるバグの回帰テスト
+# ─────────────────────────────────────────────────
+
+class _FakeStreamlitFullish:
+    """`_render_description_ai_controls` を単体で駆動できる最小 Streamlit stub.
+
+    このパネルで呼ばれる widget は text_input / selectbox / text_area / button /
+    spinner / warning / info / rerun / session_state 全部を最小実装で持たせる。
+    ボタン挙動は button_returns dict の key マッチで制御する
+    (key 一致で True を返し 1 回だけ「クリックされた」ことにする)。
+    """
+    def __init__(self, button_returns=None):
+        self.session_state: dict = {}
+        self.warning_msgs: list = []
+        self.info_msgs: list = []
+        self.success_msgs: list = []
+        self.error_msgs: list = []
+        self.caption_msgs: list = []
+        self.rerun_calls: list = []
+        self._button_returns = button_returns or {}
+
+    def _widget_noop(self, *a, **kw):
+        return self.session_state.get(kw.get("key"), None)
+
+    def text_input(self, *a, **kw):
+        return self._widget_noop(*a, **kw)
+
+    def text_area(self, *a, **kw):
+        return self._widget_noop(*a, **kw)
+
+    def selectbox(self, *a, **kw):
+        return self._widget_noop(*a, **kw)
+
+    def button(self, label, *, key=None, **kw):
+        return bool(self._button_returns.get(key, False))
+
+    def spinner(self, *a, **kw):
+        return _FakeSpinner()
+
+    def warning(self, msg):
+        self.warning_msgs.append(msg)
+
+    def info(self, msg):
+        self.info_msgs.append(msg)
+
+    def caption(self, msg):
+        self.caption_msgs.append(msg)
+
+    def success(self, msg):
+        self.success_msgs.append(msg)
+
+    def error(self, msg):
+        self.error_msgs.append(msg)
+
+    def rerun(self, *a, **kw):
+        self.rerun_calls.append((a, kw))
+
+
+def _install_fake_streamlit_fullish(monkeypatch, button_returns=None):
+    from tabs import _finishing_panel as fp
+    fake = _FakeStreamlitFullish(button_returns=button_returns or {})
+    monkeypatch.setattr(fp, "st", fake)
+    return fake
+
+
+def test_ai_generation_merges_specifics_with_baseline_preserving_missing_keys(monkeypatch):
+    """HIGH (2026-07-04 Codex): AI 生成 Item Specifics は baseline (eBay 現在値) と
+    merge され、AI が省略した Key (例: MPN/UPC) が session_state に保持されること."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "123456789012"
+    button_returns = {pf_key(eid, "desc_ai_run_btn"): True}
+    fake = _install_fake_streamlit_fullish(monkeypatch, button_returns=button_returns)
+
+    # baseline (eBay 現在値) を session_state に事前セット
+    # (通常 `_render_item_specifics_field` の seed_initial が立てる)
+    fake.session_state[pf_key(eid, "item_specifics_initial")] = {
+        "Brand": "Sony",
+        "MPN": "WH-1000XM5",
+        "UPC": "027242920163",
+        "Model": "WH-1000XM5",
+    }
+
+    # AI 生成結果: reference Keys 5 個 + Brand 上書き + 新規 Color (Codex 指摘の典型)。
+    # MPN / UPC は AI 出力に含まれない (省略)。
+    def _fake_gen(*a, **kw):
+        return {
+            "success": True,
+            "description_html": "<div>desc</div>",
+            "rank_code": "A",
+            "title_en": "T",
+            "item_specifics": {
+                "Brand": "Sony Corp",   # 上書き
+                "Type": "Headphones",   # 新規
+                "Color": "Black",        # 新規
+            },
+            "condition_description": "Tested and fully working.",
+            "message": "生成完了",
+        }
+
+    from tabs import _finishing_panel_state as fps
+    monkeypatch.setattr(fps, "generate_description_via_ai", _fake_gen)
+    from tabs import _finishing_panel as fp
+    monkeypatch.setattr(fp, "generate_description_via_ai", _fake_gen)
+
+    row = {
+        "sku": "stock:01", "title": "T", "condition_rank": "A",
+        "source_url": "", "listing_description": "",
+    }
+    fp._render_description_ai_controls(
+        eid, row, desc_key=pf_key(eid, "description"),
+        candidate_id=None, candidate_url=None,
+    )
+
+    current = fake.session_state.get(pf_key(eid, "item_specifics_current"))
+    assert current is not None, "AI 生成成功時は item_specifics_current が session_state に立つ"
+    # baseline の非対象 Key (MPN / UPC) が残存
+    assert current.get("MPN") == "WH-1000XM5", (
+        "AI が省略した MPN は baseline から保持されるべき "
+        f"(got {current!r})"
+    )
+    assert current.get("UPC") == "027242920163", (
+        "AI が省略した UPC は baseline から保持されるべき"
+    )
+    # AI の上書きは効いている
+    assert current["Brand"] == "Sony Corp"
+    # AI の新規追加も入っている
+    assert current["Type"] == "Headphones"
+    assert current["Color"] == "Black"
+    # baseline にのみ存在した Model も保持
+    assert current["Model"] == "WH-1000XM5"
+
+
+def test_ai_generation_merge_still_works_when_baseline_missing(monkeypatch):
+    """HIGH 回帰: baseline (item_specifics_initial) 未 seed 時 (transient エラーで
+    dispatch_disabled 予定) でも AI 生成 auto-set が壊れないこと (merge 元が空 dict と
+    して振る舞う)。"""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "999999999999"
+    button_returns = {pf_key(eid, "desc_ai_run_btn"): True}
+    fake = _install_fake_streamlit_fullish(monkeypatch, button_returns=button_returns)
+
+    def _fake_gen(*a, **kw):
+        return {
+            "success": True, "description_html": "d", "rank_code": "A",
+            "title_en": "T", "item_specifics": {"Brand": "Sony"},
+            "condition_description": "Tested.", "message": "ok",
+        }
+
+    from tabs import _finishing_panel as fp
+    from tabs import _finishing_panel_state as fps
+    monkeypatch.setattr(fps, "generate_description_via_ai", _fake_gen)
+    monkeypatch.setattr(fp, "generate_description_via_ai", _fake_gen)
+
+    row = {"sku": "stock:01", "title": "T", "condition_rank": "A",
+           "source_url": "", "listing_description": ""}
+    fp._render_description_ai_controls(
+        eid, row, desc_key=pf_key(eid, "description"),
+        candidate_id=None, candidate_url=None,
+    )
+    current = fake.session_state.get(pf_key(eid, "item_specifics_current"))
+    assert current == {"Brand": "Sony"}, (
+        f"baseline 未 seed でも AI 生成値のみで設定される (got {current!r})"
+    )
+
+
+# ─────────────────────────────────────────────────
+# 16. MED (2026-07-04 Codex): multi-value aspect 検出 → dispatch_disabled
+# ─────────────────────────────────────────────────
+
+_MULTI_VALUE_ITEMSPECIFICS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <Item>
+    <ConditionDescription>Tested.</ConditionDescription>
+    <ItemSpecifics>
+      <NameValueList>
+        <Name>Brand</Name>
+        <Value>Sony</Value>
+      </NameValueList>
+      <NameValueList>
+        <Name>Features</Name>
+        <Value>Bluetooth</Value>
+        <Value>Noise Cancelling</Value>
+        <Value>Waterproof</Value>
+      </NameValueList>
+    </ItemSpecifics>
+  </Item>
+</GetItemResponse>
+"""
+
+
+def test_fetch_condition_and_specifics_flags_multi_value_aspects(monkeypatch):
+    """MED (2026-07-04 Codex): 同一 Name に複数 <Value> がある aspect を検出し
+    `multi_value_names` に列挙されること (dict 側は先頭値で保持)."""
+    import httpx
+    from tabs._finishing_panel_state import fetch_condition_and_specifics_from_ebay
+
+    class _R:
+        text = _MULTI_VALUE_ITEMSPECIFICS_XML
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **kw: _R())
+
+    import monitor.credentials as cred_mod
+    monkeypatch.setattr(cred_mod, "get_ebay_credentials", lambda config=None: {
+        "app_id": "a", "dev_id": "d", "cert_id": "c", "user_token": "t",
+    })
+    monkeypatch.setattr(cred_mod, "ebay_credentials_ok", lambda c: True)
+
+    import monitor.ebay_client as ec_mod
+    monkeypatch.setattr(ec_mod, "_resolve_active_token", lambda t: t)
+    monkeypatch.setattr(ec_mod, "_build_get_item_xml", lambda iid: "<x>{USER_TOKEN}</x>")
+
+    res = fetch_condition_and_specifics_from_ebay("111111111111")
+    assert res["success"] is True
+    assert res["multi_value_names"] == ["Features"], (
+        f"'Features' が multi-value として検出されるべき (got {res['multi_value_names']!r})"
+    )
+    # dict は先頭値のみ (dispatch_disabled で反映されない前提)
+    assert res["item_specifics"]["Brand"] == "Sony"
+    assert res["item_specifics"]["Features"] == "Bluetooth"
+
+
+def test_render_item_specifics_field_flags_dispatch_disabled_for_multi_value(monkeypatch):
+    """MED (2026-07-04 Codex): multi_value_names 非空 → fields['item_specifics'] の
+    dispatch_disabled=True で載る (H2 と同じフラグ)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "222222222222"
+    fake = _install_fake_streamlit_fullish(monkeypatch)
+
+    # data_editor / markdown / column_config は fake に無いので最小実装を足す
+    def _fake_data_editor(rows, **kw):
+        return rows
+
+    class _ColConfig:
+        def TextColumn(self, *a, **kw):
+            return None
+
+    fake.data_editor = _fake_data_editor
+    fake.column_config = _ColConfig()
+    fake.markdown = lambda *a, **kw: None
+
+    from tabs import _finishing_panel as fp
+    # snapshot cache を multi_value_names 有りで直接注入
+    fake.session_state[pf_key(eid, "cond_snapshot")] = {
+        "success": True,
+        "condition_description": "Tested.",
+        "item_specifics": {"Brand": "Sony", "Features": "Bluetooth"},
+        "multi_value_names": ["Features"],
+        "message": "取得しました",
+    }
+    fields: dict = {}
+    fp._render_item_specifics_field(eid, {}, config=None, fields=fields)
+
+    assert fields["item_specifics"]["dispatch_disabled"] is True
+    reason = fields["item_specifics"]["dispatch_disabled_reason"] or ""
+    assert "複数値項目" in reason
+    assert "Features" in reason
+    assert any("複数値項目" in m for m in fake.warning_msgs), (
+        f"multi-value 検出は st.warning で明示すべき (got {fake.warning_msgs!r})"
+    )

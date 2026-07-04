@@ -509,3 +509,194 @@ def test_dispatch_field_order_excludes_images():
 def test_preview_field_order_includes_images():
     from tabs._finishing_panel_state import PREVIEW_FIELD_ORDER
     assert "images" in PREVIEW_FIELD_ORDER
+
+
+# ─────────────────────────────────────────────────
+# 10. resolve_condition_description_for_rank (#44 バグ2修正 2026-07-04)
+#
+# user 報告: 「コンディション欄 (ConditionDescription/Seller Notes) に商品説明が
+# 残る・入る」。AI 自由文をそのまま採用するのをやめ、As-Is 以外はランクから
+# 決定論的にテンプレ文を導出する (65字保証 + 商品固有の長文混入を排除)。
+# ─────────────────────────────────────────────────
+
+def test_resolve_condition_description_uses_template_ignoring_ai_freeform():
+    from tabs._finishing_panel_state import resolve_condition_description_for_rank
+    long_ai_text = (
+        "This vintage amplifier comes with the original box, manual, and a rare "
+        "bundled cable set that collectors specifically look for."
+    )
+    result = resolve_condition_description_for_rank("A", long_ai_text)
+    assert result == "Tested and fully working. Minor cosmetic wear."
+    assert long_ai_text not in result
+
+
+def test_resolve_condition_description_all_non_as_is_within_65_chars():
+    from tabs._finishing_panel_state import (
+        RANK_CHOICES, RANK_CONDITION_DESCRIPTION_TEMPLATE, resolve_condition_description_for_rank,
+    )
+    # HIGH-1 (2026-07-04): N (1000) は eBay 仕様上 CD 非対応のためテンプレから除外済。
+    # As-Is (7000) は商品固有の理由が必須で定型化不能。この 2 rank はスキップ。
+    for rank in RANK_CHOICES:
+        if rank in ("N", "As-Is"):
+            continue
+        assert rank in RANK_CONDITION_DESCRIPTION_TEMPLATE, f"rank={rank} のテンプレが未定義"
+        result = resolve_condition_description_for_rank(rank, "any AI freeform text")
+        assert len(result) <= 65, f"rank={rank} のテンプレが65字超過: {result!r}"
+
+
+def test_resolve_condition_description_n_rank_returns_empty_string():
+    """HIGH-1 (2026-07-04): N (ConditionID 1000) は eBay 仕様上 ConditionDescription
+    非対応のため、テンプレを持たない (空文字を返す)。AI 生成値も採用せず空文字。
+    apply 層 (`_apply_content_changes`) 側でも二段防御として cond_id==1000 で
+    CD を None 化するが、state 層の入口で空にしておく。"""
+    from tabs._finishing_panel_state import (
+        RANK_CONDITION_DESCRIPTION_TEMPLATE, resolve_condition_description_for_rank,
+    )
+    assert "N" not in RANK_CONDITION_DESCRIPTION_TEMPLATE
+    assert resolve_condition_description_for_rank("N") == ""
+    # AI が長文 CD を返しても採用しない (テンプレ未定義 + fallback は空 rank_code のみ)
+    assert resolve_condition_description_for_rank(
+        "N", "This vintage amplifier is fully working with box",
+    ) == ""
+
+
+def test_resolve_condition_description_as_is_keeps_ai_generated_reason():
+    """As-Is は商品固有の理由が必須で定型化不能なため、AI 生成値をそのまま使う."""
+    from tabs._finishing_panel_state import resolve_condition_description_for_rank
+    result = resolve_condition_description_for_rank(
+        "As-Is", "As-Is — No AC adapter for testing",
+    )
+    assert result == "As-Is — No AC adapter for testing"
+
+
+def test_resolve_condition_description_none_rank_falls_back_to_ai_text():
+    from tabs._finishing_panel_state import resolve_condition_description_for_rank
+    assert resolve_condition_description_for_rank(None, "fallback") == "fallback"
+    assert resolve_condition_description_for_rank("", "fallback") == "fallback"
+    assert resolve_condition_description_for_rank(None, None) == ""
+
+
+# ─────────────────────────────────────────────────
+# 11. resolve_effective_condition_id_for_cd_dispatch
+#     (T1 修正 2026-07-04: N 選択時に CD dispatch を件数から除外する判定)
+# ─────────────────────────────────────────────────
+
+def test_resolve_effective_cond_id_prefers_rank_after():
+    from tabs._finishing_panel_state import resolve_effective_condition_id_for_cd_dispatch
+    # after が最優先 (user が編集中のランク)
+    assert resolve_effective_condition_id_for_cd_dispatch(
+        {"before": "A", "after": "N"}, "3000",
+    ) == "1000"
+
+
+def test_resolve_effective_cond_id_falls_back_to_rank_before():
+    from tabs._finishing_panel_state import resolve_effective_condition_id_for_cd_dispatch
+    # after が None → before を見る
+    assert resolve_effective_condition_id_for_cd_dispatch(
+        {"before": "N", "after": None}, "3000",
+    ) == "1000"
+
+
+def test_resolve_effective_cond_id_falls_back_to_ebay_condition_id():
+    from tabs._finishing_panel_state import resolve_effective_condition_id_for_cd_dispatch
+    # rank 全て空 → row の ebay_condition_id を使う
+    assert resolve_effective_condition_id_for_cd_dispatch(
+        {"before": None, "after": None}, "1000",
+    ) == "1000"
+    # 全て空
+    assert resolve_effective_condition_id_for_cd_dispatch(None, None) is None
+    assert resolve_effective_condition_id_for_cd_dispatch({}, "") is None
+
+
+def test_resolve_effective_cond_id_used_rank_returns_3000():
+    """A-D/PO はすべて 3000 (Used) にマップされる (共通コンディション ID)."""
+    from tabs._finishing_panel_state import resolve_effective_condition_id_for_cd_dispatch
+    for rank in ("A", "B", "C", "D", "PO"):
+        assert resolve_effective_condition_id_for_cd_dispatch(
+            {"before": None, "after": rank}, None,
+        ) == "3000"
+
+
+# ─────────────────────────────────────────────────
+# 12. compute_dirty_dispatch_fields
+#     (T1 修正 2026-07-04: 表示件数と実送信件数を一致させる)
+# ─────────────────────────────────────────────────
+
+def _make_fields_all_clean() -> dict[str, dict]:
+    return {
+        "title": {"before": "T", "after": "T"},
+        "description": {"before": "d", "after": "d"},
+        "rank": {"before": "A", "after": "A"},
+        "condition_description": {"before": "", "after": ""},
+        "quantity": {"before": 1, "after": 1},
+    }
+
+
+def test_compute_dirty_dispatch_fields_all_clean_returns_empty():
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    assert compute_dirty_dispatch_fields(_make_fields_all_clean(), "3000") == []
+
+
+def test_compute_dirty_dispatch_fields_rank_change_to_n_excludes_cd(monkeypatch):
+    """T1 core: rank を B → N に変更 + CD が dirty (定型文 → 空) でも、CD は
+    件数に入らない (N=1000 は eBay 仕様上 CD 非対応)。件数=1 (rank のみ)."""
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    fields = _make_fields_all_clean()
+    fields["rank"] = {"before": "B", "after": "N"}                # dirty (件数 +1)
+    fields["condition_description"] = {                            # dirty だが除外
+        "before": "Tested and fully working. Visible cosmetic wear.",
+        "after": "",
+    }
+    # effective_condition_id は "N" → "1000" (UI 側で resolve 済み前提)
+    result = compute_dirty_dispatch_fields(fields, "1000")
+    assert result == ["rank"], (
+        f"N (1000) 選択時は CD dirty を件数から除外し rank のみ (got {result!r})"
+    )
+
+
+def test_compute_dirty_dispatch_fields_rank_to_used_includes_cd():
+    """T1 対照: rank を N → A に変更 + CD dirty なら CD は件数に入る (A=3000 は
+    CD 送信対応、apply 層で bundle 送信される)。件数=2 (rank + cd)."""
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    fields = _make_fields_all_clean()
+    fields["rank"] = {"before": "N", "after": "A"}
+    fields["condition_description"] = {
+        "before": "", "after": "Tested and fully working. Minor cosmetic wear.",
+    }
+    result = compute_dirty_dispatch_fields(fields, "3000")
+    assert set(result) == {"rank", "condition_description"}, (
+        f"A (3000) 選択時は CD dirty を件数に含める (got {result!r})"
+    )
+
+
+def test_compute_dirty_dispatch_fields_existing_n_listing_cd_only_dirty_excluded():
+    """T1: 現行 listing の rank が N (未変更) + CD 単独 dirty のケースでも
+    CD は件数に入らない (fallback effective_condition_id で "1000" 判定)."""
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    fields = _make_fields_all_clean()
+    fields["rank"] = {"before": "N", "after": "N"}                # not dirty
+    fields["condition_description"] = {"before": "old", "after": "new"}  # dirty
+    result = compute_dirty_dispatch_fields(fields, "1000")
+    assert result == []
+
+
+def test_compute_dirty_dispatch_fields_item_specifics_dispatch_disabled_excluded():
+    """回帰: item_specifics dirty でも dispatch_disabled なら件数から除外
+    (H2 baseline 失敗 / MED multi-value 検出のいずれも)."""
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    fields = _make_fields_all_clean()
+    fields["item_specifics"] = {
+        "before": {"Brand": "Sony"}, "after": {"Brand": "Sony", "Model": "X"},
+        "dispatch_disabled": True,
+    }
+    assert compute_dirty_dispatch_fields(fields, "3000") == []
+
+
+def test_compute_dirty_dispatch_fields_item_specifics_dispatch_ok_included():
+    from tabs._finishing_panel_state import compute_dirty_dispatch_fields
+    fields = _make_fields_all_clean()
+    fields["item_specifics"] = {
+        "before": {"Brand": "Sony"}, "after": {"Brand": "Sony", "Model": "X"},
+        "dispatch_disabled": False,
+    }
+    assert compute_dirty_dispatch_fields(fields, "3000") == ["item_specifics"]

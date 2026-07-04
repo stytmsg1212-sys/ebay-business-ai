@@ -117,6 +117,34 @@ def prefetch_supplier_product_and_rank(
     return out
 
 
+def _build_context_only_product(existing_listing_context: Optional[dict]):
+    """URL 未指定時の代替 product (2026-07-04 user 恒久仕様).
+
+    引用元 URL が無くても「description に入れたい文言・指示」があれば生成を
+    続行できるようにする (URL 必須の従来仕様を緩和)。scrape の代わりに
+    既存 listing の既知情報 (title / condition_rank / listing_description) を
+    duck-typed product として渡す (`monitor.listing_generator._compose_user_prompt`
+    は getattr ベースで属性を読むため ScrapedProduct dataclass 継承は不要)。
+
+    Args:
+        existing_listing_context: {'title': str, 'condition_rank': str,
+            'listing_description': str} 等 (仕上げパネルの listing row から渡す)。
+            None なら全属性空 (extra_instructions のみで生成する最小構成)。
+    """
+    from types import SimpleNamespace
+    ctx = existing_listing_context or {}
+    return SimpleNamespace(
+        platform="(no source URL — generated from existing listing info + user instructions)",
+        url="",
+        title_ja=(ctx.get("title") or "").strip() or None,
+        price_jpy=None,
+        condition_ja=(ctx.get("condition_rank") or "").strip() or None,
+        includes_ja=None,
+        weight_hint_g=None,
+        description_ja=(ctx.get("listing_description") or "").strip()[:1500] or None,
+    )
+
+
 def generate_supplier_description(
     candidate_id: int,
     candidate_url: str,
@@ -125,8 +153,9 @@ def generate_supplier_description(
     prefetched_product=None,
     rank_override_code: Optional[str] = None,
     extra_instructions: Optional[str] = None,
+    existing_listing_context: Optional[dict] = None,
 ) -> dict:
-    """仕入先 URL から description HTML を生成 (eBay 反映はしない、純生成のみ).
+    """仕入先 URL (または追加指示のみ) から description HTML を生成 (eBay 反映はしない、純生成のみ).
 
     2026-05-21 user 要望: prefetched_product / rank_override_code を受け取り
     section open 時の事前取得結果を再利用 + user 手動 rank 上書き対応。
@@ -134,6 +163,17 @@ def generate_supplier_description(
 
     extra_instructions: 出品者が必ず入れたい文言/方針 (任意)。AI が意味を理解し
         description に自然反映 (eBay ポリシー違反 [Country of Origin 等] は無視)。
+
+    2026-07-04 user 恒久仕様: candidate_url が空でも extra_instructions があれば
+    生成を続行する (URL 必須の従来制約を緩和)。
+        - URL のみ: 従来通り scrape ベース
+        - 指示のみ: scrape をスキップし `existing_listing_context` (無ければ空)
+          + extra_instructions のみで生成 (`_build_context_only_product`)
+        - 両方: scrape 結果 + extra_instructions を両方使う。矛盾時は
+          extra_instructions を優先するようプロンプト側で明示指示する
+          (`monitor.listing_generator._compose_user_prompt` 「出品者からの追加指示」節)
+        - 両方空: 呼出元 (`_finishing_panel_state.generate_description_via_ai`) が
+          事前に弾く (本関数はここまで来ない前提だが、防御的に同じ理由で失敗を返す)
 
     Returns:
         {'success': bool,
@@ -152,23 +192,42 @@ def generate_supplier_description(
         get_description_templates, get_description_template,
     )
 
-    # Step 1: scrape (prefetched があれば再利用)
+    _url = (candidate_url or "").strip()
+    _extra = (extra_instructions or "").strip()
+
+    # Step 1: scrape (prefetched があれば再利用)。URL 空 + 指示ありなら
+    # scrape をスキップし既存 listing 情報ベースの product を代替使用する。
     product = prefetched_product
     if product is None:
-        try:
-            product = resolve_product_from_url(candidate_url, timeout_sec=15)
-        except Exception as e:
-            logger.exception("resolve_product_from_url failed cid=%s", candidate_id)
+        if _url:
+            try:
+                product = resolve_product_from_url(_url, timeout_sec=15)
+            except Exception as e:
+                logger.exception("resolve_product_from_url failed cid=%s", candidate_id)
+                return {
+                    'success': False,
+                    'message': f'スクレイプ失敗: {type(e).__name__}: {e}',
+                    'description_html': '', 'rank_code': '', 'title_en': '',
+                }
+        elif _extra:
+            product = _build_context_only_product(existing_listing_context)
+        else:
             return {
                 'success': False,
-                'message': f'スクレイプ失敗: {type(e).__name__}: {e}',
+                'message': (
+                    '引用元 URL か「description に入れたい文言・指示」の'
+                    'いずれかを入力してください'
+                ),
                 'description_html': '', 'rank_code': '', 'title_en': '',
             }
 
-    if not product or not getattr(product, 'title_ja', None):
+    if not product or not (getattr(product, 'title_ja', None) or _extra):
         return {
             'success': False,
-            'message': 'スクレイプ結果が空 (URL を再確認してください)',
+            'message': (
+                'スクレイプ結果が空です (URL を再確認するか、'
+                '「description に入れたい文言・指示」に情報を入力してください)'
+            ),
             'description_html': '', 'rank_code': '', 'title_en': '',
         }
 
