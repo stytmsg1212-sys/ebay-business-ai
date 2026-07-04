@@ -68,11 +68,18 @@ def _render_inventory_summary_html(
 
     last_checked_safe = html.escape(last_checked_str or "")
 
+    # W-density A1 (2026-07-04): 常時表示だった説明 caption 2 本 (呼出側) を撤去し、
+    # ラベルの hover title に集約 (密度スペック「常時表示の説明 caption → title hover」)。
+    _explainer = (
+        "ebay_listings の在庫チェック結果から自動検知。仕入先で購入できないのに"
+        "eBay在庫が1以上残っている商品です。出品停止または仕入先変更を検討してください。"
+    )
     return (
         f'<div style="border-left:4px solid {bar_color};background:{bar_bg};'
-        f'padding:10px 14px;margin-bottom:10px;border-radius:4px;">'
+        f'padding:8px 12px;margin-bottom:8px;border-radius:4px;">'
         f'<div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;">'
-        f'<span style="font-size:13px;color:#8d927f;">{head_label}</span>'
+        f'<span style="font-size:13px;color:#8d927f;cursor:help;" title="{html.escape(_explainer)}">'
+        f'{head_label} <span style="opacity:0.6;">ⓘ</span></span>'
         f'<span style="font-size:26px;font-weight:700;color:{count_color};">{int(total_risk)}件</span>'
         f'<span style="font-size:12px;color:#5f6557;">'
         f'在庫切れ <b>{int(oos_n)}</b> ・ ページ消失 <b>{int(pnf_n)}</b>'
@@ -192,10 +199,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
 
     # ---------- 要対応（仕入先在庫リスク） ----------
     with monitor_tab_risk:
-        st.caption(
-            "ebay_listings の在庫チェック結果から自動検知。仕入先で購入できない"
-            "のに eBay 在庫が残っている商品を一覧表示します。"
-        )
         risk_data = _cd_supply_risk(get_db_version())
         oos_items = risk_data["out_of_stock"]
         pnf_items = risk_data["page_not_found"]
@@ -243,7 +246,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
             ),
             unsafe_allow_html=True,
         )
-        st.caption("eBay在庫が1以上あるのに、仕入先で購入できない商品です。出品停止または仕入先変更を検討してください。")
 
         # 依頼ボード#18: 採用/在庫0/様子見 操作の結果通知 (rerun 跨ぎ queue を pop して表示)
         for _kind, _msg in st.session_state.pop("_inv_action_notice", []):
@@ -374,60 +376,30 @@ def render_inventory_monitor_tab(s: dict) -> None:
             title = (item.get("title") or "")[:80]
 
             with st.container(border=True):
-                # --- ヘッダ行: Item ID / タイトル / 価格 / ランク / 在庫 ---
-                _h1, _h2, _h3, _h4, _h5 = st.columns([1.6, 5.0, 0.9, 0.9, 0.9])
-                with _h1:
-                    st.markdown(
-                        f'<div style="font-family:var(--font-mono,monospace);'
-                        f'font-size:12px;color:#2a2e2a;padding-top:6px;">'
-                        f'<a href="https://www.ebay.com/itm/{html.escape(eid)}" target="_blank" '
-                        f'style="color:#156a63;text-decoration:none;">{html.escape(eid)}</a></div>',
-                        unsafe_allow_html=True,
-                    )
-                with _h2:
-                    st.markdown(
-                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">'
-                        f'{html.escape(title)}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _h3:
-                    st.markdown(
-                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">{price_str}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _h4:
-                    st.markdown(
-                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">ランク{rank}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _h5:
-                    st.markdown(
-                        f'<div style="font-size:12px;color:#2a2e2a;padding-top:6px;">在庫{qty_orig}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                # --- 情報行: SKU(表示のみ) / 仕入先 / 仕入先URL ---
-                _e1, _e2, _e3 = st.columns([3.6, 1.8, 2.4])
-                with _e1:
-                    st.markdown(
-                        f'<div style="font-size:11px;color:#8d927f;padding-top:4px;">'
-                        f'SKU: {html.escape(sku_orig) if sku_orig else "-"}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _e2:
-                    st.markdown(
-                        f'<div style="font-size:11px;color:#8d927f;padding-top:4px;">'
-                        f'仕入先: {html.escape(source)}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _e3:
-                    if source_url:
-                        st.markdown(
-                            f'<div style="padding-top:2px;">'
-                            f'<a href="{html.escape(source_url, quote=True)}" target="_blank" '
-                            f'style="color:#156a63;font-size:12px;">仕入先URLを開く</a></div>',
-                            unsafe_allow_html=True,
-                        )
+                # --- ヘッダ情報: Item ID / タイトル / 価格 / ランク / 在庫 / SKU / 仕入先 ---
+                # W-density A1 (2026-07-04): 旧 8 セル 2 段 st.columns を 1 本の flex 行へ
+                # 統合 (情報・リンク先は不変、レイアウトのみ圧縮)。
+                _src_link_html = (
+                    f'<a href="{html.escape(source_url, quote=True)}" target="_blank" '
+                    f'style="color:#156a63;">仕入先URLを開く</a>'
+                    if source_url else ""
+                )
+                st.markdown(
+                    f'<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;'
+                    f'font-size:12px;line-height:24px;">'
+                    f'<a href="https://www.ebay.com/itm/{html.escape(eid)}" target="_blank" '
+                    f'style="font-family:var(--font-mono,monospace);color:#156a63;'
+                    f'text-decoration:none;">{html.escape(eid)}</a>'
+                    f'<span style="color:#2a2e2a;flex:1 1 220px;min-width:120px;">{html.escape(title)}</span>'
+                    f'<span style="color:#2a2e2a;">{price_str}</span>'
+                    f'<span style="color:#2a2e2a;">ランク{rank}</span>'
+                    f'<span style="color:#2a2e2a;">在庫{qty_orig}</span>'
+                    f'<span style="color:#8d927f;">SKU: {html.escape(sku_orig) if sku_orig else "-"}</span>'
+                    f'<span style="color:#8d927f;">仕入先: {html.escape(source)}</span>'
+                    f'{_src_link_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
                 # W314 Phase 3 T3 (2026-07-03): 商品管理タブへの導線 (W292 jump 流儀)。
                 # 供給リスクカードから直接タイトル/画像/ランクを編集したい時の近道。
@@ -578,8 +550,9 @@ def render_inventory_monitor_tab(s: dict) -> None:
                                 st.caption(
                                     f"探索失敗 — {(_rs_result.get('msg') or '')[:60]}")
 
-                st.markdown("---")
-
+                # W-density A1 (2026-07-04): カード内部の "---" 区切りを撤去 (container
+                # border + 直後の候補件数キャプションで十分区切りが付くため、30%ルールの
+                # 「余白はセクション間のみ」に合わせて内側の余白を圧縮)。
                 # --- 候補部 (依頼ボード#18: 採用/不採用 1 クリック即実行) ---
                 # 不採用 on_click で _inv_rejected_{cid} が立った候補は非表示
                 # (fragment 再実行では外側 query が走らないため flag でフィルタ)
@@ -894,7 +867,11 @@ def render_inventory_monitor_tab(s: dict) -> None:
             except (OSError, json.JSONDecodeError) as _cfg_err:
                 logger.warning("schedule_config.json 読込失敗 (空 config で続行): %s", _cfg_err)
 
-        st.markdown(f"### 仕入先在庫切れ ({len(oos_items)}件)")
+        st.subheader(
+            f"仕入先在庫切れ ({len(oos_items)}件)",
+            help="各商品のすぐ下に仕入先候補(上位3件)を表示。「採用」を押すとその場でeBayへ"
+                 "SKU反映まで実行されます。候補がない商品は「在庫を0にする」で販売停止できます。",
+        )
         if oos_items:
             # [1] listing ごとの候補を1回だけ一括取得（N+1 SQL 回避）
             # 依頼ボード#18 reviewer HIGH-1 fix (2026-06-13): 旧 sku キー取得は
@@ -939,11 +916,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
                         _oos_eid_list,
                     ).fetchall():
                         _oos_alt_only_count[_r["ebay_item_id"]] = _r["alt_n"]
-
-            st.caption(
-                "各商品のすぐ下に仕入先候補(上位3件)を表示。「採用」を押すとその場で eBay へ "
-                "SKU 反映まで実行されます。候補がない商品は「在庫を0にする」で販売停止できます。"
-            )
 
             # W314 Phase 4 (2026-07-03 性能設計書§7): _CARD_CSS (145行/仕入先候補
             # カードと共有) を OOS 一覧の全 render で 1 回だけ出す。旧実装は
@@ -1248,8 +1220,12 @@ def render_inventory_monitor_tab(s: dict) -> None:
         # --- 確認不可 (W252: 「仕入先在庫切れ」と同じ表示に統一) ---
         # user 指示: 確認不可 = 仕入先在庫切れとして処理してよい。表示レイヤーを統一。
         # DB の source_status 値 (not_found) は書き換えない (表示マッピングのみ)。
-        st.markdown(f"### 仕入先在庫切れ（確認不可）({len(pnf_items)}件)")
-        st.caption("仕入先ページが削除済みまたは確認不可。「仕入先在庫切れ」と同様に出品停止または仕入先変更を検討してください。")
+        st.subheader(
+            f"仕入先在庫切れ（確認不可）({len(pnf_items)}件)",
+            help="仕入先ページが削除済みまたは確認不可。「仕入先在庫切れ」と同様に出品停止または仕入先変更を"
+                 "検討してください。各商品のすぐ下に仕入先候補(上位3件)を表示、候補がない商品は"
+                 "「在庫を0にする」で販売停止できます。",
+        )
         if pnf_items:
             # OOS と同じ表示フロー (_render_oos_block + 一括実行ボタン)
             # HIGH-4 fix: SKU 規約違反を修正。supplier_candidates は migration v56 で
@@ -1291,11 +1267,6 @@ def render_inventory_monitor_tab(s: dict) -> None:
                     ).fetchall():
                         _pnf_alt_only_count[_r["ebay_item_id"]] = _r["alt_n"]
 
-            st.caption(
-                "各商品のすぐ下に仕入先候補(上位3件)を表示。「採用」を押すとその場で eBay へ "
-                "SKU 反映まで実行されます。候補がない商品は「在庫を0にする」で販売停止できます。"
-            )
-
             for _item in pnf_items:
                 _pnf_eid_val = _item.get("ebay_item_id") or ""
                 _cands_for_eid = _pnf_cand_by_eid.get(_pnf_eid_val, [])[:3]
@@ -1310,12 +1281,11 @@ def render_inventory_monitor_tab(s: dict) -> None:
         unk_items = risk_data.get("status_unknown", [])
         if unk_items:
             st.markdown("---")
-            st.markdown(f"### 状態不明 ({len(unk_items)}件)")
-            st.caption(
-                "仕入先ページの在庫状態を自動判定できなかった商品です。"
-                "仕入先URLを開いて実状態を確認し、右の欄に結果を記載して「保存」してください。"
-                "保存すると要対応一覧へ正しく振り分けられます "
-                "(ページ形式が変わった場合はサイト設定の見直しが必要です)。"
+            st.subheader(
+                f"状態不明 ({len(unk_items)}件)",
+                help="仕入先ページの在庫状態を自動判定できなかった商品です。仕入先URLを開いて実状態を"
+                     "確認し、右の欄に結果を記載して「保存」してください。保存すると要対応一覧へ正しく"
+                     "振り分けられます（ページ形式が変わった場合はサイト設定の見直しが必要です）。",
             )
             # 依頼ボード#21 (2026-06-14): 状態不明を read-only 表 → 手動判定入力欄に変更。
             # user が仕入先を実見した結果 (在庫有/在庫無/ページなし) を記載 → 保存で
@@ -1378,13 +1348,13 @@ def render_inventory_monitor_tab(s: dict) -> None:
 
     # ---------- 監視リスト (手動監視) ----------
     with monitor_tab1:
-        st.caption(
-            "monitored_items に自分で登録した URL の在庫監視です。"
-            "「⚠ 供給リスク」タブの自動検知とは別の仕組みです。"
-        )
         h1, h2, h3 = st.columns([3, 1, 1])
         with h1:
-            st.subheader("監視中アイテム")
+            st.subheader(
+                "監視中アイテム",
+                help="monitored_items に自分で登録したURLの在庫監視です。"
+                     "「⚠ 供給リスク」タブの自動検知とは別の仕組みです。",
+            )
         with h2:
             if st.button("eBay同期"):
                 app_id = s.get("ebay_app_id", "")
@@ -1618,8 +1588,11 @@ def render_inventory_monitor_tab(s: dict) -> None:
 
     # ---------- サイト設定 ----------
     with monitor_tab2:
-        st.subheader("サイト別設定")
-        st.caption("変換URLはeBay SKUのプレフィックス。例: `ebayme_` → メルカリ `https://jp.mercari.com/item/m` + 商品ID")
+        st.subheader(
+            "サイト別設定",
+            help="変換URLはeBay SKUのプレフィックス。例: `ebayme_` → メルカリ "
+                 "`https://jp.mercari.com/item/m` + 商品ID",
+        )
 
         configs = get_site_configs()
 

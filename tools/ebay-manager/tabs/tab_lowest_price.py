@@ -30,6 +30,42 @@ def _cd_competitors_grouped(db_version: int, ids: tuple):
     return get_competitors_grouped(list(ids))
 
 
+# タブ密度化リファクタ C1 (2026-07-04): タブ全体を 12px baseline に圧縮
+# (user 承認済み密度スペック: フォント12px / 行高22-28px)。widget key prefix は
+# "lp_" (通常) / "w183_" (値下げ実行系) の 2 種のみでこのタブ専用
+# (grep 済、他タブと非衝突確認済) なので `[class*="st-key-<prefix>"]` で
+# 広く一括圧縮できる (per-widget-type 分割は不要、K1)。caption の圧縮は
+# 本タブが選択された時のみこの render 関数が実行される
+# (app.py `if _w134_sel == "最安値チェック":`) ため、汎用 data-testid セレクタでも
+# 他ページへの波及はない。
+_LP_DENSITY_CSS = """
+<style>
+div[class*="st-key-lp_"] button,
+div[class*="st-key-w183_"] button {
+  font-size:12px !important;
+  padding:2px 10px !important;
+  min-height:26px !important;
+  line-height:22px !important;
+}
+div[class*="st-key-lp_"] label,
+div[class*="st-key-w183_"] label {
+  font-size:12px !important;
+  margin-bottom:2px !important;
+}
+div[class*="st-key-lp_"] input,
+div[class*="st-key-lp_"] [data-baseweb="select"] > div,
+div[class*="st-key-w183_"] input {
+  font-size:12px !important;
+  min-height:28px !important;
+}
+[data-testid="stCaptionContainer"] p {
+  font-size:12px !important;
+  line-height:22px !important;
+}
+</style>
+"""
+
+
 def render_lowest_price_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
@@ -43,6 +79,7 @@ def render_lowest_price_tab(s: dict) -> None:
         update_alert_action,
     )
     from ui_cache import bump_db_version, get_db_version, seed_keyed_value_from_db
+    st.markdown(_LP_DENSITY_CSS, unsafe_allow_html=True)
     st.title("最安値チェック")
     st.caption(
         "商品ごとに最大 10 ライバルを登録し、6 時間ごと (00:45 / 06:45 / 12:45 / 18:45 JST) に "
@@ -234,8 +271,10 @@ def render_lowest_price_tab(s: dict) -> None:
         # ───────────────────────────────────
         # 1. 商品一覧 (read-only 一覧表)
         # ───────────────────────────────────
-        st.subheader("商品一覧")
-        st.caption("各行は商品 1 件。詳細編集は下の「商品の詳細・編集」セクションへ。")
+        st.subheader(
+            "商品一覧",
+            help="各行は商品 1 件。詳細編集は下の「商品の詳細・編集」セクションへ。",
+        )
 
         _lp_summary_rows = []
         for _it in _lp_active:

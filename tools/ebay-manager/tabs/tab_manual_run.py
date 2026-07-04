@@ -12,8 +12,52 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
+# タブ密度化リファクタ C2 (2026-07-04): このタブ配下だけに効くスコープ CSS
+# (st.container(key="manualrun_root") 内側 div に付く class="st-key-manualrun_root"
+# を掴む。他タブ / app.py のグローバル密度 CSS には触れない = K2 surgical)。
+# user 承認済み密度スペック: フォント12px / 行高22-28px / 常時caption→help化。
+_MANUALRUN_DENSITY_CSS = """<style>
+div[class*="st-key-manualrun_root"] [data-testid="stMarkdownContainer"] p {
+    font-size: 12px !important;
+    line-height: 24px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-manualrun_root"] [data-testid="stCaptionContainer"] p {
+    font-size: 11px !important;
+    line-height: 20px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-manualrun_root"] [data-testid="stAlert"] {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+}
+div[class*="st-key-manualrun_root"] [data-testid="stButton"] > button {
+    min-height: 28px !important;
+    padding: 3px 10px !important;
+    font-size: 12px !important;
+    line-height: 22px !important;
+}
+div[class*="st-key-manualrun_root"] [data-testid="stMetricLabel"] {
+    font-size: 11px !important;
+}
+div[class*="st-key-manualrun_root"] [data-testid="stMetricValue"] {
+    font-size: 20px !important;
+}
+</style>"""
+
 
 def render_manual_run_tab(s: dict) -> None:
+    st.subheader(
+        "タスク手動実行",
+        help="ここからタスクを即時実行できます。通常は定時実行（5:00 / 11:00 / 17:00 / 22:00）で自動実行されます。",
+    )
+    _root = st.container(key="manualrun_root")
+    _root.markdown(_MANUALRUN_DENSITY_CSS, unsafe_allow_html=True)
+    with _root:
+        _render_manual_run_body(s)
+
+
+def _render_manual_run_body(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
     # 名前を関数内 lazy import で補完 (抽出漏れ修正、render 実行時 NameError 防止)。
     from execution_logger import get_execution_statistics, log_execution_result, save_execution_history, send_discord_notification
@@ -22,14 +66,19 @@ def render_manual_run_tab(s: dict) -> None:
     from monitor.ebay_sync import auto_rank_all_listings_in_db, sync_listings_from_ebay
     import sys
     import time
-    st.subheader("タスク手動実行")
-    st.caption("ここからタスクを即時実行できます。通常は定時実行（5:00 / 11:00 / 17:00 / 22:00）で自動実行されます。")
 
     # ────────────────────────────────
     # クイック実行セクション
     # ────────────────────────────────
-    st.markdown("### クイック実行")
-    st.caption("ボタン1つで即時実行。結果は組織(.company)に自動配信されます。")
+    # C2 密度化: 常時 caption → 見出し横の hover tooltip (ⓘ) 化 (K2 surgical、
+    # 他見出しと視覚サイズを揃えるため markdown 見出しのまま維持)。
+    st.markdown(
+        '### クイック実行 <span title="ボタン1つで即時実行。'
+        '結果は組織(.company)に自動配信されます。" '
+        'style="font-size:11px;color:#8d927f;cursor:help;'
+        'border-bottom:1px dotted #8d927f;">ⓘ</span>',
+        unsafe_allow_html=True,
+    )
 
     # 即時実行タスク定義
     # W21 (2026-04-26): 'research' を削除済 (死蔵化、出力 .company/research/notes/*.md

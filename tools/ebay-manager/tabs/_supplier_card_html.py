@@ -29,35 +29,36 @@ _CARD_CSS = """
 <style>
 .sc-card{
   border:1px solid rgba(166,150,121,0.25);
-  border-radius:14px;
-  padding:10px 14px;
-  margin:6px 0;
+  border-radius:10px;
+  padding:6px 10px;
+  margin:4px 0;
   background:#f2ecdf;
-  box-shadow:3px 3px 7px rgba(166,150,121,0.5),-3px -3px 7px rgba(255,255,255,0.9);
+  box-shadow:2px 2px 5px rgba(166,150,121,0.45),-2px -2px 5px rgba(255,255,255,0.9);
   transition:box-shadow .18s ease;
 }
 .sc-card:hover{
-  box-shadow:5px 5px 12px rgba(166,150,121,0.5),-5px -5px 12px rgba(255,255,255,0.9);
+  box-shadow:4px 4px 9px rgba(166,150,121,0.5),-4px -4px 9px rgba(255,255,255,0.9);
 }
 .sc-row1{
   display:flex;
-  gap:10px;
+  gap:6px;
   align-items:center;
   flex-wrap:wrap;
   font-family:Share Tech Mono,monospace;
+  font-size:12px;
 }
 .sc-score{
-  font-size:22px;
+  font-size:17px;
   font-weight:700;
-  min-width:42px;
+  min-width:32px;
   text-align:center;
   color:#2a2e2a;
 }
 .sc-badge{
-  font-size:11px;
-  padding:2px 8px;
-  border-radius:10px;
-  letter-spacing:0.3px;
+  font-size:10px;
+  padding:1px 6px;
+  border-radius:8px;
+  letter-spacing:0.2px;
   white-space:nowrap;
 }
 .sc-badge-mute{
@@ -86,51 +87,51 @@ _CARD_CSS = """
   font-size:11px;
 }
 .sc-title{
-  margin-top:6px;
-  font-size:13px;
+  margin-top:4px;
+  font-size:12px;
   color:#2a2e2a;
-  line-height:1.35;
+  line-height:1.3;
 }
 .sc-money{
-  margin-top:8px;
+  margin-top:5px;
   display:flex;
-  gap:14px;
+  gap:10px;
   align-items:baseline;
   flex-wrap:wrap;
   font-family:Share Tech Mono,monospace;
-  font-size:13px;
+  font-size:12px;
   color:#5f6557;
 }
 .sc-money .sc-ebay{color:#0e4f4b;font-weight:600;}
 .sc-money .sc-cost{color:#5f6557;}
-.sc-money .sc-profit-pos{color:#2e7d5b;font-weight:700;font-size:14px;}
-.sc-money .sc-profit-neg{color:#a8341b;font-weight:700;font-size:14px;}
-.sc-money .sc-profit-na{color:#8d927f;font-size:11px;}
-.sc-money .sc-profit-sub{font-weight:600;font-size:12px;opacity:0.85;}
+.sc-money .sc-profit-pos{color:#2e7d5b;font-weight:700;font-size:12px;}
+.sc-money .sc-profit-neg{color:#a8341b;font-weight:700;font-size:12px;}
+.sc-money .sc-profit-na{color:#8d927f;font-size:10px;}
+.sc-money .sc-profit-sub{font-weight:600;font-size:11px;opacity:0.85;}
 .sc-money .sc-link{margin-left:auto;color:#0e4f4b;}
-.sc-money .sc-muted{color:#8d927f;font-size:11px;}
+.sc-money .sc-muted{color:#8d927f;font-size:10px;}
 .sc-note{
-  margin-top:8px;
-  padding-top:6px;
+  margin-top:5px;
+  padding-top:4px;
   border-top:1px dashed rgba(166,150,121,0.35);
-  font-size:11px;
+  font-size:10px;
   color:#5f6557;
-  line-height:1.45;
+  line-height:1.3;
 }
 .sc-note-alt{color:#2e7d5b;border-top-color:rgba(46,125,91,0.25);}
 .sc-note-junk{color:#7a5800;border-top-color:rgba(184,134,11,0.25);}
 .sc-recovered{
-  margin-top:8px;
-  padding:6px 10px;
+  margin-top:5px;
+  padding:4px 8px;
   background:rgba(184,134,11,0.08);
   border-left:3px solid rgba(184,134,11,0.65);
-  font-size:11px;
+  font-size:10px;
   color:#7a5800;
 }
 .sc-imgpair{
   display:flex;
-  gap:8px;
-  margin-top:8px;
+  gap:6px;
+  margin-top:5px;
   align-items:flex-start;
 }
 .sc-imgpair-cell{
@@ -139,17 +140,19 @@ _CARD_CSS = """
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:4px;
+  gap:3px;
 }
 .sc-imgpair-cell img{
-  height:150px;        /* 2026-06-11: max-height→height 固定。読み込み前から150pxを予約し layout shift (実測1.7s のボタン位置不安定) を根治 */
+  height:112px;        /* W315 (2026-07-04) タブ密度化: 150px→112px。2 カラム
+                           カード詰込 (490px幅想定) での縦圧縮。読み込み前から
+                           予約する height 固定方式は不変 (layout shift 対策)。 */
   width:100%;
   object-fit:contain;
   border-radius:4px;
   background:rgba(166,150,121,0.12);
 }
 .sc-imgpair-placeholder{
-  height:150px;
+  height:112px;
   width:100%;
   background:rgba(166,150,121,0.10);
   border:1px dashed rgba(166,150,121,0.35);
@@ -157,11 +160,11 @@ _CARD_CSS = """
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:11px;
+  font-size:10px;
   color:#8d927f;
 }
 .sc-imgpair-caption{
-  font-size:11px;
+  font-size:10px;
   color:#8d927f;
   text-align:center;
   white-space:nowrap;

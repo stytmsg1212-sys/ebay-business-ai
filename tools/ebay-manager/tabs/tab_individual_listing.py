@@ -2761,6 +2761,14 @@ def render_tab(settings: dict) -> None:
     # `st.container(key=...)` (Streamlit 1.56+) が付与する DOM クラス
     # `st-key-<key>` に対して amber 左ライン + 薄背景 (JARVIS トーン) を当てるだけで、
     # 中身のボタン・コスト表記・API 呼出ロジックには一切触れない (K2 surgical).
+    #
+    # タブ密度化リファクタ C1 (2026-07-04) 追加分: widget key prefix "il_" は
+    # このタブ専用 (`_SS = "il_"`、grep 済・他タブと非衝突確認済) なので
+    # `[class*="st-key-il_"]` で全 widget を一括 12px baseline に圧縮する
+    # (user 承認済み密度スペック: フォント12px / 行高22-28px、per-widget-type
+    # 分割は不要・K1)。caption 圧縮は本タブが選択された時のみ render_tab が
+    # 実行される (app.py `if _w134_sel == "個別出品":`) ため、汎用
+    # data-testid セレクタでも他ページへの波及はない。
     st.markdown(
         """
         <style>
@@ -2768,6 +2776,25 @@ def render_tab(settings: dict) -> None:
         div[class*="st-key-il_cost_"] {
             border-left: 3px solid rgba(184, 134, 11, 0.65) !important;
             background: rgba(184, 134, 11, 0.08) !important;
+        }
+        div[class*="st-key-il_"] button {
+            font-size: 12px !important;
+            padding: 2px 10px !important;
+            min-height: 26px !important;
+            line-height: 22px !important;
+        }
+        div[class*="st-key-il_"] label {
+            font-size: 12px !important;
+            margin-bottom: 2px !important;
+        }
+        div[class*="st-key-il_"] input,
+        div[class*="st-key-il_"] textarea,
+        div[class*="st-key-il_"] [data-baseweb="select"] > div {
+            font-size: 12px !important;
+        }
+        [data-testid="stCaptionContainer"] p {
+            font-size: 12px !important;
+            line-height: 22px !important;
         }
         </style>
         """,

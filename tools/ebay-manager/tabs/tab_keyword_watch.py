@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
+from html import escape
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote_plus
@@ -36,6 +37,47 @@ from ui_cache import bump_db_version
 logger = logging.getLogger(__name__)
 
 _JST = timezone(timedelta(hours=9))
+
+# タブ密度化リファクタ B2 (2026-07-04): このタブ配下だけに効くスコープ CSS
+# (st.container(key="kw_watch_root") 内側 div に付く class="st-key-kw_watch_root"
+# を掴む。他タブ / app.py のグローバル密度 CSS には触れない = K2 surgical、
+# tab_request_board.py の _DENSITY_CSS パターンを踏襲)。
+# user 承認済み密度スペック: フォント 12px / 行高 22-28px / 全幅引き伸ばし禁止 /
+# 2 カラム詰め込み可 / 常時 caption → tooltip / 赤は要対応のみ / expander 既定閉。
+_KW_DENSITY_CSS = """<style>
+div[class*="st-key-kw_watch_root"] [data-testid="stMarkdownContainer"] p,
+div[class*="st-key-kw_watch_root"] [data-testid="stCaptionContainer"] p {
+    font-size: 12px !important;
+    line-height: 24px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-kw_watch_root"] [data-testid="stExpander"] details > summary {
+    padding: 3px 8px !important;
+    min-height: 24px !important;
+}
+div[class*="st-key-kw_watch_root"] [data-testid="stExpander"] summary p,
+div[class*="st-key-kw_watch_root"] [data-testid="stExpander"] summary span {
+    font-size: 12px !important;
+    line-height: 22px !important;
+    margin: 0 !important;
+}
+div[class*="st-key-kw_watch_root"] [data-testid="stButton"] > button,
+div[class*="st-key-kw_watch_root"] [data-testid="stFormSubmitButton"] > button {
+    min-height: 28px !important;
+    padding: 3px 10px !important;
+    font-size: 12px !important;
+    line-height: 22px !important;
+}
+div[class*="st-key-kw_watch_root"] [data-testid="stTextInput"] input,
+div[class*="st-key-kw_watch_root"] [data-testid="stTextArea"] textarea,
+div[class*="st-key-kw_watch_root"] [data-testid="stNumberInput"] input,
+div[class*="st-key-kw_watch_root"] [data-testid="stSelectbox"] div[role="combobox"] {
+    font-size: 12px !important;
+}
+div[class*="st-key-kw_watch_root"] [data-testid="stCheckbox"] label p {
+    font-size: 12px !important;
+}
+</style>"""
 
 
 def _to_jst_str(ts: Optional[str]) -> str:
@@ -134,6 +176,59 @@ def _compute_watch_update(
     return fields
 
 
+def _get_last_hit_at_map(watch_ids: list[int]) -> dict[int, str]:
+    """watch_id → 最新 detected_at (UTC 文字列) を一括取得 (N+1 回避、読み取り専用)。
+
+    「最終ヒット」列の density 化 (B2) で新規追加。keyword_watch_hits への
+    GROUP BY 集計のみ (書込みなし)、watch_id は SKU ではないため sku-rules 対象外。
+    """
+    if not watch_ids:
+        return {}
+    from monitor.database import get_conn
+
+    placeholders = ",".join("?" for _ in watch_ids)
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT watch_id, MAX(detected_at) AS last_hit FROM keyword_watch_hits "
+            f"WHERE watch_id IN ({placeholders}) GROUP BY watch_id",
+            watch_ids,
+        ).fetchall()
+    return {r["watch_id"]: r["last_hit"] for r in rows}
+
+
+def _render_hit_row_html(hit: dict, site: str) -> str:
+    """1 hit を通知センター調のコンパクト 1 行 HTML に整形する純関数。
+
+    レイアウト: 商品名 — 価格 | サイト ・時刻 (`_notification_center_html.py` の
+    1 行フォーマットを踏襲、このタブ専用に別 CSS scope で定義)。
+    """
+    title = (hit.get("title") or "").strip() or "(タイトル不明)"
+    title_disp = title if len(title) <= 50 else title[:49] + "…"
+    price_disp = f"¥{hit['price_jpy']:,}" if hit.get("price_jpy") else "—"
+    time_disp = _to_jst_str(hit.get("detected_at"))
+    site_label = {"mercari": "🛒メルカリ", "yahoo_auctions": "🔨ヤフオク"}.get(site, site)
+    range_icon = " ✅" if hit.get("in_price_range") else ""
+    discord_icon = " 📤" if hit.get("discord_sent") else ""
+    url = hit.get("found_item_url") or ""
+
+    title_html = (
+        f'<a href="{escape(url)}" target="_blank" rel="noopener" '
+        f'style="color:#2a2e2a;text-decoration:none;font-weight:600;">'
+        f'{escape(title_disp)}</a>' if url else f'<span style="font-weight:600;">{escape(title_disp)}</span>'
+    )
+    return (
+        '<div style="font-size:12px;line-height:24px;padding:2px 8px;'
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+        'border-bottom:1px solid rgba(0,0,0,0.06);">'
+        f'{title_html}'
+        f'<span style="color:#8d927f;"> — </span>{escape(price_disp)}'
+        f'<span style="color:#8d927f;"> | </span>{escape(site_label)}'
+        f'<span style="color:#8d927f;"> ・</span>{escape(time_disp)}'
+        f'{range_icon}{discord_icon}'
+        '</div>'
+    )
+
+
 def _render_summary_section() -> None:
     """1. 巡回サマリ + センチネル初期化 + 今すぐ巡回"""
     stats = get_watch_stats()
@@ -228,31 +323,38 @@ def _render_watch_list() -> None:
         if only_research:
             watches = [w for w in watches if w["id"] in research_ids]
 
-    # 簡易表示 (st.dataframe)
+    # B2 密度化 (2026-07-04): 1 watch 1 行に圧縮 (キーワード/サイト/希望価格/
+    # 最終ヒット)。由来・sentinel はキーワード先頭の絵文字に統合、item_id/memo は
+    # 下の「編集/削除」で参照可能 (機能は不変、常時表示のみ間引き)。
+    # 状態列は 停止中/エラー/正常 を 1 セルに集約 (last_error を隠さない = Q0)。
+    last_hit_map = _get_last_hit_at_map([w["id"] for w in watches])
     rows = []
     for w in watches:
         pmin = w.get("price_min_jpy")
         pmax = w.get("price_max_jpy")
         if pmin is None and pmax is None:
-            price_str = "(未設定 = 通知無効)"
+            price_str = "(未設定=通知無効)"
         else:
             lo = f"¥{pmin:,}" if pmin is not None else "—"
             hi = f"¥{pmax:,}" if pmax is not None else "—"
-            price_str = f"{lo} 〜 {hi}"
+            price_str = f"{lo}〜{hi}"
+        if not w["is_active"]:
+            state = "❌停止中"
+        elif w.get("last_error"):
+            state = f"⚠️{(w['last_error'] or '')[:20]}"
+        else:
+            state = "✅"
+        prefix = ("🛡️" if w.get("is_sentinel") else "") + ("🔬" if w["id"] in research_ids else "")
+        keyword_disp = f"{prefix} {w['keyword']}".strip() if prefix else w["keyword"]
         rows.append({
             "id": w["id"],
-            "由来": "🔬リサーチ" if w["id"] in research_ids else "手動",
-            "site": w["site"],
-            "keyword": w["keyword"],
-            "price": price_str,
-            "item_id": w.get("ebay_item_id") or "",
-            "sentinel": "🛡️" if w.get("is_sentinel") else "",
-            "active": "✅" if w["is_active"] else "❌",
-            "last_crawl": _to_jst_str(w.get("last_crawled_at")),
-            "last_error": (w.get("last_error") or "")[:60],
-            "memo": (w.get("memo") or "")[:40],
+            "状態": state,
+            "site": "🛒メルカリ" if w["site"] == "mercari" else "🔨ヤフオク",
+            "keyword": keyword_disp,
+            "希望価格": price_str,
+            "最終ヒット": _to_jst_str(last_hit_map.get(w["id"])),
         })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, use_container_width=True, hide_index=True, row_height=26)
 
     with st.expander("🛠 編集 / 削除", expanded=False):
         ids = [w["id"] for w in watches]
@@ -349,17 +451,11 @@ def _render_watch_list() -> None:
             if not hits:
                 st.info("hits なし")
             else:
-                st.dataframe(
-                    [{
-                        "detected_at": _to_jst_str(h["detected_at"]),
-                        "title": (h.get("title") or "")[:50],
-                        "price": f"¥{h['price_jpy']:,}" if h.get("price_jpy") else "—",
-                        "in_range": "✅" if h["in_price_range"] else "—",
-                        "discord": "📤" if h["discord_sent"] else "—",
-                        "url": h["found_item_url"],
-                    } for h in hits],
-                    use_container_width=True,
-                    hide_index=True,
+                # B2 密度化: 通知センターの 1 行形式
+                # (商品名 — 価格 | サイト ・時刻) に合わせてコンパクト化。
+                st.markdown(
+                    "".join(_render_hit_row_html(h, target["site"]) for h in hits),
+                    unsafe_allow_html=True,
                 )
 
 
@@ -370,32 +466,36 @@ def _render_add_form() -> None:
     # 同一商品をメルカリ→ヤフオクと続けて登録する際、文言を残したまま「サイト」だけ
     # 切り替えて「追加」を押せば済むようにする (別 site + 別 URL なので dedup も通る)。
     with st.form("kw_add_form", clear_on_submit=False):
-        c1, c2 = st.columns([1, 3])
+        # B2 密度化 (2026-07-04): site/keyword/価格 2 種を 1 行 (4 カラム) に圧縮。
+        # 「両方なしだと通知無効」の説明は追加ボタンの tooltip へ移動 (常時 caption 廃止)。
+        c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
         with c1:
             site = st.selectbox("サイト", ["mercari", "yahoo_auctions"],
                                  format_func=lambda x: "🛒 メルカリ" if x == "mercari" else "🔨 ヤフオク")
         with c2:
             keyword = st.text_input("キーワード", placeholder="例: Astell&Kern A&norma SR35")
-
-        c3, c4, c5 = st.columns(3)
         with c3:
-            pmin = st.number_input("下限 (¥、空欄=なし)", min_value=0, value=0, step=1000)
+            pmin = st.number_input("下限 (¥)", min_value=0, value=0, step=1000)
             pmin_unset = st.checkbox("下限なし", value=True)
         with c4:
-            pmax = st.number_input("上限 (¥、空欄=なし)", min_value=0, value=0, step=1000)
+            pmax = st.number_input("上限 (¥)", min_value=0, value=0, step=1000)
             pmax_unset = st.checkbox("上限なし", value=False)
+
+        c5, c6 = st.columns([3, 2])
         with c5:
-            st.caption("注: 両方なしだと通知無効 (履歴のみ)")
+            memo = st.text_area("メモ (任意)", placeholder="採用後のアクション、注意点 等", height=60)
+        with c6:
+            # W206: 任意 eBay Item ID 紐付け (Discord 通知 embed 拡充用)
+            item_id_raw = st.text_input(
+                "eBay Item ID (任意)",
+                placeholder="例: 358505733121",
+                help="紐づく自社 eBay 出品の Item ID。通知時に eBay 販売価格を併記。",
+            )
 
-        memo = st.text_area("メモ (任意)", placeholder="採用後のアクション、注意点 等", height=80)
-        # W206: 任意 eBay Item ID 紐付け (Discord 通知 embed 拡充用)
-        item_id_raw = st.text_input(
-            "eBay Item ID (任意)",
-            placeholder="例: 358505733121",
-            help="紐づく自社 eBay 出品の Item ID。通知時に eBay 販売価格を併記。",
+        submitted = st.form_submit_button(
+            "追加",
+            help="下限・上限を両方「なし」のままだと通知は無効になります (ヒット履歴には記録)。",
         )
-
-        submitted = st.form_submit_button("追加")
         if submitted:
             kw = keyword.strip()
             if not kw:
@@ -477,9 +577,10 @@ def _render_legacy_import() -> None:
     site_filter = st.multiselect(
         "サイト絞込", ["mercari", "yahoo_auctions"],
         default=["mercari", "yahoo_auctions"],
+        help="初回登録は 50 件以下からの少数運用を推奨",
     )
     rows = [r for r in exported if r["site"] in site_filter]
-    st.caption(f"表示: {len(rows)} 件 (初回推奨: 50 件以下から開始)")
+    st.caption(f"表示: {len(rows)} 件")
 
     # st.data_editor でチェック付き
     edited = st.data_editor(
@@ -524,20 +625,25 @@ def _render_legacy_import() -> None:
 
 def render_keyword_watch_tab() -> None:
     """W148 キーワード新着監視タブ entry。"""
-    st.markdown("## 🔔 キーワード新着監視 (W148)")
-    st.caption(
-        "メルカリ + ヤフオクで「狙っている型番が希望価格レンジで新規出品された瞬間」を Discord 通知。"
-        "在庫監視 (守り) と別系統の発掘 (攻め) タスク。"
-    )
+    # B2 密度化 (2026-07-04): 常時表示の説明 caption → subheader の hover tooltip。
+    with st.container(key="kw_watch_root"):
+        st.markdown(_KW_DENSITY_CSS, unsafe_allow_html=True)
+        st.subheader(
+            "🔔 キーワード新着監視 (W148)",
+            help=(
+                "メルカリ + ヤフオクで「狙っている型番が希望価格レンジで新規出品された瞬間」を"
+                "Discord 通知。在庫監視 (守り) と別系統の発掘 (攻め) タスク。"
+            ),
+        )
 
-    with st.container(border=True):
-        _render_summary_section()
+        with st.container(border=True):
+            _render_summary_section()
 
-    with st.container(border=True):
-        _render_watch_list()
+        with st.container(border=True):
+            _render_watch_list()
 
-    with st.container(border=True):
-        _render_add_form()
+        with st.container(border=True):
+            _render_add_form()
 
-    with st.container(border=True):
-        _render_legacy_import()
+        with st.container(border=True):
+            _render_legacy_import()

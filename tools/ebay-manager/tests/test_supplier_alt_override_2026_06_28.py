@@ -334,12 +334,18 @@ class TestConfirmKeyInSourceCode(unittest.TestCase):
         )
 
     def test_confirm_button_present(self):
-        """「確定（SKU書換で採用）」ボタンが実装されている。"""
+        """確定ボタン (2段確認、選択した採用モードに応じたラベル) が実装されている。
+
+        2026-07-03 の採用 3 択化 (「採用」→「SKUのみ」「編集あり」) で
+        alt_only の 2 段確認ボタンは選択モードを引き継いだ動的ラベル
+        `確定（{_choice_label} で書換採用）` になった (文言変更、テストの意図=
+        2段確認ボタンの存在 は不変なので新ラベルに追従)。
+        """
         src = self._src()
         self.assertIn(
-            "確定（SKU書換で採用）",
+            "確定（{_choice_label} で書換採用）",
             src,
-            "確定ボタンのラベルが存在しない",
+            "2段確認ボタンのラベルが存在しない",
         )
 
     def test_cancel_button_present(self):

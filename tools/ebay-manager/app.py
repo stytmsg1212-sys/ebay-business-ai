@@ -624,12 +624,16 @@ if _w134_sel == "最安値チェック":
     render_lowest_price_tab(s)
 
 
-# ========== システム運用タブ (W303 / 2026-07-02 統合) ==========
-# 定時実行 / 手動実行 / エージェント監視 の既存 render 関数を st.tabs でまとめる
-# 薄いラッパー。3 関数の中身・下記の個別 `if _w134_sel == "..."` 分岐は変更しない
-# (K2 surgical、非表示化のみでコード削除禁止)。
+# ========== システム運用タブ (W303 / 2026-07-02 統合、#43 で ROADMAP 追加) ==========
+# 定時実行 / 手動実行 / エージェント監視 / ROADMAP の既存 render 関数を st.tabs で
+# まとめる薄いラッパー。4 関数の中身・下記の個別 `if _w134_sel == "..."` 分岐は
+# 変更しない (K2 surgical、非表示化のみでコード削除禁止)。ROADMAP は #43
+# (2026-07-04) で DASHBOARD から本タブへ移設 (render 本体は tabs/tab_dashboard.py
+# の render_roadmap_section() のまま、呼出元のみ変更)。
 if _w134_sel == "システム運用":
-    _sysops_t1, _sysops_t2, _sysops_t3 = st.tabs(["定時実行", "手動実行", "エージェント監視"])
+    _sysops_t1, _sysops_t2, _sysops_t3, _sysops_t4 = st.tabs(
+        ["定時実行", "手動実行", "エージェント監視", "ROADMAP"]
+    )
     with _sysops_t1:
         render_scheduled_execution_tab()
     with _sysops_t2:
@@ -638,6 +642,9 @@ if _w134_sel == "システム運用":
     with _sysops_t3:
         from tabs.tab_agent_monitor import render_agent_monitor_tab
         render_agent_monitor_tab()
+    with _sysops_t4:
+        from tabs.tab_dashboard import render_roadmap_section
+        render_roadmap_section()
 
 
 # ========== 手動実行タブ ==========

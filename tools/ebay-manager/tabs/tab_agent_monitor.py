@@ -13,13 +13,45 @@ from pathlib import Path
 import streamlit as st
 
 
+# タブ密度化リファクタ C2 (2026-07-04): このタブ配下だけに効くスコープ CSS
+# (st.container(key="agentmon_root") 内側 div に付く class="st-key-agentmon_root"
+# を掴む。他タブ / app.py のグローバル密度 CSS には触れない = K2 surgical)。
+# user 承認済み密度スペック: フォント12px / 行高22-28px / 常時caption→title化。
+_AGENTMON_DENSITY_CSS = """<style>
+div[class*="st-key-agentmon_root"] [data-testid="stMarkdownContainer"] p {
+    font-size: 12px !important;
+    line-height: 24px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-agentmon_root"] [data-testid="stCaptionContainer"] p {
+    font-size: 11px !important;
+    line-height: 20px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-agentmon_root"] [data-testid="stMetricLabel"] {
+    font-size: 11px !important;
+}
+div[class*="st-key-agentmon_root"] [data-testid="stMetricValue"] {
+    font-size: 20px !important;
+}
+</style>"""
+
+
 def render_agent_monitor_tab() -> None:
     """エージェント (API/部署) 監視タブ."""
+    st.title(
+        "エージェント監視",
+        help="Claude/Gemini API 稼働状況、モデル使用、コスト、エラー、最近の更新を一望。",
+    )
+    _root = st.container(key="agentmon_root")
+    _root.markdown(_AGENTMON_DENSITY_CSS, unsafe_allow_html=True)
+    with _root:
+        _render_agent_monitor_body()
+
+
+def _render_agent_monitor_body() -> None:
     from monitor.database import get_conn as _ag_conn
     import pandas as _pd
-
-    st.title("エージェント監視")
-    st.caption("Claude/Gemini API 稼働状況、モデル使用、コスト、エラー、最近の更新を一望。")
 
     # === Section 1: 今日 / 過去7日 / 過去30日 の API 使用状況 ===
     st.subheader("API 使用状況")
@@ -129,8 +161,11 @@ def render_agent_monitor_tab() -> None:
         st.success("直近30日でAPIエラーはありません。")
 
     # === Section 5: .company 各部署 更新状況 ===
-    st.subheader(".company 各部署の更新")
-    st.caption("エージェント（仮想組織）のファイル最終更新。長期未更新は連携ギャップの兆候。")
+    # C2 密度化: 常時 caption → subheader help tooltip 化
+    st.subheader(
+        ".company 各部署の更新",
+        help="エージェント（仮想組織）のファイル最終更新。長期未更新は連携ギャップの兆候。",
+    )
 
     _company_root = Path(__file__).resolve().parent.parent.parent / ".company"
     _depts = [

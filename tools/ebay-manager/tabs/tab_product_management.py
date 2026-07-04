@@ -5749,11 +5749,11 @@ def render_product_management(config: dict) -> None:
     with cols[0]:
         st.metric("総 listing", n)
     with cols[1]:
-        st.metric("仕入価格設定済", f"{n_pyen} / {n}")
+        st.metric("仕入価格設定済", n_pyen, help=f"全 {n} 件中")
     with cols[2]:
-        st.metric("breakeven 計算済", f"{n_be} / {n}")
+        st.metric("breakeven 計算済", n_be, help=f"全 {n} 件中")
     with cols[3]:
-        st.metric("競合登録済", f"{n_comp} / {n}")
+        st.metric("競合登録済", n_comp, help=f"全 {n} 件中")
     with cols[4]:
         st.metric("🔴 在庫切れ", n_oos)
     with cols[5]:

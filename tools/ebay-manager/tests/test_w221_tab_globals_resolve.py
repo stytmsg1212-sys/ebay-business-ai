@@ -232,7 +232,9 @@ def test_inventory_monitor_oos_no_sku_keyed_candidate_query():
     listing で別 listing の候補がカードに混入し、採用時の followup meta eid
     が誤 listing を指す事故の再発防止。"""
     src = (_TABS / "tab_inventory_monitor.py").read_text(encoding="utf-8")
-    start = src.find("### 仕入先在庫切れ (")
+    # W-density A1 (2026-07-04): OOS セクション見出しは st.markdown("### ...") から
+    # st.subheader(..., help=...) へ変更 (密度リファクタ、tooltip 化)。切り出しアンカーを追従。
+    start = src.find('f"仕入先在庫切れ (')
     end = src.find("仕入先在庫切れ（確認不可）")
     assert start >= 0 and end > start, "OOS セクションの切り出しに失敗"
     oos_section = src[start:end]

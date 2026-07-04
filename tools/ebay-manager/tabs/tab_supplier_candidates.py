@@ -22,6 +22,62 @@ _STATUS_JA = {
     "applied": "反映済",
 }
 
+# タブ密度化リファクタ A2 (2026-07-04): フィルタ行・閾値 expander・カード操作
+# ボタンを 12px baseline に圧縮 (user 承認済み密度スペック: フォント12px /
+# 行高22-28px)。Streamlit は `key=` 指定 widget の要素コンテナに
+# `st-key-<key>` class を付与する仕様 (公式 docstring 明記、button.py/
+# layouts.py 等で確認済) を利用し、このタブの widget key prefix だけを
+# `[class*="st-key-<prefix>"]` で狙い撃ちする。汎用 data-testid セレクタ
+# (`[data-testid="stButton"] button` 等) は使わない — このタブの render 中は
+# 常時表示される app.py 側のページ切替ナビゲーションボタンにも波及して
+# しまうため (K2 surgical、他 UI への影響ゼロを機械的に担保)。
+_SUP_DENSITY_CSS = """
+<style>
+div[class*="st-key-sup_filter_status"] label,
+div[class*="st-key-sup_filter_query"] label,
+div[class*="st-key-sup_sort_order"] label {
+  font-size:12px !important;
+  margin-bottom:2px !important;
+}
+div[class*="st-key-sup_filter_status"] [data-baseweb="select"] > div,
+div[class*="st-key-sup_sort_order"] [data-baseweb="select"] > div,
+div[class*="st-key-sup_filter_query"] input {
+  font-size:12px !important;
+  min-height:30px !important;
+}
+div[class*="st-key-sup_threshold_expander"] summary {
+  padding:4px 10px !important;
+  min-height:26px !important;
+}
+div[class*="st-key-sup_threshold_expander"] summary p,
+div[class*="st-key-sup_threshold_expander"] summary span {
+  font-size:12px !important;
+  line-height:22px !important;
+  margin:0 !important;
+}
+div[class*="st-key-sup_threshold_expander"] [data-testid="stCaptionContainer"] p {
+  font-size:11px !important;
+  line-height:20px !important;
+  margin:2px 0 !important;
+}
+div[class*="st-key-sup_new_listing_"] button,
+div[class*="st-key-sup_accept_skuonly_"] button,
+div[class*="st-key-sup_accept_editor_"] button,
+div[class*="st-key-sup_reject_"] button,
+div[class*="st-key-sup_accept_alt_confirm_"] button,
+div[class*="st-key-sup_accept_alt_cancel_"] button,
+div[class*="st-key-sup_more_"] button,
+div[class*="st-key-sup_reload"] button,
+div[class*="st-key-th_save"] button,
+div[class*="st-key-th_recalc"] button {
+  font-size:12px !important;
+  padding:2px 10px !important;
+  min-height:26px !important;
+  line-height:22px !important;
+}
+</style>
+"""
+
 
 def render_supplier_candidates_tab(s: dict) -> None:
     # W221 Tier2 fix (2026-06-05): app.py top-level import をグローバル参照していた
@@ -40,6 +96,8 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # 使わない = fragment 部分 rerun でカード側が個別に再描画されても影響を受けない)。
     from tabs._supplier_card_html import _CARD_CSS
     st.markdown(_CARD_CSS, unsafe_allow_html=True)
+    # タブ密度化リファクタ A2: フィルタ行/閾値 expander/操作ボタンの圧縮 CSS。
+    st.markdown(_SUP_DENSITY_CSS, unsafe_allow_html=True)
 
     st.title("仕入先候補レビュー")
     st.caption(
@@ -90,7 +148,11 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # W212-supplier-card-cleanup (2026-06-04): 普段触らない探索閾値を expander
     # で折りたたみ降格 (表示・配置のみ、内部 slider / 保存 / 再計算 ロジックは
     # 不変. money-direct な DELETE FROM supplier_candidates は中で従来通り発火).
-    with st.expander("探索スコア閾値の調整 (THRESHOLD CONTROL)", expanded=False):
+    with st.expander(
+        "探索スコア閾値の調整 (THRESHOLD CONTROL)",
+        expanded=False,
+        key="sup_threshold_expander",
+    ):
         st.caption(
             "新規探索時のスコア下限。緩和 (低い) → 候補多く拾う / "
             "厳格 (高い) → 精度重視。変更後「再計算実行」で既存候補にも適用。"
@@ -166,7 +228,7 @@ def render_supplier_candidates_tab(s: dict) -> None:
     # 依頼ボード#15 (2026-06-12): SKU 完全一致検索 → 商品名/SKU 部分一致検索に変更
     # + 並び順 selectbox 追加 (利益順=従来 DB order / 新着順 / 一致度順)。
     # 旧 UI は「謎の SKU 完全一致のみ・ソート不可」で履歴から商品を探せなかった。
-    _sup_f1, _sup_f2, _sup_f3, _sup_f4 = st.columns([2, 3, 2, 1])
+    _sup_f1, _sup_f2, _sup_f3, _sup_f4 = st.columns([2, 3, 2, 1], gap="small")
     with _sup_f1:
         _sup_filter_status = st.selectbox(
             "ステータス",
@@ -782,11 +844,21 @@ def render_supplier_candidates_tab(s: dict) -> None:
         ページング。旧 [:30] 一括描画は 4 タブ合計 ~80 枚で初期 4.4s かかっていた。
         fragment スコープなので「さらに表示」押下でも st.tabs のタブ位置維持
         (W174-pm と同 pattern)。page_key は履歴タブで rejected/applied の 2 リストを
-        区別するため context と別引数 (widget key 衝突防止)。"""
+        区別するため context と別引数 (widget key 衝突防止)。
+
+        タブ密度化リファクタ A2 (2026-07-04): カード 2 枚を横並び (2 カラム)
+        に変更 (user 承認済み密度スペック、1000px 窓で 490px×2 相当)。
+        _render_candidate_card は元々 @st.fragment (button 押下時のタブ維持
+        目的、W174-pm) なので、st.columns の内側に置いても fragment nesting
+        は 1 段のまま (columns→columns の nest も 1 段のみ、既存 _btn_cols=
+        st.columns(4) と合わせて最大 2 層、Streamlit 許容範囲内)。件数/表示
+        ロジックは不変、配置のみ変更。"""
         _key = f"_sup_shown_{page_key}"
         _shown = st.session_state.setdefault(_key, 10)
-        for _row in rows[:_shown]:
-            _render_candidate_card(_row, context=context)
+        _col_a, _col_b = st.columns(2, gap="small")
+        for _i, _row in enumerate(rows[:_shown]):
+            with (_col_a if _i % 2 == 0 else _col_b):
+                _render_candidate_card(_row, context=context)
         _remain = len(rows) - _shown
         if _remain > 0:
             def _show_more(k: str = _key) -> None:

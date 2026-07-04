@@ -79,14 +79,52 @@ def _load_schedule_config() -> dict:
         return {}
 
 
+# タブ密度化リファクタ C2 (2026-07-04): このタブ配下だけに効くスコープ CSS
+# (st.container(key="schedex_root") 内側 div に付く class="st-key-schedex_root"
+# を掴む。他タブ / app.py のグローバル密度 CSS には触れない = K2 surgical)。
+# user 承認済み密度スペック: フォント12px / 行高22-28px。
+_SCHEDEX_DENSITY_CSS = """<style>
+div[class*="st-key-schedex_root"] [data-testid="stMarkdownContainer"] p {
+    font-size: 12px !important;
+    line-height: 24px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-schedex_root"] [data-testid="stCaptionContainer"] p {
+    font-size: 11px !important;
+    line-height: 20px !important;
+    margin: 2px 0 !important;
+}
+div[class*="st-key-schedex_root"] [data-testid="stAlert"] {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+}
+div[class*="st-key-schedex_root"] [data-testid="stMetricLabel"] {
+    font-size: 11px !important;
+}
+div[class*="st-key-schedex_root"] [data-testid="stMetricValue"] {
+    font-size: 20px !important;
+}
+</style>"""
+
+
 def render_tab() -> None:
     """app.py の `with tab_scheduled:` ブロックから呼ばれるエントリポイント."""
-    st.subheader("定時実行")
-    st.caption(
-        "本日 expected されたタスクのリアルタイム状況を表示します. "
-        "サイレントスキップ検知のため scheduler.log と task_execution_log の両方を参照しています."
+    st.subheader(
+        "定時実行",
+        help=(
+            "本日 expected されたタスクのリアルタイム状況を表示します. "
+            "サイレントスキップ検知のため scheduler.log と task_execution_log の両方を参照しています."
+        ),
     )
 
+    _root = st.container(key="schedex_root")
+    _root.markdown(_SCHEDEX_DENSITY_CSS, unsafe_allow_html=True)
+
+    with _root:
+        _render_body()
+
+
+def _render_body() -> None:
     config = _load_schedule_config()
     now = datetime.now()
     # schedule_config の minute_map から各 hour の分を引く. 02:30 / 11:00 等.
@@ -252,8 +290,16 @@ def render_tab() -> None:
     # ──────────────────────────────────────────────────────────
     # タスク別 直近実行サマリ (last success / last failure)
     # ──────────────────────────────────────────────────────────
-    st.markdown("### タスク別 直近実行")
-    st.caption("各タスクの最終成功時刻と「最後に実行されてから何時間経過したか」を一覧します.")
+    # C2 密度化: 常時 caption → 見出し横の hover tooltip (ⓘ) 化。
+    # 他 "### ..." 見出しと視覚的な大きさを揃えるため st.subheader(h2) には
+    # 変えず、既存の markdown 見出しへ title 属性付き span を添える (K2 surgical)。
+    st.markdown(
+        '### タスク別 直近実行 <span title="各タスクの最終成功時刻と'
+        '「最後に実行されてから何時間経過したか」を一覧します." '
+        'style="font-size:11px;color:#8d927f;cursor:help;'
+        'border-bottom:1px dotted #8d927f;">ⓘ</span>',
+        unsafe_allow_html=True,
+    )
 
     _hdr2 = st.container()
     with _hdr2:

@@ -182,36 +182,40 @@ def _inject_css() -> None:
             .tt-part{padding:16px 18px}
         }
 
-        /* ===== 進捗リング パネル (cream 立体カード + teal conic-gradient) ===== */
-        .tt-panel{background:var(--surface);border-radius:var(--r);box-shadow:var(--raised);padding:18px}
-        .tt-panel h3{margin:0 0 12px;font-size:13.5px;display:flex;align-items:center;gap:8px;
+        /* ===== 進捗リング パネル (cream 立体カード + teal conic-gradient)
+           タブ密度化リファクタ B1 (2026-07-04): リング縮小 + .tt-hint はタイトル
+           tooltip 化 (常時表示テキストの行を消す、値は下の h3 title= に移動)。===== */
+        .tt-panel{background:var(--surface);border-radius:var(--r);box-shadow:var(--raised);padding:14px}
+        .tt-panel h3{margin:0 0 10px;font-size:12px;display:flex;align-items:center;gap:6px;
             font-weight:700;justify-content:center;color:var(--text)}
         .tt-ringwrap{text-align:center}
-        .tt-ring{width:168px;height:168px;border-radius:50%;margin:4px auto 12px;position:relative;
+        .tt-ring{width:128px;height:128px;border-radius:50%;margin:4px auto 10px;position:relative;
             display:grid;place-items:center;box-shadow:var(--raised-sm)}
-        .tt-ring::before{content:"";position:absolute;width:124px;height:124px;border-radius:50%;
+        .tt-ring::before{content:"";position:absolute;width:92px;height:92px;border-radius:50%;
             background:var(--surface);box-shadow:var(--inset)}
         .tt-ring .n{position:relative;text-align:center;z-index:1}
-        .tt-ring .n b{font-size:36px;font-weight:700;font-family:var(--f-num);color:var(--text)}
-        .tt-ring .n b small{font-size:15px;color:var(--text-3)}
-        .tt-ring .n .gd{display:inline-block;margin-top:3px;font-size:12px;font-weight:700;color:#fff;
-            border-radius:999px;padding:2px 14px}
-        .tt-kpis{display:flex;gap:10px;justify-content:center;margin-top:10px}
-        .tt-kpi{text-align:center;background:var(--bg-deep);border-radius:12px;padding:9px 13px;
+        .tt-ring .n b{font-size:26px;font-weight:700;font-family:var(--f-num);color:var(--text)}
+        .tt-ring .n b small{font-size:12px;color:var(--text-3)}
+        .tt-ring .n .gd{display:inline-block;margin-top:2px;font-size:11px;font-weight:700;color:#fff;
+            border-radius:999px;padding:1px 11px}
+        .tt-kpis{display:flex;gap:8px;justify-content:center;margin-top:8px}
+        .tt-kpi{text-align:center;background:var(--bg-deep);border-radius:10px;padding:6px 10px;
             box-shadow:var(--inset)}
-        .tt-kpi b{display:block;font-size:18px;font-weight:700;font-family:var(--f-num)}
+        .tt-kpi b{display:block;font-size:15px;font-weight:700;font-family:var(--f-num)}
         .tt-kpi span{font-size:10px;color:var(--text-3);font-weight:600}
-        .tt-hint{font-size:11px;color:var(--text-2);margin-top:14px;line-height:1.6;background:var(--bg-deep);
-            border-radius:11px;padding:10px 12px;box-shadow:var(--inset);font-weight:500}
 
         /* ===== チェックリスト 見出し ===== */
-        .tt-listhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
-        .tt-listhead h2{margin:0;font-size:16px;font-weight:700;color:var(--text)}
-        .tt-listhead .sub{font-size:12px;color:var(--text-2);font-weight:500}
+        .tt-listhead{display:flex;align-items:center;gap:10px;margin:0 0 8px;flex-wrap:wrap}
+        .tt-listhead h2{margin:0;font-size:14px;font-weight:700;color:var(--text)}
+        .tt-listhead .sub{font-size:11px;color:var(--text-2);font-weight:500}
         .tt-listhead .count{margin-left:auto;font-size:11px;font-weight:700;background:var(--teal-soft);
-            color:var(--teal);border-radius:999px;padding:5px 12px}
+            color:var(--teal);border-radius:999px;padding:4px 10px}
         .tt-doneband{font-size:11px;font-weight:600;color:var(--text-3);text-align:center;
-            margin:8px 0 12px;letter-spacing:.5px}
+            margin:6px 0 8px;letter-spacing:.5px}
+
+        /* ===== タスク 1 行圧縮 (title + links + metrics + badges を単一 flex 行に) ===== */
+        .tt-row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;line-height:24px}
+        .tt-row1 .tt-title{margin:0;flex:0 1 auto;font-size:12px}
 
         /* ===== task カード本文 (st.container(border) を土台にした内部装飾) ===== */
         /* タイトル */
@@ -276,6 +280,23 @@ def _inject_css() -> None:
         </style>""",
         unsafe_allow_html=True,
     )
+
+
+# タブ密度化リファクタ B1 (2026-07-04): ジャンプボタン群 (🌅早朝の部 導線 3 個 +
+# 各タスク行の「📝登録画面へ」) を 12px baseline に小型化。widget key は全て
+# "today_" prefix (grep 済・他タブと非衝突確認済) なので tab_supplier_candidates
+# A2 の per-widget-type 分割は不要 (K1)。
+_TT_DENSITY_CSS = """
+<style>
+div[class*="st-key-today_goto_"] button,
+div[class*="st-key-today_jump_"] button {
+  font-size:12px !important;
+  padding:2px 10px !important;
+  min-height:26px !important;
+  line-height:22px !important;
+}
+</style>
+"""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -404,8 +425,12 @@ def _render_progress_ring(done: int, total: int) -> None:
     label = "完了 🎉" if left <= 0 else f"あと{left}件"
     gd_bg = "#d4a017" if all_done else "var(--teal)"
 
+    _hint = (
+        f"チェックを入れると「初期登録済み」フラグが立ちます。"
+        f"{total}件消し込むと今日は完了 — 連続記録が伸びます"
+    )
     ring_html = f"""<div class="tt-panel tt-ringwrap">
-      <h3>🎯 今日の進捗</h3>
+      <h3 title="{_hint}">🎯 今日の進捗 <span style="opacity:.6;font-size:10px;font-weight:400">ℹ️</span></h3>
       <div class="tt-ring" style="background:conic-gradient({ring_fill} {pct}%, var(--bg-deep) 0)">
         <div class="n">
           <b>{done}<small>/{total}</small></b>
@@ -416,8 +441,6 @@ def _render_progress_ring(done: int, total: int) -> None:
         <div class="tt-kpi"><b style="color:var(--ok)">{done}</b><span>完了</span></div>
         <div class="tt-kpi"><b style="color:var(--teal)">{left if left >= 0 else 0}</b><span>のこり</span></div>
       </div>
-      <div class="tt-hint">💡 チェックを入れると「初期登録済み」フラグが立ちます。
-        {total}件消し込むと今日は完了 🎉 — 連続記録が伸びます</div>
     </div>"""
     _md(ring_html)
 
@@ -514,58 +537,49 @@ def _render_task_row(t: dict, idx: int) -> None:
                     unsafe_allow_html=True,
                 )
             else:
-                # タイトル (完了なら打消線)
+                # タブ密度化リファクタ B1 (2026-07-04): タイトル/リンク/メトリクス/
+                # 欠落バッジを単一 .tt-row1 flex 行にまとめ「1タスク1行」に圧縮
+                # (旧: 3 個の st.markdown = 3 行、機能は不変)。
                 title_cls = "tt-title done" if is_done else "tt-title"
-                st.markdown(
-                    f'<div class="{title_cls}">{_esc(title)}</div>',
-                    unsafe_allow_html=True,
-                )
+                row_parts = [f'<span class="{title_cls}">{_esc(title)}</span>']
 
                 # eBay / 仕入先 リンク + sold / 競合 メトリクス
                 ebay_url = _EBAY_ITEM_URL.format(eid=_esc(eid)) if eid else ""
                 sup_url = _supplier_url(t.get("sku"))
                 sold_cls = "sold" if sold > 0 else "zero"
                 rival_cls = "zero" if competitor_count == 0 else "sold"
-                link_parts = []
                 if ebay_url:
-                    link_parts.append(
+                    row_parts.append(
                         f'<a class="tt-link" href="{ebay_url}" target="_blank" '
                         f'rel="noopener">eBay ↗</a>'
                     )
                 if sup_url:
-                    link_parts.append(
+                    row_parts.append(
                         f'<a class="tt-link" href="{_esc(sup_url)}" target="_blank" '
                         f'rel="noopener">仕入先 ↗</a>'
                     )
-                link_parts.append(f'<span class="tt-metric {sold_cls}">Sold {sold}</span>')
-                link_parts.append(
+                row_parts.append(f'<span class="tt-metric {sold_cls}">Sold {sold}</span>')
+                row_parts.append(
                     f'<span class="tt-metric {rival_cls}">競合 {competitor_count}</span>'
-                )
-                st.markdown(
-                    f'<div class="tt-links">{"".join(link_parts)}</div>',
-                    unsafe_allow_html=True,
                 )
 
                 # 欠落バッジ (完了後は非表示 = 視覚ノイズ削減)
                 if is_done:
                     pass
                 elif badges:
-                    badge_parts = []
                     for b in badges:
                         css_cls = "rival" if b == "ライバル未登録" else "miss"
                         pfx = "⚠ " if b == "ライバル未登録" else ""
-                        badge_parts.append(
+                        row_parts.append(
                             f'<span class="tt-gap {css_cls}">{pfx}{_esc(b)}</span>'
                         )
-                    st.markdown(
-                        f'<div class="tt-gaps">{"".join(badge_parts)}</div>',
-                        unsafe_allow_html=True,
-                    )
                 else:
-                    st.markdown(
-                        '<div class="tt-gaps"><span class="tt-gap ok">✅ 物理属性 完備</span></div>',
-                        unsafe_allow_html=True,
-                    )
+                    row_parts.append('<span class="tt-gap ok">✅ 物理属性 完備</span>')
+
+                st.markdown(
+                    f'<div class="tt-row1">{"".join(row_parts)}</div>',
+                    unsafe_allow_html=True,
+                )
 
         with col_btn:
             btn_disabled = is_done or is_gone
@@ -617,6 +631,7 @@ def _render_celebration(streak: dict) -> None:
 def render_today_tasks_tab(s: dict) -> None:
     """本タブ本体 (app.py dispatch から呼出)。引数 s = st.session_state.settings (既存規約)。"""
     _inject_css()
+    st.markdown(_TT_DENSITY_CSS, unsafe_allow_html=True)
     # neumorphic scope を開く (本タブの custom HTML を .tt-scope 配下に置く)
     st.markdown('<div class="tt-scope">', unsafe_allow_html=True)
 

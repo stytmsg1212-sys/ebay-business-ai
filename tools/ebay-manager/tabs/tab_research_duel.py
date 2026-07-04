@@ -393,6 +393,35 @@ def _inject_css() -> None:
     )
 
 
+# タブ密度化リファクタ B1 (2026-07-04): 操作パネル (Streamlit 実 widget) を
+# 12px baseline に圧縮 (user 承認済み密度スペック: フォント12px / 行高22-28px)。
+# 上の rd-scope HTML chrome (topbar/条件帯/アリーナ/スコアボード) は高忠実度モック
+# の逐語移植 (既に 11-14.5px の密な値) なので対象外 (K2 surgical)。widget key は
+# 全て "rduel_" prefix (grep 済・他タブと非衝突確認済) のため tab_supplier_candidates
+# A2 の per-widget-type 分割は不要、単一 wildcard で足りる (K1)。
+_RD_DENSITY_CSS = """
+<style>
+div[class*="st-key-rduel_"] label,
+div[class*="st-key-rduel_"] p {
+  font-size:12px !important;
+  line-height:22px !important;
+  margin-bottom:2px !important;
+}
+div[class*="st-key-rduel_"] input,
+div[class*="st-key-rduel_"] textarea,
+div[class*="st-key-rduel_"] [data-baseweb="select"] > div {
+  font-size:12px !important;
+}
+div[class*="st-key-rduel_"] button {
+  font-size:12px !important;
+  padding:2px 10px !important;
+  min-height:26px !important;
+  line-height:22px !important;
+}
+</style>
+"""
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # HTML 部品ビルダ (純文字列、Streamlit に依存しない / テスト容易)
 # ────────────────────────────────────────────────────────────────────────────
@@ -757,12 +786,12 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
     """
     round_id = rnd["round_id"]
     st.markdown(
-        '<div class="ctrlhead">🧑 あなたのリサーチを入力 / 確定</div>',
+        '<div class="ctrlhead" title="今日のカテゴリ条件で見つけた品を1〜5品入力'
+        '(時間が無ければ少なくてよい)。品ごとに「保存」→他タブへ移動しても消えません。'
+        '全品入力後「確定」でAIの品が公開されます。">'
+        '🧑 あなたのリサーチを入力 / 確定 '
+        '<span style="opacity:.65;font-size:11px;font-weight:400">ℹ️ ホバーで説明</span></div>',
         unsafe_allow_html=True,
-    )
-    st.caption(
-        "今日のカテゴリ条件で見つけた品を 1〜5 品入力 (時間が無ければ少なくてよい)。"
-        "品ごとに「保存」→ 他タブへ移動しても消えません。全品入力後「確定」で AI の品が公開されます。"
     )
 
     from monitor.research_duel_db import save_user_pick as _save_one
@@ -774,16 +803,15 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
         _ex = _by_rank.get(rank, {})
         _saved = bool(_ex.get("title_ja"))
         with st.container(border=True):
-            if _saved:
-                st.caption(f"品 {rank} — 保存済み (上書き可)")
             with st.form(key=f"{_SS}u_form_{round_id}_{rank}"):
-                _c1, _c2 = st.columns([3, 1])
+                _c1, _c2, _c3, _c4 = st.columns([2.4, 1, 1.3, 1.3])
                 with _c1:
+                    _label = f"{rank}. 商品名" + (" (保存済)" if _saved else "")
                     st.text_input(
-                        f"{rank}. 商品名",
+                        _label,
                         value=_ex.get("title_ja") or "",
                         key=f"{_SS}u_title_{round_id}_{rank}",
-                        placeholder="例: HIOKI 3280-10F AC クランプメーター",
+                        placeholder="例: HIOKI 3280-10F クランプメーター",
                     )
                 with _c2:
                     st.number_input(
@@ -792,14 +820,13 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
                         step=100,
                         key=f"{_SS}u_profit_{round_id}_{rank}",
                     )
-                _u1, _u2 = st.columns(2)
-                with _u1:
+                with _c3:
                     st.text_input(
                         "eBay URL (任意)",
                         value=_ex.get("ebay_url") or "",
                         key=f"{_SS}u_ebay_{round_id}_{rank}",
                     )
-                with _u2:
+                with _c4:
                     st.text_input(
                         "仕入先 URL (任意)",
                         value=_ex.get("supplier_url") or "",
@@ -809,7 +836,7 @@ def _render_user_pick_form(rnd: dict, existing: list[dict], save_user_picks) -> 
                     "なぜこれを選んだか (学習の核)",
                     value=_ex.get("why_md") or "",
                     key=f"{_SS}u_why_{round_id}_{rank}",
-                    height=70,
+                    height=56,
                     placeholder="例: 校正不要クランプは安定需要。状態B・ヤフオク¥3,000台で実用十分。",
                 )
                 _sub = st.form_submit_button(
@@ -910,7 +937,10 @@ def _render_ai_scoring_panel(
     """AI 採点パネル (ブラインド時は案内のみ / 解禁時は各品スライダー)。"""
     round_id = rnd["round_id"]
     st.markdown(
-        '<div class="ctrlhead ai">🐧 MONOペンギンの品を採点</div>',
+        '<div class="ctrlhead ai" title="各品を0〜100で採点。出品不可と判断したら0点。'
+        f'{_REASON_REQUIRED_BELOW}点未満は失点理由が必須(学習signal)。">'
+        '🐧 MONOペンギンの品を採点 '
+        '<span style="opacity:.65;font-size:11px;font-weight:400">ℹ️ ホバーで説明</span></div>',
         unsafe_allow_html=True,
     )
     if blind:
@@ -922,10 +952,6 @@ def _render_ai_scoring_panel(
     if not ai_picks:
         st.info("AI の品がまだ保存されていません (夜間タスクが AI リサーチを実行すると表示)。")
         return
-    st.caption(
-        f"各品を 0〜100 で採点。出品不可と判断したら 0 点。"
-        f"{_REASON_REQUIRED_BELOW} 点未満は失点理由が必須 (学習 signal)。"
-    )
     for p in ai_picks:
         _render_ai_score_widget(round_id, p, score_ai_pick)
 
@@ -939,35 +965,38 @@ def _render_ai_score_widget(round_id: int, p: dict, score_ai_pick) -> None:
     cur_fb = p.get("user_fb_md") or ""
 
     with st.container(border=True):
-        st.markdown(f"**#{_esc(rank)}　{_esc(title)}**")
-        # 0-100 スライダー (採点済なら現値 default、未採点は 70 中庸 default)
-        _slider_key = f"{_SS}score_{round_id}_{pick_id}"
-        _score = st.slider(
-            "採点 (0-100)",
-            min_value=0,
-            max_value=100,
-            value=int(cur_score) if cur_score is not None else 70,
-            key=_slider_key,
-            label_visibility="collapsed",
-        )
-        # 失点 (score<60) のみ理由欄を出す。0点(出品不可)も理由必須。
-        _fb_key = f"{_SS}fb_{round_id}_{pick_id}"
-        if _score < _REASON_REQUIRED_BELOW:
-            _fb_val = st.text_area(
-                f"失点理由 (必須 — {_REASON_REQUIRED_BELOW}点未満)",
-                value=cur_fb,
-                key=_fb_key,
-                height=70,
-                placeholder="例: カテゴリ外+薄利のため除外 / 返品リスク(旧式HDD) / VeRO 該当",
+        _wc1, _wc2 = st.columns([1, 1])
+        with _wc1:
+            st.markdown(f"**#{_esc(rank)}　{_esc(title)}**")
+            # 0-100 スライダー (採点済なら現値 default、未採点は 70 中庸 default)
+            _slider_key = f"{_SS}score_{round_id}_{pick_id}"
+            _score = st.slider(
+                "採点 (0-100)",
+                min_value=0,
+                max_value=100,
+                value=int(cur_score) if cur_score is not None else 70,
+                key=_slider_key,
+                label_visibility="collapsed",
             )
-        else:
-            # 60点以上でも任意でメモを残せる (既存 fb があれば prefill)
-            _fb_val = st.text_input(
-                "メモ (任意)",
-                value=cur_fb,
-                key=_fb_key,
-                placeholder="加点理由など (任意)",
-            )
+        with _wc2:
+            # 失点 (score<60) のみ理由欄を出す。0点(出品不可)も理由必須。
+            _fb_key = f"{_SS}fb_{round_id}_{pick_id}"
+            if _score < _REASON_REQUIRED_BELOW:
+                _fb_val = st.text_area(
+                    f"失点理由 (必須 — {_REASON_REQUIRED_BELOW}点未満)",
+                    value=cur_fb,
+                    key=_fb_key,
+                    height=56,
+                    placeholder="例: カテゴリ外+薄利/返品リスク/VeRO 該当",
+                )
+            else:
+                # 60点以上でも任意でメモを残せる (既存 fb があれば prefill)
+                _fb_val = st.text_input(
+                    "メモ (任意)",
+                    value=cur_fb,
+                    key=_fb_key,
+                    placeholder="加点理由など (任意)",
+                )
 
         if st.button(
             "採点を保存", key=f"{_SS}save_score_{round_id}_{pick_id}", type="primary"
@@ -1107,19 +1136,22 @@ def _select_round(list_rounds, get_round) -> Optional[tuple[dict, int]]:
     _id_to_round = {int(r["round_id"]): r for r in rounds}
     _ids = list(_id_to_round.keys())
 
-    _cols = st.columns([4, 1])
-    with _cols[0]:
-        _sel_id = st.selectbox(
-            "🗓️ 対戦ラウンド (バックナンバー)",
-            options=_ids,
-            format_func=lambda rid: _label(_id_to_round[rid]),
-            index=0,
-            key=f"{_SS}round_select",
-        )
-    with _cols[1]:
-        st.write("")
-        if st.button("再読込", key=f"{_SS}reload"):
-            st.rerun()
+    # バックナンバーは既定閉 (density spec): 選択 widget 自体は既定で最新 round
+    # (index=0) を返すので、expander を開かなくても以下の描画は正しく機能する。
+    with st.expander(f"🗓️ バックナンバー（全{total}件）", expanded=False):
+        _cols = st.columns([4, 1])
+        with _cols[0]:
+            _sel_id = st.selectbox(
+                "対戦ラウンドを選択",
+                options=_ids,
+                format_func=lambda rid: _label(_id_to_round[rid]),
+                index=0,
+                key=f"{_SS}round_select",
+            )
+        with _cols[1]:
+            st.write("")
+            if st.button("再読込", key=f"{_SS}reload"):
+                st.rerun()
 
     # 選択 round の最新状態を get_round で取り直す (一覧は古い可能性)
     try:
@@ -1160,6 +1192,7 @@ def render_research_duel_tab(s: dict) -> None:
         return
 
     _inject_css()
+    st.markdown(_RD_DENSITY_CSS, unsafe_allow_html=True)
     # neumorphic scope を開く (本タブの custom HTML を .rd-scope 配下に置く)
     st.markdown('<div class="rd-scope">', unsafe_allow_html=True)
 
