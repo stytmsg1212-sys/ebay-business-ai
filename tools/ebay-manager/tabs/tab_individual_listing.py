@@ -759,7 +759,9 @@ def _render_local_image_upload_section() -> None:
         )
         files = st.file_uploader(
             "画像ファイルを選択 (複数可)",
-            type=["jpg", "jpeg", "png", "webp"],
+            # W326 (2026-07-04): iPhone 写真 (HEIC/HEIF) を受け付ける。
+            # eBay EPS は HEIC 非対応のため、_sync_uploaded_local_images 側で保存時に JPEG へ変換する。
+            type=["jpg", "jpeg", "png", "webp", "heic", "heif"],
             accept_multiple_files=True,
             key=f"{_SS}uploader_local_images",
         )
@@ -820,6 +822,38 @@ def _render_local_image_upload_section() -> None:
                 st.caption(f"{ok}/{len(uploaded)} 枚のみ成功 — 失敗分があります (上のエラー参照)")
 
 
+def _convert_heic_bytes_to_jpeg(raw_bytes: bytes, filename: str) -> Optional[bytes]:
+    """HEIC/HEIF バイト列を JPEG バイト列へ変換する (eBay EPS は HEIC 非対応).
+
+    pillow-heif の `register_heif_opener()` を呼んで PIL に統合し、
+    JPEG (quality=90) で bytes を返す。ライブラリ未導入 / 変換失敗はいずれも
+    None を返し、caller 側で「明示エラー + 該当ファイルのみ skip」を行う (Q0)。
+
+    W326 (2026-07-04): iPhone 写真 (HEIC) が st.file_uploader で
+    「image/heic files are not allowed」で弾かれていた事故対応 (依頼ボード #49)。
+    """
+    try:
+        import pillow_heif  # type: ignore[import-not-found]
+        from PIL import Image
+    except ImportError as e:
+        logger.warning(
+            f"pillow-heif or PIL 未導入のため HEIC 変換不可 ({filename}): {e}"
+        )
+        return None
+
+    try:
+        pillow_heif.register_heif_opener()
+        import io
+        with Image.open(io.BytesIO(raw_bytes)) as img:
+            rgb = img.convert("RGB")  # HEIC のアルファ / 色空間を JPEG 互換に落とす
+            out = io.BytesIO()
+            rgb.save(out, format="JPEG", quality=90)
+            return out.getvalue()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"HEIC → JPEG 変換失敗 ({filename}): {e}")
+        return None
+
+
 def _sync_uploaded_local_images(files: list) -> None:
     """st.file_uploader の返却値を session_state['uploaded_local_images'] に同期する.
 
@@ -850,18 +884,34 @@ def _sync_uploaded_local_images(files: list) -> None:
 
     new_list: list[dict] = []
     save_failures: list[str] = []
+    heic_no_lib: list[str] = []
     for f in files:
         sig = (f.name, f.size)
         cached = existing_by_sig.get(sig)
         if cached and _Path(cached["path"]).exists():
             new_list.append(cached)
             continue
-        content = f.getvalue()
-        digest = hashlib.sha256(content).hexdigest()[:12]
-        suffix = _Path(f.name).suffix or ".jpg"
+
+        raw_bytes = f.getvalue()
+        suffix_lower = _Path(f.name).suffix.lower()
+        # W326 (2026-07-04): iPhone の HEIC/HEIF は eBay EPS 非対応のため JPEG へ変換.
+        # 変換後バイトで sha256 を取ることで、同一 HEIC の再アップロード dedup が効く.
+        if suffix_lower in (".heic", ".heif"):
+            converted = _convert_heic_bytes_to_jpeg(raw_bytes, f.name)
+            if converted is None:
+                # pillow-heif 未導入 or 変換失敗: 該当ファイルのみ skip (jpg/png は続行)
+                heic_no_lib.append(f.name)
+                continue
+            content_for_save = converted
+            suffix = ".jpg"
+        else:
+            content_for_save = raw_bytes
+            suffix = suffix_lower or ".jpg"
+
+        digest = hashlib.sha256(content_for_save).hexdigest()[:12]
         save_path = out_dir / f"{digest}{suffix}"
         try:
-            save_path.write_bytes(content)
+            save_path.write_bytes(content_for_save)
         except OSError as e:
             logger.warning(f"アップロード画像の保存失敗 ({f.name}): {e}")
             save_failures.append(f.name)
@@ -880,6 +930,16 @@ def _sync_uploaded_local_images(files: list) -> None:
             f"{len(save_failures)} 枚を保存できませんでした: "
             + ", ".join(save_failures[:5])
             + (" ..." if len(save_failures) > 5 else "")
+        )
+    # W326 HEIC 対応 (2026-07-04): 変換失敗を明示 (Q0 silent drop 防止).
+    if heic_no_lib:
+        st.error(
+            "HEIC 変換ライブラリ (pillow-heif) 未導入または変換に失敗したため、"
+            "以下の HEIC/HEIF ファイルは skip しました: "
+            + ", ".join(heic_no_lib[:5])
+            + (" ..." if len(heic_no_lib) > 5 else "")
+            + " — 対処: `pip install pillow-heif` 後に再アップロードしてください "
+            "(jpg/png/webp は影響なく処理済)。"
         )
 
     st.session_state[f"{_SS}uploaded_local_images"] = new_list
