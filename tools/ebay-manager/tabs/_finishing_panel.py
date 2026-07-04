@@ -960,17 +960,26 @@ def _render_image_field(
     candidate_id: Optional[int],
     candidate_url: Optional[str],
 ) -> None:
-    """画像フィールド (常時 3 モード radio、URL 未解決時は入力欄を提供).
+    """画像フィールド (常時 3 モード radio + 引用元 URL 入力欄を常時表示).
 
     モックアップ .field > label='画像' + imgmode-select (①/②/③) + img-mode-panel に対応。
-    URL 解決順は description と同じ (candidate_url > row.source_url > user 入力)。
+
+    2026-07-05 user 指摘対応: Description は引用元 URL を手入力して AI 生成できるが
+    従来は画像側に URL 入力欄が無く (candidate_url 自動解決時は非表示)、候補 URL が
+    紐づかない商品では画像取得の入口が無かった。本欄は常時表示 + 上書き可に変更する:
+      - session_state key `img_source_url` は Description 側の `desc_ai_url` とは
+        **独立** (仕入先ページと画像ソースが異なるケースに対応)。
+      - candidate_url / row["source_url"] が解決済みならその値で初期表示 (以後は
+        user 編集がそのまま優先、`resolve_source_url` の candidate_url 優先順位には
+        乗せない — 乗せると user の上書きが無視されてしまうため)。未解決なら空欄。
+      - Description 側に URL が入力済みで画像側が空なら「コピー」ボタンで流用できる。
 
     実描画は既存 `_supplier_photo_pipeline.render_supplier_photo_apply_section`
     へ委譲 (3 モード radio + mode 別 UI + 反映は同関数内で完結。設計書§4 + task
-    指示「画像はセクション内の即時完結」)。URL が空文字でも渡せる (各モードが
-    自前で「画像取得できません」の error を出す = fail-loud、Q0)。ただし
-    task 指示に沿って URL 未解決時は section 上部に入力欄を出して user が URL を
-    与えられるようにする (candidate 由来 URL が無い商品でも運用可能)。
+    指示「画像はセクション内の即時完結」)。新規スクレイパーは実装しない (K1) —
+    同関数内部が `fetch_supplier_images_all` / `fetch_supplier_image_url` 経由で
+    Yahoo/Mercari/PayPay scraper + og:image fallback を呼び、対応サイト外 URL や
+    取得 0 件時は各モードが自前で明示 `st.error` を出す (fail-loud、Q0)。
     """
     st.markdown("**画像**")
     st.caption(
@@ -979,25 +988,53 @@ def _render_image_field(
     )
 
     img_url_key = pf_key(eid, "img_source_url")
-    _prefilled_url = (candidate_url or row.get("source_url") or "").strip()
+    _resolved_prefill = (candidate_url or row.get("source_url") or "").strip()
+    seed_session_value(st.session_state, img_url_key, _resolved_prefill)
 
-    if not _prefilled_url:
-        # モックの「(仕入先 URL 未指定時は入力欄)」— 入力後 rerun で下流に伝播
+    # Description 側の引用元 URL が入力済み・画像側が未入力ならコピー可能にする
+    # (仕入先ページと画像ソースが異なるケースのため独立欄のまま、user 判断でコピー)。
+    _desc_url = (st.session_state.get(pf_key(eid, "desc_ai_url")) or "").strip()
+    _img_url_now = (st.session_state.get(img_url_key) or "").strip()
+    if _desc_url and not _img_url_now:
+        if st.button(
+            "📋 Description の引用元を使う", key=pf_key(eid, "img_copy_desc_url_btn"),
+        ):
+            st.session_state[img_url_key] = _desc_url
+            st.rerun(scope="fragment")
+
+    st.text_input(
+        "画像の引用元 URL (任意)",
+        key=img_url_key,
+        placeholder="https://... (仕入先ページ、Description の引用元と別ソースでも可)",
+        help=(
+            "候補 URL が自動解決されている場合はその値を初期表示 (上書き可)。"
+            "Description の引用元 URL とは独立した欄です。"
+        ),
+    )
+    resolved_url = (st.session_state.get(img_url_key) or "").strip()
+
+    if not resolved_url:
         st.caption(
             "仕入先 URL 未解決: ①合成 / ②そのまま採用 モードを使うには URL 入力が必要"
             " (③メイン差し替えは URL 無しでも現行 eBay 画像は取得できます)。"
         )
-        seed_session_value(st.session_state, img_url_key, "")
-        st.text_input(
-            "仕入先 URL (任意、モード①②で使用)",
-            key=img_url_key,
-            placeholder="https://... (candidate_url が未指定の商品向け)",
-        )
-    _typed_url = (st.session_state.get(img_url_key) or "").strip() if not _prefilled_url else ""
-    resolved_url = resolve_source_url(candidate_url, row, _typed_url)
+
+    _photo_cid = candidate_id if candidate_id is not None else eid
+
+    # 【URL 変更時のキャッシュ無効化 (2026-07-05 実機バグ)】
+    # `_supplier_photo_pipeline` は `sup_all_image_urls_{cid}` / `sup_asis_all_urls_{cid}` /
+    # `sup_mr_supplier_urls_{cid}` 等を candidate_id のみをキーにキャッシュしており、
+    # URL 変更で無効化する層が無い。候補なし商品では初回描画 (空 URL) の空リスト `[]` が
+    # キャッシュされ、その後 URL を入力しても再 fetch されず「画像が取得できません」が
+    # 永久継続する (実機で確定: 同 URL をスクレイパー単体で叩くと 10 枚返る = anti-bot
+    # ではない)。パネル側で「前回 fetch 時 URL」を追跡し、変化した時のみ 3 モード全
+    # キャッシュを pop する (URL 不変時は従来どおりキャッシュ有効 = 再 fetch 頻発を招かない)。
+    _last_url_key = pf_key(eid, "img_last_fetched_url")
+    if st.session_state.get(_last_url_key) != resolved_url:
+        _invalidate_photo_pipeline_caches(_photo_cid)
+        st.session_state[_last_url_key] = resolved_url
 
     from tabs._supplier_photo_pipeline import render_supplier_photo_apply_section
-    _photo_cid = candidate_id if candidate_id is not None else eid
     # candidate_url= には空文字を渡してもよい (下流の 3 モード renderer が
     # fail-loud で対応。①/② はエラー表示、③は現行 eBay 画像だけ表示される)。
     render_supplier_photo_apply_section(
@@ -1006,6 +1043,45 @@ def _render_image_field(
         ebay_item_id=eid,
         candidate_title=row.get("title") or "",
     )
+
+
+# `_supplier_photo_pipeline` の 3 モード (mode1 AI compose / mode2 as-is / mode3 main
+# replace) が候補ID 単位で保持するキャッシュキー。URL 変更時に全て pop する
+# (2026-07-05 実機バグ対応、`_invalidate_photo_pipeline_caches` 用)。fetch 結果だけ
+# でなく下流の hero 候補・選択状態・反映結果も stale になるため合わせて破棄する
+# (旧 URL で作った合成候補が新 URL で残るのは誤画像反映リスク = 供給元不明の混入)。
+_PHOTO_PIPELINE_CACHE_KEY_PATTERNS: tuple[str, ...] = (
+    # Mode 1 (AI compose)
+    "sup_all_image_urls_{cid}",
+    "sup_hero_source_url_{cid}",
+    "sup_hero_candidates_{cid}",
+    "sup_hero_selected_path_{cid}",
+    "sup_hero_used_{cid}",
+    "sup_additional_processed_{cid}",
+    "sup_apply_result_{cid}",
+    # Mode 2 (as-is)
+    "sup_asis_all_urls_{cid}",
+    "sup_asis_selected_{cid}",
+    "sup_asis_downloaded_{cid}",
+    "sup_asis_apply_result_{cid}",
+    # Mode 3 (main replace)
+    "sup_mr_current_{cid}",
+    "sup_mr_supplier_urls_{cid}",
+    "sup_mr_picked_{cid}",
+    "sup_mr_picked_kind_{cid}",
+    "sup_mr_apply_result_{cid}",
+)
+
+
+def _invalidate_photo_pipeline_caches(photo_cid) -> None:
+    """URL 変更時に `_supplier_photo_pipeline` 3 モード全キャッシュを pop する.
+
+    2026-07-05 実機バグ対応: `_supplier_photo_pipeline` のキャッシュキーは candidate_id
+    (or eid fallback) のみで URL を含まないため、パネル側で URL 変化を検知して
+    無効化する必要がある。K1: pipeline 側キー設計改修より小さい (呼出上位で 1 関数)。
+    """
+    for pat in _PHOTO_PIPELINE_CACHE_KEY_PATTERNS:
+        st.session_state.pop(pat.format(cid=photo_cid), None)
 
 
 def _sync_description_db(eid: str, description: str) -> None:

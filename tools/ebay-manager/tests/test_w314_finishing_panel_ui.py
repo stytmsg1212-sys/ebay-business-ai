@@ -1075,3 +1075,307 @@ def test_render_item_specifics_field_flags_dispatch_disabled_for_multi_value(mon
     assert any("複数値項目" in m for m in fake.warning_msgs), (
         f"multi-value 検出は st.warning で明示すべき (got {fake.warning_msgs!r})"
     )
+
+
+# ─────────────────────────────────────────────────
+# 17. 画像の引用元 URL 入力欄 (2026-07-05 user 指摘対応):
+#     Description は URL 手入力できるが画像には入口が無かった問題への対応。
+#     常時表示 + 上書き可 + Description 欄からのコピー + 独立 session_state key
+# ─────────────────────────────────────────────────
+
+def test_image_field_url_input_always_rendered_not_gated_by_resolved_state():
+    """「画像の引用元 URL」text_input が `if` ガードの中に隠れておらず常時呼ばれること
+    (2026-07-05: 従来は candidate_url 解決済みだと入力欄自体が render されなかった)."""
+    fn = _find_function_def("_render_image_field")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    assert "画像の引用元 URL (任意)" in src_seg
+    # text_input 呼出が if ブロックにネストされていないこと (AST: 関数直下の body に
+    # text_input Call を含む Expr が存在する = トップレベル文として呼ばれている)
+    top_level_has_text_input = any(
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Attribute)
+        and stmt.value.func.attr == "text_input"
+        for stmt in fn.body
+    )
+    assert top_level_has_text_input, (
+        "text_input は _render_image_field のトップレベルで常時呼ばれるべき"
+        " (if 未解決時のみ、という分岐に戻ってはいけない)"
+    )
+
+
+def test_image_field_url_key_independent_from_description_url_key():
+    """画像側の URL session_state key は Description 側 (`desc_ai_url`) と別物."""
+    fn = _find_function_def("_render_image_field")
+    assert fn is not None
+    src_seg = ast.get_source_segment(_UI_PATH.read_text(encoding="utf-8"), fn) or ""
+    assert '"img_source_url"' in src_seg
+    assert '"desc_ai_url"' in src_seg  # コピー元として参照するため両方登場
+
+
+def _install_fake_streamlit_image_field(monkeypatch, button_returns=None):
+    """`_render_image_field` を単体駆動する fake streamlit (markdown 追加済)."""
+    fake = _install_fake_streamlit_fullish(monkeypatch, button_returns=button_returns)
+    fake.markdown = lambda *a, **kw: None
+    return fake
+
+
+def test_image_field_prefills_from_candidate_url_and_user_override_wins(monkeypatch):
+    """候補 URL 解決済みでも画像側 URL 欄は初期表示されるだけで、以後の user 編集が
+    render_supplier_photo_apply_section へそのまま渡ること (上書きが握り潰されない)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "300000000001"
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    captured: dict = {}
+    monkeypatch.setattr(
+        spp_mod, "render_supplier_photo_apply_section",
+        lambda **kw: captured.update(kw),
+    )
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+
+    # 1st render: candidate_url が解決済み → 初期値としてセットされる
+    _render_image_field(eid, row, candidate_id=1, candidate_url="https://cand.example/a")
+    assert fake.session_state[pf_key(eid, "img_source_url")] == "https://cand.example/a"
+    assert captured["candidate_url"] == "https://cand.example/a"
+
+    # user が上書き (次の rerun で session_state に反映された想定)
+    fake.session_state[pf_key(eid, "img_source_url")] = "https://override.example/b"
+    captured.clear()
+    _render_image_field(eid, row, candidate_id=1, candidate_url="https://cand.example/a")
+    assert captured["candidate_url"] == "https://override.example/b", (
+        "画像欄への user 上書きが candidate_url 優先ロジックで握り潰されてはいけない"
+    )
+
+
+def test_image_field_blank_when_no_url_resolved(monkeypatch):
+    """candidate_url / row.source_url が両方未解決なら画像側 URL 欄は空欄 (task 要件1)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "300000000002"
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    captured: dict = {}
+    monkeypatch.setattr(
+        spp_mod, "render_supplier_photo_apply_section",
+        lambda **kw: captured.update(kw),
+    )
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+    _render_image_field(eid, row, candidate_id=None, candidate_url=None)
+    assert fake.session_state[pf_key(eid, "img_source_url")] == ""
+    assert captured["candidate_url"] == ""
+
+
+def test_image_field_copy_from_description_url_button(monkeypatch):
+    """Description 側に URL が入力済み・画像側が空なら「コピー」ボタンで流用できる."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "300000000003"
+    button_key = pf_key(eid, "img_copy_desc_url_btn")
+    fake = _install_fake_streamlit_image_field(monkeypatch, button_returns={button_key: True})
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    captured: dict = {}
+    monkeypatch.setattr(
+        spp_mod, "render_supplier_photo_apply_section",
+        lambda **kw: captured.update(kw),
+    )
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+    fake.session_state[pf_key(eid, "desc_ai_url")] = "https://desc.example/x"
+
+    _render_image_field(eid, row, candidate_id=None, candidate_url=None)
+
+    assert fake.session_state[pf_key(eid, "img_source_url")] == "https://desc.example/x"
+    assert fake.rerun_calls, "コピー後は fragment rerun するべき"
+    assert captured["candidate_url"] == "https://desc.example/x"
+
+
+def test_image_field_copy_button_not_offered_when_image_url_already_set(monkeypatch):
+    """画像側 URL が既に埋まっている時はコピー導線を出さない (無用な上書き防止)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "300000000004"
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    monkeypatch.setattr(spp_mod, "render_supplier_photo_apply_section", lambda **kw: None)
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+    fake.session_state[pf_key(eid, "desc_ai_url")] = "https://desc.example/x"
+
+    # candidate_url が既に解決済み = 画像欄は既に埋まっている
+    _render_image_field(eid, row, candidate_id=1, candidate_url="https://cand.example/a")
+    assert fake.session_state[pf_key(eid, "img_source_url")] == "https://cand.example/a", (
+        "画像欄が既に埋まっている場合は Description URL でコピー上書きしない"
+    )
+
+
+# ─────────────────────────────────────────────────
+# 18. Check2 実バグ (2026-07-05):
+#     `_supplier_photo_pipeline` の 3 モードキャッシュは candidate_id のみをキーに
+#     しており URL 変更で無効化されない → 候補なし商品で初回描画時 (空 URL) の
+#     空リストがキャッシュされ、URL 入力後も再 fetch 経路に入らない実バグ。
+# ─────────────────────────────────────────────────
+
+# 3 モード全てで clear されるキーの正典 (`_finishing_panel._PHOTO_PIPELINE_CACHE_KEY_PATTERNS`
+# と同期。テスト側で明示列挙して回帰時に気づけるようにする)。
+_EXPECTED_INVALIDATED_KEYS_TEMPLATE: tuple[str, ...] = (
+    # Mode 1
+    "sup_all_image_urls_{cid}",
+    "sup_hero_source_url_{cid}",
+    "sup_hero_candidates_{cid}",
+    "sup_hero_selected_path_{cid}",
+    "sup_hero_used_{cid}",
+    "sup_additional_processed_{cid}",
+    "sup_apply_result_{cid}",
+    # Mode 2
+    "sup_asis_all_urls_{cid}",
+    "sup_asis_selected_{cid}",
+    "sup_asis_downloaded_{cid}",
+    "sup_asis_apply_result_{cid}",
+    # Mode 3
+    "sup_mr_current_{cid}",
+    "sup_mr_supplier_urls_{cid}",
+    "sup_mr_picked_{cid}",
+    "sup_mr_picked_kind_{cid}",
+    "sup_mr_apply_result_{cid}",
+)
+
+
+def _seed_all_photo_caches(fake, cid) -> None:
+    """3 モード全キャッシュキーに sentinel を仕込む (invalidation を測定する用)."""
+    for pat in _EXPECTED_INVALIDATED_KEYS_TEMPLATE:
+        fake.session_state[pat.format(cid=cid)] = "SENTINEL"
+
+
+def test_image_field_invalidates_pipeline_caches_when_url_changes(monkeypatch):
+    """URL 変更時: 前回 fetch 時 URL と `resolved_url` が異なるなら 3 モード全キャッシュが
+    pop される (Check2 実バグ: 空 URL 初回の `[]` キャッシュが URL 入力後も残る対策)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "400000000001"
+    photo_cid = 42
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    monkeypatch.setattr(spp_mod, "render_supplier_photo_apply_section", lambda **kw: None)
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+
+    # 1st render: 空 URL で全キャッシュに sentinel を仕込む (= 初回で `[]` が残る想定)
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+    # 前回 URL が "" として記録される (last_url_key が set される)
+    assert fake.session_state[pf_key(eid, "img_last_fetched_url")] == ""
+    _seed_all_photo_caches(fake, photo_cid)
+
+    # user が URL を入力 → 次回 render では resolved_url が変化
+    fake.session_state[pf_key(eid, "img_source_url")] = "https://x.example/1"
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+
+    for pat in _EXPECTED_INVALIDATED_KEYS_TEMPLATE:
+        k = pat.format(cid=photo_cid)
+        assert k not in fake.session_state, (
+            f"URL 変更で pipeline キャッシュ {k!r} が pop されるべき (Check2 実バグ回帰)"
+        )
+    assert fake.session_state[pf_key(eid, "img_last_fetched_url")] == "https://x.example/1"
+
+
+def test_image_field_keeps_pipeline_caches_when_url_unchanged(monkeypatch):
+    """URL 不変時: 3 モードキャッシュは触られない (キャッシュ再取得の頻発を招かない)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "400000000002"
+    photo_cid = 43
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    monkeypatch.setattr(spp_mod, "render_supplier_photo_apply_section", lambda **kw: None)
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": "https://stable.example/y"}
+
+    # 1st render: candidate_url が解決済み → last_url_key に記録される
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+    assert fake.session_state[pf_key(eid, "img_last_fetched_url")] == "https://stable.example/y"
+
+    # キャッシュを仕込んで 2 回目 render (URL は不変)
+    _seed_all_photo_caches(fake, photo_cid)
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+
+    for pat in _EXPECTED_INVALIDATED_KEYS_TEMPLATE:
+        k = pat.format(cid=photo_cid)
+        assert fake.session_state.get(k) == "SENTINEL", (
+            f"URL 不変時は pipeline キャッシュ {k!r} が保持されるべき (無効化の overreach)"
+        )
+
+
+def test_image_field_invalidates_on_empty_to_url_transition_bug_scenario(monkeypatch):
+    """Check2 実バグ再現ケース: 空 URL → 実 URL の遷移で無効化される (前回 fetch が `[]` を
+    キャッシュしていても新 URL で再 fetch 経路に入れること)."""
+    from tabs._finishing_panel_state import pf_key
+
+    eid = "400000000003"
+    photo_cid = 44
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+
+    import tabs._supplier_photo_pipeline as spp_mod
+    monkeypatch.setattr(spp_mod, "render_supplier_photo_apply_section", lambda **kw: None)
+
+    from tabs._finishing_panel import _render_image_field
+
+    row = {"title": "T", "source_url": ""}
+
+    # 1st render: 空 URL、fetch が `[]` を cache した状態を模擬
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+    fake.session_state[f"sup_all_image_urls_{photo_cid}"] = []  # 実バグの再現 (空 list キャッシュ)
+    fake.session_state[f"sup_asis_all_urls_{photo_cid}"] = []
+    fake.session_state[f"sup_mr_supplier_urls_{photo_cid}"] = []
+
+    # user が URL を入力 → invalidate 経路に入る
+    fake.session_state[pf_key(eid, "img_source_url")] = "https://real.example/z"
+    _render_image_field(eid, row, candidate_id=photo_cid, candidate_url=None)
+
+    # 空 list キャッシュが全部消えており、次の pipeline 呼出で再 fetch 経路に入れる
+    assert f"sup_all_image_urls_{photo_cid}" not in fake.session_state
+    assert f"sup_asis_all_urls_{photo_cid}" not in fake.session_state
+    assert f"sup_mr_supplier_urls_{photo_cid}" not in fake.session_state
+
+
+def test_invalidate_photo_pipeline_caches_helper_pops_all_expected_keys(monkeypatch):
+    """helper 単体テスト: 3 モードキーが列挙されており呼出で全て pop される."""
+    fake = _install_fake_streamlit_image_field(monkeypatch)
+    from tabs._finishing_panel import _invalidate_photo_pipeline_caches
+
+    cid = 77
+    _seed_all_photo_caches(fake, cid)
+    _invalidate_photo_pipeline_caches(cid)
+
+    for pat in _EXPECTED_INVALIDATED_KEYS_TEMPLATE:
+        assert pat.format(cid=cid) not in fake.session_state
+
+
+def test_invalidate_photo_pipeline_caches_ignores_missing_keys(monkeypatch):
+    """helper は既に無いキーでも例外を投げない (defensive: 初回 render で呼ばれ得る)."""
+    _install_fake_streamlit_image_field(monkeypatch)
+    from tabs._finishing_panel import _invalidate_photo_pipeline_caches
+
+    # 何も seed していない状態で呼んでも落ちない
+    _invalidate_photo_pipeline_caches(99)
