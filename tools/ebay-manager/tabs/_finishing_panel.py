@@ -47,6 +47,7 @@ from tabs._finishing_panel_state import (
     FIELD_LABELS_JA,
     RANK_CHOICES,
     RANK_LABELS_JA,
+    RANK_LABELS_EN,
     apply_item_specifics_to_ebay,
     build_change_preview,
     compute_dirty_dispatch_fields,
@@ -61,6 +62,7 @@ from tabs._finishing_panel_state import (
     rank_to_condition_id,
     resolve_condition_description_for_rank,
     resolve_effective_condition_id_for_cd_dispatch,
+    retarget_rank_headers_in_description,
     resolve_rank_initial,
     resolve_source_url,
     seed_initial,
@@ -715,6 +717,19 @@ def _render_condition_subblock(
             "ℹ️ ランク変更に伴いコンディション定型文へ更新しました "
             "(手動編集していた場合は上書きされています)。"
         )
+        # バグ2修正 (2026-07-04 358754421540): AI 生成済み description 本文の
+        # CONDITION RANK 見出し (`<h3>Rank B — Good</h3>` 等) をランク変更に追従。
+        # 見出しパターン不在なら何もしない (regex 変更フラグで caption 分岐)。
+        _desc_key = pf_key(eid, "description")
+        _desc_html = st.session_state.get(_desc_key) or ""
+        _new_desc, _changed = retarget_rank_headers_in_description(
+            _desc_html, new_rank, RANK_LABELS_EN.get(new_rank),
+        )
+        if _changed:
+            st.session_state[_desc_key] = _new_desc
+            st.caption(
+                "ℹ️ description 本文の Rank 表記もランク変更に追従しました。"
+            )
 
     if not _snap.get("success"):
         st.caption(

@@ -176,41 +176,39 @@ def build_draft_params_from_phase3(
     _raw_days = draft_mode.get('scheduled_days_offset')
     scheduled_days = int(_raw_days) if _raw_days is not None else _DEFAULT_SCHEDULED_DAYS_OFFSET
 
-    # 2026-05-01 fix: ConditionDescription を自然な英文に変更.
-    # - 旧 `' | '.join` は生硬 → '. '.join + 末尾 '.' で文章化
-    # - rank_jp は rank_label と意味重複 → 削除
-    # - As-Is は CLAUDE.md L243-247 規定形式 (`As-Is — <reason>` / 65 字以内) に準拠
-    #   (rank_code == rank_label == 'As-Is' で `Rank As-Is — As-Is` 冗長化を防ぐ)
-    # - As-Is で quick_notes 不在 = silent fall-through 防止のため明示的 placeholder
-    condition_description_parts: list[str] = []
+    # ConditionDescription 一本化 (2026-07-04 user 追加報告 358754421540):
+    # 旧実装 (2026-05-01 の `rank_label + quick_notes 自由文連結`) は user 追加報告で
+    # 「AI 自由文が CD に混入」問題の残存経路と判明したため、UI パネル (#44) と
+    # 同じ `resolve_condition_description_for_rank` (state 層) に一本化する。
+    # ランクから決定論的に定型を返し、As-Is のみ理由 (`As-Is — <reason>`) を転記する。
+    # 65 字上限は state 層側で担保 (テンプレは全て 65 字以下、As-Is 理由は本 lister が
+    # 明示的に truncate)。
+    from tabs._finishing_panel_state import resolve_condition_description_for_rank
     if rank_code == 'As-Is':
-        # CLAUDE.md L243-247: As-Is は `As-Is — <reason>` 形式必須.
-        # quick_notes が reason を兼ねる. 不在時は placeholder で defect リスク警告.
+        # As-Is は理由が必須 (quick_notes = 商品固有理由)。不在時は placeholder で
+        # defect リスク警告 (silent fall-through 防止、Q0)。
         if quick_notes:
-            reason_text = str(quick_notes).rstrip(' .')
+            _as_is_reason = str(quick_notes).rstrip(' .')
         else:
-            reason_text = 'Reason not provided'
+            _as_is_reason = 'Reason not provided'
             logger.warning(
                 "ConditionDescription: As-Is rank without quick_notes; "
                 "using placeholder. eBay buyer 紛争で defect リスクあり, "
                 "user は明示的 reason を設定すべき."
             )
-        condition_description_parts.append(f'As-Is — {reason_text}')
+        # 65 字制約下で `As-Is — <reason>` に収める (先頭固定「As-Is — 」の 8 字を除いて
+        # reason は 57 字まで)。
+        _as_is_prefix = 'As-Is — '
+        _as_is_cd_input = (_as_is_prefix + _as_is_reason)[:65]
+        condition_description = resolve_condition_description_for_rank(
+            'As-Is', _as_is_cd_input,
+        )
     else:
-        if rank_code and rank_label:
-            condition_description_parts.append(f'Rank {rank_code} — {rank_label}')
-        elif rank_label:
-            condition_description_parts.append(rank_label)
-        elif rank_code:
-            condition_description_parts.append(f'Rank {rank_code}')
-        if quick_notes:
-            condition_description_parts.append(str(quick_notes).rstrip(' .'))
-    # CLAUDE.md L246: As-Is は 65 字以内必須. 他 rank は eBay 全体上限 1000.
-    _max_len = 65 if rank_code == 'As-Is' else 1000
-    condition_description = (
-        ('. '.join(condition_description_parts) + '.')[:_max_len]
-        if condition_description_parts else ''
-    )
+        # N/S/A-D/PO は resolve_condition_description_for_rank の定型を採用
+        # (N は "" が返る = 送らない、CLAUDE.md N=1000 CD 非対応と整合)。
+        # quick_notes は description 本文 (Quick Notes) に載る役割で、CD には入れない
+        # (これが 358754421540 で顕在化した「自由文混入」の是正)。
+        condition_description = resolve_condition_description_for_rank(rank_code)
 
     # 2026-04-21 追加: Package weight/dimensions を product (ScrapedProduct) / listing から引く
     weight_g = (

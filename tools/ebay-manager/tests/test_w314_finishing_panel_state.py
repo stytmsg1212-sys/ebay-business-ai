@@ -526,7 +526,7 @@ def test_resolve_condition_description_uses_template_ignoring_ai_freeform():
         "bundled cable set that collectors specifically look for."
     )
     result = resolve_condition_description_for_rank("A", long_ai_text)
-    assert result == "Tested and fully working. Minor cosmetic wear."
+    assert result == "Rank A — Excellent. Tested, fully working. Minor wear."
     assert long_ai_text not in result
 
 
@@ -644,7 +644,7 @@ def test_compute_dirty_dispatch_fields_rank_change_to_n_excludes_cd(monkeypatch)
     fields = _make_fields_all_clean()
     fields["rank"] = {"before": "B", "after": "N"}                # dirty (件数 +1)
     fields["condition_description"] = {                            # dirty だが除外
-        "before": "Tested and fully working. Visible cosmetic wear.",
+        "before": "Rank B — Good. Tested, fully working. Visible wear.",
         "after": "",
     }
     # effective_condition_id は "N" → "1000" (UI 側で resolve 済み前提)
@@ -661,7 +661,7 @@ def test_compute_dirty_dispatch_fields_rank_to_used_includes_cd():
     fields = _make_fields_all_clean()
     fields["rank"] = {"before": "N", "after": "A"}
     fields["condition_description"] = {
-        "before": "", "after": "Tested and fully working. Minor cosmetic wear.",
+        "before": "", "after": "Rank A — Excellent. Tested, fully working. Minor wear.",
     }
     result = compute_dirty_dispatch_fields(fields, "3000")
     assert set(result) == {"rank", "condition_description"}, (
@@ -700,3 +700,203 @@ def test_compute_dirty_dispatch_fields_item_specifics_dispatch_ok_included():
         "dispatch_disabled": False,
     }
     assert compute_dirty_dispatch_fields(fields, "3000") == ["item_specifics"]
+
+
+# ─────────────────────────────────────────────────
+# 13. RANK_CONDITION_DESCRIPTION_TEMPLATE 新書式
+#     (2026-07-04 user 追加報告 358754421540: ランクを見出しに含める書式)
+# ─────────────────────────────────────────────────
+
+def test_new_template_format_all_start_with_rank_prefix_within_65_chars():
+    """N/As-Is 以外の 6 ランク全てが "Rank X — " で始まり 65 字以内であること."""
+    from tabs._finishing_panel_state import (
+        RANK_CONDITION_DESCRIPTION_TEMPLATE, resolve_condition_description_for_rank,
+    )
+    expected_starts = {
+        "S": "Rank S — New (Opened).",
+        "A": "Rank A — Excellent.",
+        "B": "Rank B — Good.",
+        "C": "Rank C — Fair.",
+        "D": "Rank D — Issues.",
+        "PO": "Rank PO — Power-On Only.",
+    }
+    for rank, expected_start in expected_starts.items():
+        cd = RANK_CONDITION_DESCRIPTION_TEMPLATE[rank]
+        assert cd.startswith(expected_start), (
+            f"rank={rank}: expected startswith {expected_start!r}, got {cd!r}"
+        )
+        assert len(cd) <= 65, f"rank={rank}: over 65 chars ({len(cd)}): {cd!r}"
+        # resolve_condition_description_for_rank 経由でも同値
+        assert resolve_condition_description_for_rank(rank) == cd
+
+
+# ─────────────────────────────────────────────────
+# 14. retarget_rank_headers_in_description
+#     (バグ2修正 2026-07-04 358754421540: description 本文の Rank 見出し追従)
+# ─────────────────────────────────────────────────
+
+def test_retarget_rank_headers_matches_and_replaces_h3_heading():
+    """リテラル em-dash 形式の `Rank B — Good` を検出し置換 (置換文字列は
+    HIGH-1 修正 2026-07-04 で `&mdash;` エンティティ形式に統一)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank B — Good</h3><p>Tested and working.</p>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True
+    assert "<h3>Rank A &mdash; Excellent</h3>" in new_html
+    assert "Rank B — Good" not in new_html
+
+
+def test_retarget_rank_headers_matches_plain_text():
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "This item is Rank B — Good. Full details below."
+    new_html, changed = retarget_rank_headers_in_description(html, "C", "Fair")
+    assert changed is True
+    assert "Rank C &mdash; Fair" in new_html
+    assert "Rank B — Good" not in new_html
+
+
+def test_retarget_rank_headers_no_pattern_returns_unchanged():
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h1>Some title</h1><p>No rank heading present.</p>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is False
+    assert new_html == html
+
+
+def test_retarget_rank_headers_empty_html():
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    new_html, changed = retarget_rank_headers_in_description("", "A", "Excellent")
+    assert changed is False
+    assert new_html == ""
+
+
+def test_retarget_rank_headers_uses_default_english_label_when_omitted():
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank PO — Power-On Only</h3>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A")
+    assert changed is True
+    assert "Rank A &mdash; Excellent" in new_html
+
+
+def test_retarget_rank_headers_multiple_occurrences_all_replaced():
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank B — Good</h3> ... some later section: Rank B — Good again."
+    new_html, changed = retarget_rank_headers_in_description(html, "D", "Issues")
+    assert changed is True
+    assert new_html.count("Rank D &mdash; Issues") == 2
+    assert "Rank B — Good" not in new_html
+
+
+def test_retarget_rank_headers_as_is_no_duplicate_label():
+    """As-Is は rank_code == RANK_LABELS_EN["As-Is"] のため "Rank As-Is — As-Is" ではなく
+    "Rank As-Is" のみを replacement として使う (エンティティ区切りは付かない)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank B — Good</h3>"
+    new_html, changed = retarget_rank_headers_in_description(html, "As-Is")
+    assert changed is True
+    assert "Rank As-Is" in new_html
+    assert "Rank As-Is &mdash; As-Is" not in new_html
+    assert "Rank As-Is — As-Is" not in new_html
+
+
+# ─────────────────────────────────────────────────
+# 14b. HIGH-1 修正 2026-07-04 verify wave:
+#     v4 テンプレ実物 `&mdash;` エンティティ形式の実データ回帰テスト
+# ─────────────────────────────────────────────────
+
+def test_retarget_rank_headers_matches_html_entity_mdash():
+    """v4 テンプレ (`listing-description-template.md` L239) 実物形状の
+    `<h3>Rank B &mdash; Good</h3>` を正しく検出し追従すること (無音 no-op バグ回帰)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank B &mdash; Good</h3><p>Tested and working.</p>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True, (
+        f"`&mdash;` entity 形式の見出しは matched であるべき (got {new_html!r})"
+    )
+    assert "<h3>Rank A &mdash; Excellent</h3>" in new_html
+    assert "Rank B &mdash; Good" not in new_html
+
+
+def test_retarget_rank_headers_matches_html_entity_numeric():
+    """数値参照エンティティ `&#8212;` 形式も検出する (テンプレによって出力される可能性)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank C &#8212; Fair</h3>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True
+    assert "Rank A &mdash; Excellent" in new_html
+
+
+def test_retarget_rank_headers_definition_table_row_unchanged():
+    """定義表行 `<tr><td>A</td><td>Excellent &mdash; Minor wear</td></tr>` は
+    'Rank ' prefix 無しのため誤マッチせず不変 (Rank definitions テーブルの説明を
+    ランク変更で壊さないことの回帰保証)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = (
+        "<table>"
+        "<tr><td>N</td><td>New &mdash; Sealed</td></tr>"
+        "<tr><td>A</td><td>Excellent &mdash; Minor wear</td></tr>"
+        "<tr><td>B</td><td>Good &mdash; Visible wear</td></tr>"
+        "</table>"
+    )
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is False, (
+        f"definition table 行 (Rank prefix 無し) は不変であるべき (got diff)"
+    )
+    assert new_html == html
+
+
+def test_retarget_rank_headers_entity_and_literal_mixed_all_replaced():
+    """同一 description 内でリテラル em-dash と `&mdash;` エンティティが混在するケース
+    (旧 description と新 description が混在する遷移期) を両方 replace する."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = (
+        "<h3>Rank B &mdash; Good</h3>"
+        "<p>Additional note: Rank B — Good confirmed.</p>"
+    )
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is True
+    assert new_html.count("Rank A &mdash; Excellent") == 2
+    assert "Rank B &mdash; Good" not in new_html
+    assert "Rank B — Good" not in new_html
+
+
+def test_retarget_rank_headers_rejects_lookalike_non_rank_phrases():
+    """厳格化 (2026-07-04 実機事故): "Rank Block" / "Rank definitions" 等の
+    非見出し文言は誤マッチしない (1 回目の緩い正規表現で 358754421540 の
+    description を破壊した事故の回帰テスト)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = (
+        "<div>Rank Block (Enso brush) design</div>"
+        "<p>Rank definitions table:</p>"
+        "<p>Rank Definitions apply to Used items.</p>"
+    )
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is False, (
+        f"non-rank 'Rank X' phrases must NOT be replaced (got {new_html!r})"
+    )
+    assert new_html == html
+    # 具体的な誤マッチが起きていないこと
+    assert "Rank A — Excellent (Enso brush)" not in new_html
+    assert "Rank A — Excellent table" not in new_html
+    assert "Rank A — Excellent apply to" not in new_html
+
+
+def test_retarget_rank_headers_requires_em_dash_and_label():
+    """厳格化: 'Rank B' 単独 (em-dash + Label 無し) は誤マッチ余地を排除するため
+    非マッチ。見出しは必ず "Rank X — Label" 形式で書かれる前提 (テンプレ / AI 生成
+    どちらもこの形式で出力する、CLAUDE.md ConditionDescription 運用方針準拠)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<span>Rank B</span> is our internal grade."
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is False
+    assert new_html == html
+
+
+def test_retarget_rank_headers_only_matches_8_rank_codes():
+    """厳格化: rank code 部は N/S/A-D/PO/As-Is の 8 段階集合のみに完全一致
+    (それ以外の綴りは非マッチ、Rank Foo — Bar 等の想定外パターンは触らない)."""
+    from tabs._finishing_panel_state import retarget_rank_headers_in_description
+    html = "<h3>Rank Foo — Custom</h3>"
+    new_html, changed = retarget_rank_headers_in_description(html, "A", "Excellent")
+    assert changed is False
+    assert new_html == html

@@ -20,6 +20,7 @@ Phase 2 スコープ:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Callable, MutableMapping, Optional
 
 logger = logging.getLogger(__name__)
@@ -62,14 +63,110 @@ RANK_TO_CONDITION_ID: dict[str, str] = {
 # `resolve_condition_description_for_rank` は上記に該当するランクで空文字 or
 # AI 生成値を返し (As-Is のみ)、送信直前 `_apply_content_changes` 側で
 # ConditionID==1000 の時は最終的に None に落として送信除外する二段防御。
+#
+# 書式更新 (2026-07-04 user 意図の反映): 「conditionはランクを記載」= ランク表記を
+# 明示してほしい、との user 指摘に基づき「ランクラベル先頭 + 短い状態文」に統一。
+# 例: A = "Rank A — Excellent. Tested, fully working. Minor wear." (54字)。
+# 全て 65 字以内厳守 (As-Is は resolve_condition_description_for_rank 側で AI 生成の
+# `As-Is — <reason>` を通す既存挙動を維持)。
 RANK_CONDITION_DESCRIPTION_TEMPLATE: dict[str, str] = {
-    "S": "New (opened), unused. No visible wear.",
-    "A": "Tested and fully working. Minor cosmetic wear.",
-    "B": "Tested and fully working. Visible cosmetic wear.",
-    "C": "Tested and fully working. Heavy cosmetic wear.",
-    "D": "Tested; works within limits. Cosmetic/functional issues present.",
-    "PO": "Powered on, but full function not verified.",
+    "S": "Rank S — New (Opened). Unused, no visible wear.",
+    "A": "Rank A — Excellent. Tested, fully working. Minor wear.",
+    "B": "Rank B — Good. Tested, fully working. Visible wear.",
+    "C": "Rank C — Fair. Tested, fully working. Heavy wear.",
+    "D": "Rank D — Issues. Tested; works within limits.",
+    "PO": "Rank PO — Power-On Only. Full function not verified.",
 }
+
+
+# tools/ebay-manager/CLAUDE.md「コンディションランク 8 段階」の英語ラベル。
+# `retarget_rank_headers_in_description` が description 本文の Rank 見出しを
+# 追従させる時に使う。RankClassification が渡されない場合の fallback。
+RANK_LABELS_EN: dict[str, str] = {
+    "N": "New",
+    "S": "New (Opened)",
+    "A": "Excellent",
+    "B": "Good",
+    "C": "Fair",
+    "D": "Issues",
+    "PO": "Power-On Only",
+    "As-Is": "As-Is",
+}
+
+# description 本文の Rank 見出し追従用パターン (2026-07-04 バグ2 修正 358754421540)。
+#
+# 【厳格化 2026-07-04 実機事故】1 回目の実装は `Rank\s+[A-Za-z][A-Za-z-]{0,10}` と
+# 緩く、`Rank Block (Enso brush)` / `Rank definitions` 等の非見出し文言まで誤マッチ
+# して description を破壊した (Q0 preventable の実バグ)。以降は **8 段階の rank code
+# 集合と完全一致** し、必ず em-dash + Label が続くパターンだけを対象にする
+# (label 単独欠落は対象外にして誤マッチ余地を排除、CLAUDE.md 8 段階に無い綴りは無視)。
+#
+# 想定マッチ例 (すべて em-dash / entity 必須):
+#   - `Rank B — Good`                   (h3 見出し / p 内本文、リテラル em-dash)
+#   - `Rank B &mdash; Good`             (v4 テンプレ実物、`listing-description-template.md` L239)
+#   - `Rank PO — Power-On Only`
+#   - `Rank As-Is — As-Is`              (As-Is は label 部で重複しても許容、置換時は "Rank As-Is" へ落とす)
+#   - `Rank S — New (Opened)`           (label 部に括弧を含む場合)
+#   - `Rank B &#8212; Good`             (数値参照エンティティ)
+#
+# 誤マッチしない (重要):
+#   - `Rank Block (Enso brush)`         ← "Block" は rank code に無い
+#   - `Rank definitions`                ← "definitions" は rank code に無い
+#   - `Rank Definitions`                ← 同上
+#   - `Rank B` (単独)                   ← em-dash/entity + Label が必須
+#   - `<td>A</td><td>Excellent &mdash; Minor wear</td>` ← 'Rank ' prefix が無い定義表行
+#
+# 【HIGH-1 修正 2026-07-04 verify wave】区切りパターンにリテラル (—/-/–) だけでなく
+# HTML entity (&mdash; &ndash; &#8212; &#8211;) も含める。本番 description の見出しは
+# `<h3>Rank B &mdash; Good</h3>` の entity 形式で、リテラル em-dash に絞ると無音 no-op
+# だった (v4 テンプレ正源準拠)。置換文字列も `Rank {code} &mdash; {label}` の entity
+# 形式に統一 (テンプレとの整合)。
+_RANK_HEADER_PATTERN = re.compile(
+    r"Rank\s+"
+    r"(?P<code>N|S|A|B|C|D|PO|As-Is)"                              # 8 段階のいずれか、完全一致
+    r"\s+(?:[—\-–]|&mdash;|&ndash;|&#8212;|&#8211;)\s+"           # em-dash リテラルまたは entity (必須)
+    r"[A-Za-z][A-Za-z ()\-]{0,29}"                                 # Label 30 字以内
+)
+
+
+def retarget_rank_headers_in_description(
+    html: str, rank_code: Optional[str], rank_label: Optional[str] = None,
+) -> tuple[str, bool]:
+    """description HTML 本文の `Rank X — Label` 見出しをランク変更に追従させる.
+
+    出典: 2026-07-04 user 追加報告 (358754421540) — ランク変更時 CD だけ同期
+    していたため、AI 生成済み description 本文の CONDITION RANK 見出し
+    (`<h3>Rank B — Good</h3>` 等) が古いランクで取り残される実バグを修正。
+    軽量な regex 置換で追従させる (全文再生成しない、K1 Simplicity)。
+
+    ロジック:
+      - `_RANK_HEADER_PATTERN` が html 内に無ければ (html, False) を返す (置換なし)。
+      - あれば全マッチを `Rank {code} — {label}` に置換して (html', True) を返す。
+      - rank_label 欠落時は RANK_LABELS_EN から補完 (N/S/A-D/PO/As-Is)。
+      - As-Is / N など label が「Rank X — X」で重複する場合は "Rank X" のみに落とす。
+
+    Args:
+        html: description HTML 本文 (session_state[pf_key(eid,"description")] の内容)
+        rank_code: 新ランクコード ('N'/'S'/'A'-'D'/'PO'/'As-Is'/None)
+        rank_label: 新ランクラベル (EN、未指定なら RANK_LABELS_EN から補完)
+
+    Returns:
+        (置換後 HTML, 変更フラグ)。変更フラグは呼出側の caption 通知条件に使う。
+    """
+    if not html or not rank_code:
+        return html, False
+    label = (rank_label or RANK_LABELS_EN.get(rank_code) or "").strip()
+    # 【HIGH-1 修正 2026-07-04 verify wave】置換文字列は `&mdash;` エンティティで統一
+    # (v4 テンプレ正源 `listing-description-template.md` L239 に整合、リテラル em-dash と
+    # 混在させると同一 description 内で表記ゆれが発生するのを避ける)。
+    # `Rank As-Is &mdash; As-Is` のような label 重複は "Rank As-Is" のみに落として自然化。
+    if label and label != rank_code:
+        replacement = f"Rank {rank_code} &mdash; {label}"
+    else:
+        replacement = f"Rank {rank_code}"
+    if not _RANK_HEADER_PATTERN.search(html):
+        return html, False
+    return _RANK_HEADER_PATTERN.sub(replacement, html), True
 
 
 def resolve_condition_description_for_rank(

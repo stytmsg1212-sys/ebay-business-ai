@@ -974,10 +974,16 @@ class _RichRank:
 
 
 class TestConditionDescriptionFormat2026_05_01:
-    """2026-05-01 fix: 個別出品 ConditionDescription の日本語混入 + 生硬な区切り bug.
+    """個別出品 (AddItem) ConditionDescription の書式ガード.
 
-    旧: `Rank A — Excellent | Tested · Minor Wear | UI で手動指定` (Japanese 漏出 + ' | ' 区切り)
-    新: `Rank A — Excellent.` (rank_jp 削除 + reasoning fallback 削除 + '. ' 区切り)
+    出典:
+      - 2026-05-01 fix: 日本語混入 + 生硬な区切り bug (`Rank A — Excellent | ...`)
+      - 2026-07-04 fix: user 追加報告 358754421540 で「quick_notes 直接連結による
+        AI 自由文混入」経路が残存と判明 → `resolve_condition_description_for_rank`
+        (UI パネル #44 と同じ state 層 helper) に一本化した。
+        新書式: A/B/C/D/PO は「Rank X — Label. <状態文>.」の 65 字以内定型。
+        As-Is のみ「As-Is — <reason>」を維持 (商品固有理由必須)。quick_notes は
+        AddItem 経路でも CD には転記しない (description 本文の Quick Notes 用)。
     """
 
     def _config(self) -> dict:
@@ -1017,46 +1023,88 @@ class TestConditionDescriptionFormat2026_05_01:
         assert 'Minor Wear' not in cd, f'rank_jp leaked: {cd!r}'
         assert '·' not in cd  # middle dot
 
-    def test_period_separator_not_pipe(self):
-        """' | ' 区切りではなく '. ' 区切り + 末尾 '.' の英文形式."""
+    def test_new_template_format_2026_07_04(self):
+        """2026-07-04 新書式: A ランクは resolve_condition_description_for_rank の
+        テンプレ (`Rank A — Excellent. Tested, fully working. Minor wear.`) に一本化."""
         params = build_draft_params_from_phase3(
             product=None, reference=None, rank=_RichRank(), listing=_FakeListing(),
             shipping_policy_id='SSS', sku='X',
             listing_price_usd=100.0, image_urls=[], config=self._config(),
         )
         cd = params['condition_description']
+        assert cd == 'Rank A — Excellent. Tested, fully working. Minor wear.', (
+            f'expected new 2026-07-04 template, got {cd!r}'
+        )
         assert ' | ' not in cd, f"old ' | ' separator still present: {cd!r}"
         assert cd.endswith('.'), f"missing trailing period: {cd!r}"
-        assert cd == 'Rank A — Excellent.', (
-            f'expected "Rank A — Excellent.", got {cd!r}'
-        )
+        assert len(cd) <= 65, f'over 65 chars: len={len(cd)} cd={cd!r}'
 
-    def test_quick_notes_appended_when_present(self):
-        """quick_notes が明示的に設定されていれば '. ' で連結される."""
+    def test_quick_notes_not_appended_to_cd_2026_07_04(self):
+        """2026-07-04 fix (358754421540 事例): quick_notes は CD に転記しない
+        (description 本文の Quick Notes 欄で使う)。AddItem 経路でも UI パネル (#44)
+        と同じく resolve_condition_description_for_rank の定型に一本化する
+        = quick_notes 自由文の CD 混入経路を根絶する回帰テスト."""
         class _RankWithNotes(_RichRank):
-            quick_notes = 'Tested and confirmed working'
+            quick_notes = 'Tested and confirmed working (Bluetooth OK / Battery OK)'
         params = build_draft_params_from_phase3(
             product=None, reference=None, rank=_RankWithNotes(), listing=_FakeListing(),
             shipping_policy_id='SSS', sku='X',
             listing_price_usd=100.0, image_urls=[], config=self._config(),
         )
         cd = params['condition_description']
-        assert cd == 'Rank A — Excellent. Tested and confirmed working.', (
-            f'expected period-joined English, got {cd!r}'
+        # 新書式のテンプレそのまま (quick_notes は連結されない)
+        assert cd == 'Rank A — Excellent. Tested, fully working. Minor wear.'
+        assert 'Bluetooth OK' not in cd, (
+            f'quick_notes leaked into CD (2026-07-04 root-cause path): {cd!r}'
         )
 
-    def test_quick_notes_trailing_period_not_doubled(self):
-        """quick_notes が末尾 '.' を含んでも二重 '..' にならない."""
-        class _RankPeriod(_RichRank):
-            quick_notes = 'Powered on, full function not verified.'
+    def test_new_template_all_used_ranks_within_65_chars(self):
+        """N (1000, CD 非対応で空文字) 以外の 6 ランクが全て 65 字以内 + 「Rank X — 」で
+        始まること (書式変更の網羅回帰)."""
+        expected = {
+            'S':  ('New (Opened)',    'Rank S — New (Opened). Unused, no visible wear.'),
+            'A':  ('Excellent',       'Rank A — Excellent. Tested, fully working. Minor wear.'),
+            'B':  ('Good',            'Rank B — Good. Tested, fully working. Visible wear.'),
+            'C':  ('Fair',            'Rank C — Fair. Tested, fully working. Heavy wear.'),
+            'D':  ('Issues',          'Rank D — Issues. Tested; works within limits.'),
+            'PO': ('Power-On Only',   'Rank PO — Power-On Only. Full function not verified.'),
+        }
+        for code, (label, expected_cd) in expected.items():
+            class _R:
+                pass
+            _R.rank_code = code
+            _R.rank_label = label
+            _R.rank_jp = ''
+            _R.reasoning = ''
+            _R.quick_notes = 'IGNORED — must not appear in CD'
+            _R.ebay_condition_id = '1500' if code == 'S' else '3000'
+            params = build_draft_params_from_phase3(
+                product=None, reference=None, rank=_R, listing=_FakeListing(),
+                shipping_policy_id='SSS', sku='X',
+                listing_price_usd=100.0, image_urls=[], config=self._config(),
+            )
+            cd = params['condition_description']
+            assert cd == expected_cd, f'rank={code}: got {cd!r}'
+            assert len(cd) <= 65, f'rank={code}: over 65 chars ({len(cd)}): {cd!r}'
+            assert cd.startswith(f'Rank {code} — ')
+            assert 'IGNORED' not in cd  # quick_notes は CD に混入しない
+
+    def test_new_template_rank_n_returns_empty_cd(self):
+        """N (ConditionID 1000) は eBay 仕様上 CD 非対応 = 空文字を返す
+        (resolve_condition_description_for_rank の "N" 例外分岐と整合)."""
+        class _RN:
+            rank_code = 'N'
+            rank_label = 'New'
+            rank_jp = ''
+            reasoning = ''
+            quick_notes = ''
+            ebay_condition_id = '1000'
         params = build_draft_params_from_phase3(
-            product=None, reference=None, rank=_RankPeriod(), listing=_FakeListing(),
+            product=None, reference=None, rank=_RN(), listing=_FakeListing(),
             shipping_policy_id='SSS', sku='X',
             listing_price_usd=100.0, image_urls=[], config=self._config(),
         )
-        cd = params['condition_description']
-        assert '..' not in cd, f'doubled period: {cd!r}'
-        assert cd.endswith('.')
+        assert params['condition_description'] == ''
 
     def test_as_is_rank_no_rank_prefix_duplication(self):
         """rank_code='As-Is' rank_label='As-Is' で `Rank As-Is — As-Is` にならない (CLAUDE.md L243).

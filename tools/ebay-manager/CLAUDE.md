@@ -268,15 +268,23 @@ The shipper is a retailer and is not the manufacturer.
 - **As-Is**: **必ず理由明示**。例: `No AC adapter for testing` / `PCB burn damage` / `Heavy contamination prevented testing`
 - Quick Notes は **description 本文用の詳細情報**。eBay XML `<ConditionDescription>` (下記) とは別フィールド・別役割 — 混同しない
 
-### ConditionDescription 運用方針 (2026-07-04 更新)
+### ConditionDescription 運用方針 (2026-07-04 更新 → 2026-07-04 書式改訂 358754421540)
 
-`condition_description` (eBay XML `<ConditionDescription>`、買い手に表示されるコンディション説明) は **ランクの短い定型文のみ** (AI 生成、65 字以内・英語)。Quick Notes (description 本文) とは別フィールドで役割が異なる:
+`condition_description` (eBay XML `<ConditionDescription>`、買い手に表示されるコンディション説明) は **ランクの短い定型文のみ** (`tabs/_finishing_panel_state.RANK_CONDITION_DESCRIPTION_TEMPLATE` から決定論的に導出、65 字以内・英語)。Quick Notes (description 本文) とは別フィールドで役割が異なる:
 
-- **ConditionDescription = ランク要約のみ**。例 (A): `Tested and fully working (2026-07). Minor cosmetic wear.` / 例 (PO): `Powered on, but full function not verified.`
+- **ConditionDescription = 「Rank X — Label. <状態文>.」形式** (user 追加報告 358754421540 で「conditionはランクを記載」= ランクを明示してほしい、との意図を反映)。例:
+  - S: `Rank S — New (Opened). Unused, no visible wear.`
+  - A: `Rank A — Excellent. Tested, fully working. Minor wear.`
+  - B: `Rank B — Good. Tested, fully working. Visible wear.`
+  - C: `Rank C — Fair. Tested, fully working. Heavy wear.`
+  - D: `Rank D — Issues. Tested; works within limits.`
+  - PO: `Rank PO — Power-On Only. Full function not verified.`
+- **N (ConditionID 1000)**: eBay 仕様上 CD 非対応のため送信しない (空文字を返す。UI パネル / apply 層 / AddItem の 3 経路すべてで抑止)。
 - **付属品欠品・傷の位置・詳細な使用感などの商品固有の長文情報は ConditionDescription に書かない**。それらは Quick Notes / includes_items / description 本文へ記載する
-- **As-Is のみ例外**: 理由を ConditionDescription へ必ず転記 (下記「As-Is 出品の XML 必須要件」、eBay 対策として不変)
+- **As-Is のみ例外**: 理由を ConditionDescription へ必ず転記 (下記「As-Is 出品の XML 必須要件」、eBay 対策として不変。書式 = `As-Is — <reason>` 65 字以内)
 - 原産国 (Country of Origin/Manufacture) や Manufacturer に触れる語は一切含めない (上記「Country of Origin / Manufacturer の layer 分離」)
-- 実装 (生成プロンプト正源): `monitor/listing_generator.py`「Condition Description ルール」
+- 実装 (単一情報源): `tabs/_finishing_panel_state.RANK_CONDITION_DESCRIPTION_TEMPLATE` + `resolve_condition_description_for_rank()`。UI パネル (#44) / AddItem (`ebay_lister.build_draft_params_from_phase3`) / ReviseItem (`_apply_content_changes` の rank/cd 経路) 全てがこの helper に一本化されている (2026-07-04 358754421540 対応)
+- 実装 (AI 生成プロンプト): `monitor/listing_generator.py`「Condition Description ルール」(Claude の `condition_description` 出力は上記テンプレに常に上書きされる = プロンプト非遵守時の保険が入っている)
 
 ### As-Is 出品の XML 必須要件
 
