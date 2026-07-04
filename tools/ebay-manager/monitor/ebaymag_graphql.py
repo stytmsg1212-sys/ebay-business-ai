@@ -60,6 +60,18 @@ SAVE_MUTATION = """mutation ShippingProfileSave($input: upsertProfileInput!) {
   }
 }"""
 
+# W317: 全商品 1 ページ分 (Relay Connection)。id + 各サイト listing の
+# publicationUrl から eBay item id を抽出して product_id map を作る (呼出側)。
+# ⚠️ filters は必ず null を渡す (省略と等価で archived 込み全件 = Phase0 実測 823)。
+# 空 object {} を渡すと暗黙 archived:false (218 件) に絞られ map が欠ける。
+PRODUCTS_QUERY = """query Products($first: Int, $after: String, $filters: ProductFilterInput) {
+  products(first: $first, after: $after, filters: $filters) {
+    totalCount
+    pageInfo { endCursor hasNextPage }
+    nodes { id listings { site { id } publicationUrl } }
+  }
+}"""
+
 
 class EbaymagGraphQLError(RuntimeError):
     pass
@@ -91,3 +103,19 @@ def read_profile(page, profile_id: str) -> dict:
 def get_fx(page) -> dict[str, float]:
     data = gql(page, "ShippingProfileAdditional", FX_QUERY, {})
     return {c["code"]: c["rate"] for c in (data.get("currencies") or []) if c.get("code")}
+
+
+def list_products(page, first: int = 200, after: str | None = None) -> dict:
+    """全商品の 1 ページ分を返す (Relay Connection、W317)。
+
+    Relay pagination のループ (pageInfo.hasNextPage + after) は呼出側が回す。
+    戻り値 = products connection dict ({totalCount, pageInfo{endCursor,hasNextPage}, nodes}).
+
+    ⚠️ filters は必ず None を渡す (変数省略と等価 = archived 込み全件)。空 object {} を
+    渡すと暗黙に archived:false へ絞られて map が欠ける (Phase0 実測)。
+    """
+    data = gql(
+        page, "Products", PRODUCTS_QUERY,
+        {"first": first, "after": after, "filters": None},
+    )
+    return data.get("products") or {}

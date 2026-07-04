@@ -139,8 +139,13 @@ def _policy_assign_enabled(config: dict) -> bool:
     return bool(cfg.get("enabled", False))
 
 
-def _process_job(job: dict, config: dict) -> dict:
+def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = None) -> dict:
     """1 件の apply_queue job を消化する (HIGH-1: ebay_listings 状態駆動の 2 軸適用)。
+
+    W317: product_id 未登録の job は discover が必要。product_map (GraphQL の
+    eBay item_id → product_id 即時照合表) を渡すと map hit で即 product_id 確定
+    (method=graphql)、miss なら既存タイトル/検索語 discover に降格 (method=title)。
+    product_map=None / 空 dict (map 未構築 or 構築失敗) の時も title fallback で継続する。
 
     消化側は ebay_listings を単一真実源とし、1 CDP パスで 2 軸を適用する:
       軸1 (国):   desired_sites_json vs 実サイト状態 → apply_site_changes (既存)
@@ -222,70 +227,83 @@ def _process_job(job: dict, config: dict) -> dict:
     product_id: str | None = mapping.get("product_id") if mapping else None
 
     if not product_id:
-        # listing タイトル / search_keyword を query として discover
-        from monitor.database import get_conn
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT title, search_keyword FROM ebay_listings WHERE ebay_item_id=?",
-                (eid,),
-            ).fetchone()
-        if row is None:
-            return _fail(f"discover 用 listing が見つかりません (ebay_item_id={eid})", needs_manual=True)
-        query = (row["search_keyword"] or row["title"] or "").strip()
-        if not query:
-            return _fail(f"discover 用クエリが空 (title も search_keyword も無し, eid={eid})", needs_manual=True)
-
-        expected_itm = eid  # itm 照合の安全弁
-        logger.info("[ebaymag_apply_queue] discover: eid=%s query=%r", eid, query[:60])
-        disc_result = discover_product_id(query, expected_itm)
-
-        if disc_result.ok and disc_result.product_id:
-            product_id = disc_result.product_id
+        # W317: GraphQL 商品 ID 照合 map を最優先 (即時 hit)。
+        #   map hit → product_id 確定 (method=graphql)
+        #   miss / map 未構築 → 既存タイトル/検索語 discover に降格 (method=title)
+        map_hit = product_map.get(eid) if product_map else None
+        if map_hit:
+            product_id = map_hit
             # H3 (code-reviewer 2026-06-20): 空 states で実態キャッシュを上書きしない
             # (site_states 省略=NULL/既存維持)。Step3 fetch 成功後に states を確定する。
             upsert_ebaymag_product(eid, product_id=product_id)
-            logger.info("[ebaymag_apply_queue] discover OK: eid=%s product_id=%s", eid, product_id)
-            # 新規 discover (Sell Similar / 新規出品) で band 未設定なら weight から設定 (§8)。
-            # band 設定後の最新値を本 run の軸2 判定に反映させるため再読込する。
-            if not target_band:
-                from monitor.database import get_conn as _get_conn
-                from monitor.ebaymag_policy_lifecycle import sync_shipping_band_for_listing
-                with _get_conn() as _c:
-                    _wrow = _c.execute(
-                        "SELECT weight_g FROM ebay_listings WHERE ebay_item_id=?", (eid,)
-                    ).fetchone()
-                _weight = _wrow["weight_g"] if _wrow else None
-                try:
-                    sync_shipping_band_for_listing(eid, _weight)
-                except Exception as _e:  # noqa: BLE001
-                    logger.warning("[ebaymag_apply_queue] band 同期失敗 eid=%s: %s", eid, _e)
-                _ps = get_ebaymag_policy_state(eid) or {}
-                target_band = _ps.get("band")
-                applied_token = _ps.get("applied_token")
-                target_token = (
-                    get_canonical_policy_token(target_band) if target_band else None
-                )
-        else:
-            # eBaymag 取込ラグ / 未発見
-            error_detail = disc_result.error or "discover: 候補なし"
-            if attempts >= _AWAITING_IMPORT_MAX_ATTEMPTS:
-                return _fail(
-                    f"discover {_AWAITING_IMPORT_MAX_ATTEMPTS}回試行後も未発見。"
-                    f"eBaymag 取込を確認してください。query={query!r} error={error_detail}",
-                    needs_manual=True,
-                )
-            next_at = _calc_next_attempt_at(attempts)
-            mark_ebaymag_apply_status(
-                job_id, "awaiting_import",
-                last_error=f"discover 未発見 query={query!r} error={error_detail}",
-                increment_attempt=True,
-                next_attempt_at=next_at,
-            )
             logger.info(
-                "[ebaymag_apply_queue] awaiting_import: eid=%s attempts=%d next_at=%s",
-                eid, attempts + 1, next_at,
+                "[ebaymag_apply_queue] discover OK (method=graphql): eid=%s product_id=%s",
+                eid, product_id,
             )
-            return {"result": "awaiting_import", "error": error_detail}
+        else:
+            # listing タイトル / search_keyword を query として discover (method=title)
+            from monitor.database import get_conn
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT title, search_keyword FROM ebay_listings WHERE ebay_item_id=?",
+                    (eid,),
+                ).fetchone()
+            if row is None:
+                return _fail(f"discover 用 listing が見つかりません (ebay_item_id={eid})", needs_manual=True)
+            query = (row["search_keyword"] or row["title"] or "").strip()
+            if not query:
+                return _fail(f"discover 用クエリが空 (title も search_keyword も無し, eid={eid})", needs_manual=True)
+
+            expected_itm = eid  # itm 照合の安全弁
+            logger.info("[ebaymag_apply_queue] discover (method=title): eid=%s query=%r", eid, query[:60])
+            disc_result = discover_product_id(query, expected_itm)
+
+            if disc_result.ok and disc_result.product_id:
+                product_id = disc_result.product_id
+                upsert_ebaymag_product(eid, product_id=product_id)
+                logger.info("[ebaymag_apply_queue] discover OK (method=title): eid=%s product_id=%s", eid, product_id)
+            else:
+                # eBaymag 取込ラグ / 未発見 (map miss かつ title でも未発見)
+                error_detail = disc_result.error or "discover: 候補なし"
+                if attempts >= _AWAITING_IMPORT_MAX_ATTEMPTS:
+                    return _fail(
+                        f"discover {_AWAITING_IMPORT_MAX_ATTEMPTS}回試行後も未発見。"
+                        f"eBaymag 取込を確認してください。query={query!r} error={error_detail}",
+                        needs_manual=True,
+                    )
+                next_at = _calc_next_attempt_at(attempts)
+                mark_ebaymag_apply_status(
+                    job_id, "awaiting_import",
+                    last_error=f"discover 未発見 query={query!r} error={error_detail}",
+                    increment_attempt=True,
+                    next_attempt_at=next_at,
+                )
+                logger.info(
+                    "[ebaymag_apply_queue] awaiting_import: eid=%s attempts=%d next_at=%s",
+                    eid, attempts + 1, next_at,
+                )
+                return {"result": "awaiting_import", "error": error_detail}
+
+        # 新規 discover (map hit / title、Sell Similar / 新規出品) で band 未設定なら
+        # weight から設定 (§8)。band 設定後の最新値を本 run の軸2 判定に反映させるため再読込。
+        if not target_band:
+            from monitor.database import get_conn as _get_conn
+            from monitor.ebaymag_policy_lifecycle import sync_shipping_band_for_listing
+            with _get_conn() as _c:
+                _wrow = _c.execute(
+                    "SELECT weight_g FROM ebay_listings WHERE ebay_item_id=?", (eid,)
+                ).fetchone()
+            _weight = _wrow["weight_g"] if _wrow else None
+            try:
+                sync_shipping_band_for_listing(eid, _weight)
+            except Exception as _e:  # noqa: BLE001
+                logger.warning("[ebaymag_apply_queue] band 同期失敗 eid=%s: %s", eid, _e)
+            _ps = get_ebaymag_policy_state(eid) or {}
+            target_band = _ps.get("band")
+            applied_token = _ps.get("applied_token")
+            target_token = (
+                get_canonical_policy_token(target_band) if target_band else None
+            )
 
     # ───────── 軸1: 国トグル (desired が明示設定済の listing のみ) ─────────
     # desired_sites が未設定 (空) の listing では一切国トグルしない。
@@ -389,6 +407,37 @@ def _process_job(job: dict, config: dict) -> dict:
     return {"result": "no_change", "error": None}
 
 
+def _build_product_map_if_needed(jobs: list[dict]) -> dict[str, str]:
+    """W317: discover 要 job (ebaymag_products に product_id 未登録) が 1 件でもあれば
+    GraphQL 商品 ID map を 1 回だけ構築する (823 件走査 = GraphQL 5 回、数秒)。
+
+    - discover 不要 (全 job が product_id 登録済) → GraphQL を叩かず空 dict。
+    - map 構築失敗 (CDP 不在 / GraphQL 例外 ok=False) → warning + 空 dict を返し、
+      各 job 側の title fallback に委ねる (全 job を巻き込んで失敗させない / Q0 は
+      各 job 側の awaiting_import 痕跡で担保)。
+    """
+    from monitor.database import get_ebaymag_product
+    from monitor.ebaymag_driver import fetch_product_map
+
+    need_discover = any(
+        not ((m := get_ebaymag_product(job["ebay_item_id"])) and m.get("product_id"))
+        for job in jobs
+    )
+    if not need_discover:
+        return {}
+
+    res = fetch_product_map()
+    if not res.ok:
+        logger.warning(
+            "[ebaymag_apply_queue] product_map 構築失敗 (%s) → title fallback で継続",
+            res.error,
+        )
+        return {}
+    logger.info("[ebaymag_apply_queue] product_map 構築完了: %d 件 (item_id→product_id)",
+                len(res.product_map))
+    return res.product_map
+
+
 def run_ebaymag_apply_queue(config: dict) -> dict:
     """W284 Phase 2: eBaymag 反映キュー自動消化。
 
@@ -457,6 +506,9 @@ def run_ebaymag_apply_queue(config: dict) -> dict:
             "message": "active job なし",
         }
 
+    # W317: discover 要 job があれば GraphQL 商品 ID map を 1 回構築 (run 冒頭で共有)
+    product_map = _build_product_map_if_needed(jobs)
+
     stats = {"processed": 0, "applied": 0, "awaiting_import": 0, "failed": 0}
     errors: list[str] = []
 
@@ -464,7 +516,7 @@ def run_ebaymag_apply_queue(config: dict) -> dict:
         stats["processed"] += 1
         eid = job["ebay_item_id"]
         try:
-            res = _process_job(job, config)
+            res = _process_job(job, config, product_map)
         except Exception as e:  # noqa: BLE001
             # _process_job 外の予期せぬ例外 — job を failed にして継続 (Q0 silent skip 禁止)
             err_msg = f"{type(e).__name__}: {e}"

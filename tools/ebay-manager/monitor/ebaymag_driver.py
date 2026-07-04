@@ -46,6 +46,12 @@ SITE_MAP = {
 DOMAIN_TO_CODE = {v: k for k, v in SITE_MAP.items()}
 # US (ebay.com) は本体 listing そのもの = eBaymag からトグルしない (表示参考のみ)
 
+# W317: eBaymag listing の publicationUrl から eBay item id (9桁以上) を抽出。
+# /itm/ アンカー + slug セグメント 1 個許容 (/itm/<id> と /itm/<slug>/<id> の両形式)。
+# 素の /(\d{9,})/ は slug 内の紛れ数字 (型番等) を誤抽出するクラスがあるため
+# アンカー化 (Phase0 の 912/912 は抽出率であって値の正しさは未検証)。
+ITEM_ID_RE = re.compile(r"/itm/(?:[^/]*/)?(\d{9,})")
+
 # --- JS snippets (2026-06-10/11 実証済パターン、script から逐語移植) ---------
 
 # productId= を含むリンクを収集 (discover_product_id 用)
@@ -284,6 +290,7 @@ class EbaymagResult:
     site_states: dict[str, bool] = field(default_factory=dict)  # {"UK": True, ...}
     log: list[str] = field(default_factory=list)
     product_id: str | None = None  # discover_product_id が発見した productId
+    product_map: dict[str, str] = field(default_factory=dict)  # W317: eBay item_id → product_id
 
     def _log(self, msg: str) -> None:
         self.log.append(msg)
@@ -389,7 +396,8 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
         "r = getattr(d, sys.argv[1])(**json.loads(sys.argv[2])); "
         "print(json.dumps({'ok': r.ok, 'error': r.error, "
         "'site_states': r.site_states, 'log': r.log, "
-        "'product_id': r.product_id}, ensure_ascii=True))"
+        "'product_id': r.product_id, 'product_map': r.product_map}, "
+        "ensure_ascii=True))"
     )
     env = dict(os.environ)
     env["EBAYMAG_DRIVER_SUBPROCESS"] = "0"  # 再帰防止 (子は in-process 実行)
@@ -428,6 +436,7 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
     res.site_states = out.get("site_states") or {}
     res.log = out.get("log") or []
     res.product_id = out.get("product_id")
+    res.product_map = out.get("product_map") or {}
     for line in res.log:  # 子の log は親 logger に流れないため relay (reviewer LOW)
         logger.info("[ebaymag_driver/sub] %s", line)
     return res
@@ -704,6 +713,149 @@ def _build_stock_search_url(query: str) -> str:
     urllib.parse.quote(safe="") で percent-encode する (paypay_search.py と同流儀)。
     """
     return f"https://ebaymag.com/stock?archived=true&name={urllib.parse.quote(query, safe='')}"
+
+
+def _item_id_from_url(url: str | None) -> str | None:
+    """publicationUrl から eBay item id を抽出 (無ければ None)。"""
+    if not url:
+        return None
+    m = ITEM_ID_RE.search(url)
+    return m.group(1) if m else None
+
+
+def _build_id_map(all_nodes: list[dict]) -> tuple[dict[str, str], int]:
+    """W317: products nodes 群から eBay item_id → product_id map を構築 (純関数)。
+
+    規約 (設計書 map 構築規約):
+      - どのサイトの publicationUrl から item_id が拾えても採用 (US 限定にしない)。
+        eBaymag の 1 product = 複数サイト同時出品なので site を問わず同一 product を指す。
+      - item_id 衝突 (2 つ以上の product_id が同一 item_id を指す) は誤 mutation 防止で
+        原則 map から除外 + logger.warning (Q0 痕跡、silent に片方採用しない)。
+      - 例外: 衝突エントリ中の US (siteId="0") listing が一意の product_id を指す場合のみ
+        その US product_id を tie-break で採用 (US = 本体 listing の権威)。
+
+    Returns:
+        (product_map, collisions_excluded)。collisions_excluded は US tie-break でも
+        解決できず除外した item_id 件数。
+    """
+    collected: dict[str, list[tuple[str, str]]] = {}  # item_id -> [(product_id, site_id)]
+    for node in all_nodes:
+        pid = node.get("id")
+        if not pid:
+            continue
+        for li in (node.get("listings") or []):
+            iid = _item_id_from_url(li.get("publicationUrl"))
+            if not iid:
+                continue
+            sid = str((li.get("site") or {}).get("id"))
+            collected.setdefault(iid, []).append((str(pid), sid))
+
+    product_map: dict[str, str] = {}
+    collisions_excluded = 0
+    for iid, entries in collected.items():
+        pids = {e[0] for e in entries}
+        if len(pids) == 1:
+            product_map[iid] = entries[0][0]
+            continue
+        # 衝突: US (site 0) の listing が指す product_id が一意ならそれを tie-break 採用
+        us_pids = {e[0] for e in entries if e[1] == "0"}
+        if len(us_pids) == 1:
+            chosen = next(iter(us_pids))
+            product_map[iid] = chosen
+            logger.warning(
+                "[fetch_product_map] item_id 衝突を US tie-break で解決: "
+                "item_id=%s product_ids=%s → US=%s",
+                iid, sorted(pids), chosen,
+            )
+            continue
+        # US で解決不能 → 誤確定回避で map から除外 (Q0 痕跡)
+        collisions_excluded += 1
+        logger.warning(
+            "[fetch_product_map] item_id 衝突を除外 (誤確定防止, US tie-break 不成立): "
+            "item_id=%s product_ids=%s",
+            iid, sorted(pids),
+        )
+    return product_map, collisions_excluded
+
+
+def fetch_product_map() -> EbaymagResult:
+    """W317: GraphQL で全商品を走査し eBay item_id → product_id map を構築 (read-only)。
+
+    discover_product_id (タイトル/検索語一致) の前段として使い、item_id 完全一致で
+    product_id を即時特定する。多言語タイトルのズレによる awaiting_import 滞留を解消。
+
+    Relay pagination (first=200, pageInfo.hasNextPage + after) で全件走査する。
+
+    res.ok は **GraphQL 呼び出し自体の成否**。map が空 (対象 item_id が 1 件も無い) でも
+    呼び出しが成功していれば ok=True が正当 — 「map に対象 item_id が無い」は呼出元が
+    タイトルフォールバックへ降格する判断材料であり、GraphQL の失敗ではない。ok=False は
+    CDP 不在 / タブ不在 / GraphQL 例外のみ。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    if _should_isolate():
+        return _run_isolated("fetch_product_map", {}, timeout_sec=180)
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+            from monitor import ebaymag_graphql as _G
+
+            all_nodes: list[dict] = []
+            after: str | None = None
+            page_no = 0
+            total: int | None = None
+            while True:
+                page_no += 1
+                conn = _G.list_products(page, first=200, after=after)
+                if total is None:
+                    total = conn.get("totalCount")
+                all_nodes.extend(conn.get("nodes") or [])
+                pi = conn.get("pageInfo") or {}
+                if not pi.get("hasNextPage"):
+                    break  # 正常終端
+                next_cursor = pi.get("endCursor")
+                if not next_cursor:
+                    # hasNextPage=True なのに endCursor 欠損 = pagination 截断 (map 不完全)。
+                    # silent に完走扱いしない (Q0 痕跡)。
+                    msg = (f"[fetch_product_map] pagination 截断: hasNextPage=True だが "
+                           f"endCursor 欠損 (page={page_no}, nodes={len(all_nodes)}) — map 不完全の可能性")
+                    logger.warning(msg)
+                    res.log.append(msg)
+                    break
+                if next_cursor == after:
+                    # cursor が前回と同一 = サーバ側 stuck。進行保証のため打ち切り (無限ループ防止)。
+                    msg = (f"[fetch_product_map] pagination stuck: endCursor が前回と同一 "
+                           f"(page={page_no}, cursor={next_cursor[:40]!r}) — 打ち切り (map 不完全の可能性)")
+                    logger.warning(msg)
+                    res.log.append(msg)
+                    break
+                after = next_cursor
+                if page_no > 30:  # 無限ループ防止 (200×30=6000 件で打ち切り)
+                    res._log("[fetch_product_map] 30 page guard 到達で打ち切り")
+                    break
+
+            product_map, collisions = _build_id_map(all_nodes)
+            res.product_map = product_map
+            if total and not product_map:
+                # 商品はあるのに抽出 0 = ITEM_ID_RE / GraphQL スキーマ破損の signal
+                # (内部レビュー MEDIUM、Q0 痕跡)。ok=True のままだが warning で可視化。
+                logger.warning(
+                    "[fetch_product_map] totalCount=%s なのに product_map が空 — "
+                    "regex/スキーマ破損の可能性 (nodes=%d)", total, len(all_nodes),
+                )
+            res._log(
+                f"product_map built: total={total} nodes={len(all_nodes)} "
+                f"mapped={len(product_map)} collisions_excluded={collisions}"
+            )
+            res.ok = True  # GraphQL 呼び出し成功 (map が空でも ok=True は正当、docstring 参照)
+    except Exception as e:
+        res.error = f"eBaymag product_map 構築失敗: {str(e) or type(e).__name__}"
+        logger.warning("fetch_product_map failed", exc_info=True)
+    return res
 
 
 def discover_product_id(query: str, expected_itm: str) -> EbaymagResult:
