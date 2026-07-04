@@ -233,3 +233,164 @@ def test_run_email_pickup_returns_inserted_count(temp_db, sample_emails, monkeyp
     keys = list(result.keys())
     assert keys.index("inserted_count") < keys.index("emails")
     assert keys.index("message") < keys.index("emails")
+
+
+# ---- #43 業務外ドメイン (楽天等) 自動アーカイブ + N/A ヘッダ大文字小文字バグ regression ----
+
+
+class TestHeaderValueCaseInsensitive:
+    """2026-07-04 #43: 楽天の一括配信メールが小文字ヘッダ名 ('subject'/'from') を送るため,
+    完全一致 (h['name'] == 'Subject') だと拾えず sender/subject が 'N/A' 固定になっていた."""
+
+    def test_lowercase_header_name_is_found(self):
+        from tasks.task_email_pickup import _header_value
+
+        headers = [
+            {"name": "subject", "value": "件名テスト"},
+            {"name": "from", "value": '"楽天" <info@emagazine.rakuten.co.jp>'},
+            {"name": "Date", "value": "Fri, 3 Jul 2026 16:39:39 +0900"},
+        ]
+        assert _header_value(headers, "Subject") == "件名テスト"
+        assert _header_value(headers, "From") == '"楽天" <info@emagazine.rakuten.co.jp>'
+        assert _header_value(headers, "Date") == "Fri, 3 Jul 2026 16:39:39 +0900"
+
+    def test_missing_header_falls_back_to_default(self):
+        from tasks.task_email_pickup import _header_value
+
+        headers = [{"name": "From", "value": "a@example.com"}]
+        assert _header_value(headers, "Subject") == "N/A"
+
+
+class TestNoiseSenderDomain:
+    def test_rakuten_subdomain_matches(self):
+        from tasks.task_email_pickup import _is_noise_domain
+
+        assert _is_noise_domain("emagazine.rakuten.co.jp")
+        assert _is_noise_domain("pay.rakuten.co.jp")
+        assert _is_noise_domain("rakuten.co.jp")
+
+    def test_ebay_domain_does_not_match(self):
+        from tasks.task_email_pickup import _is_noise_domain
+
+        assert not _is_noise_domain("ebay.com")
+        assert not _is_noise_domain("mail.yahoo.co.jp")
+
+    def test_empty_domain_does_not_match(self):
+        from tasks.task_email_pickup import _is_noise_domain
+
+        assert not _is_noise_domain("")
+
+
+class TestIsArchivableNoiseEmail:
+    def test_rakuten_promo_other_category_is_archivable(self):
+        from tasks.task_email_pickup import is_archivable_noise_email
+
+        assert is_archivable_noise_email(
+            "other", "promo", '"楽天カレンダー" <calendar-info@emagazine.rakuten.co.jp>'
+        )
+        assert is_archivable_noise_email(
+            "other", "other", '"楽天ペイ" <no-reply@pay.rakuten.co.jp>'
+        )
+
+    def test_ebay_sender_is_not_archivable(self):
+        """業務メール (eBay) はドメインがノイズリストに無いため対象外."""
+        from tasks.task_email_pickup import is_archivable_noise_email
+
+        assert not is_archivable_noise_email("other", "other", "eBay <ebay@ebay.com>")
+
+    def test_supplier_purchase_category_is_never_archived(self):
+        """money-direct guard: 楽天ドメインでも category='supplier_purchase' (入荷確認
+        ワークフロー対象) は誤って confirmed=1 にしない."""
+        from tasks.task_email_pickup import is_archivable_noise_email
+
+        assert not is_archivable_noise_email(
+            "supplier_purchase", "other", '"楽天ペイ" <order@checkout.rakuten.co.jp>'
+        )
+
+    def test_ai_category_return_blocks_archive(self):
+        """rule 側は 'other' でも AI が return/buyer_message 等の重要カテゴリと判定したら
+        対象外 (誤爆防止)."""
+        from tasks.task_email_pickup import is_archivable_noise_email
+
+        assert not is_archivable_noise_email(
+            "other", "return", '"楽天市場" <order@rakuten.co.jp>'
+        )
+
+    def test_na_sender_is_not_archivable(self):
+        """sender が 'N/A' (ドメイン抽出不能) の場合は fail-safe で対象外にする
+        (誤って重要メールを隠すリスクより、未アーカイブのまま残すほうが安全)."""
+        from tasks.task_email_pickup import is_archivable_noise_email
+
+        assert not is_archivable_noise_email("other", "other", "N/A")
+
+
+class TestSaveEmailsArchivesNoise:
+    def test_rakuten_noise_email_inserted_as_confirmed(self, temp_db, monkeypatch):
+        """楽天プロモメールは INSERT 時点で confirmed=1 になる (DASHBOARD 非表示)."""
+        from tasks import task_email_pickup as t
+
+        _patch_external(monkeypatch)
+        # rule category も 'other' になるよう Claude fallback を明示的に固定
+        monkeypatch.setattr(
+            "monitor.claude_summarizer.summarize_email",
+            lambda subject, sender, body: {"category": "promo", "priority": "low"},
+            raising=False,
+        )
+
+        noise_email = {
+            "id": "gmail_noise_1",
+            "subject": "楽天カレンダーお得なニュース",
+            "from": '"楽天カレンダー" <calendar-info@emagazine.rakuten.co.jp>',
+            "date": "Fri, 3 Jul 2026 16:39:39 +0900",
+            "body": "クーポンのお知らせ",
+            "category": "other",
+        }
+        inserted = t._save_emails_to_db([noise_email])
+        assert inserted == 1
+
+        with db.get_conn() as c:
+            row = c.execute(
+                "SELECT confirmed FROM emails WHERE gmail_id='gmail_noise_1'"
+            ).fetchone()
+        assert row["confirmed"] == 1
+
+    def test_ebay_email_inserted_as_unconfirmed(self, temp_db, sample_emails, monkeypatch):
+        """業務メール (eBay) は従来通り confirmed=0 で INSERT される (regression guard)."""
+        _patch_external(monkeypatch)
+        from tasks.task_email_pickup import _save_emails_to_db
+
+        _save_emails_to_db(sample_emails)
+        with db.get_conn() as c:
+            rows = c.execute(
+                "SELECT gmail_id, confirmed FROM emails ORDER BY gmail_id"
+            ).fetchall()
+        assert all(r["confirmed"] == 0 for r in rows)
+
+    def test_supplier_purchase_rakuten_email_not_archived(self, temp_db, monkeypatch):
+        """money-direct guard の統合テスト: 楽天の購入確認メール (category=
+        supplier_purchase) は INSERT 時に confirmed=1 にされない (入荷確認workflow温存)."""
+        from tasks import task_email_pickup as t
+
+        _patch_external(monkeypatch)
+        monkeypatch.setattr(
+            "monitor.claude_summarizer.summarize_email",
+            lambda subject, sender, body: {"category": "other", "priority": "low"},
+            raising=False,
+        )
+
+        purchase_email = {
+            "id": "gmail_purchase_1",
+            "subject": "楽天ペイ 注文受付（自動配信メール）",
+            "from": '"楽天ペイ" <order@checkout.rakuten.co.jp>',
+            "date": "Fri, 3 Jul 2026 21:35:17 +0900",
+            "body": "ご注文ありがとうございます",
+            "category": "supplier_purchase",
+        }
+        inserted = t._save_emails_to_db([purchase_email])
+        assert inserted == 1
+
+        with db.get_conn() as c:
+            row = c.execute(
+                "SELECT confirmed FROM emails WHERE gmail_id='gmail_purchase_1'"
+            ).fetchone()
+        assert row["confirmed"] == 0

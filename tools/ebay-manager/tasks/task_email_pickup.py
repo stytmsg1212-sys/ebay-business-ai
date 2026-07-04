@@ -111,6 +111,22 @@ def _extract_email_body(payload: dict) -> str:
     return ""
 
 
+def _header_value(headers: list, name: str, default: str = 'N/A') -> str:
+    """ヘッダ名を大文字小文字区別なしで取得する.
+
+    2026-07-04 #43: 楽天の一括配信メール (Mu-b メーラー) 等が RFC 上小文字ヘッダ名
+    ('subject'/'from') で送ってくるケースがあり、旧実装の完全一致 (h['name'] == 'Subject')
+    はこれを拾えず sender/subject が 'N/A' 固定で DB に保存されていた (実 Gmail API で
+    ヘッダ 'subject'/'from' の存在を確認、ヘッダ自体は欠落していなかった = 大文字小文字の
+    不一致が真因)。
+    """
+    name_lower = name.lower()
+    return next(
+        (h['value'] for h in headers if h.get('name', '').lower() == name_lower),
+        default,
+    )
+
+
 def _find_part(payload: dict, mime_type: str) -> str:
     """再帰的に指定MIMEタイプのパートを探す"""
     if payload.get('mimeType') == mime_type and payload.get('body', {}).get('data'):
@@ -186,6 +202,57 @@ _TARIFF_POLICY_SUBJECT_HINTS = (
     # 還付/返金 (refund)
     '関税還付', '関税返金', '関税の返金', 'tariff refund', 'duty refund',
 )
+
+# 2026-07-04 #43: 業務外ドメインの自動アーカイブ (INBOX ゴミメール除外、先行実装分).
+# _SUPPLIER_SENDER_HINTS 等と同じ「モジュール定数タプル」パターンに揃える (config
+# JSON へ切り出さなくても 1 行追記で拡張可能、既存の hint list 群と一貫性を保つ).
+# ドメインは末尾一致で判定するため、サブドメイン差分 (emagazine.rakuten.co.jp /
+# pay.rakuten.co.jp / shop.rakuten.co.jp 等) を 1 エントリでまとめて拾える。
+_NOISE_SENDER_DOMAINS = (
+    'rakuten.co.jp',
+    'rakuten.com',
+    'rakuten-bank.co.jp',
+)
+
+
+def _sender_domain(sender: str) -> str:
+    """From ヘッダ文字列からドメイン部分のみを取り出す (parseaddr ベース)."""
+    from email.utils import parseaddr
+    _, addr = parseaddr(sender or '')
+    if '@' not in addr:
+        return ''
+    return addr.rsplit('@', 1)[-1].strip().lower()
+
+
+def _is_noise_domain(domain: str, noise_domains: tuple = _NOISE_SENDER_DOMAINS) -> bool:
+    """ドメインが業務外ノイズ登録リストに一致するか (完全一致 or サブドメイン一致)."""
+    if not domain:
+        return False
+    return any(domain == nd or domain.endswith('.' + nd) for nd in noise_domains)
+
+
+def is_archivable_noise_email(category_rule: str, category_ai: str, sender: str) -> bool:
+    """業務外ドメイン (sender) + AI分類 (promo/other) の AND で自動アーカイブ対象か判定する.
+
+    2026-07-04 #43: DASHBOARD「REFERENCE・NON-URGENT INBOX」に楽天プロモ/レビュー依頼等の
+    私用メールが蓄積する問題への対応。判定は sender ドメイン + AI 分類の AND とし、
+    誤って business メールを落とさないようにする:
+
+    - rule ベースの category (_categorize_email) が 'other' 以外
+      (supplier_purchase/customs_request/tariff_policy/buyer_message/sale/offer/
+      return/payment/listing_notification 等) に分類済みなら対象外。
+      例: 楽天ペイの購入確認メールは category='supplier_purchase' となり
+      tab_purchase_confirm の入荷確認ワークフロー対象なので、ここで誤って
+      confirmed=1 にしない (money-direct: 在庫追加漏れ防止)。
+    - category_ai (Claude 判定) が存在し、かつ promo/other 以外ならやはり対象外
+      (Claude enrichment 失敗時は category_ai が rule category と同一値にフォール
+      バックされるため、これも安全に通る)。
+    """
+    if category_rule != 'other':
+        return False
+    if category_ai and category_ai not in ('promo', 'other'):
+        return False
+    return _is_noise_domain(_sender_domain(sender))
 
 
 def _categorize_email(subject: str, sender: str) -> str:
@@ -324,6 +391,7 @@ def _save_emails_to_db(emails: list) -> int:
     # Phase 2: 新規メールのみ enrichment + INSERT. Claude call は DB connection 外で実行
     # して他 UPDATE/SELECT を阻害しない. INSERT は per-row 新規 conn で短時間 lock.
     inserted = 0
+    archived_noise = 0  # 2026-07-04 #43: 業務外ドメイン自動アーカイブ件数
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for em in new_emails:
         body = em.get('body', '')
@@ -344,23 +412,33 @@ def _save_emails_to_db(emails: list) -> int:
             category_ai = em.get('category', 'other')
             ai = None
 
+        # 2026-07-04 #43: 業務外ドメイン (楽天プロモ等) + AI分類 (promo/other) の AND で
+        # 自動アーカイブ (confirmed=1、DASHBOARD 非表示) にする。sale/return/
+        # supplier_purchase 等の業務カテゴリは対象外 (is_archivable_noise_email 内で guard).
+        confirmed_val = 1 if is_archivable_noise_email(
+            em.get('category', 'other'), category_ai, em['from'],
+        ) else 0
+        if confirmed_val:
+            archived_noise += 1
+
         # Per-row INSERT: 新規 connection を都度開閉し DB lock 保持時間を ms オーダーに抑える.
         with get_conn() as conn:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO emails
                    (gmail_id, subject, sender, date, body_text, body_ja, category, fetched_at,
-                    summary_ja, action_ja, buyer_message_ja, priority_ai, category_ai, summarized_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    summary_ja, action_ja, buyer_message_ja, priority_ai, category_ai, summarized_at,
+                    confirmed)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (em['id'], em['subject'], em['from'], em['date'],
                  body, body_ja, em.get('category', 'other'), now,
                  summary_ja, action_ja, buyer_msg_ja, priority_ai, category_ai,
-                 now if ai else None)
+                 now if ai else None, confirmed_val)
             )
             inserted += cur.rowcount
 
     logger.info(
         f"メールDB保存: 取得{len(emails)}件 / 新規INSERT {inserted}件 / "
-        f"既存skip {skipped_existing}件"
+        f"既存skip {skipped_existing}件 / 業務外ドメイン自動アーカイブ {archived_noise}件"
     )
     return inserted
 
@@ -418,15 +496,15 @@ def extract_ebay_emails(service):
                 msg_data = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
                 headers = msg_data['payload']['headers']
 
-                subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'N/A')
-                sender = next((h['value'] for h in headers if h['name'] == 'From'), 'N/A')
+                subject = _header_value(headers, 'Subject')
+                sender = _header_value(headers, 'From')
 
                 email_info = {
                     'id': msg['id'],
                     'timestamp': datetime.now().isoformat(),
                     'subject': subject,
                     'from': sender,
-                    'date': next((h['value'] for h in headers if h['name'] == 'Date'), 'N/A'),
+                    'date': _header_value(headers, 'Date'),
                     'body': _extract_email_body(msg_data['payload']),
                     'category': _categorize_email(subject, sender),
                 }
