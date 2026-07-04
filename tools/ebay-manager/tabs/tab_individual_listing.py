@@ -203,6 +203,11 @@ def _init_session_state() -> None:
         f"{_SS}additional_processed": None,   # list[{source_url, path}] or None
         # Phase D: EPS アップロード済 URL (ローカル path → 公開 URL)
         f"{_SS}processed_image_urls": [],     # list[str] — eBay Trading に渡せる公開 URL 群
+        # W326 (2026-07-04): ローカル画像アップロード (仕入先に画像が無い場合の代替経路)
+        f"{_SS}uploaded_local_images": [],    # list[dict{name,size,path,width,height}] アップロード順
+        f"{_SS}uploaded_local_sigs": [],       # list[[name,size]] — file_uploader 差分検知用
+        f"{_SS}uploaded_local_eps_urls": [],   # list[Optional[str]] — uploaded_local_images と同順・同長
+        f"{_SS}uploaded_main_idx": 0,          # int — メイン画像に指定した index
         # フラグ
         f"{_SS}last_info": None,
         f"{_SS}last_error": None,
@@ -261,6 +266,13 @@ def _clear_from_step(step: int) -> None:
         # 値 key + widget key の両方を破棄 (Streamlit は widget key 経由で前入力を保持)。
         st.session_state[f"{_SS}extra_instructions"] = ""
         st.session_state.pop(f"{_SS}input_extra_instructions", None)
+        # W326: ローカルアップロード画像も別商品に持ち越さない。main_idx (int) は
+        # 上の汎用ループ (list/bool/None 分岐) だと None に落ちてしまうため個別 reset する。
+        st.session_state[f"{_SS}uploaded_local_images"] = []
+        st.session_state[f"{_SS}uploaded_local_sigs"] = []
+        st.session_state[f"{_SS}uploaded_local_eps_urls"] = []
+        st.session_state[f"{_SS}uploaded_main_idx"] = 0
+        st.session_state.pop(f"{_SS}uploader_local_images", None)
     if step <= 3:
         for k in step4_keys:
             st.session_state[k] = None if k in (
@@ -289,6 +301,21 @@ def _dataclass_to_dict(obj: Any) -> Optional[dict]:
     if isinstance(obj, dict):
         return dict(obj)
     return None
+
+
+def _safe_dir_name(raw_sku: Optional[str]) -> str:
+    """SKU をファイルシステム安全なディレクトリ名にサニタイズする.
+
+    有在庫 SKU は `stock:01` のようにコロンを含むのが正式仕様 (sku-rules.md) だが、
+    Windows では `:` はパス不正文字で mkdir が OSError で落ちる (W326 code review M1)。
+    英数字 / `.` / `_` / `-` 以外を全て `_` に置換し、空になった場合は
+    `temp_<epoch>` を返す (`data/hero_candidates/{sku}` / `data/uploaded_images/{sku}`
+    の 3 か所で共有)。
+    """
+    import re
+    sku = str(raw_sku or "").strip()
+    sanitized = re.sub(r"[^A-Za-z0-9._-]", "_", sku)
+    return sanitized or f"temp_{int(time.time())}"
 
 
 # =========================================================================
@@ -700,6 +727,251 @@ def _render_step2_scrape_result() -> None:
         if manual:
             _render_manual_fallback_form(product)
 
+    # W326 (2026-07-04): 画像アップロード (仕入先に画像が無い/手動入力モードでも
+    # 使えるよう、上の container の外・manual 分岐に関係なく常時表示する)
+    _render_local_image_upload_section()
+
+
+# =========================================================================
+# W326 (2026-07-04): ローカル画像アップロード (仕入先に画像が無い場合の代替経路)
+#
+# 依頼ボード原文: 「個別出品で有在庫商品を出品する際、画像をアップロードする方法が
+# なく出品できない。画像合成以外に画像をアップロードする仕組みを追加してほしい」。
+#
+# 既存の Brand Hero Compose / EPS upload (Step 2.5-2.7) とは独立した経路。
+# アップロードしたファイルは即ローカル保存し、専用ボタンで eBay EPS にアップロード。
+# 結果は _resolve_listing_image_urls() で他画像 (合成/スクレイプ) と併用マージされる。
+# =========================================================================
+
+def _render_local_image_upload_section() -> None:
+    """ローカル画像ファイルをアップロードするセクション (合成/スクレイプ画像と併用可能)."""
+    st.markdown(
+        _il_step_label(
+            "2.4", "L O C A L &nbsp; I M A G E &nbsp; U P L O A D",
+            margin="18px 0 6px",
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        st.caption(
+            "仕入先に画像が無い場合や、自分で撮影した写真を使いたい場合はここから"
+            "アップロードします。画像合成 (Step 2.5) と併用可能 — 出品時にまとめて使われます。"
+        )
+        files = st.file_uploader(
+            "画像ファイルを選択 (複数可)",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key=f"{_SS}uploader_local_images",
+        )
+        if files:
+            _sync_uploaded_local_images(files)
+
+        uploaded = st.session_state.get(f"{_SS}uploaded_local_images") or []
+        if not uploaded:
+            return
+
+        from tabs._supplier_photo_pipeline import is_low_resolution
+
+        st.markdown(f"**アップロード済み画像 ({len(uploaded)} 枚)**")
+        main_idx = int(st.session_state.get(f"{_SS}uploaded_main_idx") or 0)
+        if main_idx >= len(uploaded):
+            main_idx = 0
+            st.session_state[f"{_SS}uploaded_main_idx"] = 0
+
+        cols = st.columns(min(len(uploaded), 5))
+        for idx, item in enumerate(uploaded):
+            col = cols[idx % 5]
+            with col:
+                try:
+                    st.image(item["path"], use_container_width=True)
+                except Exception:  # noqa: BLE001
+                    st.caption(f"(プレビュー失敗) {item.get('name')}")
+                st.caption(f"#{idx + 1}" + (" [メイン]" if idx == main_idx else ""))
+                w, h = item.get("width"), item.get("height")
+                if w and h and is_low_resolution(w, h):
+                    st.caption(f"低解像度 ({w}x{h}px, 500px未満)")
+                if idx != main_idx and st.button(
+                    "メインに設定", key=f"{_SS}btn_upload_main_{idx}",
+                ):
+                    st.session_state[f"{_SS}uploaded_main_idx"] = idx
+                    st.rerun()
+
+        uploaded_eps = st.session_state.get(f"{_SS}uploaded_local_eps_urls") or []
+        eps_ready = bool(uploaded_eps) and len(uploaded_eps) == len(uploaded) and all(uploaded_eps)
+        _b1, _b2, _b3 = st.columns([1.4, 1.2, 4])
+        with _b1:
+            label = "EPS アップロード実行" if not uploaded_eps else "再アップロード"
+            if st.button(label, key=f"{_SS}btn_upload_eps", type="primary"):
+                _upload_local_images_to_eps()
+                st.rerun()
+        with _b2:
+            if st.button("全てクリア", key=f"{_SS}btn_upload_clear"):
+                st.session_state[f"{_SS}uploaded_local_images"] = []
+                st.session_state[f"{_SS}uploaded_local_sigs"] = []
+                st.session_state[f"{_SS}uploaded_local_eps_urls"] = []
+                st.session_state[f"{_SS}uploaded_main_idx"] = 0
+                st.session_state.pop(f"{_SS}uploader_local_images", None)
+                st.rerun()
+        with _b3:
+            if eps_ready:
+                st.caption(f"{len(uploaded)} 枚 EPS アップロード済 — 出品時に使用されます")
+            elif uploaded_eps:
+                ok = sum(1 for u in uploaded_eps if u)
+                st.caption(f"{ok}/{len(uploaded)} 枚のみ成功 — 失敗分があります (上のエラー参照)")
+
+
+def _sync_uploaded_local_images(files: list) -> None:
+    """st.file_uploader の返却値を session_state['uploaded_local_images'] に同期する.
+
+    Streamlit は widget の入力が変わらない限り毎 rerun で同じ UploadedFile 一覧を
+    返す。(name, size) を signature として前回との差分を検知し、差分がある時のみ
+    ディスク保存 + 解像度取得を行う (重複 I/O 防止)。差分検知時は EPS 済 URL を
+    クリアする (画像集合が変わったので再アップロードが必要、silent 不整合防止)。
+    """
+    import hashlib
+    from pathlib import Path as _Path
+
+    from tabs._supplier_photo_pipeline import check_image_resolution
+
+    sigs = [[f.name, f.size] for f in files]
+    prev_sigs = st.session_state.get(f"{_SS}uploaded_local_sigs") or []
+    if sigs == prev_sigs:
+        return  # 変化なし (再保存不要)
+
+    # W326 M1: `stock:01` 等の `:` を含む有在庫 SKU で mkdir が Windows で落ちる問題の防止.
+    out_dir = _Path(f"data/uploaded_images/{_safe_dir_name(st.session_state.get(f'{_SS}sku'))}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 既存保存済みファイルを (name,size) で再利用 (同一ファイルの再保存を避ける)
+    existing_by_sig = {
+        (item.get("name"), item.get("size")): item
+        for item in (st.session_state.get(f"{_SS}uploaded_local_images") or [])
+    }
+
+    new_list: list[dict] = []
+    save_failures: list[str] = []
+    for f in files:
+        sig = (f.name, f.size)
+        cached = existing_by_sig.get(sig)
+        if cached and _Path(cached["path"]).exists():
+            new_list.append(cached)
+            continue
+        content = f.getvalue()
+        digest = hashlib.sha256(content).hexdigest()[:12]
+        suffix = _Path(f.name).suffix or ".jpg"
+        save_path = out_dir / f"{digest}{suffix}"
+        try:
+            save_path.write_bytes(content)
+        except OSError as e:
+            logger.warning(f"アップロード画像の保存失敗 ({f.name}): {e}")
+            save_failures.append(f.name)
+            continue
+        dims = check_image_resolution(save_path)
+        new_list.append({
+            "name": f.name,
+            "size": f.size,
+            "path": str(save_path),
+            "width": dims[0] if dims else None,
+            "height": dims[1] if dims else None,
+        })
+    # W326 L1: 保存失敗が発生した場合は user に見える形で明示 (Q0 silent drop 防止).
+    if save_failures:
+        st.warning(
+            f"{len(save_failures)} 枚を保存できませんでした: "
+            + ", ".join(save_failures[:5])
+            + (" ..." if len(save_failures) > 5 else "")
+        )
+
+    st.session_state[f"{_SS}uploaded_local_images"] = new_list
+    st.session_state[f"{_SS}uploaded_local_sigs"] = sigs
+    # 画像集合が変わったので EPS 済 URL は無効化 (index 不整合を防ぐため必ずクリア)
+    st.session_state[f"{_SS}uploaded_local_eps_urls"] = []
+    main_idx = st.session_state.get(f"{_SS}uploaded_main_idx") or 0
+    if main_idx >= len(new_list):
+        st.session_state[f"{_SS}uploaded_main_idx"] = 0
+
+
+def _upload_local_images_to_eps() -> None:
+    """アップロード済みローカル画像を eBay EPS にアップロードする.
+
+    既存の hero/additional EPS upload (Step 2.7) と同じ
+    monitor.image_pipeline_shared.upload_to_eps_cached を再利用 (K1: 新規実装しない)。
+
+    結果は uploaded_local_images と同じ順・同じ長さの list[Optional[str]] で保存する
+    (失敗は None のまま = Q0 silent skip 防止)。_resolve_uploaded_local_urls_ordered は
+    None が 1 件でも混在する間は空リストを返し、STEP5 で Add ボタンをブロックする
+    ("EPS 失敗時はエラー明示で出品中断" 要件)。
+    """
+    from pathlib import Path as _Path
+
+    from monitor.image_pipeline_shared import upload_to_eps_cached
+
+    images = st.session_state.get(f"{_SS}uploaded_local_images") or []
+    if not images:
+        return
+
+    paths = [_Path(item["path"]) for item in images]
+    with st.status(
+        f"eBay EPS に {len(paths)} 枚アップロード中 (~{len(paths) * 3} 秒)...",
+        expanded=True,
+    ) as _s:
+        outcome = upload_to_eps_cached(paths, max_workers=3, use_cache=True)
+        failed_names = {name for name, _err in outcome.failed}
+        url_iter = iter(outcome.eps_urls)
+        results: list[Optional[str]] = []
+        for p in paths:
+            results.append(None if p.name in failed_names else next(url_iter, None))
+
+        st.session_state[f"{_SS}uploaded_local_eps_urls"] = results
+
+        ok_count = sum(1 for r in results if r)
+        if outcome.failed:
+            _s.update(label=f"部分失敗: {ok_count}/{len(paths)} 枚成功", state="error")
+            for fname, err in outcome.failed:
+                st.error(f"アップロード失敗: {fname}: {err}")
+        else:
+            _s.update(label=f"完了: {ok_count} 枚 EPS にアップロード", state="complete")
+
+
+def _local_upload_pending() -> bool:
+    """アップロード済みローカル画像に対する EPS upload が未完了 or 一部失敗ならば True.
+
+    W326 M2 (2026-07-04 code review): STEP5 Add ボタン disable ゲートと
+    `_resolve_uploaded_local_urls_ordered` の完了判定を単一 helper に集約する
+    (2 か所で同じ判定式を書き分けると片方の変更漏れで silent 出品事故になり得るため)。
+
+    True の意味:
+      - アップロードした画像があるが未 EPS アップロード
+      - あるいは EPS 結果 list に None が混在 (一部失敗)
+      - あるいは list 長が images と一致しない (整合性崩れ)
+    False の場合はそのまま出品可能 (EPS 未使用の商品も False = pending でない)。
+    """
+    images = st.session_state.get(f"{_SS}uploaded_local_images") or []
+    if not images:
+        return False  # そもそもアップロードしていない = pending でない
+    eps_urls = st.session_state.get(f"{_SS}uploaded_local_eps_urls") or []
+    if len(eps_urls) != len(images):
+        return True
+    return not all(eps_urls)
+
+
+def _resolve_uploaded_local_urls_ordered() -> list[str]:
+    """アップロード済みローカル画像の EPS URL を、メイン画像優先順で返す.
+
+    uploaded_local_images (アップロード順) と uploaded_local_eps_urls (同順・同長)
+    を対応付け、uploaded_main_idx で指定された画像を先頭に並べ替える。
+    未アップロード / 一部失敗 (None 混在) の間は空リストを返す (Q0: 画像なし出品を
+    silent に許さない。STEP5 側で Add ボタンをブロックして user に明示する)。
+    """
+    images = st.session_state.get(f"{_SS}uploaded_local_images") or []
+    if not images or _local_upload_pending():
+        return []
+    eps_urls = st.session_state.get(f"{_SS}uploaded_local_eps_urls") or []
+    main_idx = int(st.session_state.get(f"{_SS}uploaded_main_idx") or 0)
+    if not (0 <= main_idx < len(eps_urls)):
+        main_idx = 0
+    return [eps_urls[main_idx]] + [u for i, u in enumerate(eps_urls) if i != main_idx]
+
 
 def _render_hero_compose_section() -> None:
     """Photoroom + Gemini でブランド hero 画像を合成するセクション.
@@ -991,8 +1263,8 @@ def _do_process_additional_images(urls: list[str], force_regenerate: bool = Fals
         st.error(f"image_pipeline_shared import 失敗: {e}")
         return
 
-    sku = st.session_state.get(f"{_SS}sku") or f"temp_{int(time.time())}"
-    out_base = _Path(f"data/hero_candidates/{sku}")
+    # W326 M1: `stock:01` 等の `:` を含む有在庫 SKU で Windows mkdir が落ちるのを防止.
+    out_base = _Path(f"data/hero_candidates/{_safe_dir_name(st.session_state.get(f'{_SS}sku'))}")
 
     with st.status(
         f"{len(urls)} 枚を Photoroom で並列処理中...", expanded=False,
@@ -1132,8 +1404,8 @@ def _do_hero_compose(
         st.error(f"image_pipeline_shared import 失敗: {e}")
         return
 
-    sku = st.session_state.get(f"{_SS}sku") or f"temp_{int(time.time())}"
-    out_base = _Path(f"data/hero_candidates/{sku}")
+    # W326 M1: `stock:01` 等の `:` を含む有在庫 SKU で Windows mkdir が落ちるのを防止.
+    out_base = _Path(f"data/hero_candidates/{_safe_dir_name(st.session_state.get(f'{_SS}sku'))}")
 
     # 依頼ボード (2026-06-18): 失敗 st.error を st.status(expanded=False) の中で出すと
     # collapsed に隠れて user に見えない (=「合成されないがエラーも出ない」Q0)。
@@ -1461,16 +1733,29 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
         gen_clicked = st.button("生成", key=f"{_SS}btn_generate", type="primary")
 
     # 画像加工ステータス表示 (3 状態に分岐、Phase D 済み)
+    # W326 (2026-07-04): Step 2.4 のローカルアップロード画像も勘定に入れる
+    # (アップロードのみで scraped 画像なしのユースケースで「画像が1枚も選択されて
+    # いません」と誤表示されていた事故の修正)。
     img_urls = st.session_state.get(f"{_SS}selected_image_urls") or []
     hero_selected = st.session_state.get(f"{_SS}hero_selected_path")
     additional_processed = st.session_state.get(f"{_SS}additional_processed") or []
     eps_uploaded = st.session_state.get(f"{_SS}processed_image_urls") or []
-    if not img_urls:
+    uploaded_local_eps = [
+        u for u in (st.session_state.get(f"{_SS}uploaded_local_eps_urls") or []) if u
+    ]
+    uploaded_local_count = len(st.session_state.get(f"{_SS}uploaded_local_images") or [])
+    if not img_urls and not uploaded_local_count:
         st.info("画像が1枚も選択されていません (eBay は画像必須の category が多い点に注意)。")
-    elif eps_uploaded:
+    elif eps_uploaded or uploaded_local_eps:
+        parts = []
+        if eps_uploaded:
+            parts.append(f"加工画像 {len(eps_uploaded)} 枚")
+        if uploaded_local_eps:
+            parts.append(f"アップロード画像 {len(uploaded_local_eps)} 枚")
         st.success(
-            f"加工画像 {len(eps_uploaded)} 枚を eBay EPS にアップロード済。"
-            f"出品時にはこれらの公開 URL が **そのまま eBay に送信されます** (Phase D 完了)。"
+            " + ".join(parts)
+            + " を eBay EPS にアップロード済。"
+            "出品時にはこれらの公開 URL が **そのまま eBay に送信されます**。"
         )
     elif hero_selected or additional_processed:
         local_count = (1 if hero_selected else 0) + len(additional_processed)
@@ -1479,10 +1764,19 @@ def _render_step3_listing_settings(templates: list[dict]) -> None:
             f"このまま出品すると仕入先 URL ({len(img_urls)} 枚) が使われます。\n\n"
             f"Step 2.7 で「EPS アップロード実行」ボタンを押すと加工版が出品に反映されます。"
         )
+    elif uploaded_local_count:
+        # アップロードのみ (合成なし・scraped なしも含む) で EPS 未完了のケース。
+        # STEP5 側でも disabled ゲートが立つが、生成前段階で user に見える形にする。
+        st.warning(
+            f"アップロード画像 {uploaded_local_count} 枚はローカル保存済ですが、"
+            f"**eBay EPS 未アップロード**。Step 2.4 の「EPS アップロード実行」を押すと"
+            f"出品に反映されます。"
+        )
     else:
         st.info(
             f"画像加工未実施: 仕入先の画像URL ({len(img_urls)} 枚) をそのまま使用します。"
             f" ブランドプレート合成は Step 2.5、背景統一は Step 2.6 で実行できます。"
+            f" 手元の画像を使いたい場合は Step 2.4 のアップロードもご利用ください。"
         )
 
     if gen_clicked:
@@ -2050,6 +2344,16 @@ def _render_step5_verify_add(settings: dict) -> None:
     if not market_selected:
         st.info("出品区分を選択すると Verify / Add が有効になります。")
 
+    # W326 (2026-07-04): アップロードした画像が EPS 未完了のまま出品されないための
+    # ガード (Q0: silent に画像なし出品しない)。Step 2.4 のボタンを押すまで Add は無効。
+    # M2: 判定は _local_upload_pending() へ集約 (resolve 側と単一情報源)。
+    upload_pending = _local_upload_pending()
+    if upload_pending:
+        st.error(
+            "Step 2.4 でアップロードした画像がまだ eBay EPS にアップロードされていません。"
+            "「EPS アップロード実行」を押してから出品してください。"
+        )
+
     # draft_params 構築
     draft_params = _build_current_draft_params(effective_shipping, settings)
     if not draft_params:
@@ -2074,15 +2378,20 @@ def _render_step5_verify_add(settings: dict) -> None:
         confirmed = st.checkbox(
             "最終確認: eBay に Active 出品 (即時公開)",
             key=confirm_key, value=False,
-            disabled=has_errors or already_submitted or (not effective_shipping) or (not market_selected),
+            disabled=(
+                has_errors or already_submitted or (not effective_shipping)
+                or (not market_selected) or upload_pending
+            ),
             help="チェック後に「ドラフト保存 & eBay登録」ボタンが有効化されます",
         )
         add_disabled = (
             (not effective_shipping) or (not market_selected)
-            or has_errors or already_submitted or (not confirmed)
+            or has_errors or already_submitted or (not confirmed) or upload_pending
         )
         if not market_selected:
             add_help = "先に「出品区分 (販売先)」を選択してください。"
+        elif upload_pending:
+            add_help = "先に Step 2.4 で画像を EPS アップロードしてください。"
         elif already_submitted:
             add_help = (
                 f"既に ItemID={prev_add.get('ebay_item_id')} で登録済。"
@@ -2123,17 +2432,34 @@ def _resolve_listing_image_urls() -> list[str]:
 
     Phase A (2026-04-23) 時点では W10 画像加工未実装のため processed は常に空で、
     実質 selected のみを返す。Phase D で processed を優先する実装に差し替える。
+
+    W326 (2026-07-04): 上記の優先順チェーンはそのまま (既存挙動を変えない)、
+    ローカルアップロード画像 (EPS 済) があれば先頭に併合する。合成/スクレイプ画像
+    と併用可能にする要件のための追加のみ (K2 surgical)。
     """
     processed = list(st.session_state.get(f"{_SS}processed_image_urls") or [])
     if processed:
-        return processed[:24]
-    selected = list(st.session_state.get(f"{_SS}selected_image_urls") or [])
-    if selected:
-        return selected[:24]
-    # supplier_image_urls fallback (scraped_product.image_urls が原源)
-    product_dict = st.session_state.get(f"{_SS}scraped_product") or {}
-    raw = list(product_dict.get("image_urls") or [])
-    return raw[:24]
+        base = processed[:24]
+    else:
+        selected = list(st.session_state.get(f"{_SS}selected_image_urls") or [])
+        if selected:
+            base = selected[:24]
+        else:
+            # supplier_image_urls fallback (scraped_product.image_urls が原源)
+            product_dict = st.session_state.get(f"{_SS}scraped_product") or {}
+            base = list(product_dict.get("image_urls") or [])[:24]
+
+    uploaded = _resolve_uploaded_local_urls_ordered()
+    if not uploaded:
+        return base
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for u in uploaded + base:
+        if u and u not in seen:
+            seen.add(u)
+            merged.append(u)
+    return merged[:24]
 
 
 def _build_current_draft_params(shipping_policy_id: str, settings: dict) -> Optional[dict]:
