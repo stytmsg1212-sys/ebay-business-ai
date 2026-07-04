@@ -430,12 +430,13 @@ def render_dashboard_tab(s: dict) -> None:
         .dash-kpi b { font-size:13px; color:#2a2e2a; }
         .mail-row {
             padding: 6px 12px; margin-bottom: 5px; font-size: 12px; line-height: 1.4;
-            background: rgba(14,79,75,0.03); border-radius: 0 4px 4px 0;
+            background: #ffffff; border-radius: 0 4px 4px 0;
             border: 1px solid rgba(14,79,75,0.1); border-left: 3px solid rgba(14,79,75,0.35);
         }
-        .mail-row.sale { border-left-color: #2e7d5b; background: rgba(46,125,91,0.04); }
-        .mail-row.return { border-left-color: #a8341b; background: rgba(168,52,27,0.04); }
-        .mail-row.offer { border-left-color: #b8860b; background: rgba(184,134,11,0.04); }
+        /* #43-relayout 差戻し (2026-07-04): 赤ベタ背景をやめ左ボーダー色のみで
+           優先度を示す (最優先=赤/高=橙)。背景は全件 白 (.mail-row 既定) に統一。 */
+        .mail-row.pri-urgent { border-left-color: #a8341b; }
+        .mail-row.pri-high { border-left-color: #b8860b; }
         .task-section {
             font-family: Inter, sans-serif; font-size: 11px; font-weight: 400;
             color: #5f6557; letter-spacing: 1.5px; text-transform: uppercase;
@@ -581,50 +582,66 @@ def render_dashboard_tab(s: dict) -> None:
         _nc_css_state["emitted"] = True
         return _nc_render_row(_n, include_css=_first) if _nc_render_row else ""
 
+    def _render_nc_action_row(_n: dict, key_prefix: str) -> None:
+        """1 通知行 + アクションボタンを一貫レイアウトで描画 (P1/P2 共通ヘルパ)。
+
+        #43-relayout 差戻し (2026-07-04):
+        - 旧 [12,1,1] 比率は側カラムが ~7% 幅しかなく、ボタン文字列が折り返して
+          ✓ ボタンと縦積みに崩れて見える不具合の原因だった → [8,2,2]/[10,2] へ拡幅。
+        - `vertical_alignment="center"` (Streamlit 1.56 対応、tab_today_tasks.py で
+          既採用の流儀) で HTML 行 (~26px) と Streamlit ボタン (~38px) の高さ差を
+          縦中央合わせし、右端に横並び 1 行で揃える。
+        - 「開く」は意味不明 (fb) のため「詳細」に統一。
+        """
+        _nav = _nc_get_nav_target(_n.get("link_target") or _n.get("category"))
+        if _nav:
+            _c_body, _c_detail, _c_read = st.columns([8, 2, 2], vertical_alignment="center")
+        else:
+            _c_body, _c_read = st.columns([10, 2], vertical_alignment="center")
+            _c_detail = None
+        with _c_body:
+            st.markdown(_render_nc_row(_n), unsafe_allow_html=True)
+        if _c_detail is not None:
+            with _c_detail:
+                if st.button("詳細", key=f"{key_prefix}_detail_{_n['id']}"):
+                    st.session_state["_w134_sel"] = _nav[0]
+                    st.session_state["_w217a_cat_view"] = _nav[1]
+                    _nc_mark_read([_n["id"]])
+                    bump_db_version()
+                    st.rerun()
+        with _c_read:
+            if st.button("✓", key=f"{key_prefix}_read_{_n['id']}"):
+                _nc_mark_read([_n["id"]])
+                bump_db_version()
+                st.rerun()
+
     # ================= 左右 2 カラム =================
     col_left, col_right = st.columns(2, gap="large")
 
     with col_left:
         # ── 🔔 通知センター (重要度 P1、開かずフラット表示) ──
-        st.markdown("**🔔 通知センター**")
+        # #43-relayout 差戻し: 「全て既読にする」ボタンを見出し行右端の小型ボタンへ移動
+        # (旧: 見出しの下に単独行でフル幅表示、視覚ノイズだった)。
+        _nc_h_l, _nc_h_r = st.columns([3, 2])
+        with _nc_h_l:
+            st.markdown("**🔔 通知センター**")
+        if _nc_available and _nc_total_unread > 0:
+            with _nc_h_r:
+                if st.button(f"✓ 全て既読 ({_nc_total_unread})", key="nc_mark_all_read"):
+                    _nc_mark_all_read()
+                    bump_db_version()
+                    st.rerun()
         if not _nc_available:
             st.caption("準備中 (基盤実装待ち)")
         elif _nc_total_unread == 0:
             st.markdown('<span class="clear-status">✓ 新しい通知はありません</span>', unsafe_allow_html=True)
         else:
-            if st.button(f"✓ 全て既読にする ({_nc_total_unread}件)", key="nc_mark_all_read"):
-                _nc_mark_all_read()
-                bump_db_version()
-                st.rerun()
-
             if not _nc_p1_rows:
                 st.caption("重要カテゴリ (注文/要対応/競合・最安値/在庫) の未読はありません")
             else:
                 _NC_P1_SHOW = 10
                 for _nc_n in _nc_p1_rows[:_NC_P1_SHOW]:
-                    # 1 通知 = コンパクト 1 行 (~30px)。ボタンは同一行右端に小型配置。
-                    # link_target で「開く」ボタンの有無を切り替える (マップ外は左詰め)。
-                    _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_n.get("category"))
-                    if _nc_nav:
-                        _c_body, _c_open, _c_read = st.columns([12, 1, 1])
-                    else:
-                        _c_body, _c_read = st.columns([13, 1])
-                        _c_open = None
-                    with _c_body:
-                        st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
-                    if _c_open is not None:
-                        with _c_open:
-                            if st.button("開く", key=f"nc_p1_open_{_nc_n['id']}"):
-                                st.session_state["_w134_sel"] = _nc_nav[0]
-                                st.session_state["_w217a_cat_view"] = _nc_nav[1]
-                                _nc_mark_read([_nc_n["id"]])
-                                bump_db_version()
-                                st.rerun()
-                    with _c_read:
-                        if st.button("✓", key=f"nc_p1_read_{_nc_n['id']}"):
-                            _nc_mark_read([_nc_n["id"]])
-                            bump_db_version()
-                            st.rerun()
+                    _render_nc_action_row(_nc_n, "nc_p1")
                 _nc_p1_over = len(_nc_p1_rows) - _NC_P1_SHOW
                 if _nc_p1_over > 0:
                     with st.expander(f"他 {_nc_p1_over} 件 (重要通知の続き)", expanded=False):
@@ -706,22 +723,33 @@ def render_dashboard_tab(s: dict) -> None:
             product = _pm.group(1).strip()[:40] if _pm else ''
 
             if cat == 'buyer_message':
-                action_color = '#b8860b'
-                row_cls = 'mail-row'
                 is_reply = subj.startswith('Re:')
                 type_label = f'{sender} — {"返信" if is_reply else "問い合わせ"}'
             elif cat == 'offer':
-                action_color = '#b8860b'
-                row_cls = 'mail-row offer'
                 type_label = f'{sender} — オファー'
             elif cat == 'return':
-                action_color = '#a8341b'
-                row_cls = 'mail-row return'
                 type_label = f'{sender} — 返品リクエスト'
+            else:
+                type_label = f'{sender} — {cat}'
+
+            # #43-relayout 差戻し (2026-07-04): 左ボーダー色/背景は「優先度」基準に
+            # 統一 (最優先=赤/高=橙)。優先度未設定時のみカテゴリ由来の accent に
+            # フォールバック (背景は常に白、赤ベタ背景を廃止)。
+            if _pri_ai == 'urgent':
+                action_color = '#a8341b'
+                row_cls = 'mail-row pri-urgent'
+            elif _pri_ai == 'high':
+                action_color = '#b8860b'
+                row_cls = 'mail-row pri-high'
+            elif cat == 'return':
+                action_color = '#a8341b'
+                row_cls = 'mail-row pri-urgent'
+            elif cat == 'offer':
+                action_color = '#b8860b'
+                row_cls = 'mail-row pri-high'
             else:
                 action_color = '#5f6557'
                 row_cls = 'mail-row'
-                type_label = f'{sender} — {cat}'
 
             _pri_badge = ''
             if _pri_ai == 'urgent':
@@ -815,15 +843,18 @@ def render_dashboard_tab(s: dict) -> None:
         st.markdown("**📦 在庫・価格の要点**")
         _sp = _cd_stock_price_summary(_dbv)
         if _sp["supply_risk_count"] > 0:
-            _c_sr_txt, _c_sr_btn = st.columns([3, 1])
+            # #43-relayout 差戻し (2026-07-04): ボタンは見出し行と同じ行内の右端に
+            # 揃える (旧: 3行分の caption と並ぶ 1 ボタンで浮いて見えた不具合)。
+            # top3 一覧は行の下に全幅で表示する。
+            _c_sr_txt, _c_sr_btn = st.columns([3, 1], vertical_alignment="center")
             with _c_sr_txt:
                 st.markdown(f"🔴 仕入先 在庫切れ **{_sp['supply_risk_count']}件**")
-                for _r in _sp["supply_risk_top3"]:
-                    _title_disp = (_r.get('title') or _r.get('ebay_item_id') or '?')[:40]
-                    st.caption(f"・{_title_disp}")
             with _c_sr_btn:
                 if st.button("在庫監視で対応 →", key="dash_goto_inventory"):
                     _dash_nav("在庫監視", "★ 毎日")
+            for _r in _sp["supply_risk_top3"]:
+                _title_disp = (_r.get('title') or _r.get('ebay_item_id') or '?')[:40]
+                st.caption(f"・{_title_disp}")
         else:
             st.markdown('<span class="clear-status">✓ 仕入先在庫切れなし</span>', unsafe_allow_html=True)
 
@@ -831,7 +862,7 @@ def render_dashboard_tab(s: dict) -> None:
         _own_out = kpis.get("own_stock_out", 0)
         _own_unset = kpis.get("own_stock_unset", 0)
         if _own_out or _own_unset:
-            _c_os_txt, _c_os_btn = st.columns([3, 1])
+            _c_os_txt, _c_os_btn = st.columns([3, 1], vertical_alignment="center")
             with _c_os_txt:
                 st.markdown(
                     f'<div style="font-size:12px;line-height:1.5;">'
@@ -865,34 +896,20 @@ def render_dashboard_tab(s: dict) -> None:
         # ── 🗂 その他の通知 (P2、閉じておく。#43-relayout で通知センターの
         #    左カラム脱出分をこちらへ集約し、右カラムの空白を解消) ──
         if _nc_available and _nc_p2_cats:
-            st.markdown("**🗂 その他の通知**")
+            # 見出し-expander 間隔を詰める (#43-relayout 差戻し: st.markdown 既定の
+            # 段落マージンを回避し、タイトなインライン div にする)。
+            st.markdown(
+                '<div style="font-weight:600;font-size:14px;margin:2px 0 2px 0;">'
+                '🗂 その他の通知</div>',
+                unsafe_allow_html=True,
+            )
             for _nc_cat, _nc_cnt in _nc_p2_cats:
                 _nc_label = _nc_cat_label(_nc_cat)
                 _nc_emoji_c = _nc_cat_emoji(_nc_cat)
                 with st.expander(f"{_nc_emoji_c} {_nc_label} ({_nc_cnt})", expanded=False):
                     _nc_rows = _cd_notification_rows(_dbv, True, _nc_cat, 10)
                     for _nc_n in _nc_rows:
-                        _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_cat)
-                        if _nc_nav:
-                            _c_body, _c_open, _c_read = st.columns([12, 1, 1])
-                        else:
-                            _c_body, _c_read = st.columns([13, 1])
-                            _c_open = None
-                        with _c_body:
-                            st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
-                        if _c_open is not None:
-                            with _c_open:
-                                if st.button("開く", key=f"nc_open_{_nc_cat}_{_nc_n['id']}"):
-                                    st.session_state["_w134_sel"] = _nc_nav[0]
-                                    st.session_state["_w217a_cat_view"] = _nc_nav[1]
-                                    _nc_mark_read([_nc_n["id"]])
-                                    bump_db_version()
-                                    st.rerun()
-                        with _c_read:
-                            if st.button("✓", key=f"nc_read_{_nc_cat}_{_nc_n['id']}"):
-                                _nc_mark_read([_nc_n["id"]])
-                                bump_db_version()
-                                st.rerun()
+                        _render_nc_action_row(_nc_n, f"nc_{_nc_cat}")
                     _nc_over = _nc_cnt - len(_nc_rows)
                     if _nc_over > 0:
                         st.caption(f"... 他 {_nc_over} 件 (上位10件表示)")

@@ -15,12 +15,20 @@ S1 (``monitor/notification_log_db.py``) の実装確定:
   グレー + 右寄せ時刻)。ベル単独行・「Discord 通知済」表示は廃止。
 - ボタン (開く / ✓既読) は Streamlit 側で同一行右端に小型配置 (``st.columns``)。
 - 相対時刻は「たった今 / N分前 / N時間前 / 昨日 / N日前 / M/D」形式 (「昨日」を追加)。
+
+DASHBOARD 磨き込み (2026-07-04、依頼ボード #39 差し戻し対応):
+- ``humanize_notification_text()``: DB 保存済みの古い通知 (発行側の文言修正が
+  間に合わなかった過去分) に残る内部変数露出 ("W153 truncation" / "processed=868,
+  issues=818" / "max_listings_per_run=30" 等) を **render 時**に業務語へ変換する
+  層。発行側 (tasks/) の文言修正は過去 DB レコードには反映されないため、表示側
+  でも既知パターンを吸収する。
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from html import escape as _esc
-from typing import Optional
+from typing import Callable, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +167,138 @@ def is_within_days(created_at: str, days: int, now_utc: Optional[datetime] = Non
 
 
 # ---------------------------------------------------------------------------
+# 内部変数露出 → 業務語変換 (render 時 humanize、2026-07-04 依頼ボード #39 差戻し)
+# ---------------------------------------------------------------------------
+#
+# notification_log の実データ棚卸し (2026-07-04 SELECT) で頻出した内部ジャーゴン
+# 露出パターン: "W153 truncation" / "W153 新規ライバル検出" / "W301 rival_classify
+# 要確認 (processed=N, issues=M)" / "(W139)" 系の W 番号 suffix。発行側 (tasks/)
+# の文言修正は既存 DB レコードには遡及しないため、表示側で吸収する。
+
+# 既知パターン: (正規表現, title→(new_title, new_body|None) ビルダー)。
+# new_body=None は「本文は fallback jargon-strip のみ適用 (既存本文は保持)」を
+# 意味する (W301 のように detail 本文全体が内部ログのため空にしたい場合は
+# ビルダーが "" を返す)。
+_KNOWN_NOTIFICATION_PATTERNS: list[tuple[re.Pattern, Callable[[re.Match], tuple[str, Optional[str]]]]] = [
+    (
+        re.compile(r"W301 rival_classify 要確認\s*\(processed=(\d+),\s*issues=(\d+)\)"),
+        lambda m: (
+            f"AI店長: {m.group(2)} 件が要確認判定 (Shadow 運用中・対応不要)",
+            "",
+        ),
+    ),
+    (
+        re.compile(
+            r"W153 truncation:?\s*監視 ON listing が (\d+) 件あり "
+            r"max_listings_per_run=(\d+) を超えています。?\s*今回 (\d+) 件 skip"
+        ),
+        lambda m: (
+            f"最安値チェック: 監視対象 {m.group(1)} 件が処理上限 {m.group(2)} 件を超過、"
+            f"今回 {m.group(3)} 件が未処理",
+            "商品管理タブで監視 ON の件数を絞ると解消します (対応不要でも可)",
+        ),
+    ),
+    (
+        re.compile(r"W153 新規ライバル検出\s*\((\d+) listings\)"),
+        lambda m: (
+            f"新規ライバル出品を検出 ({m.group(1)} 件)",
+            # 2026-07-04 diff 差戻し: 姉妹パターン (W301/W153 truncation) と同様に
+            # body="" で情報を捨てる (タイトルで情報完結)。旧 None は fallback へ
+            # 委譲していたが、絵文字プレフィックス始まりの本文で `^W\d+` アンカーが
+            # 効かず生ログが漏れ表示される不具合の直接原因になっていた。
+            "",
+        ),
+    ),
+]
+
+# fallback: 未知パターンの W 番号 / 変数=値 トークンだけを機械的に剥がす。
+# 文字列中の任意位置ではなく「先頭の 'W123 '」「'(W123)' / '(W123-foo)'」に限定して
+# マッチさせる (real DB の全既知例がこの 2 形のいずれかで、商品タイトル中の型番
+# 例: "DSC-W800" 等を誤って破壊しないための安全側マージン)。
+_W_NUM_PAREN_RE = re.compile(r"\(W\d{2,4}(?:-[A-Za-z0-9]+)?\)")
+_W_NUM_PREFIX_RE = re.compile(r"^W\d{2,4}\s+")
+# "processed=868" 等の identifier=数値 トークン。値の直後が英数字/./- でない
+# ことを要求し ("band=1-2kg" のような複合値の部分破壊を防ぐ)。
+_VAR_EQ_RE = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*=[+-]?\d+(?:\.\d+)?(?![\w.-])")
+_MULTI_SPACE_RE = re.compile(r"[ \t]{2,}")
+_DANGLE_CHARS = " \t-:・,、"
+
+# 2026-07-04 差戻し 2 段目: 絵文字/記号プレフィックスを剥がしてから W 番号アンカー
+# を効かせるための前段クリーナ。real DB では発行側 (tasks/) がタイトルに絵文字を
+# 直付けする慣例 ("🎯 W153 …" / "⚠️ W153 …" / "🔔 …") のため、単純な `^W\d+`
+# アンカーだけでは頭文字が絵文字/変体記号のケースを取りこぼす。
+# 対象文字: 各種 emoji (Unicode の絵文字ブロック) / 全角/半角空白 / 太字マーカー
+# 残骸 (`*` は _strip_md で除去済のはずだが二重防御) / 変体セレクタ (U+FE0E/FE0F)
+# / 主要な記号系絵文字プレフィックス (⚠ ⚔ 等)。
+# 先頭デコレーション文字クラス。`W\d+` に到達するまでの skip 用 (単独では消さない、
+# lookahead で W 番号が続くときに限り剥がす — 「🛒 商品が売れました」等の legitimate
+# 絵文字プレフィックスを不必要に破壊しない安全側)。
+_DECOR_CLASS = (
+    r"["
+    r"\U0001F300-\U0001FAFF"  # 主要 emoji 平面
+    r"☀-➿"          # 記号絵文字 (⚠ ⚔ ⛭ ★ ☆ 等 = ☀-➿ 相当)
+    r"︎️"           # 異体字セレクタ (VS15/VS16)
+    r"‍"                 # ZWJ
+    r"\s·・:*_\-"             # 空白/中黒/コロン/記号
+    r"]"
+)
+# 「先頭デコレーション + W\d」→ W\d 露出。W が続かない場合は無変更。
+_LEADING_DECOR_BEFORE_W_RE = re.compile(rf"^{_DECOR_CLASS}+(?=W\d)")
+# "(2 listings)" / "(3 listings)" — 英語トークンを業務語に置換 (発行側 tasks/ 修正
+# が過去分に届かない DB レコード対策)。数字は保持。
+_LISTINGS_PAREN_RE = re.compile(r"\((\d+)\s+listings?\)", re.IGNORECASE)
+
+
+def _strip_internal_jargon(s: str) -> str:
+    """未知パターン向け fallback: W 番号 / 変数=値 トークンを除去して整形。
+
+    2026-07-04 差戻し 2 段目:
+    - 先頭の絵文字/記号を一旦剥がしてから `^W\\d+` を適用 → 絵文字プレフィックス
+      始まり ("🎯 W153 ...") でも W 番号が確実に取れる。剥がした prefix は破棄
+      (通知1行に絵文字を残しても情報密度は上がらない)。
+    - `(N listings)` → `(N 件)` 置換で英語トークンの残存も業務語化。
+    """
+    if not s:
+        return s
+    # 1. 先頭デコレーション + W\d\+ の隣接時のみ剥がす (絵文字が W 番号を隠している
+    #    ケース救済、legitimate emoji-only prefix は不変)。
+    s = _LEADING_DECOR_BEFORE_W_RE.sub("", s, count=1)
+    # 2. `(N listings)` → `(N 件)` に変換 (既知パターン外の英語トークン救済)。
+    s = _LISTINGS_PAREN_RE.sub(lambda m: f"({m.group(1)} 件)", s)
+    # 3. W 番号 / 変数=値 の除去。
+    s = _W_NUM_PAREN_RE.sub("", s)
+    s = _W_NUM_PREFIX_RE.sub("", s)
+    s = _VAR_EQ_RE.sub("", s)
+    s = _MULTI_SPACE_RE.sub(" ", s)
+    return s.strip(_DANGLE_CHARS).strip()
+
+
+def humanize_notification_text(category: str, title: str, body: str) -> tuple[str, str]:
+    """内部変数露出タイトル/本文を業務語 + 対応要否へ変換する (render 時)。
+
+    Args:
+        category: notif["category"] (現状マッチングには未使用、将来のカテゴリ限定
+            パターン追加に備えて引数として保持)。
+        title: markdown 装飾除去済のタイトル。
+        body: markdown 装飾除去済の本文。
+
+    Returns:
+        (title, body) — 既知パターンにマッチすればビジネス向け文言に置換、
+        マッチしなければ fallback (W 番号 / 変数=値 トークンのみ除去) を適用。
+    """
+    for pattern, builder in _KNOWN_NOTIFICATION_PATTERNS:
+        m = pattern.search(title)
+        if not m and body:
+            m = pattern.search(body)
+        if m:
+            new_title, new_body = builder(m)
+            if new_body is None:
+                new_body = _strip_internal_jargon(body)
+            return new_title, new_body
+    return _strip_internal_jargon(title), _strip_internal_jargon(body)
+
+
+# ---------------------------------------------------------------------------
 # コンパクト 1 行 HTML
 # ---------------------------------------------------------------------------
 
@@ -273,6 +413,9 @@ def render_notification_row_html(
         )
     title = _strip_md(title)
     body = _strip_md(body)
+    # 2026-07-04 依頼ボード #39 差戻し: DB 保存済みの古い通知が内部変数露出の
+    # まま表示され続ける問題を render 時変換で根治 (発行側修正は過去分に遡及しない)。
+    title, body = humanize_notification_text(category, title, body)
     if body and title:
         if body == title or body.startswith(title) or title.startswith(body) or body in title:
             body = ""
