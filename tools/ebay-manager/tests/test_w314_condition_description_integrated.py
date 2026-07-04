@@ -137,7 +137,11 @@ def test_validate_as_is_cd_at_65_chars_exact_pass():
     from tabs._finishing_panel_state import (
         AS_IS_CD_MAX_LEN, validate_as_is_condition_description,
     )
-    cd = "X" * AS_IS_CD_MAX_LEN
+    # HIGH-1 修正 (2026-07-04): validate は "As-Is" トークン必須 + `Rank ` prefix reject
+    # へ強化されたため、65 字ぴったりでもトークン包含形式で回帰確認する。
+    # 想定書式 `As-Is — <reason>` (prefix 8 字) 直後を "X" で埋めて 65 字。
+    cd = ("As-Is — " + "X" * (AS_IS_CD_MAX_LEN - len("As-Is — ")))
+    assert len(cd) == AS_IS_CD_MAX_LEN
     assert validate_as_is_condition_description("As-Is", cd) is None
 
 
