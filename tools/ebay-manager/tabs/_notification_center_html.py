@@ -167,6 +167,7 @@ _NC_CSS = """
 .nc-line{
   display:flex;
   align-items:center;
+  flex-wrap:nowrap;
   gap:8px;
   padding:5px 10px;
   margin:2px 0;
@@ -177,6 +178,7 @@ _NC_CSS = """
   font-size:12px;
   line-height:1.3;
   min-height:24px;
+  max-height:26px;
   overflow:hidden;
   white-space:nowrap;
 }
@@ -186,10 +188,12 @@ _NC_CSS = """
 .nc-title{
   font-weight:600;
   color:#2a2e2a;
-  max-width:38ch;
+  max-width:32ch;
   overflow:hidden;
   text-overflow:ellipsis;
+  white-space:nowrap;
   flex-shrink:1;
+  min-width:0;
 }
 .nc-sep{color:#8d927f;flex-shrink:0;}
 .nc-sub{
@@ -197,6 +201,7 @@ _NC_CSS = """
   font-size:11px;
   overflow:hidden;
   text-overflow:ellipsis;
+  white-space:nowrap;
   flex:1 1 auto;
   min-width:0;
 }
@@ -212,9 +217,11 @@ _NC_CSS = """
 </style>
 """
 
-# タイトル/補足の最大長 (実測 38ch + 60ch で ~30px 1 行に収める)。
-_TITLE_MAX = 60
-_BODY_MAX = 80
+# タイトル/補足の最大長 (仕上げ 2026-07-04: 実機 QA で 3-4 行折り返しが確認された
+# ため、CSS の nowrap+ellipsis に加えて文字数上限も強めに truncate。フル文字列は
+# `title` 属性で hover 表示するため情報は失わない)。
+_TITLE_MAX = 45
+_BODY_MAX = 60
 
 
 def render_notification_row_html(
@@ -248,6 +255,28 @@ def render_notification_row_html(
     color = severity_color(severity)
     rel = relative_time_jst(created_at, now_utc)
 
+    # 仕上げ 2026-07-04: 実機で `**` マーカーがリテラル表示 + title と body が同文で
+    # 「title — body」として二重表示されていた。以下 2 点で正規化:
+    #   1. markdown 装飾マーカー (`**`, `__`, backtick) を strip して純テキスト化。
+    #      1 行 HTML レンダラー経路のため markdown はそもそも parse されない = リテラル
+    #      露出のみが害になる (Q7 情報密度: 装飾記号の視覚ノイズを排除)。
+    #   2. body が title と同一 / title で前方一致 / title の部分文字列の場合は body を
+    #      空扱いにして "— " セパレータごと消す (実機二重表示根治)。
+    def _strip_md(s: str) -> str:
+        if not s:
+            return s
+        return (
+            s.replace("**", "")
+             .replace("__", "")
+             .replace("`", "")
+             .strip()
+        )
+    title = _strip_md(title)
+    body = _strip_md(body)
+    if body and title:
+        if body == title or body.startswith(title) or title.startswith(body) or body in title:
+            body = ""
+
     # タイトル文字数制限 (…で省略)。空タイトルは 1 行レイアウトが崩れるため、
     # カテゴリ日本語名で埋める (S1 は非空 title を必須としているため通常はここに
     # 到達しない)。
@@ -263,8 +292,13 @@ def render_notification_row_html(
     )
     time_html = f'<span class="nc-time">{_esc(rel)}</span>' if rel else ""
 
+    # hover 用のフル文字列 tooltip (truncate で消えた情報を復元)。
+    _tt_parts = [title]
+    if body:
+        _tt_parts.append(body)
+    _tt = _esc(" — ".join(p for p in _tt_parts if p))
     line_html = (
-        f'<div class="{line_cls}" style="--nc-accent:{color};">'
+        f'<div class="{line_cls}" style="--nc-accent:{color};" title="{_tt}">'
         f'<span class="nc-emoji">{emoji}</span>'
         f'<span class="nc-title">{_esc(title_disp)}</span>'
         f'{sep_html}{sub_html}{time_html}'

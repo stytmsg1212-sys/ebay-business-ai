@@ -287,23 +287,36 @@ def test_render_row_xss_escape():
     assert "&lt;script&gt;" in html
 
 
-def test_render_row_title_truncated_over_60_chars():
-    """タイトル > 60 字は … で省略 (コンパクト 1 行を維持)。"""
+def _extract_span(html: str, cls: str) -> str:
+    """<span class="cls">...</span> の中身を抽出 (visible 部分だけを検査するため、
+    2026-07-04 仕上げで追加された line div の title 属性 (フル文字列 hover) を
+    アサーションから除外する)。"""
+    import re
+    m = re.search(rf'<span class="{cls}">(.*?)</span>', html, re.DOTALL)
+    return m.group(1) if m else ""
+
+
+def test_render_row_title_truncated_over_45_chars():
+    """タイトル > 45 字は … で省略 (2026-07-04 仕上げで 60→45 に強化。実機 QA で
+    3-4 行折り返しが発生したため CSS の nowrap+ellipsis に加えて文字数上限も
+    強めに truncate。フル文字列は line div の title 属性で hover 表示)。"""
     long_title = "あ" * 100
     html = render_notification_row_html(_base_notif(title=long_title))
-    # 59 文字 + … で 60 文字 (nc-title の overflow を単独行で確実に収める)
-    assert "あ" * 59 in html
-    assert "あ" * 100 not in html
-    assert "…" in html
+    title_visible = _extract_span(html, "nc-title")
+    # 44 文字 + … で 45 文字 (nc-title の overflow を単独行で確実に収める)
+    assert "あ" * 44 in title_visible
+    assert "あ" * 100 not in title_visible
+    assert "…" in title_visible
 
 
-def test_render_row_body_truncated_over_80_chars():
-    """補足 (body) > 80 字は … で省略。"""
+def test_render_row_body_truncated_over_60_chars():
+    """補足 (body) > 60 字は … で省略 (2026-07-04 仕上げで 80→60 に強化)。"""
     long_body = "本文" + ("あ" * 200)
     html = render_notification_row_html(_base_notif(body=long_body))
-    assert "…" in html
-    # 100 文字は入りきらない
-    assert ("あ" * 100) not in html
+    body_visible = _extract_span(html, "nc-sub")
+    assert "…" in body_visible
+    # 100 文字は入りきらない (visible span 内で)
+    assert ("あ" * 100) not in body_visible
 
 
 def test_render_row_no_discord_sent_badge_regardless_of_flag():

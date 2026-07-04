@@ -507,97 +507,131 @@ def render_dashboard_tab(s: dict) -> None:
                 if st.button(f"📋 依頼ボード {kpis['request_board_awaiting']} →", key="dash_goto_board"):
                     _dash_nav("依頼ボード", "★ 毎日")
 
+    # ================= 通知センター データ取得 (P1/P2 分割、列レンダリング前に一括 fetch) =================
+    # #43-relayout (2026-07-04 user フィードバック「開かないと確認できない」対応):
+    # P1 (開かずフラット表示) = 注文/要対応/競合・最安値/在庫。P2 (閉じておく、
+    # クリックで開く) = キーワード新着/リサーチ/価格/システム運用/その他。
+    # 左右カラムで別々に render するため、fetch は列分岐の前に 1 回だけ行う
+    # (Q0: silent 非表示にせず、未整備時は「準備中」を両カラムに明示 fallback)。
+    _P1_NOTIF_CATEGORIES = {"order", "action_required", "rival", "inventory"}
+    _NC_SEVERITY_RANK = {"critical": 0, "error": 1, "warning": 2, "info": 3}
+    _nc_available = False
+    _nc_unread_counts: dict = {}
+    _nc_total_unread = 0
+    _nc_p1_rows: list = []
+    _nc_p2_cats: list = []
+    _nc_read_recent: list = []
+    _nc_render_row = _nc_cat_emoji = _nc_cat_label = _nc_get_nav_target = None
+    _nc_mark_read = _nc_mark_category_read = _nc_mark_all_read = None
+    try:
+        from monitor.notification_log_db import (
+            mark_read as _nc_mark_read,
+            mark_category_read as _nc_mark_category_read,
+            mark_all_read as _nc_mark_all_read,
+        )
+        from tabs._notification_center_html import (
+            render_notification_row_html as _nc_render_row,
+            category_emoji as _nc_cat_emoji,
+            category_label_ja as _nc_cat_label,
+            get_nav_target as _nc_get_nav_target,
+            is_within_days as _nc_is_within_days,
+        )
+
+        _nc_available = True
+        _nc_unread_counts = _cd_notification_unread_counts(_dbv)
+        _nc_total_unread = sum(_nc_unread_counts.values())
+
+        if _nc_total_unread > 0:
+            _nc_all_unread = _cd_notification_rows(_dbv, True, None, 200)
+            _nc_p1_rows = [
+                r for r in _nc_all_unread
+                if (r.get("category") or "") in _P1_NOTIF_CATEGORIES
+            ]
+            # get_notifications() は created_at DESC で返す。severity のみで
+            # stable sort すれば同一 severity 内の新しい順は保持される。
+            _nc_p1_rows.sort(key=lambda r: _NC_SEVERITY_RANK.get(r.get("severity") or "info", 3))
+
+        _nc_p2_cats = sorted(
+            (
+                (cat, cnt) for cat, cnt in _nc_unread_counts.items()
+                if cnt > 0 and cat not in _P1_NOTIF_CATEGORIES
+            ),
+            key=lambda kv: (-kv[1], kv[0]),
+        )
+
+        # 既読 (7日) — 空セクションは非表示 (実機 fb「既読 (7日) (0)」ノイズ根治)。
+        _nc_recent_rows = _cd_notification_rows(_dbv, False, None, 100)
+        _nc_read_recent = [
+            _r for _r in _nc_recent_rows
+            if _r.get("read_at") and _nc_is_within_days(_r.get("created_at") or "", 7)
+        ]
+    except (ImportError, sqlite3.Error) as _nc_e:
+        logger.info(f"通知センター 表示 skip (未整備): {_nc_e}")
+
+    # 通知センター 1 行 HTML の CSS (_NC_CSS) を DASHBOARD で 1 回だけ inject。
+    # 仕上げ 2026-07-04: `include_css=False` (既定) で全 row 呼び出していたため、
+    # nc-line CSS が DOM に注入されず flex/nowrap/ellipsis が全て無効化 → 実機で
+    # 2-3 行折り返し + hover tooltip 効かず。以下 dict flag を row 描画の最初の
+    # `_nc_render_row` 呼出しに `include_css=True` を渡すゲートとして使う
+    # (`_supplier_card_html.py` の慣例と同じパターン)。
+    _nc_css_state = {"emitted": False}
+
+    def _render_nc_row(_n: dict) -> str:
+        _first = not _nc_css_state["emitted"]
+        _nc_css_state["emitted"] = True
+        return _nc_render_row(_n, include_css=_first) if _nc_render_row else ""
+
     # ================= 左右 2 カラム =================
     col_left, col_right = st.columns(2, gap="large")
 
     with col_left:
-        # ── 通知センター (依頼ボード #39 Phase A S4, 2026-07-03) ──
-        # S1 (monitor/notification_log_db.py) と並行実装中。テーブル/モジュール未整備の
-        # 期間は ImportError / sqlite3.Error を「準備中」caption で明示 fallback する
-        # (Q0: silent 非表示にせず、未整備であることが分かる状態を保つ)。
-        try:
-            from monitor.notification_log_db import (
-                mark_read as _nc_mark_read,
-                mark_category_read as _nc_mark_category_read,
-                mark_all_read as _nc_mark_all_read,
-            )
-            from tabs._notification_center_html import (
-                render_notification_row_html as _nc_render_row,
-                category_emoji as _nc_cat_emoji,
-                category_label_ja as _nc_cat_label,
-                get_nav_target as _nc_get_nav_target,
-                is_within_days as _nc_is_within_days,
-            )
+        # ── 🔔 通知センター (重要度 P1、開かずフラット表示) ──
+        st.markdown("**🔔 通知センター**")
+        if not _nc_available:
+            st.caption("準備中 (基盤実装待ち)")
+        elif _nc_total_unread == 0:
+            st.markdown('<span class="clear-status">✓ 新しい通知はありません</span>', unsafe_allow_html=True)
+        else:
+            if st.button(f"✓ 全て既読にする ({_nc_total_unread}件)", key="nc_mark_all_read"):
+                _nc_mark_all_read()
+                bump_db_version()
+                st.rerun()
 
-            st.markdown("**🔔 通知センター**")
-
-            _nc_unread_counts = _cd_notification_unread_counts(_dbv)
-            _nc_total_unread = sum(_nc_unread_counts.values())
-
-            if _nc_total_unread == 0:
-                st.caption("新しい通知はありません")
+            if not _nc_p1_rows:
+                st.caption("重要カテゴリ (注文/要対応/競合・最安値/在庫) の未読はありません")
             else:
-                if st.button(f"✓ 全て既読にする ({_nc_total_unread}件)", key="nc_mark_all_read"):
-                    _nc_mark_all_read()
-                    bump_db_version()
-                    st.rerun()
-
-                for _nc_cat, _nc_cnt in sorted(
-                    _nc_unread_counts.items(), key=lambda kv: (-kv[1], kv[0])
-                ):
-                    if _nc_cnt <= 0:
-                        continue
-                    _nc_label = _nc_cat_label(_nc_cat)
-                    _nc_emoji_c = _nc_cat_emoji(_nc_cat)
-                    with st.expander(f"{_nc_emoji_c} {_nc_label} ({_nc_cnt})", expanded=False):
-                        _nc_rows = _cd_notification_rows(_dbv, True, _nc_cat, 10)
-                        for _nc_n in _nc_rows:
-                            # 1 通知 = コンパクト 1 行 (~30px)。ボタンは同一行右端に小型配置。
-                            # link_target で「開く」ボタンの有無を切り替える (マップ外は左詰め)。
-                            _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_cat)
-                            if _nc_nav:
-                                _c_body, _c_open, _c_read = st.columns([12, 1, 1])
-                            else:
-                                _c_body, _c_read = st.columns([13, 1])
-                                _c_open = None
-                            with _c_body:
-                                st.markdown(_nc_render_row(_nc_n), unsafe_allow_html=True)
-                            if _c_open is not None:
-                                with _c_open:
-                                    if st.button("開く", key=f"nc_open_{_nc_cat}_{_nc_n['id']}"):
-                                        st.session_state["_w134_sel"] = _nc_nav[0]
-                                        st.session_state["_w217a_cat_view"] = _nc_nav[1]
-                                        _nc_mark_read([_nc_n["id"]])
-                                        bump_db_version()
-                                        st.rerun()
-                            with _c_read:
-                                if st.button("✓", key=f"nc_read_{_nc_cat}_{_nc_n['id']}"):
-                                    _nc_mark_read([_nc_n["id"]])
-                                    bump_db_version()
-                                    st.rerun()
-                        _nc_over = _nc_cnt - len(_nc_rows)
-                        if _nc_over > 0:
-                            st.caption(f"... 他 {_nc_over} 件 (上位10件表示)")
-                        if st.button(f"「{_nc_label}」を全て既読にする", key=f"nc_cat_read_{_nc_cat}"):
-                            _nc_mark_category_read(_nc_cat)
+                _NC_P1_SHOW = 10
+                for _nc_n in _nc_p1_rows[:_NC_P1_SHOW]:
+                    # 1 通知 = コンパクト 1 行 (~30px)。ボタンは同一行右端に小型配置。
+                    # link_target で「開く」ボタンの有無を切り替える (マップ外は左詰め)。
+                    _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_n.get("category"))
+                    if _nc_nav:
+                        _c_body, _c_open, _c_read = st.columns([12, 1, 1])
+                    else:
+                        _c_body, _c_read = st.columns([13, 1])
+                        _c_open = None
+                    with _c_body:
+                        st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
+                    if _c_open is not None:
+                        with _c_open:
+                            if st.button("開く", key=f"nc_p1_open_{_nc_n['id']}"):
+                                st.session_state["_w134_sel"] = _nc_nav[0]
+                                st.session_state["_w217a_cat_view"] = _nc_nav[1]
+                                _nc_mark_read([_nc_n["id"]])
+                                bump_db_version()
+                                st.rerun()
+                    with _c_read:
+                        if st.button("✓", key=f"nc_p1_read_{_nc_n['id']}"):
+                            _nc_mark_read([_nc_n["id"]])
                             bump_db_version()
                             st.rerun()
+                _nc_p1_over = len(_nc_p1_rows) - _NC_P1_SHOW
+                if _nc_p1_over > 0:
+                    with st.expander(f"他 {_nc_p1_over} 件 (重要通知の続き)", expanded=False):
+                        for _nc_n in _nc_p1_rows[_NC_P1_SHOW:]:
+                            st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
 
-            # 既読 (7日) — 空セクションは非表示 (実機 fb「既読 (7日) (0)」ノイズ根治)。
-            _nc_recent_rows = _cd_notification_rows(_dbv, False, None, 100)
-            _nc_read_recent = [
-                _r for _r in _nc_recent_rows
-                if _r.get("read_at") and _nc_is_within_days(_r.get("created_at") or "", 7)
-            ]
-            if _nc_read_recent:
-                with st.expander(f"既読 (7日) ({len(_nc_read_recent)})", expanded=False):
-                    for _nc_n in _nc_read_recent[:50]:
-                        st.markdown(_nc_render_row(_nc_n), unsafe_allow_html=True)
-        except (ImportError, sqlite3.Error) as _nc_e:
-            st.caption("🔔 通知センター: 準備中 (基盤実装待ち)")
-            logger.info(f"通知センター 表示 skip (未整備): {_nc_e}")
-
-        # ── 緊急メール (urgent のみ、#43 で INBOX を圧縮) ──
+        # ── 緊急メール (urgent のみ、#43 で INBOX を圧縮、#43-relayout で 1件2-3行に再圧縮) ──
         st.markdown("**📨 緊急メール**")
 
         def _extract_buyer_message(body: str) -> str:
@@ -649,9 +683,14 @@ def render_dashboard_tab(s: dict) -> None:
                 return "", (date_str[:20] if date_str else "")
 
         _inbox_confirm_ids = []
-        if not _urgent_emails:
-            st.markdown('<span class="clear-status">✓ 緊急メールなし</span>', unsafe_allow_html=True)
-        for _em in _urgent_emails:
+
+        def _render_urgent_email(_em: dict) -> None:
+            """緊急メール 1 件をコンパクト 2-3 行 (checkbox + meta + 本文1行要約) で描画。
+
+            #43-relayout (2026-07-04): summary/quote/action を個別 div で並べる旧実装は
+            1 件あたり 4-5 行に肥大化していた。本文は「バイヤーの声 → 対応」を 1 行に
+            結合し ellipsis で強制 1 行化することで、件数が増えてもカード高さが揃う。
+            """
             cat = (_em.get('category_ai') or '') or _em.get('category', 'other')
             subj = _em.get('subject', '')
             sender = _em.get('sender', '').split('<')[0].strip().strip('"').replace('eBay - ', '')
@@ -709,40 +748,59 @@ def render_dashboard_tab(s: dict) -> None:
                 _inbox_confirm_ids.append(gmail_id)
 
             _link_safe = html.escape(gmail_link or "", quote=True)
-            link_btn = f'<a href="{_link_safe}" target="_blank" style="font-size:11px;color:#156a63;float:right;">▸ Gmailで開く</a>' if gmail_link else ''
+            link_btn = (
+                f'<a href="{_link_safe}" target="_blank" '
+                f'style="font-size:11px;color:#156a63;text-decoration:none;flex-shrink:0;'
+                f'margin-left:auto;padding-left:8px;">▸ Gmailで開く</a>'
+                if gmail_link else ''
+            )
 
             if not buyer_msg_ja and body:
                 buyer_msg_ja = _extract_buyer_message(body)
-            quote_html = ''
-            if buyer_msg_ja:
-                quote_html = (
-                    f'<div style="color:#2a2e2a;font-size:12px;margin:3px 0;padding:4px 8px;'
-                    f'background:rgba(14,79,75,0.06);border-radius:3px;border-left:2px solid rgba(14,79,75,0.4);">'
-                    f'「{html.escape(buyer_msg_ja[:150])}」</div>'
-                )
 
-            summary_html = ''
-            if summary_ja:
-                summary_html = (
-                    f'<div style="color:#2a2e2a;font-size:12px;margin:4px 0 2px 0;">'
-                    f'{html.escape(summary_ja[:200])}</div>'
-                )
-
-            action_text = action_ja or '対応を検討してください'
-            action_html = (
-                f'<span style="color:{action_color};font-size:11px;">▸ {html.escape(action_text)}</span>'
+            # 本文要約: バイヤーの声 (あれば) + 対応 を 1 行へ結合 (ellipsis で強制 1 行)。
+            # #43-relayout 仕上げ (2026-07-04): メタ行も flex + nowrap で 1 行に強制。
+            # 全体で「メタ行 + 本文 1 行 = 2 行以内」を厳守。
+            _best_body = buyer_msg_ja or summary_ja or ''
+            _combo_text = (f"「{_best_body[:90]}」 " if _best_body else '') + f"▸ {action_ja or '対応を検討してください'}"
+            _combo_full_tt = html.escape(
+                (buyer_msg_ja or summary_ja or '') + ' / ' + (action_ja or '対応を検討してください'),
+                quote=True,
+            )
+            _combo_html = (
+                f'<div title="{_combo_full_tt}" '
+                f'style="color:{action_color};font-size:12px;line-height:1.4;white-space:nowrap;'
+                f'overflow:hidden;text-overflow:ellipsis;">{html.escape(_combo_text)}</div>'
             )
 
+            _product_html = (
+                f'<span style="color:#5f6557;font-size:12px;flex:1 1 auto;min-width:0;'
+                f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+                f'{html.escape(product or "")}</span>'
+            )
+            _meta_row = (
+                f'<div style="display:flex;align-items:center;flex-wrap:nowrap;gap:6px;'
+                f'white-space:nowrap;overflow:hidden;">'
+                f'{_pri_badge}{_date_html}{_product_html}{link_btn}'
+                f'</div>'
+            )
             st.markdown(
                 f'<div class="{row_cls}" style="margin-top:-8px;">'
-                f'{link_btn}'
-                f'{_pri_badge}'
-                f'{_date_html}'
-                f'<span style="color:#5f6557;font-size:12px;">{html.escape(product or "")}</span>'
-                f'{summary_html}'
-                f'{quote_html}'
-                f'{action_html}'
+                f'{_meta_row}'
+                f'{_combo_html}'
                 f'</div>', unsafe_allow_html=True)
+
+        if not _urgent_emails:
+            st.markdown('<span class="clear-status">✓ 緊急メールなし</span>', unsafe_allow_html=True)
+        else:
+            _URGENT_SHOW = 3
+            for _em in _urgent_emails[:_URGENT_SHOW]:
+                _render_urgent_email(_em)
+            _urgent_rest = _urgent_emails[_URGENT_SHOW:]
+            if _urgent_rest:
+                with st.expander(f"他 {len(_urgent_rest)} 件の緊急メール", expanded=False):
+                    for _em in _urgent_rest:
+                        _render_urgent_email(_em)
 
         if _inbox_confirm_ids:
             if st.button(f"{len(_inbox_confirm_ids)}件を確認済みにする", type="primary", key="inbox_confirm"):
@@ -752,15 +810,20 @@ def render_dashboard_tab(s: dict) -> None:
 
     with col_right:
         # ── 在庫・価格の要点 (#43: 一覧は出さず件数+上位3件+導線のみ) ──
+        # #43-relayout: 本文とボタンを st.columns で左右に分け縦積みによる
+        # 重なり (実機 screenshot 実証) を解消。
         st.markdown("**📦 在庫・価格の要点**")
         _sp = _cd_stock_price_summary(_dbv)
         if _sp["supply_risk_count"] > 0:
-            st.markdown(f"🔴 仕入先 在庫切れ **{_sp['supply_risk_count']}件**")
-            for _r in _sp["supply_risk_top3"]:
-                _title_disp = (_r.get('title') or _r.get('ebay_item_id') or '?')[:40]
-                st.caption(f"・{_title_disp}")
-            if st.button("在庫監視で対応 →", key="dash_goto_inventory"):
-                _dash_nav("在庫監視", "★ 毎日")
+            _c_sr_txt, _c_sr_btn = st.columns([3, 1])
+            with _c_sr_txt:
+                st.markdown(f"🔴 仕入先 在庫切れ **{_sp['supply_risk_count']}件**")
+                for _r in _sp["supply_risk_top3"]:
+                    _title_disp = (_r.get('title') or _r.get('ebay_item_id') or '?')[:40]
+                    st.caption(f"・{_title_disp}")
+            with _c_sr_btn:
+                if st.button("在庫監視で対応 →", key="dash_goto_inventory"):
+                    _dash_nav("在庫監視", "★ 毎日")
         else:
             st.markdown('<span class="clear-status">✓ 仕入先在庫切れなし</span>', unsafe_allow_html=True)
 
@@ -768,14 +831,17 @@ def render_dashboard_tab(s: dict) -> None:
         _own_out = kpis.get("own_stock_out", 0)
         _own_unset = kpis.get("own_stock_unset", 0)
         if _own_out or _own_unset:
-            st.markdown(
-                f'<div style="font-size:12px;line-height:1.5;">'
-                f'🏠 自社在庫: 切れ <b>{_own_out}</b> / 未入力 <b>{_own_unset}</b> '
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if st.button("商品管理で対応 →", key="dash_goto_pm"):
-                _dash_nav("商品管理", "★ 毎日")
+            _c_os_txt, _c_os_btn = st.columns([3, 1])
+            with _c_os_txt:
+                st.markdown(
+                    f'<div style="font-size:12px;line-height:1.5;">'
+                    f'🏠 自社在庫: 切れ <b>{_own_out}</b> / 未入力 <b>{_own_unset}</b>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _c_os_btn:
+                if st.button("商品管理で対応 →", key="dash_goto_pm"):
+                    _dash_nav("商品管理", "★ 毎日")
         else:
             st.markdown('<span class="clear-status">✓ 自社在庫 問題なし</span>', unsafe_allow_html=True)
 
@@ -795,6 +861,50 @@ def render_dashboard_tab(s: dict) -> None:
             )
         else:
             st.markdown('<span class="clear-status">✓ 価格急変なし</span>', unsafe_allow_html=True)
+
+        # ── 🗂 その他の通知 (P2、閉じておく。#43-relayout で通知センターの
+        #    左カラム脱出分をこちらへ集約し、右カラムの空白を解消) ──
+        if _nc_available and _nc_p2_cats:
+            st.markdown("**🗂 その他の通知**")
+            for _nc_cat, _nc_cnt in _nc_p2_cats:
+                _nc_label = _nc_cat_label(_nc_cat)
+                _nc_emoji_c = _nc_cat_emoji(_nc_cat)
+                with st.expander(f"{_nc_emoji_c} {_nc_label} ({_nc_cnt})", expanded=False):
+                    _nc_rows = _cd_notification_rows(_dbv, True, _nc_cat, 10)
+                    for _nc_n in _nc_rows:
+                        _nc_nav = _nc_get_nav_target(_nc_n.get("link_target") or _nc_cat)
+                        if _nc_nav:
+                            _c_body, _c_open, _c_read = st.columns([12, 1, 1])
+                        else:
+                            _c_body, _c_read = st.columns([13, 1])
+                            _c_open = None
+                        with _c_body:
+                            st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
+                        if _c_open is not None:
+                            with _c_open:
+                                if st.button("開く", key=f"nc_open_{_nc_cat}_{_nc_n['id']}"):
+                                    st.session_state["_w134_sel"] = _nc_nav[0]
+                                    st.session_state["_w217a_cat_view"] = _nc_nav[1]
+                                    _nc_mark_read([_nc_n["id"]])
+                                    bump_db_version()
+                                    st.rerun()
+                        with _c_read:
+                            if st.button("✓", key=f"nc_read_{_nc_cat}_{_nc_n['id']}"):
+                                _nc_mark_read([_nc_n["id"]])
+                                bump_db_version()
+                                st.rerun()
+                    _nc_over = _nc_cnt - len(_nc_rows)
+                    if _nc_over > 0:
+                        st.caption(f"... 他 {_nc_over} 件 (上位10件表示)")
+                    if st.button(f"「{_nc_label}」を全て既読にする", key=f"nc_cat_read_{_nc_cat}"):
+                        _nc_mark_category_read(_nc_cat)
+                        bump_db_version()
+                        st.rerun()
+
+        if _nc_available and _nc_read_recent:
+            with st.expander(f"既読 (7日) ({len(_nc_read_recent)})", expanded=False):
+                for _nc_n in _nc_read_recent[:50]:
+                    st.markdown(_render_nc_row(_nc_n), unsafe_allow_html=True)
 
     st.markdown("---")
 
