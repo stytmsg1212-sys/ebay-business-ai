@@ -265,6 +265,7 @@ _W134_GROUPS = {
         "商品リサーチ(W228)",  # W228 (2026-06-07)
         "キーワード新着監視",  # W148 (2026-05-21)
         "最安値チェック",   # W98 (2026-05-05)
+        "AI店長 要確認",    # W323 (2026-07-05)
     ],
     "⏺ 出品": [
         "個別出品",
@@ -747,6 +748,14 @@ if _w134_sel == "商品リサーチ(W228)":
         render_w228_research_tab(s)
     except Exception as _e:
         st.error(f"商品リサーチ(W228)タブ 描画エラー: {_e}")
+
+# ========== AI店長 要確認タブ (W323 2026-07-05) ==========
+if _w134_sel == "AI店長 要確認":
+    try:
+        from tabs.tab_rival_review import render_rival_review_tab
+        render_rival_review_tab()
+    except Exception as _e:
+        st.error(f"AI店長 要確認タブ 描画エラー: {_e}")
 
 # ========== 定時実行タブ (2026-04-25 hour ドリフト事故対応) ==========
 if _w134_sel == "定時実行":

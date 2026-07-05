@@ -8676,3 +8676,181 @@ def purge_old_heartbeat(days: int = 30) -> int:
             (f"-{days} days",),
         )
     return cur.rowcount
+
+
+# ────────────────────────────────────────────────────────────────
+# W323 (2026-07-05): AI 店長「要確認」レビュー triage 画面.
+#
+# task_rival_classify.py が review 判定 (AI confidence 中間 / cap 超過 /
+# AI 例外) で status='new' のまま滞留させた listing_rival_discoveries を
+# 人間 triage する専用 UI (tabs/tab_rival_review.py) 向け DB ヘルパ。
+#
+# 状態遷移は task_rival_classify.run_rival_classify の real/noise 分岐と
+# **同じ関数** (add_or_reactivate_competitor / update_rival_discovery_status)
+# を再利用する (意味論を揃える、二重実装しない)。listing 識別・グループ化は
+# ebay_item_id のみ使用し SKU はグループキーに使わない (sku-rules.md 準拠)。
+# ────────────────────────────────────────────────────────────────
+
+def get_review_discoveries_grouped() -> list[dict]:
+    """status='new' の discoveries を自社 ebay_item_id ごとにグループ化して返す.
+
+    各 discovery には最新の rival_classifications (存在すれば) の
+    reason/confidence/route を付与し、AI がどの理由で保留したか triage 画面に
+    表示できるようにする。rival_classifications は再分類のたび INSERT される
+    (upsert でない) ため、discovery_id ごとに MAX(id) の 1 行のみを結合する。
+
+    Returns:
+        [{ebay_item_id, our_title, our_price, our_sku,
+          discoveries: [{id, competitor_seller, competitor_item_id,
+                         competitor_title, competitor_price_usd, first_seen_at,
+                         ai_reason, ai_confidence, ai_route}, ...]}, ...]
+        グループの並び順 = 各グループ最古 discovery の first_seen_at 昇順。
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                lrd.id AS discovery_id,
+                lrd.ebay_item_id,
+                lrd.competitor_seller,
+                lrd.competitor_item_id,
+                lrd.competitor_title,
+                lrd.competitor_price_usd,
+                lrd.first_seen_at,
+                el.title AS our_title,
+                el.current_price AS our_price,
+                el.sku AS our_sku,
+                rc.reason AS ai_reason,
+                rc.confidence AS ai_confidence,
+                rc.route AS ai_route
+            FROM listing_rival_discoveries lrd
+            LEFT JOIN ebay_listings el ON el.ebay_item_id = lrd.ebay_item_id
+            LEFT JOIN (
+                SELECT rc1.discovery_id, rc1.reason, rc1.confidence, rc1.route
+                FROM rival_classifications rc1
+                INNER JOIN (
+                    SELECT discovery_id, MAX(id) AS max_id
+                    FROM rival_classifications
+                    GROUP BY discovery_id
+                ) latest
+                    ON latest.discovery_id = rc1.discovery_id
+                   AND latest.max_id = rc1.id
+            ) rc ON rc.discovery_id = lrd.id
+            WHERE lrd.status = 'new'
+            ORDER BY lrd.ebay_item_id, lrd.first_seen_at ASC
+            """
+        ).fetchall()
+
+    groups: dict[str, dict] = {}
+    order: list[str] = []
+    for r in rows:
+        d = dict(r)
+        eid = d["ebay_item_id"]
+        if eid not in groups:
+            groups[eid] = {
+                "ebay_item_id": eid,
+                "our_title": d.get("our_title") or f"(listing 不明: {eid})",
+                "our_price": d.get("our_price"),
+                "our_sku": d.get("our_sku") or "",
+                "discoveries": [],
+            }
+            order.append(eid)
+        groups[eid]["discoveries"].append({
+            "id": d["discovery_id"],
+            "competitor_seller": d["competitor_seller"],
+            "competitor_item_id": d["competitor_item_id"],
+            "competitor_title": d["competitor_title"],
+            "competitor_price_usd": d["competitor_price_usd"],
+            "first_seen_at": d["first_seen_at"],
+            "ai_reason": d.get("ai_reason"),
+            "ai_confidence": d.get("ai_confidence"),
+            "ai_route": d.get("ai_route"),
+        })
+    return [groups[eid] for eid in order]
+
+
+def count_new_rival_discoveries() -> int:
+    """status='new' の累計残件数 (triage 画面ヘッダ表示用)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM listing_rival_discoveries WHERE status='new'"
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def resolve_review_discovery(
+    discovery_id: int, decision: str, *, our_item_id: str, our_sku: str = "",
+) -> str:
+    """1 件の review discovery を real/noise に確定する (triage UI の行操作用).
+
+    task_rival_classify.run_rival_classify と同一の状態遷移
+    (real: add_or_reactivate_competitor → status='monitoring_added' /
+     noise: status='dismissed') を再利用する。
+
+    decision: 'real' or 'noise'.
+
+    Returns: 実際の action 文字列。
+        - noise: 'dismissed'
+        - real:  'added' / 'reactivated' / 'conflict' (add_or_reactivate_competitor
+                 の返り値をそのまま透過) / 'error' (upsert 失敗、status='new' 維持)
+        - 二重処理防止: 対象が既に status != 'new' なら現在の status 文字列
+          (例: 'monitoring_added') をそのまま返し、何も変更しない (Q0: silent
+          skip ではなく呼出元に明示的に伝える)。
+    """
+    if decision not in ("real", "noise"):
+        raise ValueError(f"invalid decision: {decision}")
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT competitor_seller, competitor_item_id, status "
+            "FROM listing_rival_discoveries WHERE id = ?",
+            (discovery_id,),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"discovery not found: {discovery_id}")
+    if row["status"] != "new":
+        logger.info(
+            f"[W323 review] discovery_id={discovery_id} は既に "
+            f"status={row['status']!r} — 二重処理防止で skip"
+        )
+        return row["status"]
+
+    if decision == "noise":
+        update_rival_discovery_status(discovery_id, "dismissed")
+        return "dismissed"
+
+    # decision == "real"
+    try:
+        _id, action = add_or_reactivate_competitor(
+            our_item_id=our_item_id,
+            our_sku=our_sku or "",
+            competitor_seller=row["competitor_seller"] or "",
+            competitor_item_id=row["competitor_item_id"],
+        )
+        if action in ("added", "reactivated"):
+            update_rival_discovery_status(discovery_id, "monitoring_added")
+        return action
+    except Exception as e:  # noqa: BLE001 — Q0: 失敗を呼出元に明示的に返す (握り潰さない)
+        logger.warning(
+            f"[W323 review] add_or_reactivate_competitor failed "
+            f"(discovery_id={discovery_id}, "
+            f"competitor_item_id={row['competitor_item_id']}): "
+            f"{type(e).__name__}: {e}"
+        )
+        return "error"
+
+
+def dismiss_discoveries_by_seller(competitor_seller: str) -> int:
+    """指定セラーの status='new' discovery を一括 dismissed 化 (ノイズセラー一掃用).
+
+    グループ (自社商品) を跨いで同一セラーの未処理 discovery 全てが対象。
+
+    Returns: 更新件数.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listing_rival_discoveries "
+            "SET status = 'dismissed', status_changed_at = CURRENT_TIMESTAMP "
+            "WHERE status = 'new' AND competitor_seller = ?",
+            (competitor_seller,),
+        )
+    return cur.rowcount

@@ -868,8 +868,8 @@
     "id": 382,
     "tag": "W317",
     "title": "eBaymag discover の当たり率改善 (ローカライズタイトル対応)",
-    "description": "apply_queue 滞留の主因。queue のタイトルが各国語版 (西/伊/仏) で eBaymag 在庫名と不一致 → discover 候補 0 件。対策候補 = ebay_item_id 起点の照合 (タイトル検索でなく item 番号で突合) / US 版タイトルへの解決。出典 = 2026-07-03 #40 canary (成功 1/6、URL エンコード修正は 6/6 正常)。実装時は eBaymag GraphQL query の shippingProfiles fetch と併行して discover 再試行ロジックを整備。money-direct→T3 code-reviewer HIGH=0 + Codex 2 段 + live 検証。",
-    "status": "未着手",
+    "description": "apply_queue 滞留の主因。queue のタイトルが各国語版 (西/伊/仏) で eBaymag 在庫名と不一致 → discover 候補 0 件。対策候補 = ebay_item_id 起点の照合 (タイトル検索でなく item 番号で突合) / US 版タイトルへの解決。出典 = 2026-07-03 #40 canary (成功 1/6、URL エンコード修正は 6/6 正常)。実装時は eBaymag GraphQL query の shippingProfiles fetch と併行して discover 再試行ロジックを整備。money-direct→T3 code-reviewer HIGH=0 + Codex 2 段 + live 検証。 【2026-07-05追記】GraphQL products.publicationUrlのeBay item id照合で実装完了。Phase0 probeで滞留6/6件のID解決を実証(1件はeBaymag未取込で対象外)。title検索はfallback降格。内部HIGH=0+Codex VERDICT A。キュー再開はcanary1件→問題なければ全件、をuserへ推奨提示済(依頼ボード#40)。",
+    "status": "実装完了 (commit d41ba07)・キュー再開は#40 user判断待ち",
     "priority": "高",
     "created": "2026-07-03",
     "completed": null,
@@ -896,5 +896,38 @@
     "created": "2026-07-03",
     "completed": null,
     "category": "ops"
+  },
+  {
+    "id": 385,
+    "tag": "W320",
+    "title": "原産国残存の全量再スキャン (7/5 16:00以降、503件 GetItem) + send_failed 2件・manual_review 23件の個別是正",
+    "description": "2026-07-05 実施の原産国是正 one-shot バッチ (503件 GetItem) 完了後のフォローアップ。(1) 7/5 16:00 以降に新規出品/更新された listing を含め全量再スキャンし、原産国 (Country of Origin / Country of Manufacture / Manufacturer) 記載の取りこぼしが無いか確認する。(2) バッチ内で send_failed (eBay への送信失敗) となった 2 件を個別に原因調査し是正する。(3) manual_review (自動判定不能で user 確認待ち) となった 23 件を個別に内容確認し是正要否を判断する。原産国記載は eBay 出品文への記載絶対禁止 (tools/ebay-manager/CLAUDE.md 「Country of Origin / Manufacturer の layer 分離」)。Q0 (サイレントスキップ禁止) 徹底、is-is 是正漏れは money-direct (関税リスク) につき code-reviewer HIGH=0 必須。",
+    "status": "未着手",
+    "priority": "高",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 386,
+    "tag": "W321",
+    "title": "rank NULL 171件のデータ補完 (バッチC skip分、CD定型化の前提)",
+    "description": "原産国是正 one-shot バッチのバッチC (ConditionDescription 定型化処理) で rank (商品コンディションランク) が NULL のため処理 skip となった 171 件のデータ補完。ConditionDescription 運用方針 (tools/ebay-manager/CLAUDE.md「ConditionDescription 運用方針」) は RANK_CONDITION_DESCRIPTION_TEMPLATE から rank を基に決定論的に導出するため、rank 未設定の listing は CD 定型化できない。171 件の rank をコンディションランク 8 段階 (N/S/A/B/C/D/PO/As-Is) で補完したうえで、CD 定型化バッチを再実行する。",
+    "status": "未着手",
+    "priority": "通常",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 387,
+    "tag": "W323",
+    "title": "AI店長「要確認」滞留 triage 画面の新設",
+    "description": "listing_rival_discoveries.status='new' (task_rival_classify.py の review 判定滞留分、783件) を人間 triage する専用タブ (tabs/tab_rival_review.py) を新設。自社商品ごとにグループ化して一覧表示し、real判定=監視へ追加/noise判定=除外を確定する。状態遷移は task_rival_classify.run_rival_classify の real/noise 分岐と同じ DB 関数 (add_or_reactivate_competitor / update_rival_discovery_status、monitor.database.resolve_review_discovery 経由) を再利用し意味論を統一。一括操作 (グループ全体/同一セラー一掃) は監視対象増減=pricing_eligible への間接影響があるため2段確認必須。listing 識別は ebay_item_id のみ (sku-rules.md 準拠)。実装済み・Opus QA待ち。",
+    "status": "実装済み・Opus QA待ち",
+    "priority": "通常",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
   }
 ]
