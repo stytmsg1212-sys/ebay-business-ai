@@ -220,7 +220,16 @@ def _send_discord_for_hit(webhook: str, watch: dict, hit, hit_id: int) -> bool:
         )
         if result.get('discord_sent'):
             return True
-        # Codex HIGH-3 (a): 1 回失敗 → 1s backoff → 1 回 retry (Discord 側のみ)。
+        # 依頼ボード#52 HIGH-1 (2026-07-06): gate OFF / dedupe 抑止で送られなかった場合
+        # は「一過性の POST 失敗」ではないため raw retry でゲートを迂回してはいけない。
+        # True (= handled) を返して呼出側に mark_hit_notified させる (discord_sent=1)。
+        # これは Discord 実送信ではないが notification_log 記録済 + タブのギャラリー
+        # 経路で user が視認できる = user 到達性は担保。かつ resend pass
+        # (get_unnotified_in_range_hits) が同 hit を永久 churn するのも防ぐ。
+        if result.get('gated') or result.get('deduped'):
+            return True
+        # Codex HIGH-3 (a): gate ON かつ POST 失敗 (webhook 5xx / TLS hiccup /
+        # 一過性 network 障害) のみに限定して 1s backoff → 1 回 retry。
         # DB 記録は上で確定済 (notification_log 行あり) なので、DiscordNotifier や
         # record_and_maybe_send を再呼出すると同一 hit が二重 INSERT される。
         # よって raw HTTP POST で Discord のみリトライする。

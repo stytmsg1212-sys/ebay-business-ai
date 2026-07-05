@@ -82,16 +82,19 @@ def test_gate_on_sends_and_records(monkeypatch):
 
 
 def test_config_missing_falls_back_to_default_gate_on_categories(monkeypatch):
-    """config 読込失敗時、order/action_required/keyword/rival は既定 ON."""
+    """config 読込失敗時、order/action_required/rival は既定 ON."""
     monkeypatch.setattr(notification_center, "_load_gate_config", lambda: {})
-    for cat in ("order", "action_required", "keyword", "rival"):
+    for cat in ("order", "action_required", "rival"):
         assert notification_center._gate_open(cat) is True, cat
 
 
 def test_config_missing_falls_back_to_default_gate_off_categories(monkeypatch):
-    """config 読込失敗時、system/inventory/research/pricing/default は既定 OFF."""
+    """config 読込失敗時、system/inventory/research/pricing/default/keyword は既定 OFF.
+
+    keyword は依頼ボード#52 (2026-07-06) でギャラリータブ運用へ移行のため既定 OFF
+    に変更 (notification_log への記録は継続、Discord 実送信のみ既定停止)。"""
     monkeypatch.setattr(notification_center, "_load_gate_config", lambda: {})
-    for cat in ("system", "inventory", "research", "pricing", "default"):
+    for cat in ("system", "inventory", "research", "pricing", "default", "keyword"):
         assert notification_center._gate_open(cat) is False, cat
 
 
@@ -105,11 +108,14 @@ def test_config_value_overrides_default(monkeypatch):
 
 def test_real_config_file_is_valid_and_readable():
     """config/schedule_config.json の discord_category_gate セクションが実在し読める
-    (S2 で追加したセクションの疎通確認、モック無しで直接読む)。"""
+    (S2 で追加したセクションの疎通確認、モック無しで直接読む)。
+
+    keyword は依頼ボード#52 (2026-07-06) でギャラリータブ運用へ移行のため False
+    (notification_log への記録は継続、Discord 実送信のみ停止)。"""
     gate = notification_center._load_gate_config()
     assert gate.get("order") is True
     assert gate.get("action_required") is True
-    assert gate.get("keyword") is True
+    assert gate.get("keyword") is False
     assert gate.get("rival") is True
     assert gate.get("system") is False
     assert gate.get("inventory") is False

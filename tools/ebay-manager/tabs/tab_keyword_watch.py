@@ -31,6 +31,11 @@ from monitor.keyword_watch_db import (
     get_recent_hits,
     get_watch_stats,
     init_default_sentinels,
+    get_unconfirmed_hits,
+    confirm_hit,
+    confirm_all_hits,
+    confirm_hits,
+    count_unconfirmed_hits,
 )
 from ui_cache import bump_db_version
 
@@ -61,8 +66,8 @@ div[class*="st-key-kw_watch_root"] [data-testid="stExpander"] summary span {
     line-height: 22px !important;
     margin: 0 !important;
 }
-div[class*="st-key-kw_watch_root"] [data-testid="stButton"] > button,
-div[class*="st-key-kw_watch_root"] [data-testid="stFormSubmitButton"] > button {
+div[class*="st-key-kw_watch_root"] [data-testid="stButton"] button,
+div[class*="st-key-kw_watch_root"] [data-testid="stFormSubmitButton"] button {
     min-height: 28px !important;
     padding: 3px 10px !important;
     font-size: 12px !important;
@@ -76,6 +81,184 @@ div[class*="st-key-kw_watch_root"] [data-testid="stSelectbox"] div[role="combobo
 }
 div[class*="st-key-kw_watch_root"] [data-testid="stCheckbox"] label p {
     font-size: 12px !important;
+}
+</style>"""
+
+# 依頼ボード #52 (2026-07-06): メルカリ風ギャラリー表示の CSS。
+# モックアップ: .company/engineering/docs/2026-07-06-keyword-watch-gallery-mockup.html
+# クラス名は衝突回避のため kwg- prefix (kw_watch_root スコープ内限定、他タブ非影響)。
+_KW_GALLERY_CSS = """<style>
+div[class*="st-key-kw_watch_root"] .kwg-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+}
+div[class*="st-key-kw_watch_root"] .kwg-card {
+    background: #fbf8f2;
+    border: 1px solid #e3dac6;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+div[class*="st-key-kw_watch_root"] .kwg-card.kwg-alert {
+    border-color: #e6b6ae;
+    box-shadow: 0 0 0 1px #e6b6ae inset;
+}
+div[class*="st-key-kw_watch_root"] .kwg-thumb-link { display: block; position: relative; }
+div[class*="st-key-kw_watch_root"] .kwg-thumb {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #e9e4d6;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+}
+div[class*="st-key-kw_watch_root"] .kwg-site-badge {
+    margin: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.92);
+    color: #3a352c;
+}
+div[class*="st-key-kw_watch_root"] .kwg-body { padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 3px; }
+div[class*="st-key-kw_watch_root"] .kwg-item-name {
+    font-size: 12.5px !important;
+    font-weight: 700;
+    color: #3a352c;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-decoration: none;
+    display: block;
+    line-height: 18px !important;
+    margin: 0 !important;
+}
+div[class*="st-key-kw_watch_root"] .kwg-price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 2px;
+}
+div[class*="st-key-kw_watch_root"] .kwg-detect-price { font-size: 17px; font-weight: 800; color: #3a352c; }
+div[class*="st-key-kw_watch_root"] .kwg-lbl { font-size: 9px; font-weight: 600; color: #8a8172; display: block; margin-bottom: 1px; }
+div[class*="st-key-kw_watch_root"] .kwg-ebay-price { text-align: right; }
+div[class*="st-key-kw_watch_root"] .kwg-ebay-price .kwg-val { font-size: 12.5px; font-weight: 700; color: #8a8172; }
+div[class*="st-key-kw_watch_root"] .kwg-profit-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #e3dac6;
+    border-radius: 5px;
+    padding: 3px 8px;
+    margin-top: 2px;
+}
+div[class*="st-key-kw_watch_root"] .kwg-profit-row .kwg-lbl2 { font-size: 10px; color: #8a8172; font-weight: 600; }
+div[class*="st-key-kw_watch_root"] .kwg-profit-row .kwg-val { font-size: 13.5px; font-weight: 800; }
+div[class*="st-key-kw_watch_root"] .kwg-badge-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+div[class*="st-key-kw_watch_root"] .kwg-kw-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: #e3f0ec;
+    color: #2f7d6e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+div[class*="st-key-kw_watch_root"] .kwg-warn-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: #f8e2df;
+    color: #c0392b;
+    white-space: nowrap;
+}
+div[class*="st-key-kw_watch_root"] .kwg-memo-line {
+    font-size: 10.5px !important;
+    color: #8a8172;
+    margin-top: 2px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 16px !important;
+}
+/* QA #1 fix-2 (2026-07-06): 件数 count は Streamlit の base p 12px !important /
+   strong 既定色に負けるため、div.kwg-count / div.kwg-count b で特異性を上げ、
+   色/サイズ両方に !important を付ける (モック実測色 #c0392b の赤を復活)。 */
+div[class*="st-key-kw_watch_root"] div.kwg-count {
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    color: #3a352c !important;
+    line-height: 26px !important;
+    margin: 0 !important;
+}
+div[class*="st-key-kw_watch_root"] div.kwg-count b {
+    color: #c0392b !important;
+    font-size: 22px !important;
+    font-weight: 800 !important;
+}
+/* QA #1 fix-1: 「全て確認完了」CTA を主 CTA (緑塗り+白文字) に。
+   キー狙い撃ちで他ボタン (下段の「✓ 確認」小ボタン等) と衝突しない。 */
+div[class*="st-key-kw_gallery_cta_wrap"] [data-testid="stButton"] button {
+    background: #2f7d6e !important;
+    color: #ffffff !important;
+    border-color: #2f7d6e !important;
+    font-weight: 700 !important;
+    min-height: 34px !important;
+}
+div[class*="st-key-kw_gallery_cta_wrap"] [data-testid="stButton"] button:hover {
+    background: #266b5e !important;
+    border-color: #266b5e !important;
+}
+div[class*="st-key-kw_gallery_cta_wrap"] [data-testid="stButton"] button:disabled {
+    background: #b7cec8 !important;
+    border-color: #b7cec8 !important;
+    color: #ffffff !important;
+}
+/* QA #1 fix-3: 「赤字リスクのみ」を右端 checkbox でなく他 3 chip と同列の
+   赤ピル chip に。button の見た目を chip に寄せる (未押下=薄赤アウトライン、
+   押下=濃赤塗り)。押下状態はコンテナ key を _on / _off で切替えて表現。 */
+div[class*="st-key-kw_gallery_loss_chip_off"] [data-testid="stButton"] button,
+div[class*="st-key-kw_gallery_loss_chip_on"] [data-testid="stButton"] button {
+    border-radius: 14px !important;
+    padding: 3px 12px !important;
+    min-height: 26px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border-width: 1px !important;
+}
+div[class*="st-key-kw_gallery_loss_chip_off"] [data-testid="stButton"] button {
+    background: #ffffff !important;
+    color: #c0392b !important;
+    border-color: #e6b6ae !important;
+}
+div[class*="st-key-kw_gallery_loss_chip_off"] [data-testid="stButton"] button:hover {
+    background: #f8e2df !important;
+    border-color: #c0392b !important;
+}
+div[class*="st-key-kw_gallery_loss_chip_on"] [data-testid="stButton"] button {
+    background: #c0392b !important;
+    color: #ffffff !important;
+    border-color: #c0392b !important;
+}
+div[class*="st-key-kw_gallery_loss_chip_on"] [data-testid="stButton"] button:hover {
+    background: #a5321f !important;
+    border-color: #a5321f !important;
+}
+div[class*="st-key-kwg_confirm_col"] [data-testid="stButton"] button {
+    min-height: 22px !important;
+    padding: 1px 8px !important;
+    font-size: 11px !important;
 }
 </style>"""
 
@@ -623,6 +806,282 @@ def _render_legacy_import() -> None:
         st.rerun()
 
 
+_GALLERY_SITE_LABEL = {"mercari": "🛒 メルカリ", "yahoo_auctions": "🔨 ヤフオク"}
+
+
+def _build_gallery_items(hits: list[dict]) -> list[dict]:
+    """依頼ボード #52: get_unconfirmed_hits() の返り値に「eBay想定価格」「想定利益」を
+    付加した表示用 dict のリストを返す (純関数寄り、DB/settings I/O のみ副作用)。
+
+    - watch.ebay_item_id が紐づく hit のみ計算を試みる (W206/W207 の既存前提を踏襲)。
+    - ebay_price_usd/jpy: ebay_listings.current_price を settings.exchange_rate で JPY 換算。
+    - profit_jpy: tasks.task_supplier_candidate_search._estimate_profit_for_candidate
+      (calculator.calculate を listing の実物理データで呼ぶ既存ヘルパー、profit_with_refund) を
+      hit.price_jpy を仕入値として流用し算出。
+    - 算出不能 (listing 未取得 / current_price 欠損 / calculator 例外) は None のまま
+      呼び出し側で「—」表示にする (誤った数字を出すより空、K0)。
+    """
+    from calculator import load_settings
+    from monitor.database import get_ebay_listing_by_item_id
+    from tasks.task_supplier_candidate_search import _estimate_profit_for_candidate
+
+    try:
+        settings = load_settings()
+    except Exception as e:  # noqa: BLE001 — 設定読込失敗でもギャラリー表示自体は続行
+        logger.warning(f"gallery: load_settings 失敗、想定価格/利益は全て— 表示: {e}")
+        settings = {}
+    fx = float(settings.get("exchange_rate", 155.0)) if settings else 155.0
+
+    listing_cache: dict[str, Optional[dict]] = {}
+    items: list[dict] = []
+    for h in hits:
+        item = dict(h)
+        item["ebay_price_usd"] = None
+        item["ebay_price_jpy"] = None
+        item["profit_jpy"] = None
+        ebay_item_id = h.get("ebay_item_id")
+        if ebay_item_id and settings:
+            if ebay_item_id not in listing_cache:
+                try:
+                    listing_cache[ebay_item_id] = get_ebay_listing_by_item_id(ebay_item_id)
+                except Exception as e:  # noqa: BLE001 — 表示用途、失敗で一覧を止めない
+                    logger.warning(
+                        f"gallery: listing 取得失敗 ebay_item_id={ebay_item_id}: {e}"
+                    )
+                    listing_cache[ebay_item_id] = None
+            listing = listing_cache[ebay_item_id]
+            current_price = listing.get("current_price") if listing else None
+            if listing and current_price:
+                item["ebay_price_usd"] = float(current_price)
+                item["ebay_price_jpy"] = float(current_price) * fx
+                if h.get("price_jpy") is not None:
+                    try:
+                        est = _estimate_profit_for_candidate(
+                            listing=listing,
+                            purchase_yen=int(h["price_jpy"]),
+                            settings=settings,
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(
+                            f"gallery: 利益計算失敗 hit_id={h.get('hit_id')}: {e}"
+                        )
+                        est = None
+                    if est is not None:
+                        item["profit_jpy"] = est[0]
+        items.append(item)
+    return items
+
+
+def _gallery_card_html(item: dict) -> str:
+    """1 hit を .kwg-card HTML に整形する純関数 (モックアップの card 構造を踏襲)。"""
+    site = item.get("site")
+    site_label = _GALLERY_SITE_LABEL.get(site, site or "")
+    title = (item.get("title") or "").strip() or "(タイトル不明)"
+    url = item.get("found_item_url") or "#"
+    img = (item.get("image_url") or "").strip()
+    thumb_style = f"background-image:url('{escape(img, quote=True)}');" if img else ""
+
+    price_jpy = item.get("price_jpy")
+    price_disp = f"¥{price_jpy:,}" if price_jpy is not None else "—"
+
+    ebay_usd = item.get("ebay_price_usd")
+    ebay_jpy = item.get("ebay_price_jpy")
+    ebay_disp = f"${ebay_usd:,.0f} (¥{ebay_jpy:,.0f})" if ebay_usd is not None else "—"
+
+    profit = item.get("profit_jpy")
+    is_loss = profit is not None and profit < 0
+    if profit is None:
+        profit_disp, profit_color = "—", "#8a8172"
+    elif profit >= 0:
+        profit_disp, profit_color = f"+¥{profit:,.0f}", "#2f7d6e"
+    else:
+        profit_disp, profit_color = f"−¥{abs(profit):,.0f}", "#c0392b"
+
+    kw = (item.get("keyword") or "").strip()
+    memo = (item.get("memo") or "").strip()
+    warn_html = '<span class="kwg-warn-badge">⚠ 赤字リスク</span>' if is_loss else ""
+    card_cls = "kwg-card kwg-alert" if is_loss else "kwg-card"
+
+    return (
+        f'<div class="{card_cls}">'
+        f'<a class="kwg-thumb-link" href="{escape(url, quote=True)}" target="_blank" rel="noopener">'
+        f'<div class="kwg-thumb" style="{thumb_style}">'
+        f'<span class="kwg-site-badge">{escape(site_label)}</span></div></a>'
+        f'<div class="kwg-body">'
+        f'<a class="kwg-item-name" href="{escape(url, quote=True)}" target="_blank" rel="noopener" '
+        f'title="{escape(title, quote=True)}">{escape(title)}</a>'
+        f'<div class="kwg-price-row">'
+        f'<div class="kwg-detect-price"><span class="kwg-lbl">検知価格</span>{escape(price_disp)}</div>'
+        f'<div class="kwg-ebay-price"><span class="kwg-lbl">eBay想定</span>'
+        f'<span class="kwg-val">{escape(ebay_disp)}</span></div>'
+        f'</div>'
+        f'<div class="kwg-profit-row"><span class="kwg-lbl2">想定利益</span>'
+        f'<span class="kwg-val" style="color:{profit_color};">{escape(profit_disp)}</span></div>'
+        f'<div class="kwg-badge-row">'
+        f'<span class="kwg-kw-badge" title="{escape(kw, quote=True)}">{escape(kw)}</span>'
+        f'{warn_html}</div>'
+        + (f'<div class="kwg-memo-line" title="{escape(memo, quote=True)}">{escape(memo)}</div>' if memo else '')
+        + '</div></div>'
+    )
+
+
+# 依頼ボード #52 (2026-07-06): get_unconfirmed_hits の LIMIT (500) を跨いで
+# 「表示は 500 件まで・他 N 件」の注記に使う。DB 側 LIMIT と同値を保つ。
+_GALLERY_FETCH_LIMIT = 500
+
+
+def _apply_gallery_filter(items: list[dict], site_pick: str, loss_only: bool) -> list[dict]:
+    """絞込条件 (site_pick / 赤字リスクのみ) を items に適用する純関数。
+    MED-1: 「✓ 表示中 N 件を確認完了」ボタンがフィルタと同じ集合を確定するため、
+    表示と確定処理の双方が同じロジックを共有できるように分離。"""
+    return [
+        i for i in items
+        if (site_pick == "all" or i.get("site") == site_pick)
+        and (not loss_only or (i.get("profit_jpy") is not None and i["profit_jpy"] < 0))
+    ]
+
+
+def _render_gallery_section() -> None:
+    """依頼ボード #52: メルカリ風ギャラリー (未確認 hit のみ表示)。
+
+    - MED-2: 総件数は COUNT クエリ (count_unconfirmed_hits)、表示は最大
+      _GALLERY_FETCH_LIMIT 件。超過分は注記で告知。
+    - MED-1: 「確認完了」はフィルタ絞込中は表示中の集合のみを確定
+      (confirm_hits(ids))、絞込なしなら全 hits を確定 (confirm_all_hits)。
+    """
+    st.markdown(_KW_GALLERY_CSS, unsafe_allow_html=True)
+    total = count_unconfirmed_hits()
+    hits = get_unconfirmed_hits(limit=_GALLERY_FETCH_LIMIT)
+    items = _build_gallery_items(hits)
+
+    shown_total = len(items)
+    mercari_n = sum(1 for i in items if i.get("site") == "mercari")
+    yahoo_n = sum(1 for i in items if i.get("site") == "yahoo_auctions")
+    loss_n = sum(1 for i in items if i.get("profit_jpy") is not None and i["profit_jpy"] < 0)
+
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 1.4])
+        with c1:
+            st.markdown(
+                f'<div class="kwg-count">🆕 新着 <b>{total}</b> 件</div>',
+                unsafe_allow_html=True,
+            )
+            if total > shown_total:
+                # MED-2: LIMIT 超過を silent に隠さず告知 (Q0)。
+                # 実効件数と超過数を明示し、user が「一部が見えない」ことを認知できる状態に。
+                over = total - shown_total
+                st.caption(
+                    f"⚠ 表示は {shown_total} 件までです。ほかに {over} 件あります"
+                    f" (絞込後に「全て確認完了」で古い分から順に消化してください)。"
+                )
+
+        # QA #2 fix / 依頼ボード#52: 「絞込:」ラベルと 4 chip を **同一の左側インライン
+        # 行** に配置する (モック 4 chip inline 準拠、右カラムに分離しない)。
+        # 実装: label(narrow) / site 3 pill / loss 1 pill / spacer の 4 カラム構成で
+        # 左詰めに寄せる。右半分は spacer で埋め (幅を稼がず 4 chip の間隔を保つ)。
+        fl_lbl, fl_site, fl_loss, _fl_sp = st.columns([0.6, 2.4, 1.4, 2.6])
+        with fl_lbl:
+            st.markdown(
+                '<div style="font-size:11px;color:#8a8172;padding-top:6px;'
+                'text-align:right;padding-right:4px;">絞込:</div>',
+                unsafe_allow_html=True,
+            )
+        with fl_site:
+            site_pick = st.segmented_control(
+                "絞込 (サイト)",
+                options=["all", "mercari", "yahoo_auctions"],
+                format_func=lambda x: {
+                    "all": "すべて",
+                    "mercari": f"🛒 メルカリ ({mercari_n})",
+                    "yahoo_auctions": f"🔨 ヤフオク ({yahoo_n})",
+                }[x],
+                default="all",
+                key="kw_gallery_site_pick",
+                label_visibility="collapsed",
+            )
+        with fl_loss:
+            # loss_only は st.button (click で state toggle → rerun) で赤ピル
+            # chip 化。押下状態を container key の suffix (_on / _off) で表現する
+            # ことで、スコープ CSS を state 別に適用できる (Streamlit の button
+            # 単体では chip 塗り分けができないため)。
+            loss_state_key = "kw_gallery_loss_only"
+            loss_only = bool(st.session_state.get(loss_state_key, False))
+            chip_key = "kw_gallery_loss_chip_on" if loss_only else "kw_gallery_loss_chip_off"
+            with st.container(key=chip_key):
+                if st.button(
+                    f"⚠ 赤字リスクのみ ({loss_n})",
+                    key="kw_gallery_loss_btn",
+                    use_container_width=True,
+                    help="想定利益がマイナスの hit だけに絞り込み",
+                ):
+                    st.session_state[loss_state_key] = not loss_only
+                    st.rerun()
+
+        site_pick = site_pick or "all"
+        filtered = _apply_gallery_filter(items, site_pick, loss_only)
+        is_filtered = (site_pick != "all") or loss_only
+
+        with c2:
+            # MED-1: ラベルとハンドラをフィルタ状態で切替。
+            #   絞込なし: 全 unconfirmed (LIMIT 超過分も含む) を confirm_all_hits で確定。
+            #   絞込あり: 表示中の filtered だけを confirm_hits(ids) で確定。
+            if is_filtered:
+                btn_label = f"✓ 表示中 {len(filtered)} 件を確認完了"
+                btn_help = "現在の絞込に合致する表示中の hit のみを確認済にします"
+                btn_disabled = (len(filtered) == 0)
+            else:
+                btn_label = f"✓ 全て確認完了 ({total} 件)"
+                btn_help = "未確認の hit を全件確認済にします (表示外の LIMIT 超過分も含む)"
+                btn_disabled = (total == 0)
+            # QA #1 fix-1: 主 CTA を緑塗り+白文字に (container key スコープ CSS)。
+            with st.container(key="kw_gallery_cta_wrap"):
+                clicked = st.button(
+                    btn_label, key="kw_gallery_confirm_all",
+                    help=btn_help, disabled=btn_disabled,
+                    use_container_width=True,
+                )
+            # QA #1 fix-4: 副文言を tooltip から常時表示 caption に昇格。
+            st.caption("確認後は次の新着からまた蓄積されます")
+            if clicked:
+                try:
+                    if is_filtered:
+                        n = confirm_hits([i["hit_id"] for i in filtered])
+                    else:
+                        n = confirm_all_hits()
+                except Exception as e:  # noqa: BLE001 — Q0: 失敗を隠さず表示する
+                    logger.error(f"gallery bulk confirm 失敗: {e}")
+                    st.error(f"確認完了処理に失敗しました: {e}")
+                else:
+                    bump_db_version()
+                    st.toast(f"{n} 件を確認済にしました", icon="✅")
+                    st.rerun()
+
+    if not shown_total:
+        st.info("未確認の新着ヒットはありません。")
+        return
+    if not filtered:
+        st.info("絞込条件に合う新着ヒットはありません。")
+        return
+
+    cols = st.columns(4)
+    for idx, item in enumerate(filtered):
+        with cols[idx % 4]:
+            st.markdown(_gallery_card_html(item), unsafe_allow_html=True)
+            with st.container(key=f"kwg_confirm_col_{item['hit_id']}"):
+                if st.button("✓ 確認", key=f"kw_gallery_confirm_{item['hit_id']}",
+                             use_container_width=True):
+                    try:
+                        ok = confirm_hit(item["hit_id"])
+                    except Exception as e:  # noqa: BLE001 — Q0
+                        logger.error(f"confirm_hit 失敗 (hit_id={item['hit_id']}): {e}")
+                        st.error(f"確認処理に失敗しました: {e}")
+                    else:
+                        bump_db_version()
+                        if ok:
+                            st.toast("確認済にしました", icon="✅")
+                        st.rerun()
+
+
 def render_keyword_watch_tab() -> None:
     """W148 キーワード新着監視タブ entry。"""
     # B2 密度化 (2026-07-04): 常時表示の説明 caption → subheader の hover tooltip。
@@ -632,18 +1091,23 @@ def render_keyword_watch_tab() -> None:
             "🔔 キーワード新着監視 (W148)",
             help=(
                 "メルカリ + ヤフオクで「狙っている型番が希望価格レンジで新規出品された瞬間」を"
-                "Discord 通知。在庫監視 (守り) と別系統の発掘 (攻め) タスク。"
+                "ギャラリー表示。在庫監視 (守り) と別系統の発掘 (攻め) タスク。"
             ),
         )
 
-        with st.container(border=True):
-            _render_summary_section()
+        # 依頼ボード #52 (2026-07-06): ギャラリーを主役に据え、既存の watch 設定
+        # UI (巡回サマリ/一覧/追加/legacy 取込) は折りたたみへ移設 (機能は不変)。
+        _render_gallery_section()
 
-        with st.container(border=True):
-            _render_watch_list()
+        with st.expander("⚙ キーワード設定", expanded=False):
+            with st.container(border=True):
+                _render_summary_section()
 
-        with st.container(border=True):
-            _render_add_form()
+            with st.container(border=True):
+                _render_watch_list()
 
-        with st.container(border=True):
-            _render_legacy_import()
+            with st.container(border=True):
+                _render_add_form()
+
+            with st.container(border=True):
+                _render_legacy_import()

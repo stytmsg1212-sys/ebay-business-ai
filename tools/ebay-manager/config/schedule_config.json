@@ -426,13 +426,13 @@
   "discord_category_gate": {
     "order": true,
     "action_required": true,
-    "keyword": true,
+    "keyword": false,
     "rival": true,
     "system": false,
     "inventory": false,
     "research": false,
     "pricing": false,
     "default": false,
-    "_note": "依頼ボード#39 Phase A S2 (2026-07-03): notifiers.notification_center.record_and_maybe_send の choke point が参照するカテゴリ別 Discord 送信ゲート。true=Discord へ実送信、false=notification_log への記録のみ (DASHBOARD/S4 で閲覧、Discord へは送らない)。金銭直結/user対応が要る order・action_required・keyword・rival は既定 ON、それ以外は Discord 通知過多防止のため既定 OFF。本セクション欠落時は notifiers/notification_center.py の _DEFAULT_GATE (同じ値) にフォールバックする。ここを true/false に書き換えるだけで反映 (scheduler 再起動不要、都度ファイル読込)。"
+    "_note": "依頼ボード#39 Phase A S2 (2026-07-03): notifiers.notification_center.record_and_maybe_send の choke point が参照するカテゴリ別 Discord 送信ゲート。true=Discord へ実送信、false=notification_log への記録のみ (DASHBOARD/S4 で閲覧、Discord へは送らない)。金銭直結/user対応が要る order・action_required・rival は既定 ON、それ以外は Discord 通知過多防止のため既定 OFF。keyword は依頼ボード#52 (2026-07-06) でギャラリータブ運用へ移行のため false に変更 (notification_log への記録・keyword_watch_hits 自体への記録は継続、Discord 実送信のみ停止)。本セクション欠落時は notifiers/notification_center.py の _DEFAULT_GATE (旧 keyword=true のまま) にフォールバックする点に注意 — フォールバックとの不一致は許容 (config が優先されるため実害なし)。ここを true/false に書き換えるだけで反映 (scheduler 再起動不要、都度ファイル読込)。"
   }
 }

@@ -40,13 +40,15 @@ _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "schedule_con
 _TIMEOUT_SEC = 10
 
 # config/schedule_config.json に discord_category_gate セクションが無い/読込失敗
-# 時のコード定数 fallback。order/action_required/keyword/rival は金銭直結 or
+# 時のコード定数 fallback。order/action_required/rival は金銭直結 or
 # user 対応が必要な性質のため既定 ON、他は DASHBOARD (S4) での閲覧を主経路とし
 # Discord 通知過多を避けるため既定 OFF。
+# keyword は依頼ボード#52 (2026-07-06) でギャラリータブ運用へ移行のため既定 OFF に
+# 変更 (notification_log への記録は継続、Discord 実送信のみ既定停止)。
 _DEFAULT_GATE: dict = {
     "order": True,
     "action_required": True,
-    "keyword": True,
+    "keyword": False,
     "rival": True,
     "system": False,
     "inventory": False,

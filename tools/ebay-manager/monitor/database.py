@@ -4340,6 +4340,34 @@ def init_db():
                     "availability_pending_reject が揃わず)。次回 init_db で再試行。"
                 )
 
+        # ---- v91 (依頼ボード #52 / 2026-07-06): キーワード新着監視ギャラリー化 ----
+        # keyword_watch_hits.confirmed_at (TIMESTAMP NULL): ギャラリー UI で
+        # user が確認済にした hit を一覧から除外するためのフラグ。物理削除はせず
+        # 履歴として残す (Q0 silent skip 防止、監視統計 hits_24h/hits_7d は
+        # confirmed_at に関わらず従来通り全件対象のまま = 既存挙動を変えない)。
+        schema_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if schema_ver < 91:
+            try:
+                conn.execute(
+                    "ALTER TABLE keyword_watch_hits ADD COLUMN confirmed_at TIMESTAMP"
+                )
+                logger.info("[init_db v91] keyword_watch_hits.confirmed_at added")
+            except sqlite3.OperationalError:
+                pass  # 既存列あり (冪等)
+            _v91_cols = [
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(keyword_watch_hits)"
+                ).fetchall()
+            ]
+            if 'confirmed_at' in _v91_cols:
+                conn.execute("PRAGMA user_version = 91")
+                logger.info("[init_db v91] schema_ver bumped to 91")
+            else:
+                logger.warning(
+                    "[init_db v91] 未完了 (confirmed_at 列が確認できず)。"
+                    "次回 init_db で再試行。"
+                )
+
 
 # ---- サイト設定 ----
 

@@ -333,3 +333,73 @@ def list_active_sentinels() -> list[dict]:
             "SELECT * FROM keyword_watches WHERE is_active=1 AND is_sentinel=1"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---- 依頼ボード #52 (2026-07-06): ギャラリー表示の確認済フラグ ----
+# keyword_watch_hits.confirmed_at (migration v91)。物理削除ではなく非表示化のみ
+# (履歴は保持、Q0 silent skip 防止のため hit 自体は残す)。
+
+
+def get_unconfirmed_hits(limit: int = 500) -> list[dict]:
+    """confirmed_at IS NULL の hit を watch 情報と JOIN して新しい順に返す。
+    ギャラリー表示 (依頼ボード #52) 用。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT h.id AS hit_id, h.watch_id, h.found_item_url, h.title, "
+            "       h.price_jpy, h.image_url, h.in_price_range, h.detected_at, "
+            "       w.site, w.keyword, w.memo, w.ebay_item_id "
+            "FROM keyword_watch_hits h "
+            "INNER JOIN keyword_watches w ON w.id = h.watch_id "
+            "WHERE h.confirmed_at IS NULL "
+            "ORDER BY h.detected_at DESC "
+            "LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def confirm_hit(hit_id: int) -> bool:
+    """1 件を確認済にする (confirmed_at=now)。既に確認済なら rowcount=0 → False。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE keyword_watch_hits SET confirmed_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND confirmed_at IS NULL",
+            (hit_id,),
+        )
+        return cur.rowcount == 1
+
+
+def confirm_all_hits() -> int:
+    """未確認 hit を一括で確認済にする (「✓ 全て確認完了」ボタン、2 段確認不要の
+    ワンボタン仕様、user 明示要望)。Returns: 確認した件数。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE keyword_watch_hits SET confirmed_at=CURRENT_TIMESTAMP "
+            "WHERE confirmed_at IS NULL"
+        )
+        return cur.rowcount
+
+
+def confirm_hits(hit_ids: list[int]) -> int:
+    """指定 hit_ids の未確認分だけを確認済にする (依頼ボード #52 MED-1、
+    ギャラリーで絞込中の表示分だけを一括確認するボタンが呼ぶ)。空リストは 0 返却。"""
+    if not hit_ids:
+        return 0
+    placeholders = ",".join("?" for _ in hit_ids)
+    with get_conn() as conn:
+        cur = conn.execute(
+            f"UPDATE keyword_watch_hits SET confirmed_at=CURRENT_TIMESTAMP "
+            f"WHERE confirmed_at IS NULL AND id IN ({placeholders})",
+            hit_ids,
+        )
+        return cur.rowcount
+
+
+def count_unconfirmed_hits() -> int:
+    """未確認 hit の総件数 (COUNT のみ、依頼ボード #52 MED-2 の
+    「500 超で件数過少表示」対策)。get_unconfirmed_hits の LIMIT を跨いで
+    真の総件数を返す。"""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM keyword_watch_hits WHERE confirmed_at IS NULL"
+        ).fetchone()[0]
