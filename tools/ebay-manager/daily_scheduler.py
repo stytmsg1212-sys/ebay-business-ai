@@ -849,8 +849,10 @@ def setup_scheduler():
     # "news_check" entry (cron_hour / cron_minute / enabled) を参照.
     news_cfg = (config.get('tasks_enabled', {}).get('news_check') or {})
     if news_cfg.get('enabled', True):
-        n_hour = int(news_cfg.get('cron_hour', 6))
-        n_minute = int(news_cfg.get('cron_minute', 0))
+        # 既定値は 05:45 (W322 2026-07-05 前倒し。設計書 §6 変更提案#2)。
+        # 実運用は config/schedule_config.json の cron_hour/cron_minute が優先。
+        n_hour = int(news_cfg.get('cron_hour', 5))
+        n_minute = int(news_cfg.get('cron_minute', 45))
         scheduler.add_job(
             _run_news_only,
             trigger=CronTrigger(hour=n_hour, minute=n_minute, second=0),
@@ -864,11 +866,14 @@ def setup_scheduler():
         )
 
     # ── W14 通関対応自動化 (独立 CronJob) ──
-    # code-reviewer H-6 対応: W13 (06:00) と API 競合を避けるため 06:10 にオフセット
+    # W322 (2026-07-05): 前倒し 06:10→05:50 (朝の部 06:00 開始前に用意)。
+    # news_check (05:45) と 5 分オフセットで API 競合を回避 (旧: news 06:00 / customs 06:10)。
     customs_cfg = (config.get('tasks_enabled', {}).get('customs_check') or {})
     if customs_cfg.get('enabled', True):
-        c_hour = int(customs_cfg.get('cron_hour', 6))
-        c_minute = int(customs_cfg.get('cron_minute', 10))
+        # 既定値は 05:50 (W322 2026-07-05 前倒し。設計書 §6 変更提案#3)。
+        # 実運用は config/schedule_config.json の cron_hour/cron_minute が優先。
+        c_hour = int(customs_cfg.get('cron_hour', 5))
+        c_minute = int(customs_cfg.get('cron_minute', 50))
         scheduler.add_job(
             _run_customs_check_only,
             trigger=CronTrigger(hour=c_hour, minute=c_minute, second=0),

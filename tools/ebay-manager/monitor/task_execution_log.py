@@ -54,8 +54,13 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     {"key": "price_optimization", "display": "価格最適化", "hours": None, "weekdays": None, "owner": "main"},
     {"key": "fuel_surcharge_check", "display": "燃料サーチャージ更新リマインダー", "hours": [2], "weekdays": [0], "owner": "main"},
     # 独立 cron
-    {"key": "news_check", "display": "W154 AI ニュース取得", "hours": [6], "weekdays": None, "owner": "news"},
-    {"key": "customs_check", "display": "W14 通関対応", "hours": [6], "weekdays": None, "owner": "customs"},
+    # W322 (2026-07-05): 前倒し 06:00→05:45 (news) / 06:10→05:50 (customs)。
+    # 朝の部 06:00 開始前に用意する目的 (設計書 §6 変更提案#2/#3)。cron 時刻は
+    # config/schedule_config.json の cron_hour/cron_minute が真の source of truth
+    # だが、TASK_SCHEDULE.hours は cron 側改定に手動追随する必要がある
+    # (cascade-update.md, tests/test_w322_evening_refresh.py に乖離検知テストあり)。
+    {"key": "news_check", "display": "W154 AI ニュース取得", "hours": [5], "weekdays": None, "owner": "news"},
+    {"key": "customs_check", "display": "W14 通関対応", "hours": [5], "weekdays": None, "owner": "customs"},
     {"key": "budget_alert", "display": "予算アラート", "hours": [6, 12, 19], "weekdays": None, "owner": "budget"},
     {"key": "video_learning_resume", "display": "動画学習 quota reset 後再開 (16:30)", "hours": [16], "weekdays": None, "owner": "video_resume"},
     {"key": "scheduler_health_check", "display": "定時実行ヘルスチェック", "hours": [4, 12, 16, 19, 23], "weekdays": None, "owner": "health"},

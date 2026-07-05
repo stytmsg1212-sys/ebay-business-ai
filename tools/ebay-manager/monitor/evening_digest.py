@@ -23,6 +23,16 @@ from monitor.database import get_conn
 # captured_at は秒精度 (CURRENT_TIMESTAMP) のため同一秒内の複数 INSERT でタイが
 # 発生し得る (05:30 実行が長引き複数 item を同秒で処理する場合等)。id (AUTOINCREMENT)
 # を副次キーにして常に挿入順 = 新しい順を保証する。
+#
+# W322 追補 (2026-07-05, レビュー MED-1): recency 窓を「当日 (JST) に snapshot が
+# 存在する競合のみ」に限定する。窓なしだと、snapshot が更新されない (= 05:30 の
+# GetItem cap に外れた等で数日前の観測 2 件しか無い) 競合の古い変化が毎晩再掲
+# されるため。captured_at は SQL `CURRENT_TIMESTAMP` DEFAULT = UTC 保存
+# (sqlite-timezone.md、Python bind 系ではない例外扱いの逆側 = UTC で正しい) の
+# ため `DATE(captured_at, '+9 hours') = DATE('now', '+9 hours')` で JST 今日へ shift。
+# 「最新スナップショットが当日である」= cur.rn=1 の captured_at が JST 今日と一致
+# を条件にする。prev は「前回」なので当日でなくてよい (むしろ前日 05:30 との比較が
+# 主目的)。
 _CANDIDATES_SQL = """
 WITH ranked AS (
     SELECT competitor_item_id, our_item_id, quantity_sold, quantity_available,
@@ -45,6 +55,7 @@ FROM ranked cur
 JOIN ranked prev
   ON prev.competitor_item_id = cur.competitor_item_id AND prev.rn = 2
 WHERE cur.rn = 1
+  AND DATE(cur.captured_at, '+9 hours') = DATE('now', '+9 hours')
 """
 
 

@@ -242,3 +242,91 @@ def test_task_schedule_registered():
     entry = TASK_SCHEDULE_BY_KEY.get("evening_refresh")
     assert entry is not None
     assert entry["hours"] == [19]
+
+
+# ────────────────────────────────────────────────────────────────
+# 追補 (2026-07-05 レビュー H1): 独立 cron の cron_hour ↔ TASK_SCHEDULE.hours
+# 乖離を機械検知する (news_check/customs_check の時刻変更時に片方だけ更新すると
+# missed 誤検知 + autofix 無駄再実行を生むため、両者を同期させる)。
+# ────────────────────────────────────────────────────────────────
+
+def test_independent_cron_hours_match_schedule_config():
+    """config/schedule_config.json の cron_hour と TASK_SCHEDULE.hours の乖離検知.
+
+    news_check / customs_check は execute_daily_tasks 経由でなく独立 cron 発火の
+    ため、time drift 事故 (2026-04-25 daily_relist と同型) が起きるとどこにも
+    痕跡が残らない。cron_hour を変えたら TASK_SCHEDULE.hours も同時に変える
+    という cascade を機械検知する。
+    """
+    import json
+    from pathlib import Path
+    from monitor.task_execution_log import TASK_SCHEDULE_BY_KEY
+
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "schedule_config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    tasks = cfg.get("tasks_enabled", {})
+
+    for key in ("news_check", "customs_check"):
+        entry_cfg = tasks.get(key) or {}
+        cron_hour = int(entry_cfg.get("cron_hour"))
+        schedule = TASK_SCHEDULE_BY_KEY.get(key)
+        assert schedule is not None, f"TASK_SCHEDULE に {key} が登録されていない"
+        assert schedule["hours"] == [cron_hour], (
+            f"{key}: config.cron_hour={cron_hour} / TASK_SCHEDULE.hours={schedule['hours']} "
+            f"が乖離。片方だけ更新すると missed 誤検知 + autofix 無駄再実行を起こす "
+            f"(cascade-update.md)"
+        )
+
+
+# ────────────────────────────────────────────────────────────────
+# 追補 (2026-07-05 レビュー MED-1): 当日 (JST) の snapshot が無い競合は digest 対象外
+# (stale な過去 2 件だけで検出された変化を毎晩再掲しない)
+# ────────────────────────────────────────────────────────────────
+
+def test_stale_snapshots_excluded_from_digest(tmp_db):
+    """snapshot が数日更新されていない競合は「今夜の候補」に入らない (再掲防止)."""
+    from monitor.evening_digest import get_evening_price_candidates
+
+    _seed_listing("OUR_STALE_5678", "Stale Product")
+    # 3 日前と 2 日前の 2 件のみ (当日の snapshot が無い)。UTC で bind すれば
+    # DATE(captured_at, '+9 hours') は当日を含まない (境界 15:00 UTC 前後で
+    # 1 日ずれることはあるが、3 日 / 2 日前ならどうずれても当日にはならない)。
+    from datetime import datetime, timedelta, timezone
+    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    two_days_ago = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO competitor_snapshots
+               (competitor_item_id, our_item_id, quantity_sold, quantity_available,
+                price_usd, captured_at)
+               VALUES ('COMP_STALE', 'OUR_STALE_5678', 5, 3, 100.0, ?)""",
+            (three_days_ago,),
+        )
+        conn.execute(
+            """INSERT INTO competitor_snapshots
+               (competitor_item_id, our_item_id, quantity_sold, quantity_available,
+                price_usd, captured_at)
+               VALUES ('COMP_STALE', 'OUR_STALE_5678', 5, 3, 80.0, ?)""",
+            (two_days_ago,),
+        )
+
+    cands = get_evening_price_candidates()
+    # 対比: 同 test で今日入れた別競合が拾えることも確認 (逆側の false-negative 検知)。
+    _seed_listing("OUR_TODAY_1234", "Fresh Product")
+    from monitor.database import insert_competitor_snapshot
+    insert_competitor_snapshot(
+        competitor_item_id="COMP_TODAY", our_item_id="OUR_TODAY_1234",
+        quantity_sold=1, quantity_available=1, price_usd=100.0,
+    )
+    insert_competitor_snapshot(
+        competitor_item_id="COMP_TODAY", our_item_id="OUR_TODAY_1234",
+        quantity_sold=1, quantity_available=1, price_usd=89.0,
+    )
+    cands_after_today = get_evening_price_candidates()
+
+    stale_ids = {c["competitor_item_id"] for c in cands}
+    assert "COMP_STALE" not in stale_ids, "stale snapshot が digest に再掲された (再掲防止 FAIL)"
+    today_ids = {c["competitor_item_id"] for c in cands_after_today}
+    assert "COMP_TODAY" in today_ids, "当日 snapshot がある競合は拾われるべき"
+    assert "COMP_STALE" not in today_ids
