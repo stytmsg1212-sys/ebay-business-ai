@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>売上低下 深堀り調査レポート (2026-07-04)</title>
+<style>
+  :root {
+    --bg: #f2ecdf;
+    --card: #fbf8f2;
+    --card-border: #e3dac6;
+    --text: #3a352c;
+    --text-sub: #8a8172;
+    --accent: #2f7d6e;
+    --accent-bg: #e3f0ec;
+    --red: #c0392b;
+    --red-bg: #f8e2df;
+    --orange: #b8752f;
+    --orange-bg: #f3e6d4;
+    --gray-bar: #cdc4b0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 0 50px;
+    background: var(--bg);
+    font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .page { width: 1000px; margin: 0 auto; }
+
+  .report-header { margin: 0 4px 14px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .report-header h1 { font-size: 19px; margin: 0 0 4px; color: var(--text); }
+  .report-header .sub { font-size: 12px; color: var(--text-sub); }
+  .source-tags { text-align: right; font-size: 11px; color: var(--text-sub); }
+  .source-tags span { display: inline-block; background: var(--accent-bg); color: var(--accent); border: 1px solid #bcdcd4; border-radius: 10px; padding: 1px 8px; margin-left: 4px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--card-border);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .section-title .num { color: var(--accent); font-size: 13px; }
+  .section-sub { font-size: 11.5px; color: var(--text-sub); margin: -4px 0 10px; }
+
+  /* --- conclusion banner --- */
+  .banner {
+    background: linear-gradient(180deg, #fff, var(--card));
+    border: 1.5px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 14px;
+  }
+  .banner h2 { font-size: 13px; color: var(--accent); margin: 0 0 8px; letter-spacing: .02em; }
+  .banner ol { margin: 0; padding-left: 20px; }
+  .banner li { margin-bottom: 6px; font-size: 13px; }
+  .banner li:last-child { margin-bottom: 0; }
+  .banner b { color: var(--red); }
+  .banner .ok-b { color: var(--accent); }
+
+  /* --- bar chart (monthly revenue) --- */
+  .chart-area { display: flex; align-items: flex-end; gap: 28px; height: 200px; padding: 0 10px 0 44px; position: relative; }
+  .chart-area .gridline {
+    position: absolute; left: 44px; right: 10px; height: 1px; background: var(--card-border);
+    font-size: 10px; color: var(--text-sub);
+  }
+  .chart-area .gridline span { position: absolute; left: -44px; top: -6px; width: 40px; text-align: right; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; width: 90px; position: relative; z-index: 1; }
+  .bar-total { font-size: 11.5px; font-weight: 700; margin-bottom: 4px; color: var(--text); }
+  .bar-stack { width: 46px; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
+  .seg { width: 100%; }
+  .seg-stock { background: var(--accent); }
+  .seg-muzaiko { background: var(--red); }
+  .seg-unknown { background: var(--gray-bar); }
+  .bar-month { font-size: 12px; margin-top: 6px; color: var(--text); }
+  .bar-month.peak { font-weight: 700; color: var(--orange); }
+
+  .legend-row { display: flex; gap: 16px; margin: 10px 0 6px; font-size: 11.5px; }
+  .legend-row .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.data-table th, table.data-table td { border: 1px solid var(--card-border); padding: 5px 8px; text-align: right; }
+  table.data-table th { background: var(--accent-bg); color: var(--accent); font-weight: 700; text-align: center; }
+  table.data-table td:first-child, table.data-table th:first-child { text-align: left; }
+  table.data-table td.neg { color: var(--red); font-weight: 700; }
+  table.data-table td.pos { color: var(--accent); font-weight: 700; }
+  .table-caption { font-size: 11px; color: var(--text-sub); margin-top: 6px; }
+
+  /* --- funnel --- */
+  .funnel { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 6px 0 14px; }
+  .funnel-stage {
+    color: #fff; text-align: center; padding: 10px 12px; border-radius: 4px;
+    font-size: 12.5px; font-weight: 600;
+  }
+  .funnel-stage .big { font-size: 14px; font-weight: 800; display: block; }
+  .funnel-stage .delta { font-size: 12px; font-weight: 700; }
+  .funnel-arrow { font-size: 11px; color: var(--text-sub); }
+  .stage1 { width: 92%; background: var(--accent); }
+  .stage2 { width: 66%; background: #6d7f3a; }
+  .stage3 { width: 40%; background: var(--red); }
+
+  /* --- stat cards (factor breakdown) --- */
+  .stat-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .stat-card {
+    flex: 1; min-width: 150px;
+    background: #fff; border: 1px solid var(--card-border); border-radius: 6px;
+    padding: 8px 10px; text-align: center;
+  }
+  .stat-card .v { font-size: 18px; font-weight: 800; color: var(--red); }
+  .stat-card .v.ok { color: var(--accent); }
+  .stat-card .v.warn { color: var(--orange); }
+  .stat-card .l { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+
+  .factor-block { margin-bottom: 14px; }
+  .factor-block:last-child { margin-bottom: 0; }
+  .factor-h { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
+  .factor-h .tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+  .tag-fact { background: var(--accent-bg); color: var(--accent); border: 1px solid #bcdcd4; }
+  .tag-guess { background: var(--orange-bg); color: var(--orange); border: 1px solid #e0c299; }
+  .factor-text { font-size: 12px; color: var(--text); }
+  .factor-text .sub { color: var(--text-sub); font-size: 11.5px; }
+
+  /* mini trend bars (ended count acceleration) */
+  .mini-trend { display: flex; align-items: flex-end; gap: 10px; height: 70px; margin: 8px 0 4px; }
+  .mini-col { display: flex; flex-direction: column; align-items: center; width: 54px; }
+  .mini-bar { width: 26px; background: var(--red); border-radius: 2px 2px 0 0; }
+  .mini-label { font-size: 10.5px; color: var(--text-sub); margin-top: 3px; }
+  .mini-val { font-size: 11px; font-weight: 700; }
+
+  /* donut-ish share bar */
+  .share-bar { display: flex; height: 20px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+  .share-bar .seg-a { background: var(--red); }
+  .share-bar .seg-b { background: var(--accent-bg); }
+  .share-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-sub); }
+
+  /* --- action table --- */
+  table.action-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.action-table th, table.action-table td { border: 1px solid var(--card-border); padding: 6px 8px; vertical-align: top; }
+  table.action-table th { background: var(--accent-bg); color: var(--accent); text-align: center; }
+  table.action-table td.id { text-align: center; font-weight: 700; color: var(--accent); width: 34px; }
+  table.action-table td.grp { text-align: center; width: 92px; font-size: 11px; color: var(--text-sub); }
+  table.action-table td.eff { text-align: center; width: 56px; }
+  table.action-table td.cost { text-align: center; width: 56px; }
+  .pill-high { color: var(--red); font-weight: 700; }
+  .pill-mid { color: var(--orange); font-weight: 700; }
+  .pill-low { color: var(--accent); font-weight: 700; }
+
+  .source-list { font-size: 12px; }
+  .source-list li { margin-bottom: 6px; }
+  .badge-inline { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; margin-right: 4px; }
+
+  .footer { font-size: 11px; color: var(--text-sub); text-align: right; margin-top: 6px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="report-header">
+    <div>
+      <h1>売上低下 深堀り調査レポート</h1>
+      <div class="sub">依頼#41 深堀り対応 ／ 対象期間: eBay Seller Hub 直近90日 (4月初〜7/4) ・ 社内DB 2月〜6月</div>
+    </div>
+    <div class="source-tags">
+      作成日 2026-07-04<br>
+      <span>Seller Hub 実測</span><span>社内DB 実測</span>
+    </div>
+  </div>
+
+  <!-- 1. 結論バナー -->
+  <div class="banner">
+    <h2>結論 (先に3行)</h2>
+    <ol>
+      <li><b>eBayのペナルティではない。</b> Top Rated (過去・現在・本日すべて)、取引欠陥率 <b>0.00%(0/475)</b>。集客・成約が同時に細っているのは供給側・広告側の要因。</li>
+      <li>主因①: <b>無在庫商品の供給目減り。</b> 無在庫677件中 <b>55%(372件)が終了済</b>、<b>292件が仕入元品切れ</b>。eBay側「売れ残り・未再出品」も <b>697件</b>。</li>
+      <li>主因②③: <b>広告売上 -33.4%</b> (売上の約93%が広告 Promoted Listings 依存) と、直近は件数<span class="ok-b">+2.6%</span>でも<b>単価 -21.0%</b>。</li>
+    </ol>
+  </div>
+
+  <!-- 2. 月次売上推移 -->
+  <div class="card">
+    <div class="section-title"><span class="num">2</span>月次売上推移 (社内DB実測・在庫種別内訳)</div>
+    <div class="section-sub">3月が異常ピーク($21,594)。無在庫(赤)が3月をピークに崩壊、有在庫(緑)は堅調〜増加。</div>
+
+    <div class="chart-area">
+      <div class="gridline" style="bottom:160px;"><span>$21,594</span></div>
+      <div class="gridline" style="bottom:0px;"><span>$0</span></div>
+
+      <div class="bar-col">
+        <div class="bar-total">$6,622</div>
+        <div class="bar-stack" style="height:49px;">
+          <div class="seg seg-stock" style="height:35px;"></div>
+          <div class="seg seg-muzaiko" style="height:12px;"></div>
+          <div class="seg seg-unknown" style="height:2px;"></div>
+        </div>
+        <div class="bar-month">2月</div>
+      </div>
+      <div class="bar-col">
+        <div class="bar-total">$21,594</div>
+        <div class="bar-stack" style="height:160px;">
+          <div class="seg seg-stock" style="height:60px;"></div>
+          <div class="seg seg-muzaiko" style="height:89px;"></div>
+          <div class="seg seg-unknown" style="height:11px;"></div>
+        </div>
+        <div class="bar-month peak">3月 (ピーク)</div>
+      </div>
+      <div class="bar-col">
+        <div class="bar-total">$9,900</div>
+        <div class="bar-stack" style="height:73px;">
+          <div class="seg seg-stock" style="height:22px;"></div>
+          <div class="seg seg-muzaiko" style="height:40px;"></div>
+          <div class="seg seg-unknown" style="height:12px;"></div>
+        </div>
+        <div class="bar-month">4月</div>
+      </div>
+      <div class="bar-col">
+        <div class="bar-total">$12,379</div>
+        <div class="bar-stack" style="height:92px;">
+          <div class="seg seg-stock" style="height:31px;"></div>
+          <div class="seg seg-muzaiko" style="height:45px;"></div>
+          <div class="seg seg-unknown" style="height:16px;"></div>
+        </div>
+        <div class="bar-month">5月</div>
+      </div>
+      <div class="bar-col">
+        <div class="bar-total">$8,788</div>
+        <div class="bar-stack" style="height:65px;">
+          <div class="seg seg-stock" style="height:42px;"></div>
+          <div class="seg seg-muzaiko" style="height:12px;"></div>
+          <div class="seg seg-unknown" style="height:11px;"></div>
+        </div>
+        <div class="bar-month">6月</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <span><span class="sw" style="background:var(--accent);"></span>有在庫(stock)</span>
+      <span><span class="sw" style="background:var(--red);"></span>無在庫(合計)</span>
+      <span><span class="sw" style="background:var(--gray-bar);"></span>不明(sku種別未復元)</span>
+    </div>
+
+    <table class="data-table">
+      <tr><th>種別</th><th>2月</th><th>3月(ピーク)</th><th>4月</th><th>5月</th><th>6月</th></tr>
+      <tr><td>有在庫 ($/件数)</td><td>$4,725 / 9</td><td>$8,062 / 37</td><td>$2,951 / 18</td><td>$4,212 / 16</td><td>$5,693 / 26</td></tr>
+      <tr><td>無在庫 ($/件数)</td><td>$1,670 / 4</td><td class="neg">$12,039 / 24</td><td>$5,372 / 16</td><td>$6,022 / 12</td><td class="neg">$1,680 / 4</td></tr>
+      <tr><td>不明 ($/件数)</td><td>$228 / 1</td><td>$1,493 / 7</td><td>$1,578 / 9</td><td>$2,145 / 12</td><td>$1,415 / 7</td></tr>
+      <tr><td><b>総計</b></td><td><b>$6,622</b></td><td><b>$21,594</b></td><td><b>$9,900</b></td><td><b>$12,379</b></td><td><b>$8,788</b></td></tr>
+    </table>
+    <div class="table-caption">無在庫は3月$12,039→6月$1,680で -86%。内訳(仕入元別)も全滅的: ヤフオク(ebayyh) $7,581→$1,680 / メルカリ(ebayme) $2,188→$0 / 楽天系(ebayrt) $1,664→$0。参考: eBay実測の直近90日売上 $30,393 ≒ DB 4〜6月合計 $31,067 (ほぼ一致、DB分析の妥当性を確認)。</div>
+  </div>
+
+  <!-- 3. 集客ファネル -->
+  <div class="card">
+    <div class="section-title"><span class="num">3</span>集客ファネル (eBay Seller Hub Traffic実測・直近90日)</div>
+    <div class="section-sub">表示 → 閲覧 → 販売 と下流に行くほど減衰幅が拡大。「表示が減った」だけでなく「表示あたりの成約力」も落ちている。</div>
+
+    <div class="funnel">
+      <div class="funnel-stage stage1">① インプレッション(表示回数) <span class="big">3,244,162 <span class="delta">(-27.9%)</span></span></div>
+      <div class="funnel-arrow">▼</div>
+      <div class="funnel-stage stage2">② リスティング閲覧数 <span class="big">19,162 <span class="delta">(-33.0%)</span></span></div>
+      <div class="funnel-arrow">▼</div>
+      <div class="funnel-stage stage3">③ 販売数量 <span class="big">115 <span class="delta">(-40.7%)</span></span></div>
+    </div>
+
+    <table class="data-table">
+      <tr><th>指標</th><th>直近30日 (6/4-7/4)</th><th>前30日比</th><th>直近90日 (4月初-7/4)</th><th>前90日比</th></tr>
+      <tr><td>インプレッション</td><td>938,793</td><td class="neg">-13.6%</td><td>3,244,162</td><td class="neg">-27.9%</td></tr>
+      <tr><td>リスティング閲覧数</td><td>5,806</td><td class="neg">-8.5%</td><td>19,162</td><td class="neg">-33.0%</td></tr>
+      <tr><td>販売数量</td><td>37</td><td class="neg">-8.4%</td><td>115</td><td class="neg">-40.7%</td></tr>
+      <tr><td>クリック率(CTR)</td><td>0.5%</td><td class="neg">-9.8%</td><td>0.5%</td><td class="neg">-8.9%</td></tr>
+      <tr><td>成約率(Conversion)</td><td>0.6%</td><td class="neg">-6.4%</td><td>0.6%</td><td class="neg">-11.8%</td></tr>
+    </table>
+    <div class="table-caption">集客内訳(90日): オーガニック表示 1,365,559 / 広告(Promoted)表示 1,878,603 / オフサイト広告 0。両方とも約-28%で同時に減少。</div>
+  </div>
+
+  <!-- 4. 要因分解 -->
+  <div class="card">
+    <div class="section-title"><span class="num">4</span>要因分解</div>
+
+    <div class="factor-block">
+      <div class="factor-h">(a) 無在庫の供給目減り <span class="tag tag-fact">実測</span></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="v">677件</div><div class="l">無在庫カタログ 現在の総出品(DB)</div></div>
+        <div class="stat-card"><div class="v">372件 (55%)</div><div class="l">うち終了(ended) ※アクティブは305件</div></div>
+        <div class="stat-card"><div class="v">292件</div><div class="l">仕入元品切れフラグ(source_out_of_stock)</div></div>
+        <div class="stat-card"><div class="v warn">697件</div><div class="l">eBay Overview実測「売れ残り・未再出品」(※全出品ベースの別集計)</div></div>
+      </div>
+      <div class="share-bar">
+        <div class="seg-a" style="width:55%;"></div>
+        <div class="seg-b" style="width:45%;"></div>
+      </div>
+      <div class="share-legend"><span>終了(ended) 55% (372/677)</span><span>アクティブ 45% (305/677)</span></div>
+
+      <div class="factor-text sub" style="margin-top:8px;">無在庫の出品終了は加速している (ended_at 集計):</div>
+      <div class="mini-trend">
+        <div class="mini-col"><div class="mini-val">96</div><div class="mini-bar" style="height:38px;"></div><div class="mini-label">4月</div></div>
+        <div class="mini-col"><div class="mini-val">123</div><div class="mini-bar" style="height:49px;"></div><div class="mini-label">5月</div></div>
+        <div class="mini-col"><div class="mini-val">150</div><div class="mini-bar" style="height:60px;"></div><div class="mini-label">6月</div></div>
+      </div>
+      <div class="factor-text sub">高単価だった無在庫が仕入元品切れで出品消滅→再出品されず放置。eBay Overviewの「売れ残り・未再出品697件」と符合。</div>
+
+      <div style="border-top:1px dashed var(--card-border); margin-top:12px; padding-top:10px;">
+        <div class="factor-h">機序の特定 (7/6 深堀) <span class="tag tag-fact">実測 (DB分析)</span></div>
+        <div class="factor-text sub">無在庫の終了359件 (母集団656件、時点差により上記677/372とは母集団が微妙に異なる) を ended_reason 別に系統分解。</div>
+
+        <table class="data-table" style="margin-top:8px;">
+          <tr><th>系統</th><th>件数</th><th>内訳</th><th>解釈</th></tr>
+          <tr><td>SEO再出品の付け替え</td><td>240</td><td>新IDで存命 214 (89%) ／ 真の終端 26</td><td>ほぼ見かけの消失 (実害は26件のみ)</td></tr>
+          <tr><td>実消滅 (未再出品)</td><td>110</td><td>品切れ連鎖 63 ／ 原因未特定 47 (うち13件は6/11同一秒一括終了)</td><td class="neg">主因</td></tr>
+          <tr><td>復旧済み</td><td>9</td><td>6/8 $1M枠到達分・現在は後継出品で復旧済</td><td class="pos">解消済</td></tr>
+        </table>
+
+        <div class="stat-grid" style="margin-top:10px;">
+          <div class="stat-card"><div class="v ok">89%</div><div class="l">SEO再出品240件中、新IDで存命 (見かけの消失)</div></div>
+          <div class="stat-card"><div class="v warn">47件</div><div class="l">原因未特定 (未再出品・品切れフラグなし)</div></div>
+          <div class="stat-card"><div class="v warn">13件</div><div class="l">↑のうち6/11同一秒一括終了 (eBay側要因の疑い)</div></div>
+          <div class="stat-card"><div class="v ok">0件</div><div class="l">在庫0判定の誤検知 (実地10件検証、判定不能1件を除く9件全て正判定)</div></div>
+        </div>
+
+        <div class="factor-text" style="margin-top:8px;"><b>バグの実証</b>: 2026-06-08〜06-16、eBay月間出品枠($1M)到達によりRelist(新規出品)が全失敗 → kill switch で daily_relist を停止 (task_execution_log 実測: 該当期間は全バッチ status='skip_disabled')。この間、旧出品はEndItem済みのまま復活せず毎晩~7件が失われた。現行コード (<code>tasks/task_daily_relist.py</code> Step B→C) は <b style="color:var(--red);">EndItem を RelistFixedPriceItem より先に実行する順序のまま現存</b> — 今回のkill switchは対症療法にすぎず、Relistが何らかの理由で失敗すれば同じ喪失が再発しうる構造欠陥は未修正 (下記ROADMAP参照)。</div>
+      </div>
+    </div>
+
+    <div class="banner" style="margin-top:0;">
+      <h2>回復可能 73 件</h2>
+      <div style="font-size:13px;">SEO再出品の真の終端 26件 + 実消滅のうち原因未特定 47件 = <b class="ok-b">73件</b>が復旧候補 (仕入元品切れが確定している63件・6/8 $1M枠分の9件は対象外)。<b>推奨: 安全な60件から着手</b> — 6/11に同一秒で一括終了した13件は eBay側要因の疑いがあり、原因確認後に着手する保留グループとして分離。</div>
+    </div>
+
+    <div class="factor-block">
+      <div class="factor-h">(b) 広告依存の縮小 <span class="tag tag-fact">実測</span></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="v">約93%</div><div class="l">売上に占める広告経由の割合 ($8,559.17 / $9,243.11、直近31日)</div></div>
+        <div class="stat-card"><div class="v">-33.4%</div><div class="l">広告経由売上の前月比 (直近31日)</div></div>
+        <div class="stat-card"><div class="v warn">3 / 5件</div><div class="l">「要対応(Needs attention)」表示のキャンペーン</div></div>
+      </div>
+      <div class="factor-text sub">クリック1,228件(-11.8%)、広告費$226.70、CTR 0.23%、成約率2.77%(全体0.6%より高い)、ROAS 37.76(-9.9%)。売上の生命線である広告の集客力そのものが弱化。</div>
+    </div>
+
+    <div class="factor-block">
+      <div class="factor-h">(c) 直近31日は「単価下落」が主犯 <span class="tag tag-fact">実測</span></div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="v ok">37件 (+2.6%)</div><div class="l">販売数 (件数は微増)</div></div>
+        <div class="stat-card"><div class="v">$249.81 (-21.0%)</div><div class="l">平均単価</div></div>
+        <div class="stat-card"><div class="v">$9,243.11 (-23.7%)</div><div class="l">総売上(税込)</div></div>
+        <div class="stat-card"><div class="v">$7,192.60 (-28.4%)</div><div class="l">純売上(税・手数料控除後)</div></div>
+      </div>
+      <div class="factor-text sub">買い手34人(+3.0%)のうちリピーター0人(前期比-100%、全員新規1回購入)。高単価の無在庫が抜け、安めの有在庫中心の構成に寄った裏返し。</div>
+    </div>
+
+    <div class="factor-block">
+      <div class="factor-h">(d) PLOTTERバインダー群による成約率の希釈疑い <span class="tag tag-guess">推測(相関のみ・因果未検証)</span></div>
+      <div class="factor-text">Traffic「Your listings」表示回数の上位を PLOTTER のレザーバインダー(革手帳)出品が数十件で独占。各5千〜4万インプレッションを集めながら販売数はほぼ0(CTR 0.0〜0.7%)。表示枠を大量に食うが売れない在庫が、店舗全体のCTR/成約率を希釈している疑い。</div>
+    </div>
+
+    <div class="factor-block">
+      <div class="factor-h">(e) 3月は異常なピーク月だった注記 <span class="tag tag-fact">実測</span></div>
+      <div class="factor-text">3月は単月68件・高額品($400以上)14件と突出。低下幅の一部はこのピークからの反動を含む。価格帯別でも$400以上の高額販売は3月14件→6月5件に減少。</div>
+    </div>
+
+  </div>
+
+  <!-- 5. 打ち手候補 -->
+  <div class="card">
+    <div class="section-title"><span class="num">5</span>打ち手候補 (全7項目・推測を含む=着手判断は要オーナー判断)</div>
+    <table class="action-table">
+      <tr><th>ID</th><th>優先度グループ</th><th>施策</th><th>期待効果</th><th>工数感</th></tr>
+      <tr>
+        <td class="id">D1</td><td class="grp">最優先<br>(供給の再構築)</td>
+        <td>無在庫の仕入元再取得と入替: 品切れ292件を棚卸し、別仕入元へ差替 or 新規売れ筋の無在庫を補充</td>
+        <td class="eff"><span class="pill-high">高</span></td><td class="cost">中〜大</td>
+      </tr>
+      <tr>
+        <td class="id">D2</td><td class="grp">最優先<br>(供給の再構築)</td>
+        <td>697件の売れ残り・未再出品の精査: 復活可能なものは再出品、恒久的に無理なものは撤退整理</td>
+        <td class="eff"><span class="pill-high">高</span></td><td class="cost">中</td>
+      </tr>
+      <tr>
+        <td class="id">D3</td><td class="grp">集客・成約の改善</td>
+        <td>PLOTTERバインダー等「大量表示・0成約」出品の見直し: 価格/写真/カテゴリ/広告レート再検討 or 露出縮小</td>
+        <td class="eff"><span class="pill-mid">中</span></td><td class="cost">小</td>
+      </tr>
+      <tr>
+        <td class="id">D4</td><td class="grp">集客・成約の改善</td>
+        <td>Top Rated Plus 対象を123件→拡大: 発送日数(7日→1日)と返品ポリシー見直しで検索優遇シールを取得(依頼#34と連動)</td>
+        <td class="eff"><span class="pill-mid">中</span></td><td class="cost">中</td>
+      </tr>
+      <tr>
+        <td class="id">D5</td><td class="grp">集客・成約の改善</td>
+        <td>広告の立て直し: 「要対応」3キャンペーンの是正、eBay推奨の広告レート最適化(売上の93%が広告依存のため効果大)</td>
+        <td class="eff"><span class="pill-high">高</span></td><td class="cost">小</td>
+      </tr>
+      <tr>
+        <td class="id">D6</td><td class="grp">自動化の修復<br>(別件/伸びしろ)</td>
+        <td>自動値下げの rule=None 大量失敗(759件/6月)を修復(W301)。競争力ある値付けの自動維持を機能させる</td>
+        <td class="eff"><span class="pill-low">低〜中</span></td><td class="cost">中</td>
+      </tr>
+      <tr>
+        <td class="id">D7</td><td class="grp">自動化の修復<br>(別件/伸びしろ)</td>
+        <td>日次売上・在庫欠損の検知(W316): 品切れ→出品消滅を早期に掴み、補填サイクルを回す</td>
+        <td class="eff"><span class="pill-low">低〜中</span></td><td class="cost">中</td>
+      </tr>
+    </table>
+    <div class="table-caption">「期待効果」「工数感」はレポート作成時点の定性的な目安 (source md には工数の定量値は記載なし)。着手判断はオーナー判断。</div>
+  </div>
+
+  <!-- 6. データ出典 -->
+  <div class="card">
+    <div class="section-title"><span class="num">6</span>データ出典・信頼性メモ</div>
+    <ul class="source-list">
+      <li><span class="badge-inline tag-fact">実測(A)</span> eBay Seller Hub Performance タブ (Overview / Summary / Seller Level / Sales / Traffic / Service Metrics / Advertising Dashboard を全タブ閲覧、2026-07-04 実測・CDP Chrome 読み取りのみ)</li>
+      <li><span class="badge-inline tag-fact">実測(B)</span> 社内DB <code>monitor.db</code> 実測 (READ ONLY、金額はUTC月境界集計・軽微なズレあり、6月は28日観測)</li>
+      <li><span class="badge-inline tag-fact">実測</span> アカウント健全性: Top Rated(過去・現在・本日すべて)、取引欠陥率0.00%(0/475)、遅延出荷率0.42%(2/475)、追跡番号アップロード100%、無解決クレーム0.00%。年間475取引・売上$111,065.15・返品率2.74%(13/475)、"説明と不一致"率1.50%は同業平均2.87%より良好</li>
+      <li><span class="badge-inline tag-fact">突合</span> eBay直近90日売上 $30,393 ≒ DB 4-6月合計 $31,067 → DBとeBay実測はほぼ一致。ただし出品数はeBay(アクティブ898)とDB(アクティブ515)で差異あり=DB同期の網羅差。<b>在庫の「傾向」判断はDB、絶対数はeBay値</b>を採用。</li>
+      <li><span class="badge-inline tag-guess">推測</span> PLOTTERバインダーが成約率を希釈している点 — 相関は確認、因果は未検証</li>
+      <li><span class="badge-inline tag-guess">推測</span> 広告レート引き上げの効果 — eBay側の推奨値をベースとした見立て</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    作成: 2026-07-06 ／ 元データ: .company/research/notes/2026-07-04-sales-decline-deep-dive.md ／ 使用モデル(元調査): Claude Opus 4.8 (Fable)
+  </div>
+
+</div>
+</body>
+</html>

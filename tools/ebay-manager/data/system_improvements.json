@@ -951,5 +951,38 @@
     "created": "2026-07-05",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 390,
+    "tag": "W325",
+    "title": "Brand欠落18件のBrand補完(タイトル/カタログ由来) + 新規出品のeBayカタログ自動付与COO当日チェック新設",
+    "description": "契機: #44是正後もPLOTTER新規3件(358754325896/358754360321/358755217619)でCountry of Origin=Japanが再出現。調査の結果、原因は#44が塞いだ経路(我々が明示送信するItemSpecifics)とは別: listing_drafts.item_specificsにはCountry of Origin相当キーが一切無いのに、GetItemの<ProductListingDetails><IncludeeBayProductDetails>true</IncludeeBayProductDetails></ProductListingDetails>が全3件で確認され、eBay側のBrand+MPNカタログ自動マッチによる自動付与と判明(4層防御は我々の送信内容のみ対象で、この経路には無力)。3件は本W325内でrevise_item_specifics実行+独立GetItem read-backで是正確認済み(Brand等他フィールド保持)。残作業: (1) Brand欠落18件のBrand補完 — batch A dry-run(data/tmp/coo_fix_batch_a_dryrun.json)のskips 18件は全件reason=\"Brand欠落のため送信不能\"(Country of Origin以外は問題なし)。タイトル文字列またはeBayカタログ検索からBrandを補完してから同revise_item_specificsで是正する。(2) 新規出品の当日COO自動付与チェック — IncludeeBayProductDetails=trueのカタログ自動マッチは出品時点でこちらが検知できないため、tasks/task_listing_content_audit.py に新規出品(created_at直近24h等)を対象にした専用チェックを追加し、GetItemでCountry of Origin等禁止Nameが混入していれば即日検出→revise_item_specificsで自動是正(またはDiscord通知)する仕組みを新設する。",
+    "priority": "通常",
+    "status": "pending",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 391,
+    "tag": "W326",
+    "title": "relist の End 先行構造欠陥の修正 — 新規出品成功を確認してから旧出品を終了する順序へ",
+    "description": "#41 深堀り(w41_supply_analysis_2026_07_06.json)で確定した実バグ: tasks/task_daily_relist.py の Step B (EndItem) が Step C (RelistFixedPriceItem、3試行リトライ) より先に実行される順序のため、Relistが全試行失敗すると旧出品はEnd済みのまま復活しない (455-462行、コメントで自認済み「⚠ 旧ItemID はend済、eBay Seller Hub から手動でSell Similar実行が必要」)。2026-06-08〜06-16 の eBay月間出品枠($1M)到達でRelistが全失敗した際に実際に発現し、kill switch (daily_relist無効化) が入るまで毎晩~7件が喪失した(task_execution_log実測でstatus='skip_disabled'期間と符合)。kill switch は対症療法であり、Relistが失敗しうる別要因(API障害・カテゴリ制限等)で再発しうる構造欠陥そのものは未修正。対応: 新規出品(RelistFixedPriceItem/実質AddItem相当)を先に実行し成功を確認してから旧出品をEndする順序へ変更(失敗時は旧出品がアクティブなまま残る=商品を失わない)。money-direct(出品の生死に直結)につき T3 review(code-reviewer HIGH=0 + Codex/Fugu 2段 + live GetItem検証)必須。",
+    "priority": "高",
+    "status": "pending",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
+  },
+  {
+    "id": 392,
+    "tag": "W327",
+    "title": "回復可能73件の再出品実行 (安全60件先行、VeRO/ポリシーチェック込み)",
+    "description": "#41 深堀り(w41_supply_analysis_2026_07_06.json)で特定した復旧候補: SEO再出品の真の終端26件 + 実消滅(not_in_active_list)のうち原因未特定47件 = 73件が再出品候補 (仕入元品切れ確定済みの63件・6/8 $1M枠分の9件は対象外、後者は既に後継出品で復旧済み)。うち13件は2026-06-11に同一秒で一括終了しておりeBay側要因(ポリシー変更等)の疑いが残るため保留。推奨: 安全な60件 (73-13) を先行実行し、6/11一括終了13件は原因確認後に着手する2段構成。実行前にVeRO該当ブランド判定・出品ポリシー適合チェックを個別に実施すること(kill switch解除後の一括relistのため単純ループでの再出品リクエストは避ける)。優先度高・着手はuser GO待ち(#41ボード参照)。",
+    "priority": "高・user GO待ち",
+    "status": "pending",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
   }
 ]
