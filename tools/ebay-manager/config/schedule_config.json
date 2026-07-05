@@ -349,8 +349,9 @@
     },
     "rival_classify": {
       "enabled": true,
+      "max_ai_calls_per_run": 200,
       "description": "W301 AI店長 Phase1 S4: listing_rival_discoveries (status='new') を rival_classifier で分類 (ハード除外→スコア→グレーのみ Claude Haiku) → rival_classifications 保存。Shadow 固定 (pricing_eligible は本タスクから一切変更しない)。",
-      "note": "毎日 03:00 JST (daily_codex_lint と同時刻、既存 thread-local batch ctx 対策済で共存可)。max_ai_calls_per_run 未指定時は rival_classifier.DEFAULT_THRESHOLDS の 50 を使用。cap 超過 / AI 例外は review へ倒し Discord 通知 (rival_webhook_url 優先, 無ければ既定 webhook_url)。"
+      "note": "毎日 03:00 JST (daily_codex_lint と同時刻、既存 thread-local batch ctx 対策済で共存可)。max_ai_calls_per_run=200 (2026-07-05 user承認で50→200、review滞留対策・コスト試算+$5-7/月)。未指定時は rival_classifier.DEFAULT_THRESHOLDS の 50 を使用。cap 超過 / AI 例外は review へ倒し Discord 通知 (rival_webhook_url 優先, 無ければ既定 webhook_url)。"
     },
     "competitor_snapshot": {
       "enabled": true,
