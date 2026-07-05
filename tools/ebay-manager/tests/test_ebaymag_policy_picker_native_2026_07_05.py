@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from monitor.ebaymag_driver import (
     _decide_policy_option_selection,
+    _match_policy_option_indices,
     POLICY_PICKER_INPUT_SELECTOR,
     POLICY_OPTION_CANDIDATE_SELECTOR,
 )
@@ -45,7 +46,7 @@ class TestDecidePolicyOptionSelection:
         )
 
     def test_space_separated_row_still_unique(self):
-        """空白区切りの行 (旧想定) も引き続き UNIQUE (isspace 境界判定)。"""
+        """空白区切りの行 (旧想定) も引き続き UNIQUE (語単位一致は split() 採用)。"""
         visible_texts = ["MAG_6-8kg_1day 1日以内発送・6-8kg"]
         assert (
             _decide_policy_option_selection(visible_texts, "MAG_6-8kg_1day")
@@ -89,6 +90,38 @@ class TestDecidePolicyOptionSelection:
             _decide_policy_option_selection(visible_texts, "MAG_6-8kg_1day")
             == "UNIQUE"
         )
+
+    def test_icon_prefixed_row_is_unique(self):
+        """canary#5 実測: 候補行の先頭にアイコン文字 'M'+改行が付く
+        ('M\\nMAG_1-2kg_1day\\n無料, ...')。語単位一致なので UNIQUE になる。"""
+        visible_texts = ["M\nMAG_1-2kg_1day\n無料, 6 日でお届け, 営業日 60 受入を返します"]
+        assert (
+            _decide_policy_option_selection(visible_texts, "MAG_1-2kg_1day")
+            == "UNIQUE"
+        )
+
+
+class TestMatchPolicyOptionIndices:
+    """クリック対象 index の特定 (H1: visible_handles[0] 固定の誤選択防止)。"""
+
+    def test_returns_exact_match_index_not_first_row(self):
+        """prefix 衝突行 (_v2) が先頭でも、exact 一致行の index を返す。"""
+        visible_texts = [
+            "M\nMAG_6-8kg_1day_v2\n説明",
+            "M\nMAG_6-8kg_1day\n説明",
+        ]
+        assert _match_policy_option_indices(visible_texts, "MAG_6-8kg_1day") == [1]
+
+    def test_returns_all_matching_indices(self):
+        visible_texts = [
+            "MAG_6-8kg_1day 説明A",
+            "MAG_6-8kg_7day 説明",
+            "MAG_6-8kg_1day 説明B",
+        ]
+        assert _match_policy_option_indices(visible_texts, "MAG_6-8kg_1day") == [0, 2]
+
+    def test_empty_when_no_word_match(self):
+        assert _match_policy_option_indices(["MAG_6-8kg_1day_v2 説明"], "MAG_6-8kg_1day") == []
 
 
 class TestPickerSelectors:

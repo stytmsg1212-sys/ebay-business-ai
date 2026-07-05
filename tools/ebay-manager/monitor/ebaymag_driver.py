@@ -252,10 +252,11 @@ POLICY_PICKER_INPUT_SELECTOR = 'input[placeholder*="配送ポリシー"]'
 POLICY_OPTION_CANDIDATE_SELECTOR = 'button'
 
 # 現在割当中の配送ポリシー名を読む (定着検証用)。
-# 配送ポリシー欄の近傍テキストから token 候補を拾う。
+# substring 判定は token を部分文字列に含む別ポリシー (MAG_..._v2 等) でも
+# true になる弱点があるため、whitespace 区切りの exact word 判定にする (H2)。
 READ_CURRENT_POLICY_JS = r"""(token) => {
   const body = document.body.innerText;
-  return {hasToken: body.includes(token), head: body.slice(0, 400)};
+  return {hasToken: body.split(/\s+/).includes(token), head: body.slice(0, 400)};
 }"""
 
 # ポリシー編集 UI の保存ボタン (国トグルの「N 変動を保存」とは別 UI)。
@@ -269,33 +270,37 @@ SAVE_POLICY_JS = r"""() => {
 }"""
 
 
+def _match_policy_option_indices(visible_texts: list[str], token: str) -> list[int]:
+    """token が **語単位で完全一致** する候補の index 一覧を返す純関数 (unit-testable)。
+
+    候補行の innerText は「アイコン文字 + token + 説明文」の複合
+    (canary#5 実測 2026-07-05: 'M\\nMAG_1-2kg_1day\\n無料, ...') のため、
+    行頭一致 (startswith) では判定できない。whitespace split した語の中に
+    token と完全一致する語があるかで判定する:
+      - 行頭のアイコン文字/前置行に頑健 (位置を仮定しない)
+      - `MAG_6-8kg_1day_v2` のような接尾辞つき別ポリシーは別語なので不一致
+        (prefix 衝突封鎖を維持、Codex 指摘 2026-07-05)
+    """
+    return [i for i, t in enumerate(visible_texts) if token in t.split()]
+
+
 def _decide_policy_option_selection(visible_texts: list[str], token: str) -> str:
-    """可視候補の innerText 一覧から token を含む行が何件かを判定する純関数 (unit-testable)。
+    """可視候補のうち token に語単位一致する行数から選択可否を判定する純関数。
 
-    候補行の innerText は「token + 説明文」の複合 (完全一致は成立しない、live probe
-    2026-07-05 実証) のため contains 判定を使う。誤選択防止のため 1 件確定時のみ
-    選択可 (0 件 / 複数件は呼び出し側で中断させる)。
-
-    UNIQUE 判定は追加で **leading token 完全一致** を要求する (行 = "token" or
-    "token + 空白文字 + 説明文" 前提。canary#3 実測で区切りは改行 —
-    "MAG_1-2kg_1day\n無料, ..." — のため境界は isspace() 全般で判定)。
-    target を部分文字列に含む別ポリシー行 (例: `MAG_6-8kg_1day_v2 ...` に対し
-    token=`MAG_6-8kg_1day`) は直後が空白文字でないため reject (Codex 指摘
-    2026-07-05 の prefix 衝突封鎖を維持、read-back の substring 弱点も実質補完)。
+    誤選択防止のため 1 件確定時のみ選択可 (0 件 / 複数件は呼び出し側で中断)。
+    クリック対象は _match_policy_option_indices の唯一 index の handle
+    (visible_handles[0] 固定は一致行が先頭でない時に誤ポリシーを掴む — H1)。
 
     Returns:
-        "OPTION_NOT_FOUND" (0件 or 唯一候補の leading token が不一致) /
-        "AMBIGUOUS:N" (N>=2件) / "UNIQUE" (ちょうど1件かつ leading token 完全一致)
+        "OPTION_NOT_FOUND" (語単位一致 0件) / "AMBIGUOUS:N" (N>=2件) /
+        "UNIQUE" (ちょうど1件)
     """
-    matches = [t for t in visible_texts if token in t]
+    matches = _match_policy_option_indices(visible_texts, token)
     if not matches:
         return "OPTION_NOT_FOUND"
     if len(matches) > 1:
         return f"AMBIGUOUS:{len(matches)}"
-    only = matches[0]
-    if only.startswith(token) and (len(only) == len(token) or only[len(token)].isspace()):
-        return "UNIQUE"
-    return "OPTION_NOT_FOUND"
+    return "UNIQUE"
 
 
 @dataclass
@@ -1134,15 +1139,20 @@ def assign_policy(
             res._log(f"typeahead filled: {target_policy_token}")
             page.wait_for_timeout(1000)
 
-            # Step 3: token を含む可視候補が「ちょうど 1 件」であることを確認してから
-            # native locator で選択する (誤選択防止の安全弁、_decide_policy_option_selection)
+            # Step 3: token に語単位一致する可視候補が「ちょうど 1 件」であることを
+            # 確認してから、その一致 index の handle を選択する (誤選択防止の安全弁。
+            # visible_handles[0] 固定は一致行が先頭でない時に誤ポリシーを掴む — H1)
             candidates = page.locator(POLICY_OPTION_CANDIDATE_SELECTOR).filter(
                 has_text=target_policy_token
             )
             visible_handles = [h for h in candidates.all() if h.is_visible()]
             visible_texts = [h.inner_text().strip() for h in visible_handles]
+            match_idx = _match_policy_option_indices(visible_texts, target_policy_token)
             decision = _decide_policy_option_selection(visible_texts, target_policy_token)
-            res._log(f"policy candidates: decision={decision} texts={visible_texts[:5]}")
+            res._log(
+                f"policy candidates: decision={decision} match_idx={match_idx} "
+                f"texts={visible_texts[:5]}"
+            )
             if decision == "OPTION_NOT_FOUND":
                 res.error = (
                     f"配送ポリシー一覧に token={target_policy_token!r} が見つかりません "
@@ -1155,20 +1165,42 @@ def assign_policy(
                     "誤選択防止のため中断"
                 )
                 return res
-            visible_handles[0].click()
+            visible_handles[match_idx[0]].click()
             page.wait_for_timeout(1200)
 
-            # Step 4: 保存
-            r = page.evaluate(SAVE_POLICY_JS)
-            res._log(f"save policy: {r}")
+            # Step 4: 保存 (保存ボタンにも render race があるため最大 8s poll — H3)
+            r = None
+            save_waited = 0
+            while True:
+                r = page.evaluate(SAVE_POLICY_JS)
+                if str(r).startswith("POLICY_SAVED"):
+                    break
+                if save_waited >= 8000:
+                    break
+                page.wait_for_timeout(500)
+                save_waited += 500
+            res._log(f"save policy: {r} (waited {save_waited}ms)")
             if not str(r).startswith("POLICY_SAVED"):
                 res.error = f"ポリシー保存に失敗 ({r})"
                 return res
             page.wait_for_timeout(5000)
 
-            # Step 5: リロード定着検証 (panel 本文に token が現れるか)
+            # Step 5: リロード定着検証 (panel 本文に token が exact word で現れるか。
+            # ラベル描画は非同期のことがあるため最大 12s poll — H3)
             _goto_and_wait(page, active_url)
-            check = page.evaluate(READ_CURRENT_POLICY_JS, target_policy_token)
+            check = {}
+            readback_waited = 0
+            while True:
+                check = page.evaluate(READ_CURRENT_POLICY_JS, target_policy_token)
+                if check.get("hasToken"):
+                    break
+                if readback_waited >= 12000:
+                    break
+                page.wait_for_timeout(1000)
+                readback_waited += 1000
+            res._log(
+                f"read-back: hasToken={check.get('hasToken')} (waited {readback_waited}ms)"
+            )
             if not check.get("hasToken"):
                 res.error = (
                     f"定着検証 NG: リロード後の panel に token={target_policy_token!r} "
