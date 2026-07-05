@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from monitor.ebaymag_driver import (
     _decide_policy_option_selection,
+    _decide_save_button,
     _match_policy_option_indices,
     POLICY_PICKER_INPUT_SELECTOR,
     POLICY_OPTION_CANDIDATE_SELECTOR,
@@ -122,6 +123,33 @@ class TestMatchPolicyOptionIndices:
 
     def test_empty_when_no_word_match(self):
         assert _match_policy_option_indices(["MAG_6-8kg_1day_v2 説明"], "MAG_6-8kg_1day") == []
+
+
+class TestDecideSaveButton:
+    """「N 変動 を保存」保存ボタン判定 (canary#6 probe 実測 2026-07-05)。
+    N==1 のみ許可 = 複数の未保存変更を巻き込み保存しない (2026-06-21 merge 事故教訓)。"""
+
+    def test_single_change_button_is_clickable(self):
+        texts = ["キャンセル", "1 変動 を保存"]
+        assert _decide_save_button(texts) == "SAVE:1"
+
+    def test_multiple_pending_changes_aborts(self):
+        """N>=2 = 自分以外の未保存変更が存在 → 巻き込み保存を拒否。"""
+        texts = ["キャンセル", "2 変動 を保存"]
+        assert _decide_save_button(texts) == "PENDING_CHANGES:2"
+
+    def test_no_save_button_returns_not_found(self):
+        """抽出不能 (該当ボタンなし) → NOT_FOUND (呼び出し側で render race poll)。"""
+        texts = ["キャンセル", "保存", "変動を確認"]
+        assert _decide_save_button(texts) == "SAVE_BUTTON_NOT_FOUND"
+
+    def test_multiple_save_buttons_abort(self):
+        texts = ["1 変動 を保存", "1 変動 を保存"]
+        assert _decide_save_button(texts) == "MULTIPLE_SAVE_BUTTONS:2"
+
+    def test_no_space_variant_matches(self):
+        """「1変動を保存」(空白なし表記ゆれ) も許可。"""
+        assert _decide_save_button(["1変動を保存"]) == "SAVE:0"
 
 
 class TestPickerSelectors:

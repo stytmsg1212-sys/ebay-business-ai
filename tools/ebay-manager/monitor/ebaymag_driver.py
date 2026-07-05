@@ -259,15 +259,37 @@ READ_CURRENT_POLICY_JS = r"""(token) => {
   return {hasToken: body.split(/\s+/).includes(token), head: body.slice(0, 400)};
 }"""
 
-# ポリシー編集 UI の保存ボタン (国トグルの「N 変動を保存」とは別 UI)。
-SAVE_POLICY_JS = r"""() => {
-  const btn = Array.from(document.querySelectorAll('button'))
-    .find(b => b.innerText && /保存|適用|Save|Apply/.test(b.innerText.trim())
-               && !/変動/.test(b.innerText));
-  if (!btn) return 'SAVE_POLICY_BUTTON_NOT_FOUND';
-  btn.click();
-  return 'POLICY_SAVED:' + btn.innerText.trim();
-}"""
+# ポリシー付替の保存ボタンは「N 変動 を保存」(canary#6 probe 2026-07-05 実測。
+# 旧実装は国トグル用との混同防止で /変動/ を除外していたが、assign_policy
+# フローの正規保存ボタンこそが「1 変動 を保存」だった)。
+SAVE_CHANGES_BUTTON_RE = re.compile(r"^(\d+)\s*変動\s*を?\s*保存")
+
+
+def _decide_save_button(button_texts: list[str]) -> str:
+    """「N 変動 を保存」ボタン群から保存可否を判定する純関数 (unit-testable)。
+
+    N==1 の時のみクリック許可 = 「複数の未保存変更を巻き込み保存しない」
+    (2026-06-21 eBaymag policy merge 事故の教訓の機械化)。
+
+    Returns:
+        "SAVE:<idx>" (該当ボタンちょうど 1 個かつ N==1 → クリック可) /
+        "SAVE_BUTTON_NOT_FOUND" (該当 0 個 → 呼び出し側で render race poll) /
+        "MULTIPLE_SAVE_BUTTONS:<K>" (該当 K>=2 個 → 中断) /
+        "PENDING_CHANGES:<N>" (N!=1 → 他の未保存変更を巻き込むため中断)
+    """
+    hits = []
+    for i, t in enumerate(button_texts):
+        m = SAVE_CHANGES_BUTTON_RE.match(t.strip())
+        if m:
+            hits.append((i, int(m.group(1))))
+    if not hits:
+        return "SAVE_BUTTON_NOT_FOUND"
+    if len(hits) > 1:
+        return f"MULTIPLE_SAVE_BUTTONS:{len(hits)}"
+    idx, n = hits[0]
+    if n != 1:
+        return f"PENDING_CHANGES:{n}"
+    return f"SAVE:{idx}"
 
 
 def _match_policy_option_indices(visible_texts: list[str], token: str) -> list[int]:
@@ -1168,21 +1190,32 @@ def assign_policy(
             visible_handles[match_idx[0]].click()
             page.wait_for_timeout(1200)
 
-            # Step 4: 保存 (保存ボタンにも render race があるため最大 8s poll — H3)
-            r = None
+            # Step 4: 保存 —「N 変動 を保存」ボタン (canary#6 probe 実測)。
+            # N==1 の時のみクリック許可 (_decide_save_button、merge 事故教訓の機械化)。
+            # 保存ボタンにも render race があるため NOT_FOUND の間は最大 8s poll — H3
+            save_decision = "SAVE_BUTTON_NOT_FOUND"
+            save_handles: list = []
+            save_texts: list[str] = []
             save_waited = 0
             while True:
-                r = page.evaluate(SAVE_POLICY_JS)
-                if str(r).startswith("POLICY_SAVED"):
-                    break
-                if save_waited >= 8000:
+                save_handles = [
+                    b for b in page.locator("button").filter(has_text="変動").all()
+                    if b.is_visible()
+                ]
+                save_texts = [h.inner_text().strip() for h in save_handles]
+                save_decision = _decide_save_button(save_texts)
+                if save_decision != "SAVE_BUTTON_NOT_FOUND" or save_waited >= 8000:
                     break
                 page.wait_for_timeout(500)
                 save_waited += 500
-            res._log(f"save policy: {r} (waited {save_waited}ms)")
-            if not str(r).startswith("POLICY_SAVED"):
-                res.error = f"ポリシー保存に失敗 ({r})"
+            res._log(
+                f"save decision: {save_decision} texts={save_texts[:5]} "
+                f"(waited {save_waited}ms)"
+            )
+            if not save_decision.startswith("SAVE:"):
+                res.error = f"ポリシー保存に失敗 ({save_decision}) — 付替せず中断"
                 return res
+            save_handles[int(save_decision.split(":", 1)[1])].click()
             page.wait_for_timeout(5000)
 
             # Step 5: リロード定着検証 (panel 本文に token が exact word で現れるか。
