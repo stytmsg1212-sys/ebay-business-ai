@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -224,11 +224,19 @@ VERIFY_JS = r"""() => {
   return out;
 }"""
 
-# --- 送料ポリシー付替 (W284 Phase2-3, 2026-06-21) ---------------------------
-# 商品モーダル (productId panel) で「別のポリシーを選択」を押し、配送ポリシー
-# dropdown から target token のオプションを選択する。spike (2026-06-20) で
-# 商品モーダル → 「別のポリシーを選択」→ dropdown → get_by_text(token) で
-# option 特定可能を確認済み。誤付替防止は呼び出し側の itm 照合 (権威安全弁)。
+# --- 送料ポリシー付替 (W284 Phase2-3, 2026-06-21 / picker 修正 2026-07-05) ---
+# 商品モーダル (productId panel) で「別のポリシーを選択」を押し、typeahead 入力欄に
+# target token を入力して候補を絞り込んでから選択する。
+#
+# live probe (2026-07-05) で確定した真因:
+#   1. 「別のポリシーを選択」押下後、typeahead 入力欄 (placeholder に
+#      「配送ポリシーを選択」を含む) を native click して初めて候補が描画される。
+#      入力欄に触れず即座に候補を探すと常に 0 件 (OPTION_NOT_FOUND) だった。
+#   2. 候補行の innerText は「token + 説明文」の複合のため、
+#      innerText.trim()===token の完全一致は候補描画後も成立しない (contains 判定が必要)。
+# → native locator (browser-ui-native-input 規約 第一選択) で
+#   入力欄 click→fill、候補行は「token を含む」判定 + 可視候補ちょうど 1 件の
+#   assert (誤選択防止の安全弁) を経て選択する (_select_policy_option 参照)。
 
 # 「別のポリシーを選択」ボタンを押す (配送ポリシー編集 UI を開く)
 OPEN_POLICY_PICKER_JS = r"""() => {
@@ -239,37 +247,18 @@ OPEN_POLICY_PICKER_JS = r"""() => {
   return 'PICKER_OPENED';
 }"""
 
+# typeahead 入力欄 (native locator で click→fill する、CSS selector のみ定数化)
+POLICY_PICKER_INPUT_SELECTOR = 'input[placeholder*="配送ポリシー"]'
+
+# 候補行 (native locator の第一候補) — typeahead 描画後の候補コンテナを想定。
+# has_text=token (contains 判定) で絞り込み、可視のもののみ採用する。
+POLICY_OPTION_CANDIDATE_SELECTOR = '[role="option"], [role="menuitem"], li'
+
 # 現在割当中の配送ポリシー名を読む (定着検証用)。
 # 配送ポリシー欄の近傍テキストから token 候補を拾う。
 READ_CURRENT_POLICY_JS = r"""(token) => {
   const body = document.body.innerText;
   return {hasToken: body.includes(token), head: body.slice(0, 400)};
-}"""
-
-# dropdown / リストから target token のオプションを選択する。
-# money-direct (各国版送料の mutate) のため完全一致のみ採用する
-# (reviewer MED-2: 部分一致フォールバックは誤付替リスク。未ヒットは中断=Q0)。
-SELECT_POLICY_OPTION_JS = r"""(token) => {
-  const cands = Array.from(document.querySelectorAll(
-    'option, li, [role="option"], [role="menuitem"], div, span, button, a'));
-  // 完全一致のみ (trim 後の innerText が token と一致するもの)。
-  // 複数候補がある場合は最短 innerText を選ぶ (option 本体 > それを含む親要素)。
-  const exact = cands
-    .filter(e => e.innerText && e.innerText.trim() === token)
-    .sort((a, b) => a.innerText.length - b.innerText.length);
-  const el = exact[0];
-  if (!el) return 'OPTION_NOT_FOUND';
-  // <option> は click では選択されないため、select 要素経由で value を設定
-  if (el.tagName === 'OPTION') {
-    const sel = el.closest('select');
-    if (sel) {
-      sel.value = el.value;
-      sel.dispatchEvent(new Event('change', {bubbles: true}));
-      return 'OPTION_SELECTED(select)';
-    }
-  }
-  el.click();
-  return 'OPTION_CLICKED';
 }"""
 
 # ポリシー編集 UI の保存ボタン (国トグルの「N 変動を保存」とは別 UI)。
@@ -281,6 +270,34 @@ SAVE_POLICY_JS = r"""() => {
   btn.click();
   return 'POLICY_SAVED:' + btn.innerText.trim();
 }"""
+
+
+def _decide_policy_option_selection(visible_texts: list[str], token: str) -> str:
+    """可視候補の innerText 一覧から token を含む行が何件かを判定する純関数 (unit-testable)。
+
+    候補行の innerText は「token + 説明文」の複合 (完全一致は成立しない、live probe
+    2026-07-05 実証) のため contains 判定を使う。誤選択防止のため 1 件確定時のみ
+    選択可 (0 件 / 複数件は呼び出し側で中断させる)。
+
+    UNIQUE 判定は追加で **leading token 完全一致** を要求する (行 = "token" or
+    "token + 空白 + 説明文" 前提)。target を部分文字列に含む別ポリシー行 (例:
+    `MAG_6-8kg_1day_v2 ...` に対し token=`MAG_6-8kg_1day`) が 1 件だけ可視で
+    通ってしまう穴を閉じる (Codex 指摘 2026-07-05、read-back の substring 弱点も
+    実質補完)。
+
+    Returns:
+        "OPTION_NOT_FOUND" (0件 or 唯一候補の leading token が不一致) /
+        "AMBIGUOUS:N" (N>=2件) / "UNIQUE" (ちょうど1件かつ leading token 完全一致)
+    """
+    matches = [t for t in visible_texts if token in t]
+    if not matches:
+        return "OPTION_NOT_FOUND"
+    if len(matches) > 1:
+        return f"AMBIGUOUS:{len(matches)}"
+    only = matches[0]
+    if only == token or only.startswith(token + " "):
+        return "UNIQUE"
+    return "OPTION_NOT_FOUND"
 
 
 @dataclass
@@ -1038,10 +1055,12 @@ def assign_policy(
 ) -> EbaymagResult:
     """商品の配送ポリシーを target_policy_token に付替する (W284 Phase2-3).
 
-    フロー (spike 2026-06-20 で UI 操作可を確認):
+    フロー (spike 2026-06-20 で UI 操作可を確認、picker 操作は live probe 2026-07-05 で修正):
       1. アクティブ panel を開いて itm 照合 (権威安全弁 = 誤商品 mutation 防止)
       2. 「別のポリシーを選択」ボタンを押して配送ポリシー編集 UI を開く
-      3. dropdown / リストから target_policy_token のオプションを選択
+      2.5. typeahead 入力欄を native click → fill(token) して候補を描画させる
+      3. token を含む可視候補が「ちょうど 1 件」であることを確認し native locator で選択
+         (0件/複数件は誤選択防止のため中断)
       4. 保存
       5. リロードして panel 本文に target_policy_token が現れるか定着検証
 
@@ -1096,19 +1115,42 @@ def assign_policy(
                 return res
             page.wait_for_timeout(1500)
 
-            # Step 3: target token のオプションを選択
-            r = page.evaluate(SELECT_POLICY_OPTION_JS, target_policy_token)
-            res._log(f"select policy option: {r}")
-            if r == "OPTION_NOT_FOUND":
+            # Step 2.5: typeahead 入力欄を native click → fill して候補を描画させる
+            # (probe 実証: 入力欄に触れず即座に候補を探すと常に 0 件だった)
+            try:
+                picker_input = page.locator(POLICY_PICKER_INPUT_SELECTOR)
+                picker_input.click(timeout=5000)
+                picker_input.fill(target_policy_token, timeout=5000)
+            except PlaywrightTimeoutError as e:
+                res.error = (
+                    f"配送ポリシー入力欄が見つかりません ({e}) — 付替せず中断"
+                )
+                return res
+            res._log(f"typeahead filled: {target_policy_token}")
+            page.wait_for_timeout(1000)
+
+            # Step 3: token を含む可視候補が「ちょうど 1 件」であることを確認してから
+            # native locator で選択する (誤選択防止の安全弁、_decide_policy_option_selection)
+            candidates = page.locator(POLICY_OPTION_CANDIDATE_SELECTOR).filter(
+                has_text=target_policy_token
+            )
+            visible_handles = [h for h in candidates.all() if h.is_visible()]
+            visible_texts = [h.inner_text().strip() for h in visible_handles]
+            decision = _decide_policy_option_selection(visible_texts, target_policy_token)
+            res._log(f"policy candidates: decision={decision} texts={visible_texts[:5]}")
+            if decision == "OPTION_NOT_FOUND":
                 res.error = (
                     f"配送ポリシー一覧に token={target_policy_token!r} が見つかりません "
                     "(ポリシー未作成 or 表示名不一致 — 付替せず中断)"
                 )
                 return res
-            if not (str(r).startswith("OPTION_CLICKED")
-                    or str(r).startswith("OPTION_SELECTED")):
-                res.error = f"ポリシー選択に失敗 ({r}) — 付替せず中断"
+            if decision != "UNIQUE":
+                res.error = (
+                    f"配送ポリシー候補が複数一致 ({decision}) — token={target_policy_token!r} "
+                    "誤選択防止のため中断"
+                )
                 return res
+            visible_handles[0].click()
             page.wait_for_timeout(1200)
 
             # Step 4: 保存
