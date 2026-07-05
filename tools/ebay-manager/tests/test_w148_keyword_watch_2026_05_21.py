@@ -1622,3 +1622,66 @@ def test_ai_match_empty_candidate_title_skips_ai(tmp_db, monkeypatch):
     assert r["discord_sent"] == 1, "空 candidate title で通知されない (Q0)"
     assert eval_called["n"] == 0, "空 candidate title で AI 判定が走った (無駄 call)"
 
+
+# ---------- 2026-07-06: iPhone sentinel watch 汚染事故 再発防止 ----------
+
+def test_sentinel_hits_not_persisted(tmp_db, monkeypatch):
+    """sentinel watch (DOM/bot ban 検知用) が結果を返しても keyword_watch_hits に
+    永続化しない (site_health 集計は in-memory の hits/err のみで完結、記録は
+    get_unconfirmed_hits の新着ギャラリーを汚染するだけで下流利用が無い)。
+    出典: 2026-07-06「iPhone」watch 混入報告 — 3089/3605 件 (85.7%) が
+    sentinel 由来と判明した事故の根治。"""
+    from monitor.keyword_watch_db import init_default_sentinels
+    from monitor.database import get_conn
+    import tasks.task_keyword_watch_crawl as mod
+
+    init_default_sentinels()
+
+    class _Hit:
+        url = "https://jp.mercari.com/item/iphone_dummy"
+        title = "Apple iPhone 13"
+        price_jpy = 30000
+        image_url = None
+
+    monkeypatch.setattr("monitor.mercari_search.search_mercari",
+                        MagicMock(return_value=[_Hit()]))
+    monkeypatch.setattr("monitor.yahoo_search.search_yahoo", MagicMock(return_value=[]))
+
+    r = mod.run_keyword_watch_crawl({"discord": {"webhook_url": ""}})
+    assert r["success"] is True
+
+    with get_conn() as c:
+        n = c.execute("SELECT COUNT(*) FROM keyword_watch_hits").fetchone()[0]
+    assert n == 0, "sentinel watch の hit が keyword_watch_hits に記録されてしまった"
+
+
+def test_get_unconfirmed_hits_excludes_sentinel(tmp_db):
+    """defense-in-depth: 仮に sentinel 由来 hit が存在しても get_unconfirmed_hits /
+    count_unconfirmed_hits は除外する (新着ギャラリーへの露出防止)。"""
+    from monitor.keyword_watch_db import (
+        add_watch, record_hit_claim, get_unconfirmed_hits, count_unconfirmed_hits,
+    )
+    from monitor.database import get_conn
+
+    wid, _ = add_watch(
+        site="mercari",
+        search_url="https://jp.mercari.com/search?keyword=iPhone",
+        keyword="iPhone",
+        memo="sentinel",
+        source="sentinel",
+        is_sentinel=True,
+    )
+    record_hit_claim(
+        watch_id=wid, found_item_url="https://item/sentinel_hit",
+        title="Apple iPhone", price_jpy=10000, image_url=None, in_price_range=False,
+    )
+    # 直接 INSERT で sentinel hit が万一残っているケースを模擬 (record_hit_claim 経由でも同じ)
+    with get_conn() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM keyword_watch_hits WHERE confirmed_at IS NULL"
+        ).fetchone()[0]
+    assert n == 1  # 前提: hit 自体は存在する
+
+    assert get_unconfirmed_hits() == []
+    assert count_unconfirmed_hits() == 0
+

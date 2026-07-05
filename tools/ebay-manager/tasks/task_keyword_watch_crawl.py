@@ -381,6 +381,17 @@ def run_keyword_watch_crawl(config: dict) -> dict:
                     st['sentinel_error'] += 1
                 elif not hits:
                     st['sentinel_zero'] += 1
+                # sentinel の役割は site_health 集計 (上記、この run の in-memory
+                # hits/err のみで完結) だけ。keyword_watch_hits への永続化は
+                # in_price_range=False で通知対象にもならず何の下流利用も無い一方、
+                # get_unconfirmed_hits() の新着ギャラリーを汚染する
+                # (2026-07-06 「iPhone」watch 混入報告事故: 3089/3605 件が sentinel 由来と判明)。
+                # よって sentinel watch の hit は記録しない (Q2 rule: 書込を減らす方向の
+                # 変更なので冪等性リスクなし)。
+                update_watch_last_crawled(w['id'], error=err)
+                summary["watches_crawled"] += 1
+                time.sleep(sleep_sec)
+                continue
 
             for h in hits:
                 in_range = _check_price_range(

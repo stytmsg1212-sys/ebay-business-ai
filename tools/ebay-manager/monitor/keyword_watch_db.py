@@ -342,7 +342,11 @@ def list_active_sentinels() -> list[dict]:
 
 def get_unconfirmed_hits(limit: int = 500) -> list[dict]:
     """confirmed_at IS NULL の hit を watch 情報と JOIN して新しい順に返す。
-    ギャラリー表示 (依頼ボード #52) 用。"""
+    ギャラリー表示 (依頼ボード #52) 用。
+    sentinel watch (DOM/bot ban 検知用、通知対象外) 由来の hit は除外
+    (2026-07-06 「iPhone」watch 混入報告事故の再発防止、defense-in-depth。
+    書込側は task_keyword_watch_crawl.py で既に記録しないよう修正済だが、
+    念のため読取側でも sentinel を除外する)。"""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT h.id AS hit_id, h.watch_id, h.found_item_url, h.title, "
@@ -350,7 +354,7 @@ def get_unconfirmed_hits(limit: int = 500) -> list[dict]:
             "       w.site, w.keyword, w.memo, w.ebay_item_id "
             "FROM keyword_watch_hits h "
             "INNER JOIN keyword_watches w ON w.id = h.watch_id "
-            "WHERE h.confirmed_at IS NULL "
+            "WHERE h.confirmed_at IS NULL AND w.is_sentinel = 0 "
             "ORDER BY h.detected_at DESC "
             "LIMIT ?",
             (limit,),
@@ -398,8 +402,11 @@ def confirm_hits(hit_ids: list[int]) -> int:
 def count_unconfirmed_hits() -> int:
     """未確認 hit の総件数 (COUNT のみ、依頼ボード #52 MED-2 の
     「500 超で件数過少表示」対策)。get_unconfirmed_hits の LIMIT を跨いで
-    真の総件数を返す。"""
+    真の総件数を返す。sentinel 由来 hit は get_unconfirmed_hits と同様に除外
+    (2026-07-06、バッジ件数とギャラリー表示件数の不整合防止)。"""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT COUNT(*) FROM keyword_watch_hits WHERE confirmed_at IS NULL"
+            "SELECT COUNT(*) FROM keyword_watch_hits h "
+            "INNER JOIN keyword_watches w ON w.id = h.watch_id "
+            "WHERE h.confirmed_at IS NULL AND w.is_sentinel = 0"
         ).fetchone()[0]
