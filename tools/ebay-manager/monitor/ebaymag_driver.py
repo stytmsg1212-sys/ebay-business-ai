@@ -238,14 +238,9 @@ VERIFY_JS = r"""() => {
 #   入力欄 click→fill、候補行は「token を含む」判定 + 可視候補ちょうど 1 件の
 #   assert (誤選択防止の安全弁) を経て選択する (_select_policy_option 参照)。
 
-# 「別のポリシーを選択」ボタンを押す (配送ポリシー編集 UI を開く)
-OPEN_POLICY_PICKER_JS = r"""() => {
-  const btn = Array.from(document.querySelectorAll('button, a, [role="button"]'))
-    .find(el => el.innerText && el.innerText.trim().includes('別のポリシーを選択'));
-  if (!btn) return 'PICKER_BUTTON_NOT_FOUND';
-  btn.click();
-  return 'PICKER_OPENED';
-}"""
+# 「別のポリシーを選択」ボタン押下は native locator + wait で行う (assign_policy
+# Step 2 参照)。one-shot JS query は render race で NOT_FOUND になるため廃止
+# (canary#4 実測 2026-07-05)。
 
 # typeahead 入力欄 (native locator で click→fill する、CSS selector のみ定数化)
 POLICY_PICKER_INPUT_SELECTOR = 'input[placeholder*="配送ポリシー"]'
@@ -1110,12 +1105,19 @@ def assign_policy(
                     res.error = "アクティブ panel が開けません (付替せず中断)"
                 return res
 
-            # Step 2: 「別のポリシーを選択」を開く
-            r = page.evaluate(OPEN_POLICY_PICKER_JS)
-            res._log(f"open policy picker: {r}")
-            if r != "PICKER_OPENED":
-                res.error = f"ポリシー選択 UI を開けません ({r}) — 付替せず中断"
+            # Step 2: 「別のポリシーを選択」を開く (native locator + wait。
+            # canary#4 実測 2026-07-05: ボタンは itm より遅れて描画されることがあり、
+            # one-shot JS query では render race で PICKER_BUTTON_NOT_FOUND になる)
+            try:
+                page.get_by_text(
+                    "別のポリシーを選択", exact=False
+                ).first.click(timeout=10000)
+            except PlaywrightTimeoutError:
+                res.error = (
+                    "ポリシー選択 UI を開けません (PICKER_BUTTON_NOT_FOUND) — 付替せず中断"
+                )
                 return res
+            res._log("open policy picker: PICKER_OPENED (native)")
             page.wait_for_timeout(1500)
 
             # Step 2.5: typeahead 入力欄を native click → fill して候補を描画させる
