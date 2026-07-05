@@ -34,10 +34,19 @@ class TestDecidePolicyOptionSelection:
         assert _decide_policy_option_selection([], "MAG_6-8kg_1day") == "OPTION_NOT_FOUND"
 
     def test_single_match_returns_unique(self):
+        """canary#3 実測: 候補行の区切りは改行 ("token\\n説明文")。"""
         visible_texts = [
-            "MAG_6-8kg_1day 1日以内発送・6-8kg",
-            "MAG_6-8kg_7day 7日以内発送・6-8kg",
+            "MAG_6-8kg_1day\n無料, 6 日でお届け, 営業日 60 受入を返します",
+            "MAG_6-8kg_7day\n無料, 12 日でお届け, 営業日 60 受入を返します",
         ]
+        assert (
+            _decide_policy_option_selection(visible_texts, "MAG_6-8kg_1day")
+            == "UNIQUE"
+        )
+
+    def test_space_separated_row_still_unique(self):
+        """空白区切りの行 (旧想定) も引き続き UNIQUE (isspace 境界判定)。"""
+        visible_texts = ["MAG_6-8kg_1day 1日以内発送・6-8kg"]
         assert (
             _decide_policy_option_selection(visible_texts, "MAG_6-8kg_1day")
             == "UNIQUE"
@@ -57,7 +66,7 @@ class TestDecidePolicyOptionSelection:
     def test_exact_row_text_with_description_suffix_matches(self):
         """候補行 innerText = token + 説明文の複合でも contains 判定で 1 件確定できる
         (live probe が確認した『完全一致は成立しない』ケースの回帰)。"""
-        visible_texts = ["MAG_1-2kg_7day 7日以内発送・1-2kg・DDP対応"]
+        visible_texts = ["MAG_1-2kg_7day\n無料, 12 日でお届け, 営業日 60 受入を返します"]
         assert (
             _decide_policy_option_selection(visible_texts, "MAG_1-2kg_7day")
             == "UNIQUE"
@@ -89,6 +98,7 @@ class TestPickerSelectors:
         assert "配送ポリシー" in POLICY_PICKER_INPUT_SELECTOR
         assert POLICY_PICKER_INPUT_SELECTOR.startswith("input[")
 
-    def test_candidate_selector_covers_option_and_list_roles(self):
-        assert "option" in POLICY_OPTION_CANDIDATE_SELECTOR
-        assert "menuitem" in POLICY_OPTION_CANDIDATE_SELECTOR
+    def test_candidate_selector_is_button_row(self):
+        """canary#3 実測 (2026-07-05): 候補行は BUTTON > DIV.label 構造
+        (role=option/menuitem/li は実在しない) のため button 単独に固定。"""
+        assert POLICY_OPTION_CANDIDATE_SELECTOR == "button"

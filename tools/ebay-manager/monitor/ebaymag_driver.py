@@ -250,9 +250,11 @@ OPEN_POLICY_PICKER_JS = r"""() => {
 # typeahead 入力欄 (native locator で click→fill する、CSS selector のみ定数化)
 POLICY_PICKER_INPUT_SELECTOR = 'input[placeholder*="配送ポリシー"]'
 
-# 候補行 (native locator の第一候補) — typeahead 描画後の候補コンテナを想定。
-# has_text=token (contains 判定) で絞り込み、可視のもののみ採用する。
-POLICY_OPTION_CANDIDATE_SELECTOR = '[role="option"], [role="menuitem"], li'
+# 候補行 — canary#3 実測 (2026-07-05) で候補行は BUTTON > DIV.label 構造
+# (role 属性なし・li 非使用) と確定したため button 単独。has_text=token
+# (contains 判定) で絞り込み、可視のもののみ採用する。万一の button 入れ子は
+# AMBIGUOUS 弁 (可視 1 件 assert) が引き続き守る。
+POLICY_OPTION_CANDIDATE_SELECTOR = 'button'
 
 # 現在割当中の配送ポリシー名を読む (定着検証用)。
 # 配送ポリシー欄の近傍テキストから token 候補を拾う。
@@ -280,10 +282,11 @@ def _decide_policy_option_selection(visible_texts: list[str], token: str) -> str
     選択可 (0 件 / 複数件は呼び出し側で中断させる)。
 
     UNIQUE 判定は追加で **leading token 完全一致** を要求する (行 = "token" or
-    "token + 空白 + 説明文" 前提)。target を部分文字列に含む別ポリシー行 (例:
-    `MAG_6-8kg_1day_v2 ...` に対し token=`MAG_6-8kg_1day`) が 1 件だけ可視で
-    通ってしまう穴を閉じる (Codex 指摘 2026-07-05、read-back の substring 弱点も
-    実質補完)。
+    "token + 空白文字 + 説明文" 前提。canary#3 実測で区切りは改行 —
+    "MAG_1-2kg_1day\n無料, ..." — のため境界は isspace() 全般で判定)。
+    target を部分文字列に含む別ポリシー行 (例: `MAG_6-8kg_1day_v2 ...` に対し
+    token=`MAG_6-8kg_1day`) は直後が空白文字でないため reject (Codex 指摘
+    2026-07-05 の prefix 衝突封鎖を維持、read-back の substring 弱点も実質補完)。
 
     Returns:
         "OPTION_NOT_FOUND" (0件 or 唯一候補の leading token が不一致) /
@@ -295,7 +298,7 @@ def _decide_policy_option_selection(visible_texts: list[str], token: str) -> str
     if len(matches) > 1:
         return f"AMBIGUOUS:{len(matches)}"
     only = matches[0]
-    if only == token or only.startswith(token + " "):
+    if only.startswith(token) and (len(only) == len(token) or only[len(token)].isspace()):
         return "UNIQUE"
     return "OPTION_NOT_FOUND"
 
