@@ -44,6 +44,10 @@ eBay 出品 / 関税 / 送料 / 商品ランク等の **規制業務 rules** を
 
 除外は Q0 (silent skip 禁止) のため各層で `logger.warning` により痕跡を残す。**ItemSpecifics の更新経路 (新設)**: 出品後の Item Specifics 修正は `ebay_client.revise_item_specifics` 経由。ReviseItem の NameValueList は全置換仕様のため、入力・現行 (merge元) どちらに原産国系 Name が含まれていても送信前に自動除去される。
 
+#### 第 5 経路 (2026-07-05 確定): eBay カタログ自動付与
+
+上記 4 層はいずれも **送信側フィルタ**であり、出品側が Country of Origin を一切送信しなくても防げない経路が確定した。**Brand + MPN が eBay 自社カタログに自動マッチすると、カタログ側の COO をサーバー側で合成表示する** (GetItem の `IncludeeBayProductDetails=true` が指標)。証拠: PLOTTER 3 件で `listing_drafts` に COO 記載なし・上記 4 層防御反映後の出品にも関わらず GetItem で COO 混入を確認。**送信側 4 層防御では原理的に防止不能** のため、対策は事後検知に転換: 新規出品の当日 GetItem COO チェック + 自動是正 (第 5 層、W325 で実装予定)。
+
 #### 過去の見解 (〜2026-07-04)
 
 「混同事故防止: eBay XML builder は Manufacturer 欄を **空文字列で送出**」と記述していた。
