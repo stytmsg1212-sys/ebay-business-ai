@@ -81,10 +81,15 @@ def collect_documents(project_root: Path) -> list[dict]:
 
     docs_dir = project_root / ".company" / "engineering" / "docs"
     if docs_dir.is_dir():
+        # 種別はファイル名基準 (K1): "mockup" 含み = mockup、それ以外 = 設計書。
+        # 拡張子 (.html/.md) では設計書 HTML (例: 2026-07-06-daily-workflow-design.html)
+        # が mockup 誤分類されるため、命名規約に寄せる。
         for f in sorted(docs_dir.glob("*.md")):
-            entries.append(_make_entry(f, "設計書"))
+            cat = "mockup" if "mockup" in f.stem.lower() else "設計書"
+            entries.append(_make_entry(f, cat))
         for f in sorted(docs_dir.glob("*.html")):
-            entries.append(_make_entry(f, "mockup"))
+            cat = "mockup" if "mockup" in f.stem.lower() else "設計書"
+            entries.append(_make_entry(f, cat))
 
     kb_dir = project_root / ".company" / "ebay-knowledge" / "topics"
     if kb_dir.is_dir():
@@ -182,7 +187,10 @@ def _render_body() -> None:
         if rows:
             selected_idx = rows[0]
 
-    if selected_idx is None:
+    # フィルタ/検索で filtered が縮んだ後に古い selection index が残るケース対策 (W326 QA)。
+    # dataframe の on_select="rerun" は選択 index を widget state に保持するため、
+    # フィルタ変更で行数が減ると `filtered[selected_idx]` が IndexError を出す。
+    if selected_idx is None or selected_idx >= len(filtered):
         st.caption("上の一覧から行を選択すると内容を表示します。")
         return
 

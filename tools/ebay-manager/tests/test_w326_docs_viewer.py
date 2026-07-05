@@ -42,9 +42,15 @@ def test_collect_documents_categorizes_and_sorts(tmp_path):
     design_md.write_text("# old design", encoding="utf-8")
     os.utime(design_md, (time.time() - 300, time.time() - 300))
 
+    # ファイル名に "mockup" を含む HTML は mockup 分類
     mockup_html = docs_dir / "2026-07-05-new-mockup.html"
     mockup_html.write_text("<html><body>mockup</body></html>", encoding="utf-8")
     os.utime(mockup_html, (time.time() - 100, time.time() - 100))
+
+    # ファイル名に "mockup" を含まない HTML は設計書 (W326 QA 修正)
+    design_html = docs_dir / "2026-07-06-daily-workflow-design.html"
+    design_html.write_text("<html><body>design</body></html>", encoding="utf-8")
+    os.utime(design_html, (time.time() - 150, time.time() - 150))
 
     kb_md = kb_dir / "business-policies.md"
     kb_md.write_text("# kb", encoding="utf-8")
@@ -55,19 +61,56 @@ def test_collect_documents_categorizes_and_sorts(tmp_path):
     os.utime(manual, (time.time() - 50, time.time() - 50))
 
     entries = collect_documents(root)
+    by_name = {e["name"]: e for e in entries}
 
-    assert [e["category"] for e in entries] == ["説明書", "mockup", "KB", "設計書"]
-    assert entries[0]["name"] == "USER_MANUAL.md"
-    assert entries[1]["name"] == "2026-07-05-new-mockup.html"
-    assert entries[1]["ext"] == ".html"
-    assert entries[3]["date_str"] == "2026-07-01"
-    assert entries[3]["title"] == "old design"
+    # 更新日 (mtime) 降順ソート: USER_MANUAL.md → mockup → design.html → KB → old-design.md
+    assert [e["name"] for e in entries] == [
+        "USER_MANUAL.md",
+        "2026-07-05-new-mockup.html",
+        "2026-07-06-daily-workflow-design.html",
+        "business-policies.md",
+        "2026-07-01-old-design.md",
+    ]
+    assert by_name["USER_MANUAL.md"]["category"] == "説明書"
+    assert by_name["2026-07-05-new-mockup.html"]["category"] == "mockup"
+    # ファイル名基準: "mockup" を含まない HTML は設計書
+    assert by_name["2026-07-06-daily-workflow-design.html"]["category"] == "設計書"
+    assert by_name["business-policies.md"]["category"] == "KB"
+    assert by_name["2026-07-01-old-design.md"]["category"] == "設計書"
+    assert by_name["2026-07-01-old-design.md"]["date_str"] == "2026-07-01"
+    assert by_name["2026-07-01-old-design.md"]["title"] == "old design"
+
+
+def test_collect_documents_md_mockup_classified_as_mockup(tmp_path):
+    """.md でもファイル名に mockup を含めば mockup 分類 (K1: 拡張子でなくファイル名基準)."""
+    docs_dir = tmp_path / ".company" / "engineering" / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "2026-06-27-today-tasks-tab-proposal-mockup.md").write_text("# mockup", encoding="utf-8")
+
+    entries = collect_documents(tmp_path)
+    assert len(entries) == 1
+    assert entries[0]["category"] == "mockup"
 
 
 def test_collect_documents_skips_missing_dirs(tmp_path):
     # ディレクトリを一切作らない = 全 skip でも例外を出さず空リストを返す
     entries = collect_documents(tmp_path)
     assert entries == []
+
+
+def test_selected_index_out_of_range_guard():
+    """W326 QA 追補: dataframe on_select="rerun" は selection を widget state に
+    残すため、フィルタ縮小で `filtered[selected_idx]` が IndexError を出すクラッシュを再現。
+    修正後は `selected_idx >= len(filtered)` で選択なし扱い (guard) となることを、
+    直接ソース文字列で検証する (Streamlit UI ランタイム不要)。
+    """
+    from pathlib import Path as _P
+    src = _P("tabs/tab_docs_viewer.py").read_text(encoding="utf-8")
+    # 選択 index が filtered 長を超えた場合の guard が存在すること
+    assert "selected_idx is None or selected_idx >= len(filtered)" in src
+    # guard の後に _render_viewer(filtered[selected_idx]) が呼ばれる正規経路が
+    # 残っていること (guard を消して素アクセスに戻していないことの確認)
+    assert "_render_viewer(filtered[selected_idx])" in src
 
 
 def test_tab_docs_viewer_importable():
