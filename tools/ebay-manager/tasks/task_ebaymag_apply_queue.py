@@ -139,7 +139,113 @@ def _policy_assign_enabled(config: dict) -> bool:
     return bool(cfg.get("enabled", False))
 
 
-def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = None) -> dict:
+def _build_mag_titles_if_needed(config: dict) -> set[str] | None:
+    """flag ON の run でのみ GraphQL で本番 MAG_ ポリシー title 一覧を 1 回取得する。
+
+    _build_product_map_if_needed と同じ思想: 全 job 共有で 1 回だけ GraphQL を
+    叩く (job 毎に叩かない)。flag OFF (canary 前) は付替を試みないため取得しない
+    (無駄な CDP 呼び出しを避ける、K1)。
+
+    GraphQL 到達不能時は None を返す (fail-open: 存在チェックを skip し、
+    呼び出し側は候補 token をそのまま用いる。実在確認は assign_policy の
+    UI OPTION_NOT_FOUND チェックが最終的な安全弁として機能する)。
+    """
+    if not _policy_assign_enabled(config):
+        return None
+    from monitor.ebaymag_driver import fetch_mag_policy_titles
+
+    res = fetch_mag_policy_titles()
+    if not res.ok:
+        logger.warning(
+            "[ebaymag_apply_queue] mag_titles 取得失敗 (%s) → 存在チェックskip "
+            "(候補 token をそのまま使用、assign_policy 側の存在チェックに委ねる)",
+            res.error,
+        )
+        return None
+    return res.mag_titles
+
+
+def _resolve_mag_policy_token(
+    eid: str, band: str, mag_titles: set[str] | None = None,
+) -> tuple[str | None, str | None]:
+    """band + US 本体 listing の DispatchTimeMax から本番稼働中の MAG_ token 名を解決する。
+
+    ebaymag_assign.py / ebaymag_dispatch_mirror.py が本番で運用している命名規約
+    (`MAG_{band}_{1day|7day}`、GraphQL 上のポリシー title と一致) に合わせる。
+    旧 Phase1 設計の `get_canonical_policy_token` (DB ebaymag_shipping_policies の
+    DDP_ token、全行 draft/None) はもう参照しない — 消化を needs_manual に落とし
+    続けていたため。
+
+    dispatch (1day/7day) の**真実源 = US 本体 listing の DispatchTimeMax**
+    (ebaymag_dispatch_mirror.us_info を再利用 = GetItem 1 コール/job。
+    dispatch_mirror と同一真実源にしないと、同一商品で mirror (US 真実源) と
+    本タスク (別真実源) が逆ポリシーを綱引きする)。
+    SKU prefix (sku_expected_series) は真実源に**使わない** — SKU-series ≠ US-series
+    は本番で実在する既知条件 (dispatch_mirror の sku_conflicts 追跡) のため、
+    食い違い時は logger.warning で監査痕跡のみ残す (sku_conflict と同語彙)。
+    US 取得失敗時は fail-closed (SKU へ silent フォールバックしない、Q0)。
+
+    Args:
+        mag_titles: GraphQL で取得済の実在 MAG_ title 集合 (_build_mag_titles_if_needed)。
+            None なら存在チェックを skip (fail-open、GraphQL 到達不能時のフォールバック。
+            実在確認は assign_policy 側の OPTION_NOT_FOUND が最終安全弁)。
+
+    Returns:
+        (token, fail_reason) のタプル。
+          - 解決成功: (`MAG_{band}_{series}`, None)
+          - 失敗 (呼び出し側は needs_manual へ、Q0 痕跡 = 本関数の warning ログ):
+            - eBay 認証情報なし / GetItem 失敗 / DispatchTimeMax 想定外
+              → (None, "US 発送日数を確認できないため保留 (...)")
+            - mag_titles 確認済で候補 token 不在 → (None, "MAG_ ポリシー不在: ...")
+    """
+    from monitor.inventory_sync import _get_credentials
+    from monitor.ebaymag_dispatch_mirror import us_info, sku_expected_series
+
+    creds = _get_credentials()
+    if creds is None:
+        reason = "US 発送日数を確認できないため保留 (eBay 認証情報が未設定)"
+        logger.warning(
+            "[ebaymag_apply_queue] MAG token 解決不能: eid=%s band=%s %s",
+            eid, band, reason,
+        )
+        return None, reason
+
+    us_series, us_sku, err = us_info(eid, creds)
+    if us_series is None:
+        reason = f"US 発送日数を確認できないため保留 ({err})"
+        logger.warning(
+            "[ebaymag_apply_queue] MAG token 解決不能: eid=%s band=%s %s",
+            eid, band, reason,
+        )
+        return None, reason
+
+    # SKU 監査 (真実源には使わない — dispatch_mirror の sku_conflict と同語彙)
+    sku_series = sku_expected_series(us_sku)
+    if sku_series is not None and sku_series != us_series:
+        logger.warning(
+            "[ebaymag_apply_queue] sku_conflict: eid=%s sku=%r sku_rule=%s us_series=%s "
+            "(真実源=US、US に従って付替)",
+            eid, us_sku, sku_series, us_series,
+        )
+
+    token = f"MAG_{band}_{us_series}"
+    if mag_titles is not None and token not in mag_titles:
+        reason = f"MAG_ ポリシー不在: {token} が GraphQL profiles に見つからない"
+        logger.warning(
+            "[ebaymag_apply_queue] MAG token 未実在 (GraphQL 確認済): eid=%s %s "
+            "(mag_titles %d 件)",
+            eid, reason, len(mag_titles),
+        )
+        return None, reason
+    return token, None
+
+
+def _process_job(
+    job: dict,
+    config: dict,
+    product_map: dict[str, str] | None = None,
+    mag_titles: set[str] | None = None,
+) -> dict:
     """1 件の apply_queue job を消化する (HIGH-1: ebay_listings 状態駆動の 2 軸適用)。
 
     W317: product_id 未登録の job は discover が必要。product_map (GraphQL の
@@ -147,10 +253,14 @@ def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = N
     (method=graphql)、miss なら既存タイトル/検索語 discover に降格 (method=title)。
     product_map=None / 空 dict (map 未構築 or 構築失敗) の時も title fallback で継続する。
 
+    mag_titles: 軸2 の MAG_ token 解決用。GraphQL で取得済の実在 title 集合
+    (_build_mag_titles_if_needed、run 冒頭で 1 回構築・全 job 共有)。
+
     消化側は ebay_listings を単一真実源とし、1 CDP パスで 2 軸を適用する:
       軸1 (国):   desired_sites_json vs 実サイト状態 → apply_site_changes (既存)
-      軸2 (送料): ebaymag_shipping_band の live token vs ebaymag_applied_policy_token
-                  → 不一致なら assign_policy (feature flag ON 時のみ)
+      軸2 (送料): ebaymag_shipping_band + US 本体 DispatchTimeMax (真実源) から解決した
+                  MAG_ token (`MAG_{band}_{1day|7day}`) vs ebaymag_applied_policy_token
+                  → 不一致なら assign_policy (feature flag ON 時のみ、解決も ON 時のみ)
 
     reason は「どの軸を主因に enqueue したか」の情報のみ。reason では分岐しない。
     shipping_policy 起因でも国トグルを勝手に走らせない (軸1 は desired==実態なら no-op)。
@@ -167,9 +277,10 @@ def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = N
         upsert_ebaymag_product,
         mark_ebaymag_apply_status,
         get_ebaymag_policy_state,
-        get_canonical_policy_token,
         record_ebaymag_policy_applied,
     )
+    # get_canonical_policy_token (DDP_ token / Phase1 設計) はもう参照しない — 本番稼働中の
+    # MAG_ 方式へ統一 (_resolve_mag_policy_token)。関数/DB table 自体は削除しない (K2)。
     from monitor.ebaymag_driver import (
         discover_product_id,
         fetch_site_states,
@@ -214,13 +325,12 @@ def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = N
     desired_sites: list[str] = desired_info.get("desired_sites") or []
     desired_sites_set_present = bool(desired_info.get("desired_sites"))
 
-    # 軸2 用: band → live token、現在 applied token を再読込 (HIGH-2 案b)
+    # 軸2 用: band、現在 applied token を再読込 (HIGH-2 案b)。
+    # target token (MAG_) の解決は 軸2 ブロック内で行う — flag ON 時のみ
+    # GetItem (US DispatchTimeMax) を消費する (flag OFF の canary 前に quota を使わない)。
     policy_state = get_ebaymag_policy_state(eid) or {}
     target_band: str | None = policy_state.get("band")
     applied_token: str | None = policy_state.get("applied_token")
-    target_token: str | None = (
-        get_canonical_policy_token(target_band) if target_band else None
-    )
 
     # Step 2: ebaymag_products から product_id を取得。なければ discover
     mapping = get_ebaymag_product(eid)
@@ -301,9 +411,6 @@ def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = N
             _ps = get_ebaymag_policy_state(eid) or {}
             target_band = _ps.get("band")
             applied_token = _ps.get("applied_token")
-            target_token = (
-                get_canonical_policy_token(target_band) if target_band else None
-            )
 
     # ───────── 軸1: 国トグル (desired が明示設定済の listing のみ) ─────────
     # desired_sites が未設定 (空) の listing では一切国トグルしない。
@@ -349,27 +456,30 @@ def _process_job(job: dict, config: dict, product_map: dict[str, str] | None = N
             site_changed = True
             logger.info("[ebaymag_apply_queue] 国 applied OK: eid=%s states=%s", eid, new_states)
 
-    # ───────── 軸2: 送料ポリシー付替 (band の live token と applied token 不一致時) ─────────
+    # ───────── 軸2: 送料ポリシー付替 (band の MAG_ token と applied token 不一致時) ─────────
     policy_changed = False
     if target_band:
-        if not target_token:
-            # band は設定されているが live/draft token が未設定 (= ポリシー未作成)。
-            # 勝手に付替えない (Q0 silent skip 禁止) — needs_manual + 通知。
-            return _fail(
-                f"送料ポリシー未作成: band={target_band} の policy token が未設定 "
-                "(ebaymag_shipping_policies に live/draft token を backfill してください)",
-                needs_manual=True,
+        if not _policy_assign_enabled(config):
+            # feature flag OFF (canary 前)。silent skip にせず痕跡を残す (Q0)。
+            # token 解決 (US GetItem) も行わない — flag OFF で quota を消費しない。
+            # 国軸が変わっていれば applied として扱い (job は done)、送料は次回 flag ON で。
+            logger.info(
+                "[ebaymag_apply_queue] policy 付替 skip (flag OFF): eid=%s band=%s "
+                "applied_token=%s",
+                eid, target_band, applied_token,
             )
-        if applied_token != target_token:
-            if not _policy_assign_enabled(config):
-                # feature flag OFF (canary 前)。silent skip にせず痕跡を残す (Q0)。
-                # 国軸が変わっていれば applied として扱い (job は done)、送料は次回 flag ON で。
-                logger.info(
-                    "[ebaymag_apply_queue] policy 付替 skip (flag OFF): eid=%s band=%s "
-                    "target_token=%s applied_token=%s",
-                    eid, target_band, target_token, applied_token,
+        else:
+            target_token, fail_reason = _resolve_mag_policy_token(
+                eid, target_band, mag_titles
+            )
+            if not target_token:
+                # US 発送日数 (DispatchTimeMax) 取得失敗 or 該当 MAG_ ポリシー不在。
+                # SKU へ silent フォールバックせず fail-closed (Q0) — needs_manual + 通知。
+                return _fail(
+                    f"MAG_ ポリシー token 解決不能: band={target_band} — {fail_reason}",
+                    needs_manual=True,
                 )
-            else:
+            if applied_token != target_token:
                 logger.info(
                     "[ebaymag_apply_queue] apply (送料): eid=%s band=%s target_token=%s",
                     eid, target_band, target_token,
@@ -508,6 +618,8 @@ def run_ebaymag_apply_queue(config: dict) -> dict:
 
     # W317: discover 要 job があれば GraphQL 商品 ID map を 1 回構築 (run 冒頭で共有)
     product_map = _build_product_map_if_needed(jobs)
+    # 軸2: flag ON の run でのみ MAG_ title 一覧を 1 回構築 (run 冒頭で共有)
+    mag_titles = _build_mag_titles_if_needed(config)
 
     stats = {"processed": 0, "applied": 0, "awaiting_import": 0, "failed": 0}
     errors: list[str] = []
@@ -516,7 +628,7 @@ def run_ebaymag_apply_queue(config: dict) -> dict:
         stats["processed"] += 1
         eid = job["ebay_item_id"]
         try:
-            res = _process_job(job, config, product_map)
+            res = _process_job(job, config, product_map, mag_titles)
         except Exception as e:  # noqa: BLE001
             # _process_job 外の予期せぬ例外 — job を failed にして継続 (Q0 silent skip 禁止)
             err_msg = f"{type(e).__name__}: {e}"

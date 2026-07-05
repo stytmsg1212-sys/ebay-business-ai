@@ -291,6 +291,7 @@ class EbaymagResult:
     log: list[str] = field(default_factory=list)
     product_id: str | None = None  # discover_product_id が発見した productId
     product_map: dict[str, str] = field(default_factory=dict)  # W317: eBay item_id → product_id
+    mag_titles: set[str] = field(default_factory=set)  # 本番稼働中の MAG_ ポリシー title 集合
 
     def _log(self, msg: str) -> None:
         self.log.append(msg)
@@ -396,7 +397,8 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
         "r = getattr(d, sys.argv[1])(**json.loads(sys.argv[2])); "
         "print(json.dumps({'ok': r.ok, 'error': r.error, "
         "'site_states': r.site_states, 'log': r.log, "
-        "'product_id': r.product_id, 'product_map': r.product_map}, "
+        "'product_id': r.product_id, 'product_map': r.product_map, "
+        "'mag_titles': sorted(r.mag_titles)}, "
         "ensure_ascii=True))"
     )
     env = dict(os.environ)
@@ -437,6 +439,7 @@ def _run_isolated(func_name: str, kwargs: dict, timeout_sec: int) -> EbaymagResu
     res.log = out.get("log") or []
     res.product_id = out.get("product_id")
     res.product_map = out.get("product_map") or {}
+    res.mag_titles = set(out.get("mag_titles") or [])
     for line in res.log:  # 子の log は親 logger に流れないため relay (reviewer LOW)
         logger.info("[ebaymag_driver/sub] %s", line)
     return res
@@ -855,6 +858,41 @@ def fetch_product_map() -> EbaymagResult:
     except Exception as e:
         res.error = f"eBaymag product_map 構築失敗: {str(e) or type(e).__name__}"
         logger.warning("fetch_product_map failed", exc_info=True)
+    return res
+
+
+def fetch_mag_policy_titles() -> EbaymagResult:
+    """本番稼働中の MAG_ 送料ポリシー title 集合を GraphQL で取得する (read-only)。
+
+    ebaymag_assign.py / ebaymag_dispatch_mirror.py が運用する title 解決と同じ
+    プリミティブ (ebaymag_graphql.list_profiles) を再利用する (コピー実装禁止)。
+    軸2 (送料ポリシー付替) の target_token 候補 (`MAG_{band}_{dispatch}`) が実在
+    するかを apply_queue 側が事前確認するために使う (Q0: 存在しない token で
+    assign_policy を叩き続けない)。
+
+    res.ok は GraphQL 呼び出し自体の成否 (fetch_product_map と同じ規約)。
+    CDP 不在 / タブ不在 / GraphQL 例外のみ ok=False。
+    """
+    res = EbaymagResult()
+    if not PLAYWRIGHT_AVAILABLE:
+        res.error = "playwright 未インストール"
+        return res
+    if _should_isolate():
+        return _run_isolated("fetch_mag_policy_titles", {}, timeout_sec=60)
+    try:
+        with sync_playwright() as p:
+            page = _get_ebaymag_page(p, res)
+            if page is None:
+                return res
+            from monitor import ebaymag_graphql as _G
+
+            profiles = _G.list_profiles(page, first=200)
+            res.mag_titles = {p_["title"] for p_ in profiles if p_.get("title")}
+            res._log(f"mag_titles fetched: {len(res.mag_titles)} 件")
+            res.ok = True
+    except Exception as e:
+        res.error = f"eBaymag MAG title 一覧取得失敗: {str(e) or type(e).__name__}"
+        logger.warning("fetch_mag_policy_titles failed", exc_info=True)
     return res
 
 
