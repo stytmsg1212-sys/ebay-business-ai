@@ -940,5 +940,16 @@
     "created": "2026-07-05",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 389,
+    "tag": "W324",
+    "title": "eBaymag assign_policy の itm 照合弁を「製品の全サイト出品 ID のいずれかと一致」へ拡張",
+    "description": "W317 キュー消化 (2026-07-05) で判明した弁の設計ギャップ: US 出品を持たない (または panel が別サイト出品を表示する) 商品はパネル itm が expected_itm=US ID と構造的に不一致になり、送料ポリシー付替が誤付替防止弁で全て安全側停止する。GraphQL product_map の listings 全 ID を取得し「いずれかと一致すれば OK」に拡張する。対象 = itm 照合 NG で needs_manual 保留した 24 件 (queue id 8-32、W324 note 付き)。対応後に該当 job を pending へ戻して再実行する。",
+    "priority": "高",
+    "status": "pending",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
   }
 ]

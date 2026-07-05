@@ -321,7 +321,7 @@
       "_note": "money-direct タスク。enabled=false のまま canary 1件を手動実行して確認後に true へ昇格。canary 手順: (1) max_per_run=1 で enabled=true (2) scheduler 再起動 (3) 次の 11:30/15:30/22:30 JST に自動発火 or run_task UI から手動発火 (4) old→new item_id 確認 + eBaymag 各国版実ページ目視 (5) 問題なければ max_per_run=3 に戻す。"
     },
     "ebaymag_apply_queue": {
-      "enabled": false,
+      "enabled": true,
       "description": "W284 Phase 2: eBaymag 反映キュー消化 — UI で希望保存 (新規出品/区分変更/relist再リンク) されたジョブを CDP 在席時に各国版へ適用 (apply_site_changes)。11:30/15:30/22:30 JST。",
       "_note": "money-direct タスク (各国版の公開状態を mutate)。config 欠落時は fail-safe OFF (daily_scheduler 側 get('enabled', False))。canary 手順: (1) enabled=true (2) scheduler 再起動 (3) UI で 1 件だけ希望保存 → enqueue (4) 次の 11:30/15:30/22:30 JST 自動発火 or run_task UI 手動発火 (5) eBaymag 各国版実ページで意図通り反映を目視 (6) 問題なければ常用。"
     },
@@ -337,7 +337,7 @@
       "note": "2026-07-03 user承認: 30日以上未使用のため生成停止 (アーカイブページ化済)。再開は enabled=true + scheduler 再起動。task 側ゲートは tasks/task_morning_discovery.py run_morning_discovery 冒頭 (skip_disabled 痕跡あり)。"
     },
     "ebaymag_policy_assign": {
-      "enabled": false,
+      "enabled": true,
       "description": "W284 Phase 2-3: eBaymag 送料ポリシー付替 (assign_policy) の有効化フラグ。反映キュー消化 (ebaymag_apply_queue) の軸2 = 送料ポリシー付替を実行するかを制御する。OFF の間は band の付替要否を検出しても CDP 付替を実行せず痕跡ログのみ (Q0)。",
       "_note": "money-direct タスク (各国版の送料ポリシーを mutate)。config 欠落時は fail-safe OFF。canary 手順: (1) ebaymag_shipping_policies の各帯に user が手動作成した policy token を backfill (2) enabled=true (3) scheduler 再起動 (4) テスト品 1 件の band を設定 → enqueue (5) 11:30/15:30/22:30 JST 自動発火 or run_task UI 手動発火 (6) ebay.{site}/itm/各国版ID を買い手ロケーションで送料正値を目視 (7) 問題なければ常用。 ★既存の $0 漏れ品 (現存各国版) 一括是正は band 変化/relist でしか自動 enqueue されないため、canary 確認後に scripts/backfill_ebaymag_shipping_band_2026_06_21.py --apply で band 一括設定+enqueue する (reviewer MED-1)。"
     },
