@@ -538,6 +538,9 @@ def _render_watch_list() -> None:
             "最終ヒット": _to_jst_str(last_hit_map.get(w["id"])),
         })
     st.dataframe(rows, use_container_width=True, hide_index=True, row_height=26)
+    if any(w.get("is_sentinel") for w in watches):
+        # 2026-07-06: 🛡️ prefix だけでは意味不明との再混乱防止 (iPhone sentinel 事故)。
+        st.caption("🛡️ = 死活監視用センチネル (自動登録・新着ギャラリー非対象)")
 
     with st.expander("🛠 編集 / 削除", expanded=False):
         ids = [w["id"] for w in watches]
