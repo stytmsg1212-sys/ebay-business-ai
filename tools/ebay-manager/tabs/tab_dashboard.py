@@ -200,6 +200,13 @@ _INBOX_EXCLUDED_CATEGORIES = {'supplier_purchase', 'sale', 'listing_notification
 
 
 def _is_urgent_email(em: dict) -> bool:
+    # 2026-07-05 fix: 「確認済み」ボタン押下後 (emails.confirmed=1) もこの判定に
+    # confirmed チェックが無く、一覧から消えなかったバグの root cause。
+    # get_recent_emails() の SQL は confirmed=1 を除外しない (tab_purchase_confirm.py
+    # が確認済み/未確認 両方を必要とするため意図的に全件返す仕様) ので、
+    # ここ (DASHBOARD 専用の「緊急」判定) で明示的に除外する。
+    if em.get('confirmed'):
+        return False
     cat_rule = em.get('category', 'other')
     cat_ai = em.get('category_ai') or ''
     if cat_rule in _INBOX_EXCLUDED_CATEGORIES or cat_ai in _INBOX_EXCLUDED_CATEGORIES:
@@ -832,9 +839,19 @@ def render_dashboard_tab(s: dict) -> None:
 
         if _inbox_confirm_ids:
             if st.button(f"{len(_inbox_confirm_ids)}件を確認済みにする", type="primary", key="inbox_confirm"):
-                set_email_confirmed(_inbox_confirm_ids)
-                bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
-                st.rerun()
+                # 2026-07-05 fix: Q0 silent skip 防止 — DB 更新の成否を UI に必ず
+                # フィードバックする (成功=toast / 失敗=error、無言で終わらせない)。
+                try:
+                    set_email_confirmed(_inbox_confirm_ids)
+                except sqlite3.Error as _e:
+                    logger.error(f"set_email_confirmed 失敗: {_e}")
+                    st.error(f"確認済み更新に失敗しました: {_e}")
+                else:
+                    # st.success は直後の rerun で描画されない → toast (rerun 跨ぎ表示、
+                    # 本 file 既存の他ボタンハンドラと同一パターン)。
+                    st.toast(f"{len(_inbox_confirm_ids)}件を確認済みにしました", icon="✅")
+                    bump_db_version()  # W134 Step2: 書込後 read-cache 無効化
+                    st.rerun()
 
     with col_right:
         # ── 在庫・価格の要点 (#43: 一覧は出さず件数+上位3件+導線のみ) ──
@@ -1237,9 +1254,21 @@ def render_dashboard_tab(s: dict) -> None:
                         f"{len(_ref_confirm_ids)}件を確認済みにする",
                         type="secondary", key="inbox_ref_confirm",
                     ):
-                        set_email_confirmed(_ref_confirm_ids)
-                        bump_db_version()
-                        st.rerun()
+                        # 2026-07-05 fix (code-reviewer M1): 緊急メール側 (inbox_confirm)
+                        # と同一パターンの Q0 硬化 — DB 更新の成否を UI に必ず
+                        # フィードバックする (成功=toast / 失敗=error)。
+                        try:
+                            set_email_confirmed(_ref_confirm_ids)
+                        except sqlite3.Error as _e:
+                            logger.error(f"set_email_confirmed (参考メール) 失敗: {_e}")
+                            st.error(f"確認済み更新に失敗しました: {_e}")
+                        else:
+                            st.toast(
+                                f"{len(_ref_confirm_ids)}件を確認済みにしました",
+                                icon="✅",
+                            )
+                            bump_db_version()
+                            st.rerun()
             else:
                 st.caption("—")
 
