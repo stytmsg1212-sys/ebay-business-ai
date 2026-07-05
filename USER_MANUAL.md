@@ -64,7 +64,7 @@ assistant が PID を把握している時は assistant に依頼してもよい
 ### 1-3. watchdog (自動再起動の仕組み)
 
 - ファイル: `tools/ebay-manager/scripts/scheduler_watchdog.ps1`
-- 起動: Windows Task Scheduler が **5 分間隔** で実行
+- 起動: Windows Task Scheduler が **5 分間隔** で実行 (Action = `wscript.exe tools/ebay-manager/scripts/watchdog_invisible.vbs`、依頼ボード #53 2026-07-05: 直接 powershell.exe だと `-WindowStyle Hidden` でも一瞬コンソールが立ち上がりフォーカスを奪うため VBS ラッパー経由に変更。中身は元の powershell.exe コマンドをそのまま `WScript.Shell.Run(..., 0, False)` で起動するだけ)
 - 健康判定: `scheduler.log` の mtime が **35 分超** 経過していたら scheduler down と判定 → `python daily_scheduler.py` を起動 + Discord 通知
 
 確認:
