@@ -82,6 +82,7 @@ from tabs.tab_purchase_confirm import render_purchase_confirm_tab
 from tabs.tab_keyword_watch import render_keyword_watch_tab  # W148 (2026-05-21)
 from tabs.tab_w228_research import render_w228_research_tab  # W228 (2026-06-07)
 from tabs.tab_request_board import render_request_board_tab  # W266 (2026-06-12)
+from tabs.tab_docs_viewer import render_tab as render_docs_viewer_tab  # W326 (2026-07-05)
 from tasks.task_seed_description_template import seed_v4_template_if_needed
 
 # ── W134 Step2: 重い DB ローダの read-cache (体感改善) ──
@@ -977,6 +978,9 @@ if _w134_sel == "設定":
             key="s_rh_max_items",
         )
     # --- ここまで商品リサーチ発掘 ------------------------------------------------
+
+    st.divider()
+    render_docs_viewer_tab()  # W326 (2026-07-05): 設計書/mockup/説明書/KB ビューア (read-only)
 
     if st.button("設定を保存", type="primary"):
         with st.status("設定を保存中...", expanded=True) as status:

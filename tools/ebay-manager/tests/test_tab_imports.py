@@ -60,3 +60,7 @@ def test_tab_inventory_monitor_importable():
 
 def test_tab_dashboard_importable():
     _assert_renderable("tabs.tab_dashboard", "render_dashboard_tab")
+
+
+def test_tab_docs_viewer_importable():
+    _assert_renderable("tabs.tab_docs_viewer", "render_tab")
