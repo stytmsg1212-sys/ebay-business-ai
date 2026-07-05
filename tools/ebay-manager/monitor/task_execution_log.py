@@ -101,6 +101,9 @@ TASK_SCHEDULE: list[dict[str, Any]] = [
     # #45 (2026-07-04): 仕入先候補 (pending/accepted) の availability 定期再チェック.
     # 毎日 02:50 JST (主 batch 02:30 後、daily_codex_lint/rival_classify 03:00 前).
     {"key": "supplier_availability_recheck", "display": "#45 仕入先候補 availability 再チェック (毎日 02:50)", "hours": [2], "weekdays": None, "owner": "supplier_availability_recheck"},
+    # W322 (2026-07-05): 夕方 refresh. competitor_snapshot/rival_classify 2 回目実行
+    # + AI店長「今夜の価格対応候補」digest. 毎日 19:30 JST.
+    {"key": "evening_refresh", "display": "W322 夕方 refresh (競合再観測+分類+digest, 毎日 19:30)", "hours": [19], "weekdays": None, "owner": "evening_refresh"},
 ]
 
 TASK_SCHEDULE_BY_KEY: dict[str, dict[str, Any]] = {t["key"]: t for t in TASK_SCHEDULE}

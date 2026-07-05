@@ -164,9 +164,9 @@
       "enabled": true,
       "description": "W154 (2026-05-22 PM): AI ニュース取得 (Tier 0 公式 RSS 4 + Tier 1 編集メディア RSS 4 + Reddit 6 + HN 4 query)",
       "priority": 15,
-      "cron_hour": 6,
-      "cron_minute": 0,
-      "note": "独立 CronJob (06:00). 旧 W13 (x_news_check, X+Grok) と旧 W55 (Anthropic HTML scrape) を本 task に統合. cron_hour / cron_minute は本 entry で調整可."
+      "cron_hour": 5,
+      "cron_minute": 45,
+      "note": "独立 CronJob (05:45、2026-07-05 W322 設計書 §6 変更提案#2: 06:00→05:45, 実測完了06:06で朝の部06:00開始に間に合っていなかったため前倒し). 旧 W13 (x_news_check, X+Grok) と旧 W55 (Anthropic HTML scrape) を本 task に統合. cron_hour / cron_minute は本 entry で調整可."
     },
     "data_sync": {
       "enabled": true,
@@ -292,9 +292,9 @@
       "enabled": true,
       "description": "W14: FedEx/DHL/UPS 通関要求メールの検知→ドラフト生成",
       "priority": 7,
-      "cron_hour": 6,
-      "cron_minute": 10,
-      "note": "独立 CronJob 06:10 (W13 06:00 とオフセット). 送信は MONO Deck UI から明示実行."
+      "cron_hour": 5,
+      "cron_minute": 50,
+      "note": "独立 CronJob 05:50 (2026-07-05 W322 設計書 §6 変更提案#3: 06:10→05:50, 朝の部06:00開始前に用意するため前倒し. news_check 05:45 と5分オフセット維持). 送信は MONO Deck UI から明示実行."
     },
     "keyword_watch_crawl": {
       "enabled": true,
@@ -374,6 +374,11 @@
       "sleep_between_checks_sec": 1.0,
       "description": "依頼ボード#45: 仕入先候補 (pending/accepted) の在庫状態を定期再チェックし、売り切れ/削除済 (unavailable/not_found) を却下する。",
       "note": "毎日 02:50 JST (主batch 02:30後・daily_codex_lint/rival_classify 03:00前)。Yahooオークションは fetch_yahoo_end_status で「落札者なし終了」24h猶予を考慮 (feedback_yahoo_auction_end_two_patterns.md 準拠)、他は既存 W182 gate (monitor.scrapers.check_candidate_availability) を流用。判定不能は据え置き (Q0)。W148-Y one-shot (scripts/check_supplier_candidates_oos_2026_05_20.py) の定時実行化。"
+    },
+    "evening_refresh": {
+      "enabled": true,
+      "description": "W322 夕方 refresh: competitor_snapshot + rival_classify の2回目実行 + AI店長「今夜の価格対応候補」digest (Discord + 午後の作業タブ上部)。",
+      "note": "毎日 19:30 JST (設計書 .company/engineering/docs/2026-07-04-daily-workflow-design.md §4/§6)。夜の部(21:00-23:30)開始時点で競合情報が15-18h stale な構造的ギャップの解消。eBay API日次プールは16:00 JSTリセットのため早朝バッチと競合しない。内包する competitor_snapshot/rival_classify は各タスク自身の enabled も参照 (二重ゲート)。抽出クエリは monitor/evening_digest.py に共有 (Discord通知とタブ表示が同じデータソース)。"
     }
   },
   "rate_table_batch": {

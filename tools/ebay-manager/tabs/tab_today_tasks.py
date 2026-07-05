@@ -413,6 +413,32 @@ def _render_condition_bar(done: int, total: int) -> None:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# W322 (2026-07-05): AI店長 夕方digest 「今夜の価格対応候補」
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _render_evening_digest() -> None:
+    """夕方 refresh (19:30) が抽出した「今夜の価格対応候補」を1行形式で表示.
+
+    monitor.evening_digest.get_evening_price_candidates() を Discord 通知
+    (tasks/task_evening_refresh.py) と共有 (同一抽出クエリ、データソース不一致防止)。
+    """
+    try:
+        from monitor.evening_digest import get_evening_price_candidates
+        candidates = get_evening_price_candidates()
+    except Exception as _e:  # noqa: BLE001 — 本セクション表示失敗でタブ全体を落とさない
+        st.caption(f"🤖 今夜の価格対応候補: 取得エラー ({_e})")
+        return
+
+    with st.container(border=True):
+        st.markdown(f"**🤖 今夜の価格対応候補 ({len(candidates)}件)**")
+        if not candidates:
+            st.caption("本日は対応候補なし")
+        else:
+            for c in candidates:
+                st.caption(c.get("line", ""))
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 進捗リング (cream 立体カード + teal conic-gradient)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -666,9 +692,10 @@ def render_today_tasks_tab(s: dict) -> None:
     if all_done:
         streak = bump_streak_on_completion()
 
-    # 4. 描画: topbar + 2部コンディションバー
+    # 4. 描画: topbar + 2部コンディションバー + AI店長 夕方digest (W322)
     _render_topbar(streak, done, total)
     _render_condition_bar(done, total)
+    _render_evening_digest()
 
     # タスクが空 = 未登録 listing がゼロ (total=0)
     if not tasks:

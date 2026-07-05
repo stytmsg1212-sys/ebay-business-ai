@@ -1097,6 +1097,24 @@ def setup_scheduler():
     _cs_enabled = config.get('tasks_enabled', {}).get('competitor_snapshot', {}).get('enabled', True)
     logger.info(f"W301 AI店長 競合定点観測 発火: 毎日 05:30 JST (enabled={_cs_enabled})")
 
+    # ── W322 夕方 refresh (2026-07-05 追加) ──
+    # 毎日 19:30 JST に competitor_snapshot / rival_classify を再実行 + AI店長
+    # 「今夜の価格対応候補」digest。夜の部 (21:00-23:30) 開始時点で競合情報が
+    # 15-18h stale になる構造的ギャップの解消 (設計書 §4/§6)。
+    # eBay API 日次プールは 16:00 JST リセットのため早朝バッチと競合しない。
+    # enabled は config (tasks_enabled.evening_refresh.enabled) で制御。
+    scheduler.add_job(
+        _run_evening_refresh,
+        trigger=CronTrigger(hour=19, minute=30, second=0),
+        args=[config, 19],
+        id='evening_refresh_19_30',
+        name='W322 夕方 refresh (19:30)',
+        replace_existing=True,
+        max_instances=1,
+    )
+    _er_enabled = config.get('tasks_enabled', {}).get('evening_refresh', {}).get('enabled', True)
+    logger.info(f"W322 夕方 refresh 発火: 毎日 19:30 JST (enabled={_er_enabled})")
+
     # ── W283 Phase 9 月次送料 rate table 自動更新 (2026-06-19 追加) ──
     # 毎月1日 03:00 JST に FedEx/DHL 実費差額式で rate table 金額を自動追従.
     # 前月為替確定後・主 batch (02:30) 後. codex_lint(03:00) と同時刻だが別 owner・
@@ -1468,6 +1486,18 @@ def _run_competitor_snapshot(config: dict, scheduled_hour: int = 5):
         return
     _run_isolated_task('competitor_snapshot', 'W301 AI店長 競合定点観測',
                        lambda: run_competitor_snapshot(config),
+                       scheduled_hour=scheduled_hour)
+
+
+def _run_evening_refresh(config: dict, scheduled_hour: int = 19):
+    """W322 夕方 refresh — 毎日 19:30 JST に competitor_snapshot + rival_classify 再実行 + digest."""
+    try:
+        from tasks.task_evening_refresh import run_evening_refresh
+    except ImportError as e:
+        logger.error(f"task_evening_refresh import 失敗: {e}")
+        return
+    _run_isolated_task('evening_refresh', 'W322 夕方 refresh',
+                       lambda: run_evening_refresh(config),
                        scheduled_hour=scheduled_hour)
 
 

@@ -929,5 +929,16 @@
     "created": "2026-07-05",
     "completed": null,
     "category": "business"
+  },
+  {
+    "id": 388,
+    "tag": "W322",
+    "title": "夕方 refresh (19:30): 競合再観測+分類+AI店長「今夜の価格対応候補」digest + 朝タスク前倒し",
+    "description": "設計書 .company/engineering/docs/2026-07-04-daily-workflow-design.md §4/§6。夜の部 (21:00-23:30) 開始時点で AI店長の判断材料 (競合の売れ行き・在庫・分類) が朝のまま15-18h staleな構造的ギャップを解消。毎日19:30 JSTに (1) competitor_snapshot の2回目実行 (2) rival_classify の実行 (status='new'フィルタで新規discovery分のみ自然に対象化) (3) monitor/evening_digest.py で直近2スナップショット比較から値下げ/売れた/在庫増を検出しDiscord (category='rival') + 午後の作業タブ上部へ同一データソースで表示。新規task (tasks/task_evening_refresh.py) はTASK_SCHEDULE登録(hours=[19])・kill switch (tasks_enabled.evening_refresh.enabled)・max_instances=1のQ0新規task4要件を満たす。付随してnews_check 06:00→05:45・customs_check 06:10→05:50に前倒し(朝の部06:00開始前に用意)。pytest 12件新規 (tests/test_w322_evening_refresh.py) + 既存回帰325件 (rival/snapshot/today_tasks/schedule) 全PASS。",
+    "status": "実装済み・19:30初回観測待ち",
+    "priority": "通常",
+    "created": "2026-07-05",
+    "completed": null,
+    "category": "business"
   }
 ]
